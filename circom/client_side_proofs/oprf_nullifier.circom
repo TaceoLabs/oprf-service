@@ -18,6 +18,8 @@ template CheckCredentialSignature() {
     signal input hashes[2]; // [claims_hash, associated_data_hash]
     // Current time
     signal input current_time_stamp;
+    // Minimum allowed genesis issue time
+    signal input genesis_issued_at_limit;
 
     // Calculate the message hash
     component hash = Poseidon2(8);
@@ -44,10 +46,14 @@ template CheckCredentialSignature() {
     var genesis_in_range[64] = Num2Bits(64)(genesis_issued_at);
     var expires_in_range[64] = Num2Bits(64)(expires_at);
     // var current_in_range[64] = Num2Bits(64)(current_time_stamp); // Should be checked outside of the ZK proof
+    // var genesis_limit_in_range[64] = Num2Bits(64)(genesis_issued_at_limit); // Should be checked outside of the ZK proof
 
     // Check the credential is currently valid
-    var lt = LessThan(64)([current_time_stamp, expires_at]);
-    lt === 1;
+    var lt_expiry = LessThan(64)([current_time_stamp, expires_at]);
+    // Check the credential is issued after the minimum allowed genesis issue time
+    var lt_issued = LessThan(64)([genesis_issued_at_limit, genesis_issued_at]);
+    lt_expiry === 1;
+    lt_issued === 1;
 }
 
 
@@ -68,6 +74,7 @@ template OprfNullifier(MAX_DEPTH) {
     signal input cred_s;
     signal input cred_r[2];
     signal input current_time_stamp; // Public
+    signal input cred_genesis_issued_at_limit; // Public
     // Merkle proof
     signal input merkle_root; // Public
     signal input depth; // Public
@@ -122,6 +129,7 @@ template OprfNullifier(MAX_DEPTH) {
     cred_sig_checker.expires_at <== cred_expires_at;
     cred_sig_checker.hashes <== cred_hashes;
     cred_sig_checker.current_time_stamp <== current_time_stamp;
+    cred_sig_checker.genesis_issued_at_limit <== cred_genesis_issued_at_limit;
 
     // 4. Check the dlog equality proof
     BabyJubJubBaseField() e;
