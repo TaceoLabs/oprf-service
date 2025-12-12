@@ -71,6 +71,8 @@ library Types {
         uint256 y;
     }
 
+    // Event that will be emitted during key-gens. This should signal the MPC-nodes that their transaction was successfully registered.
+    event TransactionNonce(uint256 nonce);
     // events for key-gen
     event SecretGenRound1(uint160 indexed oprfKeyId, uint256 threshold);
     event SecretGenRound2(uint160 indexed oprfKeyId);
