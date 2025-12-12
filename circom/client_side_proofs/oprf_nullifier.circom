@@ -3,6 +3,54 @@ pragma circom 2.2.2;
 include "oprf_query.circom";
 include "verify_dlog/verify_dlog.circom";
 
+// In the CheckCredentialSignature template, we need to recompute a hash and verify the signature of this hash. Furthermore, we need to check whether the credential is still valid (i.e., not expired) by proving the current_time_stamp is less than expires_at. We note that genesis_issued_at is just there to recompute the hash and we do not check anything about it (e.g., whether it is in the past).
+template CheckCredentialSignature() {
+    // Signature
+    signal input s;
+    signal input r[2];
+    // Public key
+    signal input pk[2];
+    // Credential data
+    signal input credential_type_id;
+    signal input user_id;
+    signal input genesis_issued_at;
+    signal input expires_at;
+    signal input hashes[2]; // [claims_hash, associated_data_hash]
+    // Current time
+    signal input current_time_stamp;
+
+    // Calculate the message hash
+    component hash = Poseidon2(8);
+    hash.in[0] <== 1790969822004668215611014194230797064349043274; // Domain separator in capacity element b"POSEIDON2+EDDSA-BJJ"
+    hash.in[1] <== credential_type_id;
+    hash.in[2] <== user_id;
+    hash.in[3] <== genesis_issued_at;
+    hash.in[4] <== expires_at;
+    hash.in[5] <== hashes[0];
+    hash.in[6] <== hashes[1];
+    hash.in[7] <== 0;
+
+    // Verify the signature
+    component eddsa_verifier = EdDSAPoseidon2Verifier();
+    eddsa_verifier.Ax <== pk[0];
+    eddsa_verifier.Ay <== pk[1];
+    eddsa_verifier.S <== s;
+    eddsa_verifier.Rx <== r[0];
+    eddsa_verifier.Ry <== r[1];
+    eddsa_verifier.M <== hash.out[1];
+
+    // Range check the 3 timestamps
+    // We think these two checks are not really necessary since it would produce an invalid signature if they were out of range (and the signer should have checked it), but it does not add many constraints....
+    var genesis_in_range[64] = Num2Bits(64)(genesis_issued_at);
+    var expires_in_range[64] = Num2Bits(64)(expires_at);
+    // var current_in_range[64] = Num2Bits(64)(current_time_stamp); // Should be checked outside of the ZK proof
+
+    // Check the credential is currently valid
+    var lt = LessThan(64)([current_time_stamp, expires_at]);
+    lt === 1;
+}
+
+
 // Checks outside of the ZK proof: The public key oprf_pk needs to be a valid BabyJubJub point in the correct subgroup.
 
 template OprfNullifier(MAX_DEPTH) {
@@ -50,26 +98,30 @@ template OprfNullifier(MAX_DEPTH) {
     var query_poseidon[4] = Poseidon2(4)([1773399373884719043551600379785849, mt_index, rp_id, action]);
     signal query <== query_poseidon[1];
 
-    // 1-3. Show that the original query was computed correctly
+    // 1-2. Show that the original query was computed correctly
     component oprf_query = OprfQueryInner(MAX_DEPTH);
     oprf_query.pk <== pk;
     oprf_query.pk_index <== pk_index;
     oprf_query.s <== s;
     oprf_query.r <== r;
-    oprf_query.cred_type_id <== cred_type_id;
-    oprf_query.cred_pk <== cred_pk;
-    oprf_query.cred_hashes <== cred_hashes;
-    oprf_query.cred_genesis_issued_at <== cred_genesis_issued_at;
-    oprf_query.cred_expires_at <== cred_expires_at;
-    oprf_query.cred_s <== cred_s;
-    oprf_query.cred_r <== cred_r;
-    oprf_query.current_time_stamp <== current_time_stamp;
     oprf_query.merkle_root <== merkle_root;
     oprf_query.depth <== depth;
     oprf_query.mt_index <== mt_index;
     oprf_query.siblings <== siblings;
     oprf_query.beta <== beta;
     oprf_query.query <== query;
+
+    // 3. Credential signature is valid
+    component cred_sig_checker = CheckCredentialSignature();
+    cred_sig_checker.s <== cred_s;
+    cred_sig_checker.r <== cred_r;
+    cred_sig_checker.pk <== cred_pk;
+    cred_sig_checker.credential_type_id <== cred_type_id;
+    cred_sig_checker.user_id <== mt_index;
+    cred_sig_checker.genesis_issued_at <== cred_genesis_issued_at;
+    cred_sig_checker.expires_at <== cred_expires_at;
+    cred_sig_checker.hashes <== cred_hashes;
+    cred_sig_checker.current_time_stamp <== current_time_stamp;
 
     // 4. Check the dlog equality proof
     BabyJubJubBaseField() e;
