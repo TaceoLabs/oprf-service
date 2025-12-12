@@ -55,6 +55,11 @@
     "name": "addRound1KeyGenContribution",
     "inputs": [
       {
+        "name": "nonce",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
         "name": "oprfKeyId",
         "type": "uint160",
         "internalType": "uint160"
@@ -113,6 +118,11 @@
     "type": "function",
     "name": "addRound1ReshareContribution",
     "inputs": [
+      {
+        "name": "nonce",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
       {
         "name": "oprfKeyId",
         "type": "uint160",
@@ -173,6 +183,11 @@
     "name": "addRound2Contribution",
     "inputs": [
       {
+        "name": "nonce",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
         "name": "oprfKeyId",
         "type": "uint160",
         "internalType": "uint160"
@@ -231,6 +246,11 @@
     "type": "function",
     "name": "addRound3Contribution",
     "inputs": [
+      {
+        "name": "nonce",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
       {
         "name": "oprfKeyId",
         "type": "uint160",
@@ -922,6 +942,19 @@
         "type": "uint160",
         "indexed": true,
         "internalType": "uint160"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TransactionNonce",
+    "inputs": [
+      {
+        "name": "nonce",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
       }
     ],
     "anonymous": false
