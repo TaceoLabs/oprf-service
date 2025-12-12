@@ -75,6 +75,10 @@ template OprfQueryInner(MAX_DEPTH) {
     // Ensure beta < Subgroup Order
     component beta_range_check = BabyJubJubIsInFr();
     beta_range_check.in <== beta;
+    // Ensure beta != 0
+    component beta_is_zero = IsZero();
+    beta_is_zero.in <== beta;
+    beta_is_zero.out === 0;
 
     // 1. Verify sk/pk by verifying a signature to a known message
     signal chosen_pk[2] <== ChoosePublicKey(7)(pk, pk_index);
