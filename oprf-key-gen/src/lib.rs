@@ -11,7 +11,7 @@ use crate::{
     config::OprfKeyGenConfig,
     services::{
         key_event_watcher::KeyEventWatcherTaskConfig, secret_gen::DLogSecretGenService,
-        secret_manager::SecretManagerService,
+        secret_manager::SecretManagerService, transaction_nonce_store::TransactionNonceStore,
     },
 };
 use alloy::{
@@ -83,6 +83,15 @@ pub async fn start(
         .bbf_num_2_bits_helper()
         .build_from_paths(config.key_gen_zkey_path, config.key_gen_witness_graph_path)?;
     let dlog_secret_gen_service = DLogSecretGenService::init(key_gen_material);
+    tracing::info!("spawning transaction nonce store..");
+    let (transaction_nonce_store, transaction_nonce_store_handle) = TransactionNonceStore::new(
+        config.max_wait_time_transaction_nonce,
+        config.oprf_key_registry_contract,
+        provider.clone(),
+        cancellation_token.clone(),
+    )
+    .await
+    .context("while spawning transaction nonce")?;
 
     tracing::info!("spawning key event watcher..");
     let key_event_watcher = tokio::spawn({
@@ -96,7 +105,7 @@ pub async fn start(
             start_block: config.start_block,
             max_epoch_cache_size: config.max_epoch_cache_size,
             secret_manager,
-            transaction_attempts: config.transaction_attempts,
+            transaction_nonce_store,
             cancellation_token,
         })
     });
@@ -133,7 +142,7 @@ pub async fn start(
         config.max_wait_time_shutdown
     );
     match tokio::time::timeout(config.max_wait_time_shutdown, async move {
-        tokio::join!(server, key_event_watcher)
+        tokio::join!(server, key_event_watcher, transaction_nonce_store_handle)
     })
     .await
     {

@@ -95,7 +95,7 @@ async fn start_key_gen(
         max_wait_time_shutdown: Duration::from_secs(10),
         max_epoch_cache_size: 3,
         start_block: Some(0),
-        transaction_attempts: 3,
+        max_wait_time_transaction_nonce: Duration::from_secs(30),
     };
     let never = async { futures::future::pending::<()>().await };
     tokio::spawn(async move {

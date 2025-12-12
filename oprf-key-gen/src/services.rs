@@ -14,3 +14,4 @@
 pub(crate) mod key_event_watcher;
 pub(crate) mod secret_gen;
 pub mod secret_manager;
+pub(crate) mod transaction_nonce_store;
