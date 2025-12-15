@@ -38,7 +38,7 @@ template OprfDelegate(MAX_DEPTH, RP_MAX_DEPTH) {
     signal input query_s;
     signal input query_r[2];
    // Credential Signature
-    signal input cred_type_id;
+    signal input issuer_schema_id; // Public
     signal input cred_pk[2]; // Public
     signal input cred_hashes[2]; // [claims_hash, associated_data_hash]
     signal input cred_genesis_issued_at;
@@ -46,7 +46,7 @@ template OprfDelegate(MAX_DEPTH, RP_MAX_DEPTH) {
     signal input cred_s;
     signal input cred_r[2];
     signal input current_time_stamp; // Public
-    signal input cred_genesis_issued_at_limit; // Public
+    signal input cred_genesis_issued_at_min; // Public
     // Merkle proof
     signal input merkle_root; // Public
     signal input depth; // Public
@@ -101,13 +101,13 @@ template OprfDelegate(MAX_DEPTH, RP_MAX_DEPTH) {
     cred_sig_checker.s <== cred_s;
     cred_sig_checker.r <== cred_r;
     cred_sig_checker.pk <== cred_pk;
-    cred_sig_checker.credential_type_id <== cred_type_id;
+    cred_sig_checker.issuer_schema_id <== issuer_schema_id;
     cred_sig_checker.user_id <== mt_index;
     cred_sig_checker.genesis_issued_at <== cred_genesis_issued_at;
     cred_sig_checker.expires_at <== cred_expires_at;
     cred_sig_checker.hashes <== cred_hashes;
     cred_sig_checker.current_time_stamp <== current_time_stamp;
-    cred_sig_checker.genesis_issued_at_limit <== cred_genesis_issued_at_limit;
+    cred_sig_checker.genesis_issued_at_min <== cred_genesis_issued_at_min;
 
     // 4. Check the dlog equality proof
     BabyJubJubBaseField() e;
@@ -200,4 +200,4 @@ template OprfDelegate(MAX_DEPTH, RP_MAX_DEPTH) {
     signal nonce_squared <== nonce * nonce;
 }
 
-// component main {public [cred_pk, cred_type_id, current_time_stamp, cred_genesis_issued_at_limit, merkle_root, depth, oprf_pk, nonce, mpc_public_keys, rp_merkle_root, rp_depth, expiration]} = OprfDelegate(30, 30);
+// component main {public [cred_pk, issuer_schema_id, current_time_stamp, cred_genesis_issued_at_min, merkle_root, depth, oprf_pk, nonce, mpc_public_keys, rp_merkle_root, rp_depth, expiration]} = OprfDelegate(30, 30);
