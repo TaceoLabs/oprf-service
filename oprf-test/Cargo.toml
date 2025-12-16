@@ -1,5 +1,5 @@
 [package]
-name = "oprf-test"
+name = "taceo-oprf-test"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -7,7 +7,7 @@ readme.workspace = true
 homepage.workspace = true
 repository.workspace = true
 license.workspace = true
-publish.workspace = true
+publish = false
 
 [dependencies]
 alloy = { workspace = true, features = [
@@ -23,12 +23,12 @@ async-trait = { workspace = true }
 eyre.workspace = true
 futures.workspace = true
 itertools.workspace = true
-oprf-client-example = { workspace = true }
-oprf-core = { workspace = true }
-oprf-key-gen = { workspace = true }
-oprf-service = { workspace = true }
-oprf-service-example = { workspace = true }
-oprf-types = { workspace = true }
+oprf-client-example = { package = "taceo-oprf-client-example", path = "../oprf-client-example", version = "0.1" }
+oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.2" }
+oprf-key-gen = { package = "taceo-oprf-key-gen", path = "../oprf-key-gen", version = "0.1" }
+oprf-service = { package = "taceo-oprf-service", path = "../oprf-service", version = "0.1" }
+oprf-service-example = { package = "taceo-oprf-service-example", path = "../oprf-service-example", version = "0.1" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.2" }
 parking_lot = { workspace = true }
 rand.workspace = true
 rand_chacha.workspace = true

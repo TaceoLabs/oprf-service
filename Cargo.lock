@@ -4406,196 +4406,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "oprf-client"
-version = "0.1.0"
-dependencies = [
- "ark-ec",
- "ciborium",
- "futures",
- "serde",
- "taceo-ark-babyjubjub",
- "taceo-oprf-core",
- "taceo-oprf-types",
- "taceo-poseidon2",
- "thiserror 2.0.17",
- "tokio",
- "tokio-tungstenite 0.28.0",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "oprf-client-example"
-version = "0.1.0"
-dependencies = [
- "ark-ec",
- "ark-ff 0.5.0",
- "eyre",
- "oprf-client",
- "rand 0.8.5",
- "taceo-ark-babyjubjub",
- "taceo-oprf-types",
- "tracing",
-]
-
-[[package]]
-name = "oprf-dev-client"
-version = "0.1.0"
-dependencies = [
- "alloy",
- "ark-ff 0.5.0",
- "clap",
- "eyre",
- "humantime",
- "oprf-client",
- "oprf-client-example",
- "oprf-test",
- "rand 0.8.5",
- "rand_chacha 0.3.1",
- "rustls 0.23.35",
- "secrecy",
- "taceo-ark-babyjubjub",
- "taceo-nodes-observability",
- "taceo-oprf-core",
- "taceo-oprf-types",
- "tokio",
- "tracing",
- "uuid",
- "webpki-roots 1.0.4",
-]
-
-[[package]]
-name = "oprf-key-gen"
-version = "0.1.0"
-dependencies = [
- "alloy",
- "ark-bn254",
- "ark-ec",
- "ark-ff 0.5.0",
- "async-trait",
- "aws-config",
- "aws-sdk-secretsmanager",
- "axum",
- "clap",
- "eyre",
- "futures",
- "humantime",
- "itertools 0.14.0",
- "k256",
- "metrics",
- "rand 0.8.5",
- "rustls 0.23.35",
- "secrecy",
- "serde_json",
- "taceo-ark-babyjubjub",
- "taceo-groth16-material",
- "taceo-nodes-common",
- "taceo-nodes-observability",
- "taceo-oprf-core",
- "taceo-oprf-types",
- "testcontainers-modules",
- "tokio",
- "tokio-util",
- "tower-http",
- "tracing",
- "zeroize",
-]
-
-[[package]]
-name = "oprf-service"
-version = "0.1.0"
-dependencies = [
- "alloy",
- "ark-ff 0.5.0",
- "async-trait",
- "aws-config",
- "aws-sdk-secretsmanager",
- "axum",
- "axum-test",
- "ciborium",
- "clap",
- "eyre",
- "futures",
- "http 1.4.0",
- "humantime",
- "metrics",
- "oprf-client",
- "parking_lot",
- "rand 0.8.5",
- "secrecy",
- "serde",
- "serde_json",
- "taceo-ark-babyjubjub",
- "taceo-nodes-common",
- "taceo-oprf-core",
- "taceo-oprf-types",
- "thiserror 2.0.17",
- "tokio",
- "tokio-util",
- "tower-http",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "oprf-service-example"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "aws-config",
- "axum",
- "axum-test",
- "clap",
- "eyre",
- "humantime",
- "oprf-client",
- "oprf-service",
- "oprf-test",
- "rustls 0.23.35",
- "serde",
- "taceo-eddsa-babyjubjub",
- "taceo-nodes-common",
- "taceo-nodes-observability",
- "taceo-oprf-types",
- "taceo-poseidon2",
- "testcontainers-modules",
- "thiserror 2.0.17",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "oprf-test"
-version = "0.1.0"
-dependencies = [
- "alloy",
- "ark-ec",
- "ark-ff 0.5.0",
- "async-trait",
- "eyre",
- "futures",
- "itertools 0.14.0",
- "oprf-client-example",
- "oprf-key-gen",
- "oprf-service",
- "oprf-service-example",
- "parking_lot",
- "rand 0.8.5",
- "rand_chacha 0.3.1",
- "regex",
- "reqwest",
- "serde_json",
- "serial_test",
- "taceo-ark-babyjubjub",
- "taceo-oprf-core",
- "taceo-oprf-types",
- "tokio",
- "tokio-tungstenite 0.28.0",
- "tracing",
-]
-
-[[package]]
 name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6309,8 +6119,41 @@ dependencies = [
 ]
 
 [[package]]
-name = "taceo-oprf-core"
+name = "taceo-oprf-client"
 version = "0.1.0"
+dependencies = [
+ "ark-ec",
+ "ciborium",
+ "futures",
+ "serde",
+ "taceo-ark-babyjubjub",
+ "taceo-oprf-core",
+ "taceo-oprf-types",
+ "taceo-poseidon2",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-tungstenite 0.28.0",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "taceo-oprf-client-example"
+version = "0.1.0"
+dependencies = [
+ "ark-ec",
+ "ark-ff 0.5.0",
+ "eyre",
+ "rand 0.8.5",
+ "taceo-ark-babyjubjub",
+ "taceo-oprf-client",
+ "taceo-oprf-types",
+ "tracing",
+]
+
+[[package]]
+name = "taceo-oprf-core"
+version = "0.2.0"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -6334,8 +6177,165 @@ dependencies = [
 ]
 
 [[package]]
-name = "taceo-oprf-types"
+name = "taceo-oprf-dev-client"
 version = "0.1.0"
+dependencies = [
+ "alloy",
+ "ark-ff 0.5.0",
+ "clap",
+ "eyre",
+ "humantime",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "rustls 0.23.35",
+ "secrecy",
+ "taceo-ark-babyjubjub",
+ "taceo-nodes-observability",
+ "taceo-oprf-client",
+ "taceo-oprf-client-example",
+ "taceo-oprf-core",
+ "taceo-oprf-test",
+ "taceo-oprf-types",
+ "tokio",
+ "tracing",
+ "uuid",
+ "webpki-roots 1.0.4",
+]
+
+[[package]]
+name = "taceo-oprf-key-gen"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "ark-bn254",
+ "ark-ec",
+ "ark-ff 0.5.0",
+ "async-trait",
+ "aws-config",
+ "aws-sdk-secretsmanager",
+ "axum",
+ "clap",
+ "eyre",
+ "futures",
+ "humantime",
+ "itertools 0.14.0",
+ "k256",
+ "metrics",
+ "rand 0.8.5",
+ "rustls 0.23.35",
+ "secrecy",
+ "serde_json",
+ "taceo-ark-babyjubjub",
+ "taceo-groth16-material",
+ "taceo-nodes-common",
+ "taceo-nodes-observability",
+ "taceo-oprf-core",
+ "taceo-oprf-types",
+ "testcontainers-modules",
+ "tokio",
+ "tokio-util",
+ "tower-http",
+ "tracing",
+ "zeroize",
+]
+
+[[package]]
+name = "taceo-oprf-service"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "ark-ff 0.5.0",
+ "async-trait",
+ "aws-config",
+ "aws-sdk-secretsmanager",
+ "axum",
+ "axum-test",
+ "ciborium",
+ "clap",
+ "eyre",
+ "futures",
+ "http 1.4.0",
+ "humantime",
+ "metrics",
+ "parking_lot",
+ "rand 0.8.5",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "taceo-ark-babyjubjub",
+ "taceo-nodes-common",
+ "taceo-oprf-client",
+ "taceo-oprf-core",
+ "taceo-oprf-types",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-util",
+ "tower-http",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "taceo-oprf-service-example"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "aws-config",
+ "axum",
+ "axum-test",
+ "clap",
+ "eyre",
+ "humantime",
+ "rustls 0.23.35",
+ "serde",
+ "taceo-eddsa-babyjubjub",
+ "taceo-nodes-common",
+ "taceo-nodes-observability",
+ "taceo-oprf-client",
+ "taceo-oprf-service",
+ "taceo-oprf-test",
+ "taceo-oprf-types",
+ "taceo-poseidon2",
+ "testcontainers-modules",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "taceo-oprf-test"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "ark-ec",
+ "ark-ff 0.5.0",
+ "async-trait",
+ "eyre",
+ "futures",
+ "itertools 0.14.0",
+ "parking_lot",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "regex",
+ "reqwest",
+ "serde_json",
+ "serial_test",
+ "taceo-ark-babyjubjub",
+ "taceo-oprf-client-example",
+ "taceo-oprf-core",
+ "taceo-oprf-key-gen",
+ "taceo-oprf-service",
+ "taceo-oprf-service-example",
+ "taceo-oprf-types",
+ "tokio",
+ "tokio-tungstenite 0.28.0",
+ "tracing",
+]
+
+[[package]]
+name = "taceo-oprf-types"
+version = "0.2.0"
 dependencies = [
  "alloy",
  "ark-ff 0.5.0",

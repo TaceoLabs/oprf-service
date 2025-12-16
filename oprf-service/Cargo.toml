@@ -1,13 +1,15 @@
 [package]
-name = "oprf-service"
+name = "taceo-oprf-service"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
+description = "Main service for nodes of TACEO:Oprf"
 readme.workspace = true
 homepage.workspace = true
 repository.workspace = true
 license.workspace = true
-publish.workspace = true
+keywords = ["cryptography", "mpc", "oprf"]
+publish = true
 
 [dependencies]
 alloy = { workspace = true, features = ["full", "rpc", "rpc-client-ws"] }
@@ -24,8 +26,8 @@ http = { workspace = true }
 humantime.workspace = true
 metrics = { workspace = true }
 nodes-common = { workspace = true }
-oprf-core = { workspace = true }
-oprf-types = { workspace = true }
+oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.2" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.2" }
 parking_lot = { workspace = true }
 rand.workspace = true
 secrecy = { workspace = true }
@@ -46,6 +48,6 @@ tracing.workspace = true
 uuid = { workspace = true, features = ["serde", "v4"] }
 
 [dev-dependencies]
-axum-test = { workspace = true, features = ["ws"] }
-oprf-client = { workspace = true }
 ark-ff = { workspace = true }
+axum-test = { workspace = true, features = ["ws"] }
+oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.1" }

@@ -1,5 +1,5 @@
 [package]
-name = "oprf-client-example"
+name = "taceo-oprf-client-example"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -7,14 +7,14 @@ readme.workspace = true
 homepage.workspace = true
 repository.workspace = true
 license.workspace = true
-publish.workspace = true
+publish = false
 
 [dependencies]
 ark-babyjubjub = { workspace = true }
 ark-ec.workspace = true
 ark-ff = { workspace = true }
 eyre.workspace = true
-oprf-client = { workspace = true }
-oprf-types = { workspace = true }
+oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.1" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.2" }
 rand.workspace = true
 tracing.workspace = true

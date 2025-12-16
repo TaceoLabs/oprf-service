@@ -46,7 +46,7 @@ unit-tests:
 
 [group('test')]
 integration-tests:
-    cargo test --release --package oprf-test
+    cargo test --release --package taceo-oprf-test
 
 [group('test')]
 all-rust-tests:

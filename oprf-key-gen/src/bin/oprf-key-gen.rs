@@ -7,7 +7,7 @@
 use std::{process::ExitCode, sync::Arc};
 
 use clap::Parser;
-use oprf_key_gen::{
+use taceo_oprf_key_gen::{
     config::{Environment, OprfKeyGenConfig},
     secret_manager::aws::AwsSecretManager,
 };
@@ -19,7 +19,7 @@ async fn main() -> eyre::Result<ExitCode> {
         .expect("can install");
     let tracing_config = nodes_observability::TracingConfig::try_from_env()?;
     let _tracing_handle = nodes_observability::initialize_tracing(&tracing_config)?;
-    oprf_key_gen::metrics::describe_metrics();
+    taceo_oprf_key_gen::metrics::describe_metrics();
 
     tracing::info!("{}", nodes_common::version_info!());
 
@@ -40,7 +40,7 @@ async fn main() -> eyre::Result<ExitCode> {
         .await,
     );
 
-    let result = oprf_key_gen::start(
+    let result = taceo_oprf_key_gen::start(
         config,
         secret_manager,
         nodes_common::default_shutdown_signal(),

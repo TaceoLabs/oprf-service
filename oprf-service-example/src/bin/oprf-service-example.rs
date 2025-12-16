@@ -8,7 +8,7 @@ use std::{process::ExitCode, sync::Arc};
 
 use clap::Parser;
 use oprf_service::{config::Environment, secret_manager::aws::AwsSecretManager};
-use oprf_service_example::config::ExampleOprfNodeConfig;
+use taceo_oprf_service_example::config::ExampleOprfNodeConfig;
 
 #[tokio::main]
 async fn main() -> eyre::Result<ExitCode> {
@@ -33,7 +33,7 @@ async fn main() -> eyre::Result<ExitCode> {
         AwsSecretManager::init(aws_config, &config.service_config.rp_secret_id_prefix).await,
     );
 
-    let result = oprf_service_example::start(
+    let result = taceo_oprf_service_example::start(
         config,
         secret_manager,
         nodes_common::default_shutdown_signal(),
