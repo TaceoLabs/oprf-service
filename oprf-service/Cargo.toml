@@ -8,8 +8,7 @@ readme.workspace = true
 homepage.workspace = true
 repository.workspace = true
 license.workspace = true
-keywords = ["cryptography", "mpc", "nullifier", "oprf"]
-exclude = [".gitignore"]
+keywords = ["cryptography", "mpc", "oprf"]
 publish = true
 
 [dependencies]
