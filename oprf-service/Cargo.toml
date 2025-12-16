@@ -27,8 +27,8 @@ http = { workspace = true }
 humantime.workspace = true
 metrics = { workspace = true }
 nodes-common = { workspace = true }
-oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.1" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.1" }
+oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.2" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.2" }
 parking_lot = { workspace = true }
 rand.workspace = true
 secrecy = { workspace = true }

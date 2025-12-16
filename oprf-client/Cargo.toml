@@ -17,8 +17,8 @@ ark-babyjubjub = { workspace = true }
 ark-ec = { workspace = true }
 ciborium = { workspace = true }
 futures = { workspace = true }
-oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.1" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.1" }
+oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.2" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.2" }
 poseidon2 = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

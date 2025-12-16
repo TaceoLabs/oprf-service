@@ -19,7 +19,7 @@ humantime = { workspace = true }
 nodes-common = { workspace = true }
 nodes-observability = { workspace = true }
 oprf-service = { package = "taceo-oprf-service", path = "../oprf-service", version = "0.1" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.1" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.2" }
 rustls = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
