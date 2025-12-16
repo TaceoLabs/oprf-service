@@ -1,5 +1,5 @@
 [package]
-name = "oprf-dev-client"
+name = "taceo-oprf-dev-client"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -17,11 +17,11 @@ clap = { workspace = true, features = ["derive", "env"] }
 eyre.workspace = true
 humantime.workspace = true
 nodes-observability.workspace = true
-oprf-client = { workspace = true }
-oprf-client-example = { workspace = true }
-oprf-core = { workspace = true }
-oprf-test = { workspace = true }
-oprf-types = { workspace = true }
+oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.1" }
+oprf-client-example = { package = "taceo-oprf-client-example", path = "../oprf-client-example", version = "0.1" }
+oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.1" }
+oprf-test = { package = "taceo-oprf-test", path = "../oprf-test", version = "0.1" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.1" }
 rand.workspace = true
 rand_chacha.workspace = true
 rustls = { workspace = true }

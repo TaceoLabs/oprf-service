@@ -7,7 +7,7 @@ readme.workspace = true
 homepage.workspace = true
 repository.workspace = true
 license.workspace = true
-publish.workspace = true
+publish = false
 
 [dependencies]
 alloy = { workspace = true, features = ["full", "rpc", "rpc-client-ws"] }
@@ -29,8 +29,8 @@ k256 = { workspace = true, features = ["ecdsa", "serde"] }
 metrics = { workspace = true }
 nodes-common = { workspace = true }
 nodes-observability = { workspace = true }
-oprf-core = { workspace = true }
-oprf-types = { workspace = true }
+oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.1" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.1" }
 rand.workspace = true
 rustls = { workspace = true }
 secrecy = { workspace = true }

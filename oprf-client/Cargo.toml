@@ -3,19 +3,22 @@ name = "taceo-oprf-client"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
+description = "Client for TACEO:Oprf"
 readme.workspace = true
 homepage.workspace = true
 repository.workspace = true
 license.workspace = true
-publish.workspace = true
+keywords = ["cryptography", "mpc", "nullifier", "oprf"]
+exclude = [".gitignore"]
+publish = true
 
 [dependencies]
 ark-babyjubjub = { workspace = true }
 ark-ec = { workspace = true }
 ciborium = { workspace = true }
 futures = { workspace = true }
-oprf-core = { workspace = true }
-oprf-types = { workspace = true }
+oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.1" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.1" }
 poseidon2 = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
