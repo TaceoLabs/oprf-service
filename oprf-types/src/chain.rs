@@ -25,7 +25,7 @@ sol!(
     #[allow(missing_docs, clippy::too_many_arguments)]
     #[sol(rpc)]
     OprfKeyRegistry,
-    "../contracts/OprfKeyRegistry.json"
+    "./OprfKeyRegistry.json"
 );
 
 impl fmt::Debug for OprfKeyRegistryErrors {

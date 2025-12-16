@@ -22,7 +22,7 @@ prepare-localstack-secrets:
 
 [group('build')]
 export-contract-abi:
-    cd contracts && forge build --silent && jq '.abi' out/OprfKeyRegistry.sol/OprfKeyRegistry.json > OprfKeyRegistry.json
+    cd contracts && forge build --silent && jq '.abi' out/OprfKeyRegistry.sol/OprfKeyRegistry.json > ../oprf-types/OprfKeyRegistry.json
 
 [group('build')]
 [working-directory('circom')]
