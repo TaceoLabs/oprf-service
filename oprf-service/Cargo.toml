@@ -1,5 +1,5 @@
 [package]
-name = "oprf-service"
+name = "taceo-oprf-service"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -46,6 +46,6 @@ tracing.workspace = true
 uuid = { workspace = true, features = ["serde", "v4"] }
 
 [dev-dependencies]
+ark-ff = { workspace = true }
 axum-test = { workspace = true, features = ["ws"] }
 oprf-client = { workspace = true }
-ark-ff = { workspace = true }

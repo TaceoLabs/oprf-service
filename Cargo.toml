@@ -54,11 +54,11 @@ metrics = "0.24"
 nodes-common = { package = "taceo-nodes-common", version = "0.1.0" }
 nodes-observability = { package = "taceo-nodes-observability", version = "0.1.0" }
 num-bigint = "0.4"
-oprf-client = { path = "oprf-client" }
+oprf-client = { package = "taceo-oprf-client", path = "oprf-client" }
 oprf-client-example = { path = "oprf-client-example" }
 oprf-core = { package = "taceo-oprf-core", path = "oprf-core", version = "0.1", default-features = false }
-oprf-key-gen = { path = "oprf-key-gen" }
-oprf-service = { path = "oprf-service" }
+oprf-key-gen = { package = "taceo-oprf-key-gen", path = "oprf-key-gen" }
+oprf-service = { package = "taceo-oprf-service", path = "oprf-service" }
 oprf-service-example = { path = "oprf-service-example" }
 oprf-test = { path = "oprf-test" }
 oprf-types = { package = "taceo-oprf-types", path = "oprf-types", version = "0.1" }
