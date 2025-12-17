@@ -88,8 +88,14 @@ pub struct OprfKeyGenConfig {
     /// Max time we wait for a transaction nonce until we think the transaction didn't went through.
     ///
     /// We need this because RPCs are not very reliable, so we need to verify whether a transaction did get through or not.
-    #[clap(long, env = "OPRF_NODE_MAX_WAIT_TIME_TRANSACTION_NONCE", default_value = "5min", value_parser=humantime::parse_duration)]
+    #[clap(long, env = "OPRF_NODE_MAX_WAIT_TIME_TRANSACTION_NONCE", default_value = "1s", value_parser=humantime::parse_duration)]
     pub max_wait_time_transaction_nonce: Duration,
+
+    /// Max attempts for sending a transaction when we get null response from RPC.
+    ///
+    /// We need this because RPCs are not very reliable, so we potentially need to resend a transaction did get through or not.
+    #[clap(long, env = "OPRF_NODE_MAX_TRANSACTION_ATTEMPTS", default_value = "3")]
+    pub max_transaction_attempts: usize,
 
     /// The block number to start listening for events from the OprfKeyRegistry contract.
     /// If not set, will start from the latest block.
