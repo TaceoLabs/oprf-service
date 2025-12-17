@@ -11,7 +11,7 @@ use crate::{
     config::OprfKeyGenConfig,
     services::{
         key_event_watcher::KeyEventWatcherTaskConfig, secret_gen::DLogSecretGenService,
-        secret_manager::SecretManagerService, transaction_nonce_store::TransactionNonceStore,
+        secret_manager::SecretManagerService, transaction_nonce_store::TransactionHandler,
     },
 };
 use alloy::{
@@ -84,8 +84,10 @@ pub async fn start(
         .build_from_paths(config.key_gen_zkey_path, config.key_gen_witness_graph_path)?;
     let dlog_secret_gen_service = DLogSecretGenService::init(key_gen_material);
     tracing::info!("spawning transaction nonce store..");
-    let (transaction_nonce_store, transaction_nonce_store_handle) = TransactionNonceStore::new(
+    let (transaction_nonce_store, transaction_nonce_store_handle) = TransactionHandler::new(
         config.max_wait_time_transaction_nonce,
+        config.max_transaction_attempts,
+        party_id,
         config.oprf_key_registry_contract,
         provider.clone(),
         cancellation_token.clone(),
