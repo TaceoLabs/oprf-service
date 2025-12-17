@@ -55,11 +55,6 @@
     "name": "addRound1KeyGenContribution",
     "inputs": [
       {
-        "name": "nonce",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
         "name": "oprfKeyId",
         "type": "uint160",
         "internalType": "uint160"
@@ -118,11 +113,6 @@
     "type": "function",
     "name": "addRound1ReshareContribution",
     "inputs": [
-      {
-        "name": "nonce",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
       {
         "name": "oprfKeyId",
         "type": "uint160",
@@ -183,11 +173,6 @@
     "name": "addRound2Contribution",
     "inputs": [
       {
-        "name": "nonce",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
         "name": "oprfKeyId",
         "type": "uint160",
         "internalType": "uint160"
@@ -246,11 +231,6 @@
     "type": "function",
     "name": "addRound3Contribution",
     "inputs": [
-      {
-        "name": "nonce",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
       {
         "name": "oprfKeyId",
         "type": "uint160",
@@ -948,10 +928,22 @@
   },
   {
     "type": "event",
-    "name": "TransactionNonce",
+    "name": "TransactionConfirmation",
     "inputs": [
       {
-        "name": "nonce",
+        "name": "oprfKeyId",
+        "type": "uint160",
+        "indexed": true,
+        "internalType": "uint160"
+      },
+      {
+        "name": "party_id",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "round",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
