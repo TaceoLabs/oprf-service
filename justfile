@@ -33,12 +33,14 @@ print-constraints:
     proof=$(circom main/OPRFQueryProof.circom -l . --r1cs --O2 | grep -oP "non-linear constraints: \K[0-9]+")
     eddsa_poseidon2=$(circom debug/eddsaposeidon2.circom -l . --r1cs --O2 | grep -oP "non-linear constraints: \K[0-9]+")
     verify_dlog=$(circom debug/verify_dlog.circom -l . --r1cs --O2 | grep -oP "non-linear constraints: \K[0-9]+")
+    subgroup_check=$(circom debug/subgroup_check.circom -l . --r1cs --O2 | grep -oP "non-linear constraints: \K[0-9]+")
     printf "%-20s %s\n" "Circuit" "Constraints"
     printf "%-20s %s\n" "KeyGen(3-1)" "$key_gen"
     printf "%-20s %s\n" "OPRFNullifier" "$nullifier"
     printf "%-20s %s\n" "QueryProof" "$proof"
     printf "%-20s %s\n" "EdDSA-Poseidon2" "$eddsa_poseidon2"
     printf "%-20s %s\n" "Verify DLog" "$verify_dlog"
+    printf "%-20s %s\n" "Subgroup Checks" "$subgroup_check"
 
 [group('test')]
 unit-tests:
