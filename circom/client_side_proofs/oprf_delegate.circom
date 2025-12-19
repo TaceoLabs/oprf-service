@@ -1,6 +1,7 @@
 pragma circom 2.2.2;
 
 include "oprf_query.circom";
+include "oprf_nullifier.circom";
 include "verify_dlog/verify_dlog.circom";
 
 // Checks outside of the ZK proof: The public key oprf_pk needs to be a valid BabyJubJub point in the correct subgroup.
@@ -37,7 +38,7 @@ template OprfDelegate(MAX_DEPTH, RP_MAX_DEPTH) {
     signal input query_s;
     signal input query_r[2];
    // Credential Signature
-    signal input cred_type_id;
+    signal input issuer_schema_id; // Public
     signal input cred_pk[2]; // Public
     signal input cred_hashes[2]; // [claims_hash, associated_data_hash]
     signal input cred_genesis_issued_at;
@@ -45,6 +46,7 @@ template OprfDelegate(MAX_DEPTH, RP_MAX_DEPTH) {
     signal input cred_s;
     signal input cred_r[2];
     signal input current_time_stamp; // Public
+    signal input cred_genesis_issued_at_min; // Public
     // Merkle proof
     signal input merkle_root; // Public
     signal input depth; // Public
@@ -81,26 +83,31 @@ template OprfDelegate(MAX_DEPTH, RP_MAX_DEPTH) {
     signal output encryption_pk[2]; // Public
     signal output ciphertexts[3][4]; // Public
 
-    // 1-3. Show that the original query was computed correctly
+    // 1-2. Show that the original query was computed correctly
     component oprf_query = OprfQueryInner(MAX_DEPTH);
     oprf_query.pk <== user_pk;
     oprf_query.pk_index <== pk_index;
     oprf_query.s <== query_s;
     oprf_query.r <== query_r;
-    oprf_query.cred_type_id <== cred_type_id;
-    oprf_query.cred_pk <== cred_pk;
-    oprf_query.cred_hashes <== cred_hashes;
-    oprf_query.cred_genesis_issued_at <== cred_genesis_issued_at;
-    oprf_query.cred_expires_at <== cred_expires_at;
-    oprf_query.cred_s <== cred_s;
-    oprf_query.cred_r <== cred_r;
-    oprf_query.current_time_stamp <== current_time_stamp;
     oprf_query.merkle_root <== merkle_root;
     oprf_query.depth <== depth;
     oprf_query.mt_index <== mt_index;
     oprf_query.siblings <== siblings;
     oprf_query.beta <== beta;
     oprf_query.query <== mt_index;
+
+    // 3. Credential signature is valid
+    component cred_sig_checker = CheckCredentialSignature();
+    cred_sig_checker.s <== cred_s;
+    cred_sig_checker.r <== cred_r;
+    cred_sig_checker.pk <== cred_pk;
+    cred_sig_checker.issuer_schema_id <== issuer_schema_id;
+    cred_sig_checker.user_id <== mt_index;
+    cred_sig_checker.genesis_issued_at <== cred_genesis_issued_at;
+    cred_sig_checker.expires_at <== cred_expires_at;
+    cred_sig_checker.hashes <== cred_hashes;
+    cred_sig_checker.current_time_stamp <== current_time_stamp;
+    cred_sig_checker.genesis_issued_at_min <== cred_genesis_issued_at_min;
 
     // 4. Check the dlog equality proof
     BabyJubJubBaseField() e;
@@ -193,4 +200,4 @@ template OprfDelegate(MAX_DEPTH, RP_MAX_DEPTH) {
     signal nonce_squared <== nonce * nonce;
 }
 
-// component main {public [cred_pk, current_time_stamp, merkle_root, depth, oprf_pk, nonce, mpc_public_keys, rp_merkle_root, rp_depth, expiration]} = OprfDelegate(30, 30);
+// component main {public [cred_pk, issuer_schema_id, current_time_stamp, cred_genesis_issued_at_min, merkle_root, depth, oprf_pk, nonce, mpc_public_keys, rp_merkle_root, rp_depth, expiration]} = OprfDelegate(30, 30);

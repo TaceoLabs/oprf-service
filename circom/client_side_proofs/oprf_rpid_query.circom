@@ -10,15 +10,6 @@ template OprfRpIdQuery(MAX_DEPTH) {
     signal input pk_index; // 0..6
     signal input s;
     signal input r[2];
-   // Credential Signature
-    signal input cred_type_id;
-    signal input cred_pk[2]; // Public
-    signal input cred_hashes[2]; // [claims_hash, associated_data_hash]
-    signal input cred_genesis_issued_at;
-    signal input cred_expires_at;
-    signal input cred_s;
-    signal input cred_r[2];
-    signal input current_time_stamp; // Public
     // Merkle proof
     signal input merkle_root; // Public
     signal input depth; // Public
@@ -35,14 +26,6 @@ template OprfRpIdQuery(MAX_DEPTH) {
     inner.pk_index <== pk_index;
     inner.s <== s;
     inner.r <== r;
-    inner.cred_type_id <== cred_type_id;
-    inner.cred_pk <== cred_pk;
-    inner.cred_hashes <== cred_hashes;
-    inner.cred_genesis_issued_at <== cred_genesis_issued_at;
-    inner.cred_expires_at <== cred_expires_at;
-    inner.cred_s <== cred_s;
-    inner.cred_r <== cred_r;
-    inner.current_time_stamp <== current_time_stamp;
     inner.merkle_root <== merkle_root;
     inner.depth <== depth;
     inner.mt_index <== mt_index;
@@ -56,4 +39,4 @@ template OprfRpIdQuery(MAX_DEPTH) {
     signal nonce_squared <== nonce * nonce;
 }
 
-// component main {public [cred_pk, current_time_stamp, merkle_root, depth, nonce]} = OprfRpIdQuery(30);
+// component main {public [merkle_root, depth, nonce]} = OprfRpIdQuery(30);
