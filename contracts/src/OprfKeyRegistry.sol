@@ -315,6 +315,8 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         _addToAggregate(st.keyAggregate, data.commShare.x, data.commShare.y);
         // everyone is a producer therefore we wait for numPeers amount producers
         _tryEmitRound2Event(oprfKeyId, numPeers, st);
+        // Emit the transaction confirmation
+        emit Types.TransactionConfirmation(oprfKeyId, partyId, 1);
     }
 
     /// @notice Adds a Round 1 contribution to the re-sharing process. Only callable by registered OPRF peers. This method does some more work than the basic key-gen.
@@ -377,9 +379,12 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         }
         // we need a contribution from everyone but only threshold many producers. If we don't manage to find enough producers, we will emit an event so that the admin can intervene.
         _tryEmitRound2Event(oprfKeyId, threshold, st);
+        // Emit the transaction confirmation
+        emit Types.TransactionConfirmation(oprfKeyId, partyId, 1);
     }
 
     /// @notice Adds a Round 2 contribution to the key generation process. Only callable by registered OPRF peers. Is the same for key-gen and reshare, with the small difference with how the commitments for next reshare are computed and that we need less producers for reshare.
+    ///
     /// @param oprfKeyId The unique identifier for the key-gen.
     /// @param data The Round 2 contribution data. See `Types.Round2Contribution` for details.
     /// @dev This internally verifies the Groth16 proof provided in the contribution data to ensure it is constructed correctly.
@@ -497,9 +502,12 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         } else {
             revert UnsupportedNumPeersThreshold();
         }
+        // Emit the transaction confirmation
+        emit Types.TransactionConfirmation(oprfKeyId, partyId, 2);
     }
 
     /// @notice Adds a Round 3 contribution to the key generation process. Only callable by registered OPRF peers. This is exactly the same process for key-gen and reshare because nodes just acknowledge that they received their ciphertexts.
+    ///
     /// @param oprfKeyId The unique identifier for the OPRF public-key.
     /// @dev This does not require any calldata, as it is simply an acknowledgment from the peer that is is done.
     function addRound3Contribution(uint160 oprfKeyId) external virtual onlyProxy isReady {
@@ -538,6 +546,8 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
             // we keep the eventsEmitted and exists to prevent participants to double submit
             st.finalizeEventEmitted = true;
         }
+        // Emit the transaction confirmation
+        emit Types.TransactionConfirmation(oprfKeyId, partyId, 3);
     }
 
     // ==================================
