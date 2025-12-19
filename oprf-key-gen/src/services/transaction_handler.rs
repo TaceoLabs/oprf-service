@@ -91,8 +91,8 @@ impl TransactionHandler {
     /// Spawns a task that waits for the `TransactionConfirmation` events emitted by the provided address. If the task encounters an error, will cancel via the cancellation token.
     /// * `max_wait_time` max wait time for a confirmation event
     /// * `attempts` max attempts we try to redo the transaction if we get a null response
-    /// * `contract_address` the contract address that emits the events
     /// * `party_id` the party id of this node
+    /// * `contract_address` the contract address that emits the events
     /// * `provider` the provider for subscribing
     /// * `cancellation_token` token to stop the subscribe task and signaling if the subscribe task encountered an error
     pub(crate) async fn new(
@@ -152,7 +152,7 @@ impl TransactionHandler {
     ///
     /// Takes an `Fn` that produces a `CallBuilder`. This can be done e.g., with
     /// ```rust,ignore
-    /// transaction_nonce_store
+    /// transaction_handler
     ///     .attempt_transaction(oprf_key_id, TransactionType::Round1, || {
     ///         contract.addRound1KeyGenContribution(
     ///             oprf_key_id.into_inner(),

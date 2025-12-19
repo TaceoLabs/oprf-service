@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use crate::services::{
     secret_gen::{Contributions, DLogSecretGenService},
     secret_manager::SecretManagerService,
-    transaction_nonce_store::{TransactionHandler, TransactionType},
+    transaction_handler::{TransactionHandler, TransactionType},
 };
 use alloy::{
     eips::BlockNumberOrTag,
@@ -39,7 +39,7 @@ pub(crate) struct KeyEventWatcherTaskConfig {
     pub(crate) dlog_secret_gen_service: DLogSecretGenService,
     pub(crate) start_block: Option<u64>,
     pub(crate) max_epoch_cache_size: usize,
-    pub(crate) transaction_nonce_store: TransactionHandler,
+    pub(crate) transaction_handler: TransactionHandler,
     pub(crate) cancellation_token: CancellationToken,
 }
 
@@ -78,7 +78,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
         mut dlog_secret_gen_service,
         start_block,
         max_epoch_cache_size,
-        transaction_nonce_store,
+        transaction_handler,
         cancellation_token,
     } = args;
     let contract = OprfKeyRegistry::new(contract_address, provider.clone());
@@ -121,7 +121,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
                 &mut dlog_secret_gen_service,
                 &secret_manager,
                 max_epoch_cache_size,
-                &transaction_nonce_store,
+                &transaction_handler,
             )
             .await
             .context("while handling past log")?;
@@ -153,7 +153,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
             &mut dlog_secret_gen_service,
             &secret_manager,
             max_epoch_cache_size,
-            &transaction_nonce_store,
+            &transaction_handler,
         )
         .await
         .context("while handling log")?;
@@ -168,21 +168,21 @@ async fn handle_log(
     secret_gen: &mut DLogSecretGenService,
     secret_manager: &SecretManagerService,
     max_epoch_cache_size: usize,
-    transaction_nonce_store: &TransactionHandler,
+    transaction_handler: &TransactionHandler,
 ) -> eyre::Result<()> {
     match log.topic0() {
         Some(&OprfKeyRegistry::SecretGenRound1::SIGNATURE_HASH) => {
-            handle_keygen_round1(log, contract, secret_gen, transaction_nonce_store)
+            handle_keygen_round1(log, contract, secret_gen, transaction_handler)
                 .await
                 .context("while handling round1")?
         }
         Some(&OprfKeyRegistry::SecretGenRound2::SIGNATURE_HASH) => {
-            handle_round2(log, contract, secret_gen, transaction_nonce_store)
+            handle_round2(log, contract, secret_gen, transaction_handler)
                 .await
                 .context("while handling round2")?
         }
         Some(&OprfKeyRegistry::SecretGenRound3::SIGNATURE_HASH) => {
-            handle_keygen_round3(log, contract, secret_gen, transaction_nonce_store)
+            handle_keygen_round3(log, contract, secret_gen, transaction_handler)
                 .await
                 .context("while handling round3")?
         }
@@ -200,12 +200,12 @@ async fn handle_log(
             contract,
             secret_gen,
             secret_manager,
-            transaction_nonce_store,
+            transaction_handler,
         )
         .await
         .context("while handling round1")?,
         Some(&OprfKeyRegistry::ReshareRound3::SIGNATURE_HASH) => {
-            handle_reshare_round3(log, contract, secret_gen, transaction_nonce_store)
+            handle_reshare_round3(log, contract, secret_gen, transaction_handler)
                 .await
                 .context("while handling round3")?
         }
@@ -226,7 +226,7 @@ async fn handle_keygen_round1(
     log: Log<LogData>,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
-    transaction_nonce_store: &TransactionHandler,
+    transaction_handler: &TransactionHandler,
 ) -> eyre::Result<()> {
     tracing::info!("Received KeyGenRound1 event");
     let log = log
@@ -247,7 +247,7 @@ async fn handle_keygen_round1(
         contribution,
     } = secret_gen.key_gen_round1(oprf_key_id, threshold);
     tracing::debug!("finished round1 - now reporting to chain..");
-    transaction_nonce_store
+    transaction_handler
         .attempt_transaction(oprf_key_id, TransactionType::Round1, || {
             contract
                 .addRound1KeyGenContribution(oprf_key_id.into_inner(), contribution.clone().into())
@@ -261,7 +261,7 @@ async fn handle_round2(
     log: Log<LogData>,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
-    transaction_nonce_store: &TransactionHandler,
+    transaction_handler: &TransactionHandler,
 ) -> eyre::Result<()> {
     tracing::info!("Received SecretGenRound2 event");
     let round2 = log
@@ -299,7 +299,7 @@ async fn handle_round2(
     })?;
     tracing::debug!("finished round 2 - now reporting");
     let contribution = Round2Contribution::from(res.contribution);
-    transaction_nonce_store
+    transaction_handler
         .attempt_transaction(oprf_key_id, TransactionType::Round2, || {
             contract.addRound2Contribution(res.oprf_key_id.into_inner(), contribution.clone())
         })
@@ -312,7 +312,7 @@ async fn handle_keygen_round3(
     log: Log<LogData>,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
-    transaction_nonce_store: &TransactionHandler,
+    transaction_handler: &TransactionHandler,
 ) -> eyre::Result<()> {
     tracing::info!("Received SecretGenRound3 event");
     let round3 = log
@@ -326,7 +326,7 @@ async fn handle_keygen_round3(
         contract,
         secret_gen,
         Contributions::Full,
-        transaction_nonce_store,
+        transaction_handler,
     )
     .await
 }
@@ -377,7 +377,7 @@ async fn handle_reshare_round1(
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
     secret_manager: &SecretManagerService,
-    transaction_nonce_store: &TransactionHandler,
+    transaction_handler: &TransactionHandler,
 ) -> eyre::Result<()> {
     tracing::info!("Received ReshareRound1 event");
     let log = log
@@ -408,7 +408,7 @@ async fn handle_reshare_round1(
 
     tracing::debug!("finished round1 - now reporting to chain..");
     let contribution = Round1Contribution::from(contribution);
-    transaction_nonce_store
+    transaction_handler
         .attempt_transaction(oprf_key_id, TransactionType::Round1, || {
             contract.addRound1ReshareContribution(oprf_key_id.into_inner(), contribution.clone())
         })
@@ -420,7 +420,7 @@ async fn handle_reshare_round3(
     log: Log<LogData>,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
-    transaction_nonce_store: &TransactionHandler,
+    transaction_handler: &TransactionHandler,
 ) -> eyre::Result<()> {
     tracing::info!("Received ReshareRound3 event");
     let log = log
@@ -448,7 +448,7 @@ async fn handle_reshare_round3(
         contract,
         secret_gen,
         Contributions::Shamir(lagrange),
-        transaction_nonce_store,
+        transaction_handler,
     )
     .await
 }
@@ -480,7 +480,7 @@ async fn handle_round3_inner(
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
     contributions: Contributions,
-    transaction_nonce_store: &TransactionHandler,
+    transaction_handler: &TransactionHandler,
 ) -> eyre::Result<()> {
     tracing::info!("Event for {oprf_key_id}");
     tracing::info!("reading ciphers from chain..");
@@ -508,7 +508,7 @@ async fn handle_round3_inner(
         .round3(oprf_key_id, ciphers, contributions, pks)
         .context("while doing round3")?;
     tracing::debug!("finished round 3 - now reporting");
-    transaction_nonce_store
+    transaction_handler
         .attempt_transaction(oprf_key_id, TransactionType::Round3, || {
             contract.addRound3Contribution(res.oprf_key_id.into_inner())
         })
