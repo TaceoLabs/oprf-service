@@ -1,17 +1,23 @@
-import Safe from '@safe-global/protocol-kit'
-import SafeApiKit from '@safe-global/api-kit'
 import { MetaTransactionData, OperationType } from '@safe-global/types-kit'
-import { encodeFunctionData, encodeAbiParameters, parseAbiParameters, keccak256, concat, Hex, Address } from 'viem'
+import { encodeFunctionData, encodeAbiParameters, parseAbiParameters, keccak256, concat, Hex, Address, privateKeyToAccount } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
 import { readFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import 'dotenv/config'
+
+import SafeModule from '@safe-global/protocol-kit'
+const Safe = SafeModule.default
+import SafeApiKitModule from '@safe-global/api-kit'
+const SafeApiKit = SafeApiKitModule.default
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ARTIFACTS_DIR = join(__dirname, '../../out')
 
 // Deterministic CREATE2 factory (deployed on most networks)
 const CREATE2_FACTORY = '0x4e59b44847b379578588920cA78FbF26c0B4956C' as const
+
+const SAFE_CREATE_CALL = '0x9b35Af71d77eaf8d7e40252370304687390A1A52' as const
 
 // Network configurations
 const NETWORKS = {
@@ -79,7 +85,7 @@ async function buildDeploymentTransactions(config: DeploymentConfig): Promise<{
     accumulator: Address
     verifier: Address
     implementation: Address
-    proxy: Address
+    proxy: string // Not deterministic - deployed via CREATE from Safe
   }
 }> {
   const { threshold, numPeers, salt, safeAddress } = config
@@ -104,7 +110,6 @@ async function buildDeploymentTransactions(config: DeploymentConfig): Promise<{
   const accumulatorSalt = keccak256(concat([salt, '0x01']))
   const verifierSalt = keccak256(concat([salt, '0x02']))
   const implSalt = keccak256(concat([salt, '0x03']))
-  const proxySalt = keccak256(concat([salt, '0x04']))
 
   // Compute deterministic addresses
   const accumulatorInitCode = babyJubJubArtifact.bytecode.object
@@ -147,18 +152,34 @@ async function buildDeploymentTransactions(config: DeploymentConfig): Promise<{
     [implAddress, initData]
   )
   const proxyInitCode = concat([proxyArtifact.bytecode.object, proxyConstructorArgs])
-  const proxyAddress = computeCreate2Address(
-    CREATE2_FACTORY,
-    proxySalt,
-    keccak256(proxyInitCode)
-  )
+
+  const createCallData = encodeFunctionData({
+    abi: [{
+      name: 'performCreate',
+      type: 'function',
+      inputs: [
+        { name: 'value', type: 'uint256' },
+        { name: 'deploymentData', type: 'bytes' }
+      ],
+      outputs: [{ name: 'newContract', type: 'address' }]
+    }],
+    functionName: 'performCreate',
+    args: [0n, proxyInitCode],
+  })
 
   // Build transactions
+  // First 3: CREATE2 deployments (deterministic addresses)
+  // Last 1: Deploy proxy via Safe's CreateCall (msg.sender = Safe in initializer)
   const transactions: MetaTransactionData[] = [
     buildCreate2Tx(accumulatorSalt, accumulatorInitCode),
     buildCreate2Tx(verifierSalt, verifierInitCode),
     buildCreate2Tx(implSalt, implInitCode),
-    buildCreate2Tx(proxySalt, proxyInitCode),
+    {
+      to: SAFE_CREATE_CALL,
+      value: '0',
+      data: createCallData,
+      operation: OperationType.DelegateCall,
+    },
   ]
 
   return {
@@ -167,7 +188,7 @@ async function buildDeploymentTransactions(config: DeploymentConfig): Promise<{
       accumulator: accumulatorAddress,
       verifier: verifierAddress,
       implementation: implAddress,
-      proxy: proxyAddress,
+      proxy: '(determined at execution - check tx logs)',
     },
   }
 }
@@ -194,7 +215,7 @@ async function deployLocal(config: DeploymentConfig) {
   console.log('  Accumulator:', addresses.accumulator)
   console.log('  Verifier:', addresses.verifier)
   console.log('  Implementation:', addresses.implementation)
-  console.log('  Proxy:', addresses.proxy)
+  console.log('  Proxy: (will be in transaction logs)')
   console.log()
 
   console.log(`📦 Creating batch transaction with ${transactions.length} operations...`)
@@ -234,7 +255,7 @@ async function proposeToSafe(config: DeploymentConfig) {
   console.log('  Accumulator:', addresses.accumulator)
   console.log('  Verifier:', addresses.verifier)
   console.log('  Implementation:', addresses.implementation)
-  console.log('  Proxy:', addresses.proxy)
+  console.log('  Proxy: (will be in transaction logs after execution)')
   console.log()
 
   console.log(`📦 Creating batch transaction with ${transactions.length} operations...`)
@@ -248,7 +269,7 @@ async function proposeToSafe(config: DeploymentConfig) {
     safeAddress: config.safeAddress,
     safeTransactionData: safeTx.data,
     safeTxHash,
-    senderAddress: await safe.getSignerAddress(),
+    senderAddress: privateKeyToAccount(config.signerPrivateKey).address,
     senderSignature: signature.data,
   })
 
@@ -259,7 +280,7 @@ async function proposeToSafe(config: DeploymentConfig) {
   console.log(`   https://app.safe.global/transactions/queue?safe=${networkPrefix}:${config.safeAddress}`)
   console.log()
   console.log('📋 Share this with other signers to approve the deployment.')
-  
+
   return addresses
 }
 
@@ -281,7 +302,7 @@ async function main() {
     signerPrivateKey: process.env.SIGNER_PRIVATE_KEY as Hex,
     threshold: parseInt(process.env.THRESHOLD || '2'),
     numPeers: parseInt(process.env.NUM_PEERS || '3'),
-    salt: (process.env.DEPLOY_SALT || '0x0000000000000000000000000000000000000000000000000000000000000001') as Hex,
+    salt: process.env.DEPLOY_SALT as Hex,
     network,
   }
 
@@ -291,6 +312,10 @@ async function main() {
   }
   if (!config.signerPrivateKey) {
     console.error('SIGNER_PRIVATE_KEY environment variable required')
+    process.exit(1)
+  }
+  if (!config.salt) {
+    console.error('DEPLOY_SALT environment variable required')
     process.exit(1)
   }
 
