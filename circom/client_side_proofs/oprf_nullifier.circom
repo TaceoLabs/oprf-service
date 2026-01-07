@@ -3,7 +3,7 @@ pragma circom 2.2.2;
 include "oprf_query.circom";
 include "verify_dlog/verify_dlog.circom";
 
-// In the CheckCredentialSignature template, we need to recompute a hash and verify the signature of this hash. Furthermore, we need to check whether the credential is still valid (i.e., not expired) by proving the current_time_stamp is less than expires_at. We note that genesis_issued_at is just there to recompute the hash and we do not check anything about it (e.g., whether it is in the past).
+// In the CheckCredentialSignature template, we need to recompute a hash and verify the signature of this hash. Furthermore, we need to check whether the credential is still valid (i.e., not expired) by proving the current_time_stamp is less than expires_at, and we also check that the genesis_issues_at time is valid by comparing it to genesis_issues_at_min.
 template CheckCredentialSignature() {
     // Signature
     signal input s;
@@ -173,4 +173,4 @@ template OprfNullifier(MAX_DEPTH) {
     signal nonce_squared <== nonce * nonce;
 }
 
-// component main {public [issuer_schema_id, cred_pk, current_time_stamp, merkle_root, depth, rp_id, action, oprf_pk, signal_hash, nonce]} = OprfNullifier(30);
+// component main {public [issuer_schema_id, cred_pk, current_time_stamp, genesis_issued_at_min, merkle_root, depth, rp_id, action, oprf_pk, signal_hash, nonce]} = OprfNullifier(30);
