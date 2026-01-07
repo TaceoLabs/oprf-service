@@ -24,14 +24,14 @@ template CheckCredentialSignature() {
     signal input genesis_issued_at_min;
 
     // Calculate the blinded user id
-    var DS_C = 5199521648757207593; // b"H(id, r)"
-    var poseidon_comm[3] = Poseidon2(3)([DS_C, user_id, user_id_r]);
+    var DS_CS_C = 87492525752134038588518953; // b"H_CS(id, r)"
+    var poseidon_comm = Poseidon2(3)([DS_CS_C, user_id, user_id_r])[1]; // capacity element at 0, so we take [1]
 
     // Calculate the message hash
     component hash = Poseidon2(8);
     hash.in[0] <== 1790969822004668215611014194230797064349043274; // Domain separator in capacity element b"POSEIDON2+EDDSA-BJJ"
     hash.in[1] <== issuer_schema_id;
-    hash.in[2] <== poseidon_comm[1]; // Blinded user id = H(user_id, user_id_r)
+    hash.in[2] <== poseidon_comm; // Blinded user id = H(user_id, user_id_r)
     hash.in[3] <== genesis_issued_at;
     hash.in[4] <== expires_at;
     hash.in[5] <== hashes[0];
