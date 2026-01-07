@@ -97,7 +97,7 @@ async function buildDeploymentTransactions(config: DeploymentConfig): Promise<{
   let verifierArtifact: Artifact
   if (threshold === 2 && numPeers === 3) {
     verifierArtifact = loadArtifact('Groth16VerifierKeyGen13.sol/Groth16Verifier.json')
-  } else if (threshold === 3 && numPeers === 5) {
+  } else if (threshold === 2 && numPeers === 5) {
     verifierArtifact = loadArtifact('Groth16VerifierKeyGen25.sol/Groth16Verifier.json')
   } else {
     throw new Error(`Unsupported threshold/numPeers combination: ${threshold}/${numPeers}`)
@@ -138,7 +138,7 @@ async function buildDeploymentTransactions(config: DeploymentConfig): Promise<{
     abi: registryArtifact.abi,
     functionName: 'initialize',
     args: [
-      safeAddress,           // taceoAdminAddress (the Safe)
+      safeAddress,           // the Safe(Not TACEO Admin address for now...)
       verifierAddress,       // keyGenVerifier
       accumulatorAddress,    // accumulator
       BigInt(threshold),
@@ -195,9 +195,9 @@ async function buildDeploymentTransactions(config: DeploymentConfig): Promise<{
 
 async function deployLocal(config: DeploymentConfig) {
   console.log('🔧 Local deployment mode\n')
-  
+
   const { rpc } = NETWORKS[config.network]
-  
+
   const safe = await Safe.init({
     provider: rpc,
     signer: config.signerPrivateKey,
@@ -223,20 +223,20 @@ async function deployLocal(config: DeploymentConfig) {
 
   console.log('✍️  Signing and executing...')
   const txResponse = await safe.executeTransaction(safeTx)
-  
+
   console.log('✅ Deployment complete!')
   console.log('Transaction hash:', txResponse.hash)
   console.log()
   console.log('🎯 OprfKeyRegistry deployed at:', addresses.proxy)
-  
+
   return addresses
 }
 
 async function proposeToSafe(config: DeploymentConfig) {
   console.log('📤 Production mode - proposing to Safe\n')
-  
+
   const { rpc, chainId } = NETWORKS[config.network]
-  
+
   const safe = await Safe.init({
     provider: rpc,
     signer: config.signerPrivateKey,
@@ -260,7 +260,7 @@ async function proposeToSafe(config: DeploymentConfig) {
 
   console.log(`📦 Creating batch transaction with ${transactions.length} operations...`)
   const safeTx = await safe.createTransaction({ transactions })
-  
+
   const safeTxHash = await safe.getTransactionHash(safeTx)
   const signature = await safe.signHash(safeTxHash)
 
@@ -286,8 +286,8 @@ async function proposeToSafe(config: DeploymentConfig) {
 
 async function main() {
   const args = process.argv.slice(2)
-  const networkArg = args.find(a => a.startsWith('--network='))?.split('=')[1] 
-    || args[args.indexOf('--network') + 1] 
+  const networkArg = args.find(a => a.startsWith('--network='))?.split('=')[1]
+    || args[args.indexOf('--network') + 1]
     || 'local'
 
   const network = networkArg as NetworkName

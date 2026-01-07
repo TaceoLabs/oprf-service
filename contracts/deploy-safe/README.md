@@ -25,7 +25,7 @@ npm run deploy:local
 
 This will:
 - Execute the full deployment through your Safe on the fork
-- Show you the deterministic addresses for all contracts
+- Show you the deterministic addresses for all contracts(except Proxy)
 - Verify everything works before going to production
 
 ### Step 2: Propose to Sepolia
@@ -41,7 +41,7 @@ This will:
 
 ### Step 3: Sign and execute
 
-1. Other Safe owners open the link
+1. Other Safe owners open the link(Or get a notification via Safe App)
 2. Review and sign the transaction
 3. Once threshold is met, execute
 
@@ -70,7 +70,7 @@ deploy-safe/
 |----------|-------------|
 | `SAFE_ADDRESS` | Your Safe multi-sig address |
 | `SIGNER_PRIVATE_KEY` | Private key of one Safe owner |
-| `THRESHOLD` | OPRF threshold (2 or 3) |
-| `NUM_PEERS` | OPRF peer count (3 or 5) |
+| `THRESHOLD` | OPRF threshold |
+| `NUM_PEERS` | OPRF peer count |
 | `DEPLOY_SALT` | CREATE2 salt for deterministic addresses |
 | `*_RPC_URL` | RPC endpoints for each network |
