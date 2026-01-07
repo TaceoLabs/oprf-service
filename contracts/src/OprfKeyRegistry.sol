@@ -136,6 +136,7 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
     ) public virtual initializer {
         __Ownable_init(msg.sender);
         __Ownable2Step_init();
+        require(_numPeers < 1 << 16, "only supports party size up to 2^16");
         keygenAdmins[_keygenAdmin] = true;
         amountKeygenAdmins += 1;
         keyGenVerifier = _keyGenVerifierAddress;
@@ -186,7 +187,7 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
             delete addressToPeer[peerAddresses[i]];
         }
         // set the new ones
-        for (uint256 i = 0; i < _peerAddresses.length; i++) {
+        for (uint16 i = 0; i < _peerAddresses.length; i++) {
             addressToPeer[_peerAddresses[i]] = Types.OprfPeer({isParticipant: true, partyId: i});
         }
         peerAddresses = _peerAddresses;
@@ -243,7 +244,7 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         st.generatedEpoch = oprfPublicKey.epoch + 1;
 
         // Emit Round1 event for everyone
-        emit Types.ReshareRound1(oprfKeyId, threshold);
+        emit Types.ReshareRound1(oprfKeyId, threshold, st.generatedEpoch);
     }
 
     /// @notice Deletes the OPRF public-key and its associated material. Works during key-gen or afterwards.
@@ -300,7 +301,7 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         isReady
     {
         // return the partyId if sender is really a participant
-        uint256 partyId = _internParticipantCheck();
+        uint16 partyId = _internParticipantCheck();
         // for key-gen everyone is a producer, therefore we check that all values are set and valid points
         _curveChecks(data.commShare);
         if (data.commCoeffs == 0) revert BadContribution();
@@ -316,7 +317,7 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         // everyone is a producer therefore we wait for numPeers amount producers
         _tryEmitRound2Event(oprfKeyId, numPeers, st);
         // Emit the transaction confirmation
-        emit Types.TransactionConfirmation(oprfKeyId, partyId, 1);
+        emit Types.KeyGenConfirmation(oprfKeyId, partyId, 1, st.generatedEpoch);
     }
 
     /// @notice Adds a Round 1 contribution to the re-sharing process. Only callable by registered OPRF peers. This method does some more work than the basic key-gen.
@@ -332,7 +333,7 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
     {
         // as we need contributions from everyone we check the
         // return the partyId if sender is really a participant
-        uint256 partyId = _internParticipantCheck();
+        uint16 partyId = _internParticipantCheck();
         // in reshare we can have producers and consumers, therefore we don't need to enforce that commitments are non-zero
         Types.OprfKeyGenState storage st = _addRound1Contribution(oprfKeyId, partyId, data);
         // check that this is in fact a reshare
@@ -380,7 +381,7 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         // we need a contribution from everyone but only threshold many producers. If we don't manage to find enough producers, we will emit an event so that the admin can intervene.
         _tryEmitRound2Event(oprfKeyId, threshold, st);
         // Emit the transaction confirmation
-        emit Types.TransactionConfirmation(oprfKeyId, partyId, 1);
+        emit Types.KeyGenConfirmation(oprfKeyId, partyId, 1, st.generatedEpoch);
     }
 
     /// @notice Adds a Round 2 contribution to the key generation process. Only callable by registered OPRF peers. Is the same for key-gen and reshare, with the small difference with how the commitments for next reshare are computed and that we need less producers for reshare.
@@ -404,7 +405,7 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         // check that we are actually in round2
         if (!st.round2EventEmitted || st.round3EventEmitted) revert WrongRound();
         // return the partyId if sender is really a participant
-        uint256 partyId = _internParticipantCheck();
+        uint16 partyId = _internParticipantCheck();
         // check that this peer did not submit anything for this round
         if (st.round2Done[partyId]) revert AlreadySubmitted();
         // check that this peer is a producer for this round
@@ -503,7 +504,7 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
             revert UnsupportedNumPeersThreshold();
         }
         // Emit the transaction confirmation
-        emit Types.TransactionConfirmation(oprfKeyId, partyId, 2);
+        emit Types.KeyGenConfirmation(oprfKeyId, partyId, 2, st.generatedEpoch);
     }
 
     /// @notice Adds a Round 3 contribution to the key generation process. Only callable by registered OPRF peers. This is exactly the same process for key-gen and reshare because nodes just acknowledge that they received their ciphertexts.
@@ -519,7 +520,7 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         // check that we are actually in round3
         if (!st.round3EventEmitted || st.finalizeEventEmitted) revert NotReady();
         // return the partyId if sender is really a participant
-        uint256 partyId = _internParticipantCheck();
+        uint16 partyId = _internParticipantCheck();
         // check that this peer did not submit anything for this round
         if (st.round3Done[partyId]) revert AlreadySubmitted();
         st.round3Done[partyId] = true;
@@ -547,7 +548,7 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
             st.finalizeEventEmitted = true;
         }
         // Emit the transaction confirmation
-        emit Types.TransactionConfirmation(oprfKeyId, partyId, 3);
+        emit Types.KeyGenConfirmation(oprfKeyId, partyId, 3, st.generatedEpoch);
     }
 
     // ==================================
@@ -562,7 +563,7 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         return peer.partyId;
     }
 
-    function _internParticipantCheck() internal view virtual returns (uint256) {
+    function _internParticipantCheck() internal view virtual returns (uint16) {
         Types.OprfPeer memory peer = addressToPeer[msg.sender];
         if (!peer.isParticipant) revert NotAParticipant();
         return peer.partyId;
@@ -794,7 +795,7 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         if (st.generatedEpoch == 0) {
             emit Types.SecretGenRound3(oprfKeyId);
         } else {
-            emit Types.ReshareRound3(oprfKeyId, st.lagrangeCoeffs);
+            emit Types.ReshareRound3(oprfKeyId, st.lagrangeCoeffs, st.generatedEpoch);
         }
     }
 

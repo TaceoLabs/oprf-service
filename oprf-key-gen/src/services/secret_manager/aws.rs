@@ -108,25 +108,47 @@ impl SecretManager for AwsSecretManager {
     }
 
     #[instrument(level = "info", skip(self))]
-    async fn get_latest_share(&self, oprf_key_id: OprfKeyId) -> eyre::Result<DLogShareShamir> {
+    async fn get_previous_share(
+        &self,
+        oprf_key_id: OprfKeyId,
+        generated_epoch: ShareEpoch,
+    ) -> eyre::Result<Option<DLogShareShamir>> {
         tracing::debug!("loading latest share for {oprf_key_id}");
         let secret_id = to_key_secret_id(&self.oprf_secret_id_prefix, oprf_key_id);
-        let secret_value = self
+        let secret_value_res = self
             .client
             .get_secret_value()
             .secret_id(secret_id.clone())
             .send()
-            .await
-            .context("while loading old secret")?
-            .secret_string()
-            .expect("is string and not binary")
-            .to_owned();
+            .await;
+        let secret_value = match secret_value_res {
+            Ok(secret_value) => secret_value
+                .secret_string()
+                .expect("is string and not binary")
+                .to_owned(),
+            Err(err) => match err.into_service_error() {
+                GetSecretValueError::ResourceNotFoundException(_) => {
+                    tracing::debug!("cannot find {oprf_key_id}");
+                    return Ok(None);
+                }
+                x => eyre::bail!(x),
+            },
+        };
 
         let oprf_key_material: OprfKeyMaterial =
             serde_json::from_str(&secret_value).context("Cannot deserialize AWS Secret")?;
-        oprf_key_material
-            .get_latest_share()
-            .context("empty Oprf key-material")
+        if let Some((stored_epoch, share)) = oprf_key_material.get_latest_share() {
+            tracing::debug!("my latest epoch is: {stored_epoch}");
+            if stored_epoch.next() == generated_epoch {
+                Ok(Some(share))
+            } else {
+                tracing::debug!("we missed an epoch - returning None");
+                Ok(None)
+            }
+        } else {
+            tracing::warn!("does not contain any shares..");
+            Ok(None)
+        }
     }
 
     /// Stores a new DLog share for an OPRF secret-key in AWS Secrets Manager.

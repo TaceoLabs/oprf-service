@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use crate::services::{
     secret_gen::{Contributions, DLogSecretGenService},
     secret_manager::SecretManagerService,
-    transaction_handler::{TransactionHandler, TransactionType},
+    transaction_handler::{TransactionHandler, TransactionIdentifier, TransactionType},
 };
 use alloy::{
     eips::BlockNumberOrTag,
@@ -27,12 +27,15 @@ use oprf_types::{
         SecretGenRound1Contribution,
         Types::{Round1Contribution, Round2Contribution},
     },
-    crypto::{EphemeralEncryptionPublicKey, OprfKeyMaterial, OprfPublicKey, SecretGenCiphertext},
+    crypto::{
+        EphemeralEncryptionPublicKey, OprfKeyMaterial, OprfPublicKey, PartyId, SecretGenCiphertext,
+    },
 };
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 pub(crate) struct KeyEventWatcherTaskConfig {
+    pub(crate) party_id: PartyId,
     pub(crate) provider: DynProvider,
     pub(crate) contract_address: Address,
     pub(crate) secret_manager: SecretManagerService,
@@ -72,6 +75,7 @@ pub(crate) async fn key_event_watcher_task(args: KeyEventWatcherTaskConfig) -> e
 /// Filters for various key generation event signatures and handles them
 async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
     let KeyEventWatcherTaskConfig {
+        party_id,
         provider,
         contract_address,
         secret_manager,
@@ -116,6 +120,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
             latest_block = block_number;
             tracing::info!("handling past event from block {block_number}..");
             handle_log(
+                party_id,
                 log,
                 &contract,
                 &mut dlog_secret_gen_service,
@@ -148,6 +153,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
             }
         }
         handle_log(
+            party_id,
             log,
             &contract,
             &mut dlog_secret_gen_service,
@@ -163,6 +169,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
 
 #[instrument(level = "info", skip_all)]
 async fn handle_log(
+    party_id: PartyId,
     log: Log<LogData>,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
@@ -172,17 +179,17 @@ async fn handle_log(
 ) -> eyre::Result<()> {
     match log.topic0() {
         Some(&OprfKeyRegistry::SecretGenRound1::SIGNATURE_HASH) => {
-            handle_keygen_round1(log, contract, secret_gen, transaction_handler)
+            handle_keygen_round1(party_id, log, contract, secret_gen, transaction_handler)
                 .await
                 .context("while handling round1")?
         }
         Some(&OprfKeyRegistry::SecretGenRound2::SIGNATURE_HASH) => {
-            handle_round2(log, contract, secret_gen, transaction_handler)
+            handle_round2(party_id, log, contract, secret_gen, transaction_handler)
                 .await
                 .context("while handling round2")?
         }
         Some(&OprfKeyRegistry::SecretGenRound3::SIGNATURE_HASH) => {
-            handle_keygen_round3(log, contract, secret_gen, transaction_handler)
+            handle_keygen_round3(party_id, log, contract, secret_gen, transaction_handler)
                 .await
                 .context("while handling round3")?
         }
@@ -196,6 +203,7 @@ async fn handle_log(
         .await
         .context("while handling finalize")?,
         Some(&OprfKeyRegistry::ReshareRound1::SIGNATURE_HASH) => handle_reshare_round1(
+            party_id,
             log,
             contract,
             secret_gen,
@@ -205,7 +213,7 @@ async fn handle_log(
         .await
         .context("while handling round1")?,
         Some(&OprfKeyRegistry::ReshareRound3::SIGNATURE_HASH) => {
-            handle_reshare_round3(log, contract, secret_gen, transaction_handler)
+            handle_reshare_round3(party_id, log, contract, secret_gen, transaction_handler)
                 .await
                 .context("while handling round3")?
         }
@@ -221,8 +229,9 @@ async fn handle_log(
     Ok(())
 }
 
-#[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty))]
+#[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty, epoch=tracing::field::Empty))]
 async fn handle_keygen_round1(
+    party_id: PartyId,
     log: Log<LogData>,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
@@ -238,6 +247,7 @@ async fn handle_keygen_round1(
     } = log.inner.data;
     let handle_span = tracing::Span::current();
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
+    handle_span.record("epoch", "0");
     tracing::info!("Event for {oprfKeyId} with threshold {threshold}");
 
     let oprf_key_id = OprfKeyId::from(oprfKeyId);
@@ -247,8 +257,10 @@ async fn handle_keygen_round1(
         contribution,
     } = secret_gen.key_gen_round1(oprf_key_id, threshold);
     tracing::debug!("finished round1 - now reporting to chain..");
+    let transaction_identifier =
+        TransactionIdentifier::keygen(oprf_key_id, party_id, TransactionType::Round1);
     transaction_handler
-        .attempt_transaction(oprf_key_id, TransactionType::Round1, || {
+        .attempt_transaction(transaction_identifier, || {
             contract
                 .addRound1KeyGenContribution(oprf_key_id.into_inner(), contribution.clone().into())
         })
@@ -256,8 +268,9 @@ async fn handle_keygen_round1(
     Ok(())
 }
 
-#[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty))]
+#[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty, epoch=tracing::field::Empty))]
 async fn handle_round2(
+    party_id: PartyId,
     log: Log<LogData>,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
@@ -270,6 +283,7 @@ async fn handle_round2(
     let OprfKeyRegistry::SecretGenRound2 { oprfKeyId } = round2.inner.data;
     let handle_span = tracing::Span::current();
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
+    handle_span.record("epoch", "0");
     let oprf_key_id = OprfKeyId::from(oprfKeyId);
     tracing::info!("fetching ephemeral public keys from chain..");
     let nodes = contract
@@ -299,16 +313,19 @@ async fn handle_round2(
     })?;
     tracing::debug!("finished round 2 - now reporting");
     let contribution = Round2Contribution::from(res.contribution);
+    let transaction_identifier =
+        TransactionIdentifier::keygen(oprf_key_id, party_id, TransactionType::Round2);
     transaction_handler
-        .attempt_transaction(oprf_key_id, TransactionType::Round2, || {
+        .attempt_transaction(transaction_identifier, || {
             contract.addRound2Contribution(res.oprf_key_id.into_inner(), contribution.clone())
         })
         .await?;
     Ok(())
 }
 
-#[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty))]
+#[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty, epoch=tracing::field::Empty))]
 async fn handle_keygen_round3(
+    party_id: PartyId,
     log: Log<LogData>,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
@@ -321,17 +338,22 @@ async fn handle_keygen_round3(
     let OprfKeyRegistry::SecretGenRound3 { oprfKeyId } = round3.inner.data;
     let handle_span = tracing::Span::current();
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
+    handle_span.record("epoch", "0");
+    let oprf_key_id = OprfKeyId::from(oprfKeyId);
+    let transaction_identifier =
+        TransactionIdentifier::keygen(oprf_key_id, party_id, TransactionType::Round3);
     handle_round3_inner(
-        OprfKeyId::from(oprfKeyId),
+        oprf_key_id,
         contract,
         secret_gen,
         Contributions::Full,
+        transaction_identifier,
         transaction_handler,
     )
     .await
 }
 
-#[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty))]
+#[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty, epoch=tracing::field::Empty))]
 async fn handle_finalize(
     log: Log<LogData>,
     contract: &OprfKeyRegistryInstance<DynProvider>,
@@ -346,6 +368,7 @@ async fn handle_finalize(
     let OprfKeyRegistry::SecretGenFinalize { oprfKeyId, epoch } = finalize.inner.data;
     let handle_span = tracing::Span::current();
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
+    handle_span.record("epoch", "0");
     tracing::info!("Event for {oprfKeyId} with epoch {epoch}");
     let oprf_public_key = contract.getOprfPublicKey(oprfKeyId).call().await?;
     let oprf_key_id = OprfKeyId::from(oprfKeyId);
@@ -372,7 +395,9 @@ async fn handle_finalize(
     }
 }
 
+#[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty, epoch=tracing::field::Empty))]
 async fn handle_reshare_round1(
+    party_id: PartyId,
     log: Log<LogData>,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
@@ -386,37 +411,51 @@ async fn handle_reshare_round1(
     let OprfKeyRegistry::ReshareRound1 {
         oprfKeyId,
         threshold,
+        epoch,
     } = log.inner.data;
     let handle_span = tracing::Span::current();
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
-    tracing::info!("Event for {oprfKeyId} with threshold {threshold}");
+    handle_span.record("epoch", epoch.to_string());
+    tracing::info!("Event for {oprfKeyId} with threshold {threshold} and generated epoch: {epoch}");
 
     let oprf_key_id = OprfKeyId::from(oprfKeyId);
     let threshold = u16::try_from(threshold)?;
+    let epoch = ShareEpoch::from(epoch);
 
     tracing::debug!("need to load latest share for reshare");
     // load old share needed for reshare
-    let latest_share = secret_manager
-        .get_latest_share(oprf_key_id)
+    if let Some(latest_share) = secret_manager
+        .get_previous_share(oprf_key_id, epoch)
         .await
-        .context("while loading latest share for reshare")?;
+        .context("while loading latest share for reshare")?
+    {
+        tracing::debug!("found share - we want to be producer");
+        let SecretGenRound1Contribution {
+            oprf_key_id,
+            contribution,
+        } = secret_gen.reshare_round1(oprf_key_id, threshold, latest_share);
 
-    let SecretGenRound1Contribution {
-        oprf_key_id,
-        contribution,
-    } = secret_gen.reshare_round1(oprf_key_id, threshold, latest_share);
+        tracing::debug!("finished round1 - now reporting to chain..");
+        let contribution = Round1Contribution::from(contribution);
 
-    tracing::debug!("finished round1 - now reporting to chain..");
-    let contribution = Round1Contribution::from(contribution);
-    transaction_handler
-        .attempt_transaction(oprf_key_id, TransactionType::Round1, || {
-            contract.addRound1ReshareContribution(oprf_key_id.into_inner(), contribution.clone())
-        })
-        .await?;
+        let transaction_identifier =
+            TransactionIdentifier::reshare(oprf_key_id, party_id, TransactionType::Round1, epoch);
+        transaction_handler
+            .attempt_transaction(transaction_identifier, || {
+                contract
+                    .addRound1ReshareContribution(oprf_key_id.into_inner(), contribution.clone())
+            })
+            .await?;
+    } else {
+        todo!("we are not a producer")
+    }
+
     Ok(())
 }
 
+#[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty, epoch=tracing::field::Empty))]
 async fn handle_reshare_round3(
+    party_id: PartyId,
     log: Log<LogData>,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
@@ -429,9 +468,14 @@ async fn handle_reshare_round3(
     let OprfKeyRegistry::ReshareRound3 {
         oprfKeyId,
         lagrange,
+        epoch,
     } = log.inner.data;
     let handle_span = tracing::Span::current();
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
+    handle_span.record("epoch", epoch.to_string());
+    let oprf_key_id = OprfKeyId::from(oprfKeyId);
+    let epoch = ShareEpoch::from(epoch);
+    tracing::debug!("parsing lagrange coefficients..");
     let lagrange = lagrange
         .into_iter()
         .filter_map(|x| {
@@ -443,11 +487,14 @@ async fn handle_reshare_round3(
             }
         })
         .collect::<eyre::Result<Vec<_>>>()?;
+    let transaction_identifier =
+        TransactionIdentifier::reshare(oprf_key_id, party_id, TransactionType::Round3, epoch);
     handle_round3_inner(
-        OprfKeyId::from(oprfKeyId),
+        oprf_key_id,
         contract,
         secret_gen,
         Contributions::Shamir(lagrange),
+        transaction_identifier,
         transaction_handler,
     )
     .await
@@ -480,6 +527,7 @@ async fn handle_round3_inner(
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
     contributions: Contributions,
+    transaction_identifier: TransactionIdentifier,
     transaction_handler: &TransactionHandler,
 ) -> eyre::Result<()> {
     tracing::info!("Event for {oprf_key_id}");
@@ -509,7 +557,7 @@ async fn handle_round3_inner(
         .context("while doing round3")?;
     tracing::debug!("finished round 3 - now reporting");
     transaction_handler
-        .attempt_transaction(oprf_key_id, TransactionType::Round3, || {
+        .attempt_transaction(transaction_identifier, || {
             contract.addRound3Contribution(res.oprf_key_id.into_inner())
         })
         .await?;

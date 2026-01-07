@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     OprfKeyId,
-    chain::OprfKeyRegistry::{OprfKeyRegistryErrors, TransactionConfirmation},
+    chain::OprfKeyRegistry::{KeyGenConfirmation, OprfKeyRegistryErrors},
     crypto::{
         EphemeralEncryptionPublicKey, SecretGenCiphertext, SecretGenCiphertexts,
         SecretGenCommitment,
@@ -28,12 +28,13 @@ sol!(
     "./OprfKeyRegistry.json"
 );
 
-impl fmt::Debug for TransactionConfirmation {
+impl fmt::Debug for KeyGenConfirmation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TransactionConfirmation")
             .field("oprfKeyId", &self.oprfKeyId)
-            .field("party_id", &self.party_id)
+            .field("party_id", &self.partyId)
             .field("round", &self.round)
+            .field("epoch", &self.epoch)
             .finish()
     }
 }

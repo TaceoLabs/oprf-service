@@ -30,8 +30,13 @@ pub trait SecretManager {
     /// If the secret-manager can't find a secret, it shall create a new one, store it and then return the new one.
     async fn load_or_insert_wallet_private_key(&self) -> eyre::Result<PrivateKeySigner>;
 
-    /// Returns the latest (w.r.t to epoch) share of a given [`OprfKeyId`].
-    async fn get_latest_share(&self, oprf_key_id: OprfKeyId) -> eyre::Result<DLogShareShamir>;
+    /// Returns the previous share of a given [`OprfKeyId`] and a given [`ShareEpoch`].
+    /// Returns `Ok(None)` if the store does not contain the previous epoch (or any secret associated with the key id).
+    async fn get_previous_share(
+        &self,
+        oprf_key_id: OprfKeyId,
+        generated_epoch: ShareEpoch,
+    ) -> eyre::Result<Option<DLogShareShamir>>;
 
     /// Stores the provided [`OprfKeyMaterial`] for the given [`OprfKeyId`].
     ///
