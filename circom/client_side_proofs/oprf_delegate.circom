@@ -45,7 +45,7 @@ template OprfDelegate(MAX_DEPTH, RP_MAX_DEPTH) {
     signal input cred_expires_at;
     signal input cred_s;
     signal input cred_r[2];
-    signal input current_time_stamp; // Public
+    signal input current_timestamp; // Public
     signal input cred_genesis_issued_at_min; // Public
     // Merkle proof
     signal input merkle_root; // Public
@@ -106,7 +106,7 @@ template OprfDelegate(MAX_DEPTH, RP_MAX_DEPTH) {
     cred_sig_checker.genesis_issued_at <== cred_genesis_issued_at;
     cred_sig_checker.expires_at <== cred_expires_at;
     cred_sig_checker.hashes <== cred_hashes;
-    cred_sig_checker.current_time_stamp <== current_time_stamp;
+    cred_sig_checker.current_timestamp <== current_timestamp;
     cred_sig_checker.genesis_issued_at_min <== cred_genesis_issued_at_min;
 
     // 4. Check the dlog equality proof
@@ -200,4 +200,4 @@ template OprfDelegate(MAX_DEPTH, RP_MAX_DEPTH) {
     signal nonce_squared <== nonce * nonce;
 }
 
-// component main {public [cred_pk, issuer_schema_id, current_time_stamp, cred_genesis_issued_at_min, merkle_root, depth, oprf_pk, nonce, mpc_public_keys, rp_merkle_root, rp_depth, expiration]} = OprfDelegate(30, 30);
+// component main {public [cred_pk, issuer_schema_id, current_timestamp, cred_genesis_issued_at_min, merkle_root, depth, oprf_pk, nonce, mpc_public_keys, rp_merkle_root, rp_depth, expiration]} = OprfDelegate(30, 30);

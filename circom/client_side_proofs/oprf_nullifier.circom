@@ -3,7 +3,7 @@ pragma circom 2.2.2;
 include "oprf_query.circom";
 include "verify_dlog/verify_dlog.circom";
 
-// In the CheckCredentialSignature template, we need to recompute a hash and verify the signature of this hash. Furthermore, we need to check whether the credential is still valid (i.e., not expired) by proving the current_time_stamp is less than expires_at, and we also check that the genesis_issues_at time is valid by comparing it to genesis_issues_at_min.
+// In the CheckCredentialSignature template, we need to recompute a hash and verify the signature of this hash. Furthermore, we need to check whether the credential is still valid (i.e., not expired) by proving the current_timestamp is less than expires_at, and we also check that the genesis_issues_at time is valid by comparing it to genesis_issues_at_min.
 template CheckCredentialSignature() {
     // Signature
     signal input s;
@@ -17,7 +17,7 @@ template CheckCredentialSignature() {
     signal input expires_at;
     signal input hashes[2]; // [claims_hash, associated_data_hash]
     // Current time
-    signal input current_time_stamp;
+    signal input current_timestamp;
     // Minimum allowed genesis issue time
     signal input genesis_issued_at_min;
 
@@ -45,11 +45,11 @@ template CheckCredentialSignature() {
     // We think these two checks are not really necessary since it would produce an invalid signature if they were out of range (and the signer should have checked it), but it does not add many constraints....
     var genesis_in_range[64] = Num2Bits(64)(genesis_issued_at);
     var expires_in_range[64] = Num2Bits(64)(expires_at);
-    // var current_in_range[64] = Num2Bits(64)(current_time_stamp); // Should be checked outside of the ZK proof
+    // var current_in_range[64] = Num2Bits(64)(current_timestamp); // Should be checked outside of the ZK proof
     // var genesis_limit_in_range[64] = Num2Bits(64)(genesis_issued_at_limit); // Should be checked outside of the ZK proof
 
     // Check the credential is currently valid
-    var lt_expiry = LessThan(64)([current_time_stamp, expires_at]);
+    var lt_expiry = LessThan(64)([current_timestamp, expires_at]);
     // Check the credential is issued after the minimum allowed genesis issue time
     var lt_issued = LessThan(64)([genesis_issued_at_min, genesis_issued_at]);
     lt_expiry === 1;
@@ -73,7 +73,7 @@ template OprfNullifier(MAX_DEPTH) {
     signal input cred_expires_at;
     signal input cred_s;
     signal input cred_r[2];
-    signal input current_time_stamp; // Public
+    signal input current_timestamp; // Public
     signal input cred_genesis_issued_at_min; // Public
     // Merkle proof
     signal input merkle_root; // Public
@@ -128,7 +128,7 @@ template OprfNullifier(MAX_DEPTH) {
     cred_sig_checker.genesis_issued_at <== cred_genesis_issued_at;
     cred_sig_checker.expires_at <== cred_expires_at;
     cred_sig_checker.hashes <== cred_hashes;
-    cred_sig_checker.current_time_stamp <== current_time_stamp;
+    cred_sig_checker.current_timestamp <== current_timestamp;
     cred_sig_checker.genesis_issued_at_min <== cred_genesis_issued_at_min;
 
     // 4. Check the dlog equality proof
@@ -173,4 +173,4 @@ template OprfNullifier(MAX_DEPTH) {
     signal nonce_squared <== nonce * nonce;
 }
 
-// component main {public [issuer_schema_id, cred_pk, current_time_stamp, genesis_issued_at_min, merkle_root, depth, rp_id, action, oprf_pk, signal_hash, nonce]} = OprfNullifier(30);
+// component main {public [issuer_schema_id, cred_pk, current_timestamp, genesis_issued_at_min, merkle_root, depth, rp_id, action, oprf_pk, signal_hash, nonce]} = OprfNullifier(30);

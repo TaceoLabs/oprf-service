@@ -9,7 +9,7 @@ use babyjubjub::BabyJubJubPoint;
 
 pub fn oprf_nullifier<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
     cred_pk: PublicKey,
-    current_time_stamp: u64,
+    current_timestamp: u64,
     root: Field,
     depth: Field,
     rp_id: Field,
@@ -31,7 +31,7 @@ pub fn oprf_nullifier<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
         depth,
         root,
         cred_pk,
-        current_time_stamp,
+        current_timestamp,
         inputs.query_inputs,
         beta_bits,
     );

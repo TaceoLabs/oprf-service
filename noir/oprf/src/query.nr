@@ -16,10 +16,10 @@ fn check_credential_signature(
     genesis_issued_at: Field,
     expires_at: u64,
     hashes: [Field; 2],
-    current_time_stamp: u64,
+    current_timestamp: u64,
 ) {
     // Check expiration first
-    assert(current_time_stamp < expires_at, "Credential expired");
+    assert(current_timestamp < expires_at, "Credential expired");
 
     // Calculate message hash
     let hash_inputs = [
@@ -44,7 +44,7 @@ pub fn oprf_query<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
     depth: Field,
     root: Field,
     cred_pk: PublicKey,
-    current_time_stamp: u64,
+    current_timestamp: u64,
     inputs: OprfQueryInputs<MAX_DEPTH, NUM_KEYS>,
     beta_bits: [u1; 251],
 ) -> PublicKey {
@@ -80,7 +80,7 @@ pub fn oprf_query<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
         inputs.cred_genesis_issued_at,
         inputs.cred_expires_at,
         [inputs.cred_hashes.claims_hash, inputs.cred_hashes.associated_data_hash],
-        current_time_stamp,
+        current_timestamp,
     );
 
     // Encode query to curve point and perform scalar multiplication

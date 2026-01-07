@@ -12,7 +12,7 @@ use types::{OprfNullifierInputs, OprfNullifierOutputs, PublicKey};
 
 pub fn main(
     cred_pk: pub PublicKey,
-    current_time_stamp: pub u64,
+    current_timestamp: pub u64,
     root: pub Field,
     depth: pub Field,
     rp_id: pub Field,
@@ -24,7 +24,7 @@ pub fn main(
 ) -> pub OprfNullifierOutputs {
     oprf_nullifier(
         cred_pk,
-        current_time_stamp,
+        current_timestamp,
         root,
         depth,
         rp_id,
