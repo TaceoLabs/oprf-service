@@ -108,6 +108,7 @@ template OprfQueryInner(MAX_DEPTH) {
     p.x <== hasher.out[0];
     p.y <== hasher.out[1];
 
+    // Preconditions to this multiplication are correct, since beta is range checked and p is guaranteed to be on the curve and in the correct subgroup by EncodeToCurveBabyJubJub.
     component multiplier = BabyJubJubScalarMul();
     multiplier.p <== p;
     multiplier.e <== beta_range_check.out;

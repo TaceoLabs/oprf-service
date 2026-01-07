@@ -158,6 +158,7 @@ template OprfNullifier(MAX_DEPTH) {
     p_check.y <== oprf_response[1];
     BabyJubJubCheckInCorrectSubgroup()(p_check.p);
 
+    // Preconditions: p_check.p is a valid point in the correct subgroup, checked above
     component unblinder = BabyJubJubScalarMul();
     unblinder.e <== beta_f;
     unblinder.p <== p_check.p;

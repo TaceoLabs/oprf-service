@@ -34,6 +34,7 @@ template ComputeChallengeHash() {
 }
 
 // This template takes a Dlog equality proof (= Chaum-Pedersen proof) e,s and verifies that A=x*D and C=x*B have the same discrete logarithm x, given A,B,C. D is currently hard coded as the generator of the group.
+// Preconditions: A is a public input, which is checked outside of the circuit to be on the curve and in the correct subgroup.
 template VerifyDlog() {
     input BabyJubJubBaseField() e;
     input signal s;
@@ -65,6 +66,7 @@ template VerifyDlog() {
 
     // compute
     // G * s - a * e
+    // Preconditions: a_p is on the curve and in the correct subgroup, checked above
     BabyJubJubPoint() lhs_r1 <== BabyJubJubScalarGeneratorBits()(s_f);
     BabyJubJubPoint() rhs_r1 <== BabyJubJubScalarMulBaseField()(e, a_p);
 
@@ -74,6 +76,7 @@ template VerifyDlog() {
 
     // compute
     // b * s - c * e
+    // Preconditions: b_p and c_p are on the curve and in the correct subgroup, checked above
     BabyJubJubPoint() lhs_r2 <== BabyJubJubScalarMulBits()(s_f, b_p);
     BabyJubJubPoint() rhs_r2 <== BabyJubJubScalarMulBaseField()(e, c_p);
 

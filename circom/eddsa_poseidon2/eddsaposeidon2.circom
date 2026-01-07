@@ -57,7 +57,6 @@ template EdDSAPoseidon2Verifier() {
     // We check that A is on the curve.
     BabyJubJubPoint {twisted_edwards } A_p <== BabyJubJubCheck()(Ax, Ay);
     // We check that A is in the correct subgroup.
-    // TODO this can be simplified by just checking against the 8 small order points.
     BabyJubJubCheckInCorrectSubgroup()(A_p);
     // We check that A is not zero.
     component isZero = IsZero();
@@ -67,6 +66,7 @@ template EdDSAPoseidon2Verifier() {
     // Calculate second part of the right side:  right2 = h*A
     BabyJubJubBaseField() h_f;
     h_f.f <== hash.out[1];
+    // Precondition: A is in the correct subgroup, checked above.
     component mulAny = BabyJubJubScalarMulBaseField();
     mulAny.e <== h_f;
     mulAny.p <== A_p;
