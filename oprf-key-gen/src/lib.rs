@@ -101,6 +101,7 @@ pub async fn start(
         let contract_address = config.oprf_key_registry_contract;
         let cancellation_token = cancellation_token.clone();
         services::key_event_watcher::key_event_watcher_task(KeyEventWatcherTaskConfig {
+            party_id,
             provider,
             contract_address,
             dlog_secret_gen_service,

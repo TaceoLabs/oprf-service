@@ -243,9 +243,10 @@ impl OprfKeyMaterial {
         }
     }
 
-    /// Returns the latest [`DLogShareShamir`] currently contained in the material. Returns `None` if empty.
-    pub fn get_latest_share(&self) -> Option<DLogShareShamir> {
-        self.shares.values().last().cloned()
+    /// Returns the latest [`DLogShareShamir`] currently contained in the material with its associated [`ShareEpoch`]. Returns `None` if empty.
+    pub fn get_latest_share(&self) -> Option<(ShareEpoch, DLogShareShamir)> {
+        let (k, v) = self.shares.last_key_value()?;
+        Some((*k, v.clone()))
     }
 
     /// Returns the latest [`ShareEpoch`] currently contained in the material. Returns `None` if empty.

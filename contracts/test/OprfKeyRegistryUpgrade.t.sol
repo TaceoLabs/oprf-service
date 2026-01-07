@@ -123,7 +123,7 @@ contract OprfKeyRegistryUpgradeTest is Test {
         // do round 1 contributions
         vm.prank(bob);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(oprfKeyId, 1, 1);
+        emit Types.KeyGenConfirmation(oprfKeyId, 1, 1, 0);
         oprfKeyRegistry.addRound1KeyGenContribution(
             oprfKeyId,
             Types.Round1Contribution({commShare: commShareBob, commCoeffs: commCoeffsBob, ephPubKey: publicKeyBob})
@@ -132,7 +132,7 @@ contract OprfKeyRegistryUpgradeTest is Test {
 
         vm.prank(alice);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(oprfKeyId, 0, 1);
+        emit Types.KeyGenConfirmation(oprfKeyId, 0, 1, 0);
         oprfKeyRegistry.addRound1KeyGenContribution(
             oprfKeyId,
             Types.Round1Contribution({
@@ -145,7 +145,7 @@ contract OprfKeyRegistryUpgradeTest is Test {
         vm.expectEmit(true, true, true, true);
         emit Types.SecretGenRound2(oprfKeyId);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(oprfKeyId, 2, 1);
+        emit Types.KeyGenConfirmation(oprfKeyId, 2, 1, 0);
         oprfKeyRegistry.addRound1KeyGenContribution(
             oprfKeyId,
             Types.Round1Contribution({
@@ -157,13 +157,13 @@ contract OprfKeyRegistryUpgradeTest is Test {
         // do round 2 contributions
         vm.prank(bob);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(oprfKeyId, 1, 2);
+        emit Types.KeyGenConfirmation(oprfKeyId, 1, 2, 0);
         oprfKeyRegistry.addRound2Contribution(oprfKeyId, bobRound2Contribution());
         vm.stopPrank();
 
         vm.prank(alice);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(oprfKeyId, 0, 2);
+        emit Types.KeyGenConfirmation(oprfKeyId, 0, 2, 0);
         oprfKeyRegistry.addRound2Contribution(oprfKeyId, aliceRound2Contribution());
         vm.stopPrank();
 
@@ -171,20 +171,20 @@ contract OprfKeyRegistryUpgradeTest is Test {
         emit Types.SecretGenRound3(oprfKeyId);
         vm.prank(carol);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(oprfKeyId, 2, 2);
+        emit Types.KeyGenConfirmation(oprfKeyId, 2, 2, 0);
         oprfKeyRegistry.addRound2Contribution(oprfKeyId, carolRound2Contribution());
         vm.stopPrank();
 
         // do round 3 contributions
         vm.prank(alice);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(oprfKeyId, 0, 3);
+        emit Types.KeyGenConfirmation(oprfKeyId, 0, 3, 0);
         oprfKeyRegistry.addRound3Contribution(oprfKeyId);
         vm.stopPrank();
 
         vm.prank(bob);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(oprfKeyId, 1, 3);
+        emit Types.KeyGenConfirmation(oprfKeyId, 1, 3, 0);
         oprfKeyRegistry.addRound3Contribution(oprfKeyId);
         vm.stopPrank();
 
@@ -192,7 +192,7 @@ contract OprfKeyRegistryUpgradeTest is Test {
         emit Types.SecretGenFinalize(oprfKeyId, 0);
         vm.prank(carol);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(oprfKeyId, 2, 3);
+        emit Types.KeyGenConfirmation(oprfKeyId, 2, 3, 0);
         oprfKeyRegistry.addRound3Contribution(oprfKeyId);
         vm.stopPrank();
 
@@ -229,7 +229,7 @@ contract OprfKeyRegistryUpgradeTest is Test {
         // do round 1 contributions
         vm.prank(bob);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(newOprfKeyId, 1, 1);
+        emit Types.KeyGenConfirmation(newOprfKeyId, 1, 1, 0);
         oprfKeyRegistry.addRound1KeyGenContribution(
             newOprfKeyId,
             Types.Round1Contribution({commShare: commShareBob, commCoeffs: commCoeffsBob, ephPubKey: publicKeyBob})
@@ -238,7 +238,7 @@ contract OprfKeyRegistryUpgradeTest is Test {
 
         vm.prank(alice);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(newOprfKeyId, 0, 1);
+        emit Types.KeyGenConfirmation(newOprfKeyId, 0, 1, 0);
         oprfKeyRegistry.addRound1KeyGenContribution(
             newOprfKeyId,
             Types.Round1Contribution({
@@ -251,7 +251,7 @@ contract OprfKeyRegistryUpgradeTest is Test {
         vm.expectEmit(true, true, true, true);
         emit Types.SecretGenRound2(newOprfKeyId);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(newOprfKeyId, 2, 1);
+        emit Types.KeyGenConfirmation(newOprfKeyId, 2, 1, 0);
         oprfKeyRegistry.addRound1KeyGenContribution(
             newOprfKeyId,
             Types.Round1Contribution({
@@ -263,13 +263,13 @@ contract OprfKeyRegistryUpgradeTest is Test {
         // do round 2 contributions
         vm.prank(bob);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(newOprfKeyId, 1, 2);
+        emit Types.KeyGenConfirmation(newOprfKeyId, 1, 2, 0);
         oprfKeyRegistry.addRound2Contribution(newOprfKeyId, bobRound2Contribution());
         vm.stopPrank();
 
         vm.prank(alice);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(newOprfKeyId, 0, 2);
+        emit Types.KeyGenConfirmation(newOprfKeyId, 0, 2, 0);
         oprfKeyRegistry.addRound2Contribution(newOprfKeyId, aliceRound2Contribution());
         vm.stopPrank();
 
@@ -277,20 +277,20 @@ contract OprfKeyRegistryUpgradeTest is Test {
         emit Types.SecretGenRound3(newOprfKeyId);
         vm.prank(carol);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(newOprfKeyId, 2, 2);
+        emit Types.KeyGenConfirmation(newOprfKeyId, 2, 2, 0);
         oprfKeyRegistry.addRound2Contribution(newOprfKeyId, carolRound2Contribution());
         vm.stopPrank();
 
         // do round 3 contributions
         vm.prank(alice);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(newOprfKeyId, 0, 3);
+        emit Types.KeyGenConfirmation(newOprfKeyId, 0, 3, 0);
         oprfKeyRegistry.addRound3Contribution(newOprfKeyId);
         vm.stopPrank();
 
         vm.prank(bob);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(newOprfKeyId, 1, 3);
+        emit Types.KeyGenConfirmation(newOprfKeyId, 1, 3, 0);
         oprfKeyRegistry.addRound3Contribution(newOprfKeyId);
         vm.stopPrank();
 
@@ -298,7 +298,7 @@ contract OprfKeyRegistryUpgradeTest is Test {
         emit Types.SecretGenFinalize(newOprfKeyId, 0);
         vm.prank(carol);
         vm.expectEmit(true, true, true, true);
-        emit Types.TransactionConfirmation(newOprfKeyId, 2, 3);
+        emit Types.KeyGenConfirmation(newOprfKeyId, 2, 3, 0);
         oprfKeyRegistry.addRound3Contribution(newOprfKeyId);
         vm.stopPrank();
 

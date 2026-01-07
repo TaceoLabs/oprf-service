@@ -8,7 +8,7 @@ use alloy::{
     contract::{CallBuilder, CallDecoder},
     eips::BlockNumberOrTag,
     network::{Network, ReceiptResponse as _},
-    primitives::{Address, U256},
+    primitives::Address,
     providers::{DynProvider, PendingTransactionError, Provider},
     rpc::types::Filter,
     sol_types::SolEvent,
@@ -16,7 +16,7 @@ use alloy::{
 use eyre::Context as _;
 use futures::StreamExt as _;
 use oprf_types::{
-    OprfKeyId,
+    OprfKeyId, ShareEpoch,
     chain::OprfKeyRegistry::{self, OprfKeyRegistryErrors},
     crypto::PartyId,
 };
@@ -24,21 +24,17 @@ use tokio::{sync::oneshot, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
 /// Indicates the transaction type. We need this to distinguish between events.
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum TransactionType {
-    Round1,
-    Round2,
-    Round3,
+    Round1 = 1,
+    Round2 = 2,
+    Round3 = 3,
 }
 
-impl TransactionType {
-    /// Converts the type to the u256 representation to match from the contract.
-    fn to_u256(self) -> U256 {
-        match self {
-            TransactionType::Round1 => U256::from(1),
-            TransactionType::Round2 => U256::from(2),
-            TransactionType::Round3 => U256::from(3),
-        }
+impl From<TransactionType> for u8 {
+    fn from(t: TransactionType) -> Self {
+        t as u8
     }
 }
 
@@ -48,16 +44,46 @@ impl TransactionType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct TransactionIdentifier {
     oprf_key_id: OprfKeyId,
-    party_id: U256,
-    round: U256,
+    party_id: PartyId,
+    round: u8,
+    epoch: ShareEpoch,
 }
 
-impl From<OprfKeyRegistry::TransactionConfirmation> for TransactionIdentifier {
-    fn from(value: OprfKeyRegistry::TransactionConfirmation) -> Self {
+impl TransactionIdentifier {
+    pub(crate) fn keygen(
+        oprf_key_id: OprfKeyId,
+        party_id: PartyId,
+        round: TransactionType,
+    ) -> Self {
+        Self {
+            oprf_key_id,
+            party_id,
+            round: round.into(),
+            epoch: ShareEpoch::default(),
+        }
+    }
+    pub(crate) fn reshare(
+        oprf_key_id: OprfKeyId,
+        party_id: PartyId,
+        round: TransactionType,
+        epoch: ShareEpoch,
+    ) -> Self {
+        Self {
+            oprf_key_id,
+            party_id,
+            round: round.into(),
+            epoch,
+        }
+    }
+}
+
+impl From<OprfKeyRegistry::KeyGenConfirmation> for TransactionIdentifier {
+    fn from(value: OprfKeyRegistry::KeyGenConfirmation) -> Self {
         Self {
             oprf_key_id: value.oprfKeyId.into(),
-            party_id: value.party_id,
+            party_id: value.partyId.into(),
             round: value.round,
+            epoch: value.epoch.into(),
         }
     }
 }
@@ -74,7 +100,7 @@ impl TransactionSignal {
 
 /// Service that handles transaction submitting, error handling and RPC failure.
 ///
-/// On startup, spawns a task that listens for the `TransactionConfirmation` logs. The implementation will receive all confirmation events, also from the other nodes, but will just ignore them. If the task records a [`TransactionIdentifier`] that is currently in the store it send an `Ok` value to the waiting channel.
+/// On startup, spawns a task that listens for the `KeyGenConfirmation` logs. The implementation will receive all confirmation events, also from the other nodes, but will just ignore them. If the task records a [`TransactionIdentifier`] that is currently in the store it send an `Ok` value to the waiting channel.
 ///
 /// On every transaction, it will additionally spawn a dedicated `tokio::task`, that waits `max_wait_time` and then removes the transaction from the store, signaling a waiting task that we could not get the confirmation in time.
 #[derive(Clone)]
@@ -88,7 +114,7 @@ pub(crate) struct TransactionHandler {
 impl TransactionHandler {
     /// Creates a new [`TransactionHandler`].
     ///
-    /// Spawns a task that waits for the `TransactionConfirmation` events emitted by the provided address. If the task encounters an error, will cancel via the cancellation token.
+    /// Spawns a task that waits for the `KeyGenConfirmation` events emitted by the provided address. If the task encounters an error, will cancel via the cancellation token.
     /// * `max_wait_time` max wait time for a confirmation event
     /// * `attempts` max attempts we try to redo the transaction if we get a null response
     /// * `party_id` the party id of this node
@@ -106,7 +132,7 @@ impl TransactionHandler {
         let filter = Filter::new()
             .address(contract_address)
             .from_block(BlockNumberOrTag::Latest)
-            .event_signature(OprfKeyRegistry::TransactionConfirmation::SIGNATURE_HASH);
+            .event_signature(OprfKeyRegistry::KeyGenConfirmation::SIGNATURE_HASH);
 
         let sub = provider.subscribe_logs(&filter).await?;
         let mut stream = sub.into_stream();
@@ -132,7 +158,7 @@ impl TransactionHandler {
                     let log = log
                         .log_decode()
                         .context("while decoding transaction-nonce event")?;
-                    let confirmation: OprfKeyRegistry::TransactionConfirmation = log.inner.data;
+                    let confirmation: OprfKeyRegistry::KeyGenConfirmation = log.inner.data;
                     tracing::trace!("got transaction nonce confirmation: {confirmation:?}");
                     transaction_handler.signal_recorded_nonce(confirmation.into());
                 }
@@ -164,8 +190,7 @@ impl TransactionHandler {
     /// This method will then attempt to send the transaction via the provided RPC.
     pub(crate) async fn attempt_transaction<P, D, N, F>(
         &self,
-        oprf_key_id: OprfKeyId,
-        transaction_type: TransactionType,
+        transaction_identifier: TransactionIdentifier,
         transaction: F,
     ) -> eyre::Result<()>
     where
@@ -177,12 +202,12 @@ impl TransactionHandler {
         let mut attempt = 0;
         loop {
             tracing::debug!(
-                "sending transaction. Attempt {}/{}",
+                "sending transaction: {transaction_identifier:?}. Attempt {}/{}",
                 attempt + 1,
                 self.attempts
             );
             // start the timer for this transaction
-            let transaction_nonce = self.register_transaction(oprf_key_id, transaction_type);
+            let transaction_nonce = self.register_transaction(transaction_identifier);
             let transaction_result = transaction()
                 .gas(10000000) // FIXME this is only for dummy smart contract
                 .send()
@@ -217,7 +242,7 @@ impl TransactionHandler {
     /// Tries to signal to a waiting task that we recorded the specified transaction confirmation. Does nothing if the transaction is not in store.
     fn signal_recorded_nonce(&self, confirmation: TransactionIdentifier) {
         // If not in store either nonce belongs to someone else or we ran into timeout
-        if confirmation.party_id == self.party_id.0
+        if confirmation.party_id == self.party_id
             && let Some(tx) = self
                 .store
                 .lock()
@@ -235,17 +260,8 @@ impl TransactionHandler {
     /// Creates a new [`TransactionSignal`].
     ///
     /// Additionally, spawns a task that drops signal from the store, signaling that we did not get the transaction confirmation in time.
-    fn register_transaction(
-        &self,
-        oprf_key_id: OprfKeyId,
-        transaction_type: TransactionType,
-    ) -> TransactionSignal {
+    fn register_transaction(&self, identifier: TransactionIdentifier) -> TransactionSignal {
         let (tx, rx) = oneshot::channel();
-        let identifier = TransactionIdentifier {
-            oprf_key_id,
-            party_id: U256::from(self.party_id.0),
-            round: transaction_type.to_u256(),
-        };
         self.store
             .lock()
             .expect("Not poisoned")

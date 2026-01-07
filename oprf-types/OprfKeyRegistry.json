@@ -775,6 +775,37 @@
   },
   {
     "type": "event",
+    "name": "KeyGenConfirmation",
+    "inputs": [
+      {
+        "name": "oprfKeyId",
+        "type": "uint160",
+        "indexed": true,
+        "internalType": "uint160"
+      },
+      {
+        "name": "partyId",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "round",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "uint8"
+      },
+      {
+        "name": "epoch",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "NotEnoughProducers",
     "inputs": [
       {
@@ -839,6 +870,12 @@
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
+      },
+      {
+        "name": "epoch",
+        "type": "uint128",
+        "indexed": true,
+        "internalType": "uint128"
       }
     ],
     "anonymous": false
@@ -858,6 +895,12 @@
         "type": "uint256[]",
         "indexed": false,
         "internalType": "uint256[]"
+      },
+      {
+        "name": "epoch",
+        "type": "uint128",
+        "indexed": true,
+        "internalType": "uint128"
       }
     ],
     "anonymous": false
@@ -922,31 +965,6 @@
         "type": "uint160",
         "indexed": true,
         "internalType": "uint160"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "TransactionConfirmation",
-    "inputs": [
-      {
-        "name": "oprfKeyId",
-        "type": "uint160",
-        "indexed": true,
-        "internalType": "uint160"
-      },
-      {
-        "name": "party_id",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "round",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
       }
     ],
     "anonymous": false
