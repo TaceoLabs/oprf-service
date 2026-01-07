@@ -78,7 +78,7 @@ template EscalarMulFixScalar(E) {
 // Small rewrite of BitElementMulAny from the Circom standard library. Takes two points
 // in Montgomery form and a hardcoded bit. Unlike the standard-library version, the
 // selector is known at compile time. Therefore, we can skip multiplexing and simply
-// conditionally add on top of the doubling. 
+// conditionally add on top of the doubling.
 template BitElementMulFixScalar(bit) {
     assert(bit == 0 || bit == 1);
     signal input dbl_in[2];
@@ -98,7 +98,7 @@ template BitElementMulFixScalar(bit) {
 
 // Performs segment multiplication as defined in the BabyJubJub paper with a fixed E.
 // E is a bit segment of length n from the larger scalar. We require n because we can't
-// otherwise know the length of E. All bits after n will be ignored. 
+// otherwise know the length of E. All bits after n will be ignored.
 //
 // In contrast to other SegmentMul implementations, we can skip some MontgomeryAdds and
 // multiplexing because we know the selectors at compile time.
@@ -111,6 +111,15 @@ template SegmentMulFixScalar(E,n) {
     signal output dbl[2];
 
     component bits[n-1];
+
+    // we also forbid all points that do not have a valid mapping to Montgomery form (x = 0 or y = 1)
+    // this is needed because we allow the correct subgroup check to be called on any point on the curve, such as the two-torsion point, which does not have a valid mapping to Montgomery form
+    // since it is also not a valid point in the prime-order subgroup, failing these assertions here is intended
+    signal is_x_zero <== IsZero()(p[0]);
+    is_x_zero === 0;
+    signal is_y_one <== IsZero()(p[1]-1);
+    is_y_one === 0;
+
     component e2m = Edwards2Montgomery();
 
     p[0] ==> e2m.in[0];
@@ -142,7 +151,7 @@ template SegmentMulFixScalar(E,n) {
     if (E[0] == 1) {
         out <== m2e.out;
     } else {
-        signal (bba_x, bba_y) <== BabyAdd()(m2e.out[0],m2e.out[1], -p[0], p[1]); 
+        signal (bba_x, bba_y) <== BabyAdd()(m2e.out[0],m2e.out[1], -p[0], p[1]);
         out <== [bba_x, bba_y];
     }
 }
