@@ -176,6 +176,7 @@ template OprfDelegate(MAX_DEPTH, RP_MAX_DEPTH) {
     for (var i=0; i<3; i++) {
         pk_p[i].x <== mpc_public_keys[i][0];
         pk_p[i].y <== mpc_public_keys[i][1];
+        // Precondition: pk_p[i] is in the correct subgroup, checked outside of the circuit.
         sym_keys[i] = BabyJubJubScalarMul();
         sym_keys[i].p <== pk_p[i];
         sym_keys[i].e <== sk_f.out;
