@@ -85,7 +85,7 @@ pub struct OprfKeyGenConfig {
     #[clap(long, env = "OPRF_NODE_MAX_EPOCH_CACHE_SIZE", default_value = "3")]
     pub max_epoch_cache_size: usize,
 
-    /// Max time we wait for a transaction confirmation event until we think the transaction didn't went through.
+    /// Max time we wait for a transaction confirmation event until we assume the transaction didn't go through.
     ///
     /// We need this because RPCs are not very reliable, so we need to verify whether a transaction did get through or not.
     #[clap(long, env = "OPRF_NODE_MAX_WAIT_TIME_TRANSACTION_CONFIRMATION", default_value = "5min", value_parser=humantime::parse_duration)]
