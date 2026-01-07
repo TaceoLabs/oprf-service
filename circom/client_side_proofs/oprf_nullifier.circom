@@ -10,9 +10,11 @@ template CheckCredentialSignature() {
     signal input r[2];
     // Public key
     signal input pk[2];
+    // Blinded user id input
+    signal input user_id;
+    signal input user_id_r;
     // Credential data
     signal input issuer_schema_id;
-    signal input user_id;
     signal input genesis_issued_at;
     signal input expires_at;
     signal input hashes[2]; // [claims_hash, associated_data_hash]
@@ -21,11 +23,15 @@ template CheckCredentialSignature() {
     // Minimum allowed genesis issue time
     signal input genesis_issued_at_min;
 
+    // Calculate the blinded user id
+    var DS_C = 5199521648757207593; // b"H(id, r)"
+    var poseidon_comm[3] = Poseidon2(3)([DS_C, user_id, user_id_r]);
+
     // Calculate the message hash
     component hash = Poseidon2(8);
     hash.in[0] <== 1790969822004668215611014194230797064349043274; // Domain separator in capacity element b"POSEIDON2+EDDSA-BJJ"
     hash.in[1] <== issuer_schema_id;
-    hash.in[2] <== user_id;
+    hash.in[2] <== poseidon_comm[1]; // Blinded user id = H(user_id, user_id_r)
     hash.in[3] <== genesis_issued_at;
     hash.in[4] <== expires_at;
     hash.in[5] <== hashes[0];
@@ -75,6 +81,7 @@ template OprfNullifier(MAX_DEPTH) {
     signal input cred_r[2];
     signal input current_timestamp; // Public
     signal input cred_genesis_issued_at_min; // Public
+    signal input user_id_r; // blinding for the credential signature userid commitment
     // Merkle proof
     signal input merkle_root; // Public
     signal input depth; // Public
@@ -130,6 +137,7 @@ template OprfNullifier(MAX_DEPTH) {
     cred_sig_checker.hashes <== cred_hashes;
     cred_sig_checker.current_timestamp <== current_timestamp;
     cred_sig_checker.genesis_issued_at_min <== cred_genesis_issued_at_min;
+    cred_sig_checker.user_id_r <== user_id_r;
 
     // 4. Check the dlog equality proof
     BabyJubJubBaseField() e;
