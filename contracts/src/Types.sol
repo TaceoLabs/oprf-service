@@ -13,7 +13,7 @@ library Types {
 
     struct OprfPeer {
         bool isParticipant;
-        uint256 partyId;
+        uint16 partyId;
     }
 
     struct RegisteredOprfPublicKey {
@@ -71,14 +71,16 @@ library Types {
         uint256 y;
     }
 
+    // Event that will be emitted during transaction of key-gens. This should signal the MPC-nodes that their transaction was successfully registered.
+    event KeyGenConfirmation(uint160 indexed oprfKeyId, uint16 partyId, uint8 round, uint128 epoch);
     // events for key-gen
     event SecretGenRound1(uint160 indexed oprfKeyId, uint256 threshold);
     event SecretGenRound2(uint160 indexed oprfKeyId);
     event SecretGenRound3(uint160 indexed oprfKeyId);
     event SecretGenFinalize(uint160 indexed oprfKeyId, uint128 indexed epoch);
     // events for reshare
-    event ReshareRound1(uint160 indexed oprfKeyId, uint256 threshold);
-    event ReshareRound3(uint160 indexed oprfKeyId, uint256[] lagrange);
+    event ReshareRound1(uint160 indexed oprfKeyId, uint256 threshold, uint128 indexed epoch);
+    event ReshareRound3(uint160 indexed oprfKeyId, uint256[] lagrange, uint128 indexed epoch);
     // event to delete created key
     event KeyDeletion(uint160 indexed oprfKeyId);
     // admin events

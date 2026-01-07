@@ -2,7 +2,6 @@ use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use alloy::signers::local::PrivateKeySigner;
 use async_trait::async_trait;
-use eyre::ContextCompat;
 use itertools::Itertools;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_service::oprf_key_material_store::OprfKeyMaterialStore;
@@ -44,13 +43,25 @@ impl oprf_key_gen::secret_manager::SecretManager for TestSecretManager {
         Ok(())
     }
 
-    async fn get_latest_share(&self, oprf_key_id: OprfKeyId) -> eyre::Result<DLogShareShamir> {
-        self.store
-            .lock()
-            .get(&oprf_key_id)
-            .expect("is there")
-            .get_latest_share()
-            .context("key-material is empty")
+    async fn get_previous_share(
+        &self,
+        oprf_key_id: OprfKeyId,
+        generated_epoch: ShareEpoch,
+    ) -> eyre::Result<Option<DLogShareShamir>> {
+        let store = self.store.lock();
+        let oprf_key_material = store.get(&oprf_key_id).expect("is there");
+        if let Some((stored_epoch, share)) = oprf_key_material.get_latest_share() {
+            tracing::debug!("my latest epoch is: {stored_epoch}");
+            if stored_epoch.next() == generated_epoch {
+                Ok(Some(share))
+            } else {
+                tracing::debug!("we missed an epoch - returning None");
+                Ok(None)
+            }
+        } else {
+            tracing::warn!("does not contain any shares..");
+            Ok(None)
+        }
     }
 
     async fn remove_oprf_key_material(&self, rp_id: OprfKeyId) -> eyre::Result<()> {

@@ -85,11 +85,17 @@ pub struct OprfKeyGenConfig {
     #[clap(long, env = "OPRF_NODE_MAX_EPOCH_CACHE_SIZE", default_value = "3")]
     pub max_epoch_cache_size: usize,
 
-    /// Max transaction attempts when submitting contribution to the chain.
+    /// Max time we wait for a transaction confirmation event until we assume the transaction didn't go through.
     ///
-    /// We need this because RPCs are not very reliable, so we just try the same transaction multiple times in certain scenarios.
-    #[clap(long, env = "OPRF_NODE_TRANSACTION_ATTEMPTS", default_value = "3")]
-    pub transaction_attempts: usize,
+    /// We need this because RPCs are not very reliable, so we need to verify whether a transaction did get through or not.
+    #[clap(long, env = "OPRF_NODE_MAX_WAIT_TIME_TRANSACTION_CONFIRMATION", default_value = "5min", value_parser=humantime::parse_duration)]
+    pub max_wait_time_transaction_confirmation: Duration,
+
+    /// Max attempts for sending a transaction when we get null response from RPC.
+    ///
+    /// We need this because RPCs are not very reliable, so we potentially need to resend a transaction did get through or not.
+    #[clap(long, env = "OPRF_NODE_MAX_TRANSACTION_ATTEMPTS", default_value = "3")]
+    pub max_transaction_attempts: usize,
 
     /// The block number to start listening for events from the OprfKeyRegistry contract.
     /// If not set, will start from the latest block.
