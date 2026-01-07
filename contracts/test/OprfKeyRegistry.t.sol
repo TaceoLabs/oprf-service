@@ -173,6 +173,28 @@ contract OprfKeyRegistryTest is Test {
         oprfKeyRegistryTest.registerOprfPeers(peerAddresses);
     }
 
+    function testRegisterParticipantsNotDistinct() public {
+        // Deploy implementation
+        OprfKeyRegistry implementation = new OprfKeyRegistry();
+        // Encode initializer call
+        bytes memory initData = abi.encodeWithSelector(
+            OprfKeyRegistry.initialize.selector, taceoAdmin, verifierKeyGen, accumulator, THRESHOLD, MAX_PEERS
+        );
+        // Deploy proxy
+        ERC1967Proxy proxyTest = new ERC1967Proxy(address(implementation), initData);
+        OprfKeyRegistry oprfKeyRegistryTest = OprfKeyRegistry(address(proxyTest));
+
+        address[] memory peerAddresses = new address[](3);
+        peerAddresses[0] = alice;
+        peerAddresses[1] = bob;
+        peerAddresses[2] = alice;
+
+        // check that not ready
+        assert(!oprfKeyRegistryTest.isContractReady());
+        vm.expectRevert(abi.encodeWithSelector(OprfKeyRegistry.PartiesNotDistinct.selector));
+        oprfKeyRegistryTest.registerOprfPeers(peerAddresses);
+    }
+
     function testUpdateParticipants() public {
         // check the partyIDs
         vm.prank(alice);

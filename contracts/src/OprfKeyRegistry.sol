@@ -111,10 +111,11 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
     error NotReady();
     error OnlyAdmin();
     error OutdatedNullifier();
+    error PartiesNotDistinct();
     error UnexpectedAmountPeers(uint256 expectedParties);
     error UnknownId(uint160 id);
-    error WrongRound();
     error UnsupportedNumPeersThreshold();
+    error WrongRound();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -181,6 +182,14 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
     /// @param _peerAddresses An array of addresses of the OPRF peers.
     function registerOprfPeers(address[] calldata _peerAddresses) external virtual onlyProxy onlyInitialized onlyOwner {
         if (_peerAddresses.length != numPeers) revert UnexpectedAmountPeers(numPeers);
+        // check that addresses are distinct
+        for (uint256 i = 0; i < _peerAddresses.length; ++i) {
+            for (uint256 j = i + 1; j < _peerAddresses.length; ++j) {
+                if (_peerAddresses[i] == _peerAddresses[j]) {
+                    revert PartiesNotDistinct();
+                }
+            }
+        }
         // delete the old participants
         for (uint256 i = 0; i < peerAddresses.length; ++i) {
             delete addressToPeer[peerAddresses[i]];
