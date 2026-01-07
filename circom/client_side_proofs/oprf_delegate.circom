@@ -47,6 +47,8 @@ template OprfDelegate(MAX_DEPTH, RP_MAX_DEPTH) {
     signal input cred_r[2];
     signal input current_timestamp; // Public
     signal input cred_genesis_issued_at_min; // Public
+    signal input user_id_r; // blinding for the credential signature userid commitment
+    signal input cred_id;
     // Merkle proof
     signal input merkle_root; // Public
     signal input depth; // Public
@@ -108,6 +110,8 @@ template OprfDelegate(MAX_DEPTH, RP_MAX_DEPTH) {
     cred_sig_checker.hashes <== cred_hashes;
     cred_sig_checker.current_timestamp <== current_timestamp;
     cred_sig_checker.genesis_issued_at_min <== cred_genesis_issued_at_min;
+    cred_sig_checker.user_id_r <== user_id_r;
+    cred_sig_checker.cred_id <== cred_id;
 
     // 4. Check the dlog equality proof
     BabyJubJubBaseField() e;
