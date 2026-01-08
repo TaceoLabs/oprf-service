@@ -146,6 +146,16 @@ pub fn accumulate_lagrange_pks(pks: &[Affine], lagrange: &[ScalarField]) -> Affi
     Projective::msm_unchecked(pks, lagrange).into_affine()
 }
 
+/// An encrypted share for another party. Contains the ciphertext and nonce for encryption along with a commitment to underlying value computed as `share` ⋅ `G`, where `G` is the generator of babyjubjub.
+pub struct EncryptedShare {
+    /// The commitment to the share
+    pub commitment: Affine,
+    /// The ciphertext for the recipient
+    pub ciphertext: BaseField,
+    /// The nonce used for encryption
+    pub nonce: BaseField,
+}
+
 impl KeyGenPoly {
     /// Creates a new polynomial by creating random coefficients with the provided random generator and commits to the coefficients and secret.
     pub fn new<R: Rng + CryptoRng>(rng: &mut R, degree: usize) -> Self {
@@ -217,20 +227,20 @@ impl KeyGenPoly {
     /// * `id` - Party index (0-based).
     /// * `my_sk` - Sender's private key.
     /// * `their_pk` - Recipient's public key.
-    /// * `nonce` - Nonce for symmetric encryption.
+    /// * `rng` - A secure RNG to compute the nonce
     ///
     /// # Returns
-    /// Commitment to the share and the encrypted share.
+    /// The [`EncryptedShare`].
     ///
     /// # Panics
     /// This method panics if `their_pk` is not on the curve and is not in the large subgroup. We expect callsite to enforce those constraints.
-    pub fn gen_share(
+    pub fn gen_share<R: Rng + CryptoRng>(
         &self,
         id: usize,
         my_sk: &ScalarField,
         their_pk: Affine,
-        nonce: BaseField,
-    ) -> (Affine, BaseField) {
+        rng: &mut R,
+    ) -> EncryptedShare {
         assert!(
             their_pk.is_on_curve() && their_pk.is_in_correct_subgroup_assuming_on_curve(),
             "their_pk must be on curve and in the large subgroup of the curve"
@@ -238,12 +248,19 @@ impl KeyGenPoly {
         let index = ScalarField::from((id + 1) as u64);
         let share = shamir::evaluate_poly(&self.poly, index);
 
+        // generating random nonce
+        let nonce = rng.r#gen();
+
         let symm_key = dh_key_derivation(my_sk, their_pk);
         let ciphertext = sym_encrypt(symm_key, share, nonce);
 
         // The share is random, so no need for randomness here
         let commitment = Affine::generator() * share;
-        (commitment.into_affine(), ciphertext)
+        EncryptedShare {
+            commitment: commitment.into_affine(),
+            ciphertext,
+            nonce,
+        }
     }
 
     /// Returns the degree of the polynomial.
@@ -317,8 +334,11 @@ mod tests {
             let mut nonces = Vec::with_capacity(num_parties);
             let mut cipher = Vec::with_capacity(num_parties);
             for (i, their_pk) in party_pks.iter().enumerate() {
-                let nonce = BaseField::rand(&mut rng);
-                let (_, ciphertext) = poly.gen_share(i, my_sk, *their_pk, nonce);
+                let EncryptedShare {
+                    commitment: _,
+                    ciphertext,
+                    nonce,
+                } = poly.gen_share(i, my_sk, *their_pk, &mut rng);
                 nonces.push(nonce);
                 cipher.push(ciphertext);
             }
@@ -410,11 +430,14 @@ mod tests {
             let mut cipher = Vec::with_capacity(num_parties);
             let mut commitments = Vec::with_capacity(num_parties);
             for (i, their_pk) in party_pks.iter().enumerate() {
-                let nonce = BaseField::rand(&mut rng);
-                let (comm, ciphertext) = poly.gen_share(i, my_sk, *their_pk, nonce);
+                let EncryptedShare {
+                    commitment,
+                    ciphertext,
+                    nonce,
+                } = poly.gen_share(i, my_sk, *their_pk, &mut rng);
                 nonces.push(nonce);
                 cipher.push(ciphertext);
-                commitments.push(comm);
+                commitments.push(commitment);
             }
             encryption_nonces.push(nonces);
             party_ciphers.push(cipher);
@@ -480,8 +503,11 @@ mod tests {
             let mut nonces = Vec::with_capacity(num_parties);
             let mut cipher = Vec::with_capacity(num_parties);
             for (i, their_pk) in party_pks.iter().enumerate() {
-                let nonce = BaseField::rand(&mut rng);
-                let (_, ciphertext) = poly.gen_share(i, my_sk, *their_pk, nonce);
+                let EncryptedShare {
+                    commitment: _,
+                    ciphertext,
+                    nonce,
+                } = poly.gen_share(i, my_sk, *their_pk, &mut rng);
                 nonces.push(nonce);
                 cipher.push(ciphertext);
             }
