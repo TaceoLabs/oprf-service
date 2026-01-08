@@ -206,4 +206,4 @@ template OprfDelegate(MAX_DEPTH, RP_MAX_DEPTH) {
     signal nonce_squared <== nonce * nonce;
 }
 
-// component main {public [cred_pk, issuer_schema_id, current_timestamp, cred_genesis_issued_at_min, merkle_root, depth, oprf_pk, nonce, mpc_public_keys, rp_merkle_root, rp_depth, expiration]} = OprfDelegate(30, 30);
+// component main {public [issuer_schema_id, cred_pk, current_timestamp, cred_genesis_issued_at_min, merkle_root, depth, oprf_pk, nonce, mpc_public_keys, rp_merkle_root, rp_depth, expiration]} = OprfDelegate(30, 30);
