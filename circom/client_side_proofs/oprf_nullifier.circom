@@ -57,10 +57,10 @@ template CheckCredentialSignature() {
 
     // Check the credential is currently valid
     var lt_expiry = LessThan(64)([current_timestamp, expires_at]);
-    // Check the credential is issued after the minimum allowed genesis issue time
-    var lt_issued = LessThan(64)([genesis_issued_at_min, genesis_issued_at]);
+    // Check the credential is issued at or after the minimum allowed genesis issue time
+    var leq_issued = LessEqThan(64)([genesis_issued_at_min, genesis_issued_at]);
     lt_expiry === 1;
-    lt_issued === 1;
+    leq_issued === 1;
 }
 
 
