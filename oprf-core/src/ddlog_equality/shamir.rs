@@ -153,20 +153,31 @@ impl DLogCommitmentsShamir {
         self.0.c
     }
 
-    /// The accumulating party (e.g., the verifier) combines the shares of d+1 parties.
+    /// The accumulating party (e.g., the verifier) combines the shares of `d + 1` parties.
     ///
     /// # Panics
-    /// Panics if the number of commitments does not match the number of Lagrange coefficients, i.e. `commitments.len() != lagrange.len()`.
+    /// Panics if the number of commitments does not match the number of contributing parties,
+    /// i.e. `commitments.len() != contributing_parties.len()`.
+    /// Additionally, panics if the contributing parties contain duplicate party IDs.
+    /// The call site is expected to enforce these checks.
     pub fn combine_commitments(
         commitments: &[PartialDLogCommitmentsShamir],
         contributing_parties: Vec<u16>,
     ) -> Self {
-        let lagrange = crate::shamir::lagrange_from_coeff(&contributing_parties);
+        let mut contributing_parties_dedup = contributing_parties.clone();
+        contributing_parties_dedup.sort();
+        contributing_parties_dedup.dedup();
         assert_eq!(
-            commitments.len(),
-            lagrange.len(),
-            "Number of commitments must match number of Lagrange coefficients"
+            contributing_parties.len(),
+            contributing_parties_dedup.len(),
+            "Party IDs must be unique"
         );
+        assert_eq!(
+            contributing_parties.len(),
+            commitments.len(),
+            "Number of commitments must match number of contributing parties"
+        );
+        let lagrange = crate::shamir::lagrange_from_coeff(&contributing_parties);
 
         let c = Projective::msm_unchecked(
             &commitments.iter().map(|comm| comm.0.c).collect::<Vec<_>>(),

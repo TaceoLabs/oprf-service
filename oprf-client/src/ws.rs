@@ -22,6 +22,7 @@ type WebSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 ///
 /// When [`WebSocketSession::send`] or [`WebSocketSession::read`] returns an error, the implementation will try to send a `Close` frame. You don't need to do that at callsite.
 pub(crate) struct WebSocketSession {
+    pub(crate) service: String,
     inner: WebSocket,
 }
 
@@ -42,7 +43,7 @@ impl WebSocketSession {
             Some(connector),
         )
         .await?;
-        Ok(Self { inner: ws })
+        Ok(Self { service, inner: ws })
     }
 
     /// Attempts to send the provided message to the web-socket.

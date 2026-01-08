@@ -36,14 +36,22 @@ impl OprfSessions {
     }
 
     /// Adds a node's response to the sessions.
-    fn push(&mut self, ws: WebSocketSession, response: OprfResponse) {
+    fn push(&mut self, ws: WebSocketSession, response: OprfResponse) -> Result<(), String> {
         let OprfResponse {
             commitments,
             party_id,
         } = response;
+        if let Some(position) = self
+            .party_ids
+            .iter()
+            .position(|hay| *hay == response.party_id)
+        {
+            return Err(self.ws[position].service.clone());
+        }
         self.ws.push(ws);
         self.party_ids.push(party_id);
         self.commitments.push(commitments);
+        Ok(())
     }
 
     /// Returns the number of sessions currently stored.
@@ -152,7 +160,12 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
     let mut sessions = OprfSessions::with_capacity(threshold);
 
     while let Some((ws, resp)) = rx.recv().await {
-        sessions.push(ws, resp);
+        let service = ws.service.clone();
+        tracing::debug!("adding commitment from {service}");
+        if let Err(duplicate_service) = sessions.push(ws, resp) {
+            tracing::warn!("{duplicate_service} and {service} send same Party ID!");
+            continue;
+        }
         tracing::debug!("received session {}", sessions.len());
         if sessions.len() == threshold {
             break;

@@ -29,6 +29,9 @@ pub use tokio_tungstenite::Connector;
 /// Errors returned by the distributed OPRF protocol.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Services must be unique
+    #[error("Services must be unique")]
+    NonUniqueServices,
     /// The server send an unexpected message (either message type or a frame that is not `Binary`/`Close`).
     #[error("Unexpected msg")]
     UnexpectedMsg,
@@ -99,6 +102,13 @@ pub async fn distributed_oprf<OprfRequestAuth>(
 where
     OprfRequestAuth: Clone + Serialize + Send + 'static,
 {
+    let mut services_dedup = services.to_vec();
+    services_dedup.sort();
+    services_dedup.dedup();
+    if services_dedup.len() != services.len() {
+        return Err(Error::NonUniqueServices);
+    }
+
     let request_id = Uuid::new_v4();
     let distributed_oprf_span = tracing::Span::current();
     distributed_oprf_span.record("request_id", request_id.to_string());
