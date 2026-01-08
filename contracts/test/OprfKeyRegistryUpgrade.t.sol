@@ -8,6 +8,8 @@ import {Verifier as VerifierKeyGen13} from "../src/VerifierKeyGen13.sol";
 import {Types} from "../src/Types.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {aliceRound2Contribution, bobRound2Contribution, carolRound2Contribution} from "./OprfKeyRegistry.t.sol";
+import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 /**
  *
@@ -48,6 +50,7 @@ contract OprfKeyRegistryUpgradeTest is Test {
     address bob = address(0x2);
     address carol = address(0x3);
     address taceoAdmin = address(0x4);
+    address initOwner = 0x7FA9385bE102ac3EAc297483Dd6233D62b3e1496;
 
     uint256 privateKeyAlice = 0x3bc78294cae1fe9e441b3c6a97fc4f7844b016ec9deb28787b2ec8a63812834;
     uint256 privateKeyBob = 0xb5aaa322223b7015e0ab2690ddad24a3e553bbea711dcdd0f30e2ea2ca6fdc;
@@ -108,6 +111,20 @@ contract OprfKeyRegistryUpgradeTest is Test {
         peerAddresses[1] = bob;
         peerAddresses[2] = carol;
         oprfKeyRegistry.registerOprfPeers(peerAddresses);
+    }
+
+    function testOwnershipTransfer() public {
+        assertEq(oprfKeyRegistry.owner(), initOwner);
+        vm.expectEmit(true, true, true, true);
+        emit Ownable2StepUpgradeable.OwnershipTransferStarted(initOwner, taceoAdmin);
+        oprfKeyRegistry.transferOwnership(taceoAdmin);
+        vm.prank(taceoAdmin);
+        vm.expectEmit(true, true, true, true);
+        emit OwnableUpgradeable.OwnershipTransferred(initOwner, taceoAdmin);
+        oprfKeyRegistry.acceptOwnership();
+        vm.stopPrank();
+
+        assertEq(oprfKeyRegistry.owner(), taceoAdmin);
     }
 
     function testUpgrade() public {
