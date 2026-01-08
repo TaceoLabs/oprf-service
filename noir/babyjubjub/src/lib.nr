@@ -73,7 +73,7 @@ impl BabyJubJubPoint {
         !self.is_identity()
     }
 
-    /// Multiplies the point by the cofactor (7 for BabyJubJub over BN254)
+    /// Multiplies the point by the cofactor (8 for BabyJubJub over BN254)
     pub fn multiply_by_cofactor(self) -> Self {
         self.double().double().double()
     }
