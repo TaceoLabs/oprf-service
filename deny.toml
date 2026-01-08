@@ -74,6 +74,7 @@ ignore = [
     { id = "RUSTSEC-2024-0388", reason = "derivative crate is unmaintained, but arkworks is still using it." },
     { id = "RUSTSEC-2025-0055", reason = "ark-relations is using v0.2 of tracing-subscriber still, we do not use this functionality so it is not exploitable." },
     { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile crate is unmaintained, but its used by testcontainers and aws crates" },
+    { id = "RUSTSEC-2026-0002", reason = "need to wait for alloy to bump the LRU version - if you read this and LRU is already at version 0.16.3, remove me" },
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.
