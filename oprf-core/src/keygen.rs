@@ -221,6 +221,9 @@ impl KeyGenPoly {
     ///
     /// # Returns
     /// Commitment to the share and the encrypted share.
+    ///
+    /// # Panics
+    /// This method panics if `their_pk` is not on the curve and is not in the large subgroup. We expect callsite to enforce those constraints.
     pub fn gen_share(
         &self,
         id: usize,
@@ -228,6 +231,10 @@ impl KeyGenPoly {
         their_pk: Affine,
         nonce: BaseField,
     ) -> (Affine, BaseField) {
+        assert!(
+            their_pk.is_on_curve() && their_pk.is_in_correct_subgroup_assuming_on_curve(),
+            "their_pk must be on curve and in the large subgroup of the curve"
+        );
         let index = ScalarField::from((id + 1) as u64);
         let share = shamir::evaluate_poly(&self.poly, index);
 
