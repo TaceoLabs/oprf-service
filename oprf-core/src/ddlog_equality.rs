@@ -151,7 +151,6 @@ impl DLogEqualityCommitments {
     pub(crate) fn combine_proofs<'a>(
         self,
         session_id: Uuid,
-        contributing_parties: &[u16],
         proofs: impl Iterator<Item = &'a DLogEqualityProofShare>,
         a: Affine,
         b: Affine,
@@ -168,7 +167,7 @@ impl DLogEqualityCommitments {
             self.d2,
             self.e1,
             self.e2,
-            contributing_parties,
+            &self.contributing_parties,
         );
 
         let d = Affine::generator();

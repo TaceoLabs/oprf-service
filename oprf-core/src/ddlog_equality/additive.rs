@@ -131,18 +131,12 @@ impl DLogCommitmentsAdditive {
     pub fn combine_proofs(
         self,
         session_id: Uuid,
-        contributing_parties: &[u16],
         proofs: &[DLogProofShareAdditive],
         a: Affine,
         b: Affine,
     ) -> DLogEqualityProof {
-        self.0.combine_proofs(
-            session_id,
-            contributing_parties,
-            proofs.iter().map(|x| &x.0),
-            a,
-            b,
-        )
+        self.0
+            .combine_proofs(session_id, proofs.iter().map(|x| &x.0), a, b)
     }
     /// The accumulating party (e.g., the verifier) combines all the shares of all parties.
     /// The returned points are the combined commitments C, R1, R2.
@@ -287,8 +281,7 @@ mod tests {
         }
 
         // 4) Client combines all proofs
-        let proof =
-            challenge.combine_proofs(session_id, &contributing_parties, &proofs, public_key, b);
+        let proof = challenge.combine_proofs(session_id, &proofs, public_key, b);
 
         // Verify the result and the proof
         let d = Affine::generator();

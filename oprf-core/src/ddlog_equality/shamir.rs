@@ -135,18 +135,12 @@ impl DLogCommitmentsShamir {
     pub fn combine_proofs(
         self,
         session_id: Uuid,
-        contributing_parties: &[u16],
         proofs: &[DLogProofShareShamir],
         a: Affine,
         b: Affine,
     ) -> DLogEqualityProof {
-        self.0.combine_proofs(
-            session_id,
-            contributing_parties,
-            proofs.iter().map(|x| &x.0),
-            a,
-            b,
-        )
+        self.0
+            .combine_proofs(session_id, proofs.iter().map(|x| &x.0), a, b)
     }
     /// Returns the combined blinded response C=B*x.
     pub fn blinded_response(&self) -> Affine {
@@ -348,8 +342,7 @@ mod tests {
         }
 
         // 4) Client combines received proof shares
-        let proof =
-            challenge.combine_proofs(session_id, &used_parties, &used_proofs, public_key, b);
+        let proof = challenge.combine_proofs(session_id, &used_proofs, public_key, b);
 
         // Verify the result and the proof
         let d = Affine::generator();

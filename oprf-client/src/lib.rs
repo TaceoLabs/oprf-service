@@ -177,11 +177,9 @@ pub fn verify_dlog_equality(
     proofs: Vec<DLogProofShareShamir>,
     challenge: DLogCommitmentsShamir,
 ) -> Result<DLogEqualityProof, Error> {
-    let party_ids = challenge.get_contributing_parties().to_vec();
     let blinded_response = challenge.blinded_response();
     let dlog_proof = challenge.combine_proofs(
         request_id,
-        &party_ids,
         &proofs,
         oprf_public_key.inner(),
         blinded_request.blinded_query(),
