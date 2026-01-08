@@ -22,9 +22,30 @@ fn is_zero(x: Field) -> bool {
     x == 0
 }
 
+unconstrained fn inverse_or_zero_unconstrained(x: Field) -> Field {
+    if x == 0 {
+        0
+    } else {
+        1 / x
+    }
+}
+
 fn inverse_or_zero(x: Field) -> Field {
-    let is_zero = (x == 0) as Field;
-    (1 / x) * (1 - is_zero)
+    // SAFETY: We constrain the inverse below
+    let inv = unsafe { inverse_or_zero_unconstrained(x) };
+    let is_zero = 1 - x * inv;
+    // Constraint strategy:
+    // if x != 0
+    //  then is_zero must be 0 due to constraint 1 => x * inv = 1, therefore inv is the inverse of x
+    // if x == 0
+    //  then is_zero must be 1 due to the definition above, since x = 0. inv could be anything, but we enforce inv = 0 in constraints 2 below
+
+    // These are the two constraints enforcing above logic:
+    // One of x or is_zero must be zero
+    assert(x * is_zero == 0, "InverseOrZero zero constraint 1 failed");
+    // One of inv or is_zero must be zero
+    assert(inv * is_zero == 0, "InverseOrZero zero constraint 2 failed");
+    inv
 }
 
 fn pow(x: Field, y: Field) -> Field {
@@ -106,10 +127,8 @@ fn is_quadratic_residue_or_zero(x: Field) -> bool {
     // This disallows the case of l!=0 and a==0, the case l==0 and a==0 is as expected, same with l!=0 and a!=0.
     // There is still the case of l==0 and a!=0 which would be allowed by this and would give an invalid legendre symbol for a.
     // However we enforce in that case (l = 0) that a = b^2, which still produces the correct high-level output for this gadget, since l in {0,1} and we do not directly return l.
-    assert((x==0) as Field * l == 0);
+    assert((x == 0) as Field * l == 0);
     l != -1
-
-
 }
 
 fn sgn0(x: Field) -> bool {
