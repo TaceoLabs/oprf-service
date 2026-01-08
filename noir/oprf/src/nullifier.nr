@@ -23,6 +23,7 @@ pub fn oprf_nullifier<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
     let query = generate_query(inputs.query_inputs, rp_id, action);
 
     // Validate beta once and reuse the bits
+    assert(inputs.query_inputs.beta != 0, "Beta cannot be zero");
     let beta_bits = BabyJubJubPoint::validate_scalar_field_with_bits(inputs.query_inputs.beta);
 
     // 1-3. Show that the original query was computed correctly
