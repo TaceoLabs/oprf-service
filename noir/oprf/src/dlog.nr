@@ -2,6 +2,8 @@ use super::{constants::DS_DLOG, types::PublicKey};
 use babyjubjub::BabyJubJubPoint;
 use poseidon2::bn254::perm;
 
+// Verify a Chaim-Pedersen dlog equality proof that shows that A=x*G and C=x*B share the same discrete log x, given A,B,C and proof e,s.
+// Point A is a public input in our use case (the OPRF public key and therefore we expect it to be checked to be in the prime order subgroup outside of this circuit)
 pub fn verify_dlog_equality(e: Field, s: Field, a: PublicKey, b: PublicKey, c: PublicKey) {
     BabyJubJubPoint::validate_babyjubjub_field(s);
 
@@ -18,6 +20,8 @@ pub fn verify_dlog_equality(e: Field, s: Field, a: PublicKey, b: PublicKey, c: P
             & c_point.is_not_identity(),
         "All points must be on curve and not identity",
     );
+    assert(b_point.check_sub_group(), "Point b must be in subgroup");
+    assert(c_point.check_sub_group(), "Point c must be in subgroup");
 
     // Compute r1 = G*s - a*e and r2 = b*s - c*e
     let generator = BabyJubJubPoint::generator();
