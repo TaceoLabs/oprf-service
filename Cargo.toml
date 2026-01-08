@@ -23,7 +23,7 @@ publish = false
 
 [workspace.dependencies]
 alloy = { version = "1", default-features = false }
-ark-babyjubjub = { package = "taceo-ark-babyjubjub", version = "0.5" }
+ark-babyjubjub = { package = "taceo-ark-babyjubjub", version = "^0.5.3" }
 ark-bn254 = { version = "0.5" }
 ark-ec = "0.5"
 ark-ff = "0.5"
@@ -40,7 +40,7 @@ ciborium = "0.2"
 circom-types = { package = "taceo-circom-types", version = "0.1", default-features = false }
 clap = "4"
 criterion = "0.8"
-eddsa-babyjubjub = { package = "taceo-eddsa-babyjubjub", version = "0.5" }
+eddsa-babyjubjub = { package = "taceo-eddsa-babyjubjub", version = "^0.5.3" }
 eyre = { version = "0.6" }
 futures = "0.3"
 git-version = "0.3"
