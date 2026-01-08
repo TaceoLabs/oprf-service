@@ -20,6 +20,8 @@ impl BabyJubJubPoint {
         let v = u / self.x;
         (u, v)
     }
+
+    // Precondition: Point does not have y == 1 or x == 0
     pub fn to_montgomery(self) -> MontgomeryPoint {
         // Safety: cast to unconstrained field
         let (u, v) = unsafe { self.to_montgomery_unconstrained() };
@@ -43,6 +45,7 @@ impl BabyJubJubPoint {
         (x, y)
     }
 
+    // Precondition: Point does not have u == -1 or v == 0
     pub fn from_montgomery(p: MontgomeryPoint) -> Self {
         // Safety: cast to unconstrained field
         let (x, y) = unsafe { Self::from_montgomery_unconstrained(p) };
@@ -76,6 +79,7 @@ impl MontgomeryPoint {
         num / den
     }
 
+    // precondition: point must not have v == 0
     pub fn double(self) -> MontgomeryPoint {
         // Safety: cast to unconstrained field
         // lambda = (3*u^2 + 2*A*u + 1) / (2*v)
