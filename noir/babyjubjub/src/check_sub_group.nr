@@ -5,7 +5,7 @@ fn bit_element_mul_fix_scalar(
     dbl_in: MontgomeryPoint,
     add_in: MontgomeryPoint,
 ) -> (MontgomeryPoint, MontgomeryPoint) {
-    assert((bit == 0) | (bit == 1), "Bit must be 0 or 1 in fixed-scalar step");
+    // assert((bit == 0) | (bit == 1), "Bit must be 0 or 1 in fixed-scalar step"); // given by data type
 
     let dbl_out = dbl_in.double();
 
@@ -23,7 +23,11 @@ fn segment_mul_fix_scalar<let N: u32>(
     base: BabyJubJubPoint,
 ) -> (BabyJubJubPoint, MontgomeryPoint) {
     assert(N >= 2, "Segment size must be >= 2 bits");
+    assert(N <= 246, "Segment size must be <= 246 bits to avoid overflow");
 
+    assert(base.x != 0, "Base x cannot be zero for fixed-scalar multiplication");
+    assert(base.y != 1, "Base y cannot be 1 for fixed-scalar multiplication");
+    // Precondition: base has a valid montgomery representation (i.e., not y == 1 or x == 0)
     let base_mont = base.to_montgomery();
 
     let mut dbl_current = base_mont;
@@ -37,6 +41,9 @@ fn segment_mul_fix_scalar<let N: u32>(
 
     let dbl_out_montgomery = dbl_current;
 
+    // Convert back to Edwards form
+    // Precondition is satisfied as the segment size is chosen to avoid overflows being possible,
+    // therefore we arrive at a valid Montgomery point here
     let add_edwards = BabyJubJubPoint::from_montgomery(add_current);
 
     let result_minus_base = add_edwards.subtract(base);
@@ -49,6 +56,9 @@ fn segment_mul_fix_scalar<let N: u32>(
     (result, dbl_out_montgomery)
 }
 
+// Fixed-base scalar multiplication for arbitrary BabyJubJub base point
+// Uses Montgomery curve representation internally for efficiency
+// Precondition: base point is on the curve
 pub fn esc_mul_fix_scalar(bits: [u1; 251], base: BabyJubJubPoint) -> BabyJubJubPoint {
     let mut bits1: [u1; 148] = [0; 148];
     for i in 0..148 {

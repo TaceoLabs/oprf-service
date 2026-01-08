@@ -103,7 +103,7 @@ impl BabyJubJubPoint {
         let den_x = 1 + BABYJUBJUB_D * tau;
         let den_y = 1 - BABYJUBJUB_D * tau;
 
-        // Safety: cast to unconstrained field
+        // Safety: Points lie on the BabyJubJub curve and its TE addition formula is complete.
         let (x, y) = unsafe { Self::add_unconstrained(self, other) };
         assert(
             y * den_y == delta + BABYJUBJUB_A * beta - gamma,
@@ -191,7 +191,9 @@ impl BabyJubJubPoint {
         bits
     }
 
-    // This method expects that the point is on-curve.
+    // Precondition: This method expects that the point is on-curve.
+    // For some points like the two-torsion point (0,-1), this method will not return a boolean, but rather will have unsatisfiable constraints.
+    // For a general check that is less efficient, use scalar_mul_bits with the group order and check for identity.
     pub fn check_sub_group(self) -> bool {
         let characteristic: [u1; 251] = [
             1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1,

@@ -86,6 +86,7 @@ pub fn oprf_query<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
     // Encode query to curve point and perform scalar multiplication
     let (px, py) = encode(query);
     let p = BabyJubJubPoint::new(px, py);
+    // Precondition: encode returns a valid point on the BabyJubJub curve in the prime order subgroup
     let q = p.scalar_mul_bits(beta_bits);
 
     PublicKey { x: q.x, y: q.y }
@@ -99,9 +100,12 @@ pub fn verify_unblinding(
     // Check that oprf_response is on the curve and perform unblinding
     let response_point = BabyJubJubPoint::new(oprf_response.x, oprf_response.y);
     assert(response_point.is_on_curve(), "OPRF response must be on curve");
+    // We need to check that the response is in the prime order subgroup, otherwise the response may include a small-order component which may get canceled out during unblinding and allow malleability here
+    assert(response_point.check_sub_group(), "OPRF response must be in prime order subgroup");
 
     // Verify: oprf_response * beta === oprf_response_blinded
     let reblinded = response_point.scalar_mul_bits(beta_bits);
+    // Since response point is in the prime order subgroup, reblinded is also in the prime order subgroup.
 
     assert(
         (reblinded.x == oprf_response_blinded.x) & (reblinded.y == oprf_response_blinded.y),
