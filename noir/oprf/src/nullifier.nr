@@ -55,10 +55,23 @@ pub fn oprf_nullifier<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
     );
 
     // Generate commitment and nullifier using the unblinded oprf_response
-    generate_commitment(
+    let outputs = generate_commitment(
         query,
         inputs.oprf_response,
         inputs.query_inputs.merkle_proof.mt_index,
         inputs.id_commitment_r,
-    )
+    );
+
+    // SAFETY: The multiplication is constrained below, this is just to emulate the signal hash coming from Circom/Semaphore
+    let sqr_nonce = unsafe { unconstrained_mul(nonce, nonce) };
+    assert(sqr_nonce == nonce * nonce);
+    // SAFETY: The multiplication is constrained below, this is just to emulate the signal hash coming from Circom/Semaphore
+    let sqr_signal_hash = unsafe { unconstrained_mul(signal_hash, signal_hash) };
+    assert(sqr_signal_hash == signal_hash * signal_hash);
+
+    outputs
+}
+
+unconstrained fn unconstrained_mul(a: Field, b: Field) -> Field {
+    a * b
 }
