@@ -74,26 +74,43 @@ impl WebSocketSession {
         match self.inner.next().await {
             Some(Ok(msg)) => {
                 // we only expect ciborium
-                if let tungstenite::Message::Binary(bytes) = msg {
-                    if let Ok(response) = ciborium::from_reader(bytes.as_ref()) {
-                        Ok(response)
-                    } else {
-                        tracing::trace!("could not parse message...");
-                        // we close the websocket on best-effort basis
+                match msg {
+                    tungstenite::Message::Binary(bytes) => {
+                        if let Ok(response) = ciborium::from_reader(bytes.as_ref()) {
+                            Ok(response)
+                        } else {
+                            tracing::trace!("could not parse message...");
+                            // we close the websocket on best-effort basis
+                            let _ = self.inner.close(None).await;
+                            Err(Error::UnexpectedMsg)
+                        }
+                    }
+                    tungstenite::Message::Close(close) => {
+                        tracing::trace!("did get close frame: {:?}", close);
                         let _ = self.inner.close(None).await;
+                        if let Some(close_frame) = close {
+                            tracing::trace!(
+                                "close code: {:?}, reason: {}",
+                                close_frame.code,
+                                close_frame.reason
+                            );
+                            Err(Error::ServerError(close_frame.reason.to_string()))
+                        } else {
+                            Err(Error::Eof)
+                        }
+                    }
+                    _ => {
+                        // we close the websocket on best-effort basis
+                        tracing::trace!("did get something else than binary...");
+                        let _ = self
+                            .inner
+                            .close(Some(CloseFrame {
+                                code: CloseCode::Unsupported,
+                                reason: "expects only binary".into(),
+                            }))
+                            .await;
                         Err(Error::UnexpectedMsg)
                     }
-                } else {
-                    // we close the websocket on best-effort basis
-                    tracing::trace!("did get something else than binary...");
-                    let _ = self
-                        .inner
-                        .close(Some(CloseFrame {
-                            code: CloseCode::Unsupported,
-                            reason: "expects only binary".into(),
-                        }))
-                        .await;
-                    Err(Error::UnexpectedMsg)
                 }
             }
             Some(Err(err)) => {

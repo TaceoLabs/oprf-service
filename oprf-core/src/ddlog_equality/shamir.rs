@@ -213,6 +213,10 @@ impl DLogCommitmentsShamir {
 impl DLogSessionShamir {
     /// Finalizes a proof share for a given challenge hash and session.
     /// The session and information therein is consumed to prevent reuse of the randomness.
+    ///
+    /// Prerequisites:
+    /// * The lagrange_coefficient is computed from the same set of contributing parties as in the commitments.
+    /// * The set of contributing parties in challenge_input is checked for duplicates, has the correct number of parties and contains the party corresponding to this session.
     pub fn challenge(
         self,
         session_id: Uuid,

@@ -35,6 +35,9 @@ pub enum Error {
     /// The server send an unexpected message (either message type or a frame that is not `Binary`/`Close`).
     #[error("Unexpected msg")]
     UnexpectedMsg,
+    /// The server send a close frame with an error message.
+    #[error("Server returned an error: {0}")]
+    ServerError(String),
     /// Server did close the connection.
     #[error("Endpoint closed connection")]
     Eof,

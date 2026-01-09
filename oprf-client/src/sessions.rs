@@ -58,6 +58,23 @@ impl OprfSessions {
     fn len(&self) -> usize {
         self.ws.len()
     }
+
+    /// Sorts the sessions, party IDs and commitments by party ID in ascending order.
+    fn sort_by_party_id(&mut self) {
+        let mut combined: Vec<(WebSocketSession, PartyId, PartialDLogCommitmentsShamir)> = self
+            .ws
+            .drain(..)
+            .zip(self.party_ids.drain(..))
+            .zip(self.commitments.drain(..))
+            .map(|((ws, party_id), commitments)| (ws, party_id, commitments))
+            .collect();
+        combined.sort_by_key(|(_, party_id, _)| *party_id);
+        for (ws, party_id, commitments) in combined {
+            self.ws.push(ws);
+            self.party_ids.push(party_id);
+            self.commitments.push(commitments);
+        }
+    }
 }
 
 /// Tries to establish a web-socket connection to the given service. On success sends the provided `req` to the service and reads the [`OprfResponse`].
@@ -91,7 +108,7 @@ async fn finish_session(
 
 /// Completes all OPRF sessions in parallel by sending the provided [`DLogCommitmentsShamir`] to the open sessions.
 ///
-/// **Important:**  
+/// **Important:**
 /// - These must be the *same parties* that were used during the initial
 ///   `init_sessions` call.
 /// - The order of the sessions matters: we return responses in the order provided and they need to match the original session list. This is crucial because Lagrange coefficients are computed in the meantime, and they need to match the shares obtained earlier.
@@ -172,6 +189,7 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
         }
     }
     if sessions.len() == threshold {
+        sessions.sort_by_party_id();
         Ok(sessions)
     } else {
         Err(super::Error::NotEnoughOprfResponses {

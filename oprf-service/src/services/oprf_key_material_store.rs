@@ -1,7 +1,7 @@
 //! This module provides [`OprfKeyMaterialStore`], which securely holds each OPRF DLog shares (per epoch).
 //! Access is synchronized via a `RwLock` and wrapped in an `Arc` for thread-safe shared ownership.
 //!
-//! Use the store to retrieve or add shares and public keys safely.  
+//! Use the store to retrieve or add shares and public keys safely.
 //! Each OPRF key material is represented by [`OprfKeyMaterial`].
 
 use oprf_core::{
@@ -143,7 +143,7 @@ impl OprfKeyMaterialStore {
             .get_oprf_public_key_with_epoch()
     }
 
-    /// Adds OPRF key-material and overwrites any existing entry.  
+    /// Adds OPRF key-material and overwrites any existing entry.
     pub(super) fn insert(&self, oprf_key_id: OprfKeyId, key_material: OprfKeyMaterial) {
         if self.0.write().insert(oprf_key_id, key_material).is_some() {
             tracing::debug!("overwriting material for {oprf_key_id}");

@@ -172,6 +172,18 @@ async fn partial_oprf<
             "contributing parties does not contain my coefficient ({my_coeff})",
         )));
     }
+    let mut unique_coeffs = coeffs.to_vec();
+    if !unique_coeffs.is_sorted() {
+        return Err(Error::BadRequest(
+            "contributing parties are not sorted".to_owned(),
+        ));
+    }
+    unique_coeffs.dedup();
+    if unique_coeffs.len() != num_coeffs {
+        return Err(Error::BadRequest(
+            "contributing parties contains duplicate coefficients".to_owned(),
+        ));
+    }
 
     tracing::debug!("finalizing session...");
     let proof_share = oprf_material_store.challenge(
