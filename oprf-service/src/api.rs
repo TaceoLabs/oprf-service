@@ -9,7 +9,9 @@
 
 use crate::{
     OprfRequestAuthService,
-    services::{open_sessions::OpenSessions, oprf_key_material_store::OprfKeyMaterialStore},
+    services::{
+        StartedServices, open_sessions::OpenSessions, oprf_key_material_store::OprfKeyMaterialStore,
+    },
 };
 use alloy::primitives::Address;
 use axum::Router;
@@ -22,6 +24,21 @@ pub(crate) mod errors;
 pub(crate) mod health;
 pub(crate) mod info;
 pub(crate) mod v1;
+
+/// The arguments to start the api routes.
+pub(crate) struct ApiRoutesArgs<
+    RequestAuth: for<'de> Deserialize<'de> + Send + 'static,
+    RequestAuthError: Send + 'static + std::error::Error,
+> {
+    pub(crate) party_id: PartyId,
+    pub(crate) threshold: usize,
+    pub(crate) oprf_material_store: OprfKeyMaterialStore,
+    pub(crate) req_auth_service: OprfRequestAuthService<RequestAuth, RequestAuthError>,
+    pub(crate) wallet_address: Address,
+    pub(crate) max_message_size: usize,
+    pub(crate) max_connection_lifetime: Duration,
+    pub(crate) started_services: StartedServices,
+}
 
 /// Builds the main API router for the OPRF node service.
 ///
@@ -37,14 +54,18 @@ pub fn routes<
     RequestAuth: for<'de> Deserialize<'de> + Send + 'static,
     RequestAuthError: Send + 'static + std::error::Error,
 >(
-    party_id: PartyId,
-    threshold: usize,
-    oprf_material_store: OprfKeyMaterialStore,
-    req_auth_service: OprfRequestAuthService<RequestAuth, RequestAuthError>,
-    wallet_address: Address,
-    max_message_size: usize,
-    max_connection_lifetime: Duration,
+    api_routes_args: ApiRoutesArgs<RequestAuth, RequestAuthError>,
 ) -> Router {
+    let ApiRoutesArgs {
+        party_id,
+        threshold,
+        oprf_material_store,
+        req_auth_service,
+        wallet_address,
+        max_message_size,
+        max_connection_lifetime,
+        started_services: services_healthy,
+    } = api_routes_args;
     // Create the bookkeeping service for the open-sessions. If we add a v2 at some point, we need to reuse this service, therefore we create it here.
     let open_sessions = OpenSessions::default();
     Router::new()
@@ -60,7 +81,7 @@ pub fn routes<
                 max_connection_lifetime,
             ),
         )
-        .merge(health::routes())
+        .merge(health::routes(services_healthy))
         .merge(info::routes(oprf_material_store.clone(), wallet_address))
         .layer(TraceLayer::new_for_http())
 }

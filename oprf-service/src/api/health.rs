@@ -14,12 +14,14 @@ use axum::{
 };
 use tower_http::set_header::SetResponseHeaderLayer;
 
+use crate::services::StartedServices;
+
 /// Create a router containing the health endpoints.
 ///
 /// All endpoints have `Cache-Control: no-cache` set.
-pub(crate) fn routes() -> Router {
+pub(crate) fn routes(services_healthy: StartedServices) -> Router {
     Router::new()
-        .route("/health", get(health))
+        .route("/health", get(move || health(services_healthy)))
         .layer(SetResponseHeaderLayer::overriding(
             header::CACHE_CONTROL,
             HeaderValue::from_static("no-cache"),
@@ -28,7 +30,12 @@ pub(crate) fn routes() -> Router {
 
 /// General health check endpoint.
 ///
-/// Returns `200 OK` with a plain `"healthy"` response.
-async fn health() -> impl IntoResponse {
-    (StatusCode::OK, "healthy")
+/// Returns `200 OK` with a plain `"healthy"` response if all services already started.
+/// Returns `503 Service Unavailable` with a plain `"starting"`response if one of the services did not start yet.
+async fn health(services_healthy: StartedServices) -> impl IntoResponse {
+    if services_healthy.all_started() {
+        (StatusCode::OK, "healthy")
+    } else {
+        (StatusCode::SERVICE_UNAVAILABLE, "starting")
+    }
 }

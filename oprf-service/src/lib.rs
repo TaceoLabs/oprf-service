@@ -16,6 +16,8 @@
 //! For details on the OPRF protocol, see the [design document](https://github.com/TaceoLabs/nullifier-oracle-service/blob/491416de204dcad8d46ee1296d59b58b5be54ed9/docs/oprf.pdf).
 //!
 //! Clients will connect via web-sockets to the OPRF node. Axum supports both HTTP/1.1 and HTTP/2.0 web-socket connections, therefore we accept connections with `any`.
+use crate::api::ApiRoutesArgs;
+use crate::services::key_event_watcher::KeyEventWatcherTaskArgs;
 ///
 /// If you want to enable HTTP/2.0, you either have to do it by hand or by calling `axum::serve`, which enabled HTTP/2.0 by default. Have a look at [Axum's HTTP2.0 example](https://github.com/tokio-rs/axum/blob/aeff16e91af6fa76efffdee8f3e5f464b458785b/examples/websockets-http2/src/main.rs#L57).
 use crate::{config::OprfNodeConfig, services::secret_manager::SecretManagerService};
@@ -36,6 +38,7 @@ pub mod config;
 pub mod metrics;
 pub(crate) mod services;
 
+pub use services::StartedServices;
 pub use services::oprf_key_material_store;
 pub use services::secret_manager;
 
@@ -122,6 +125,7 @@ pub async fn init<
     config: OprfNodeConfig,
     secret_manager: SecretManagerService,
     oprf_req_auth_service: OprfRequestAuthService<RequestAuth, RequestAuthError>,
+    started_services: StartedServices,
     cancellation_token: CancellationToken,
 ) -> eyre::Result<(axum::Router, tokio::task::JoinHandle<eyre::Result<()>>)> {
     tracing::info!("init rpc provider..");
@@ -164,27 +168,29 @@ pub async fn init<
         let provider = provider.clone();
         let contract_address = config.oprf_key_registry_contract;
         let cancellation_token = cancellation_token.clone();
-        services::key_event_watcher::key_event_watcher_task(
+        services::key_event_watcher::key_event_watcher_task(KeyEventWatcherTaskArgs {
             provider,
             contract_address,
             secret_manager,
-            oprf_key_material_store.clone(),
-            config.get_oprf_key_material_timeout,
-            config.start_block,
+            oprf_key_material_store: oprf_key_material_store.clone(),
+            get_oprf_key_material_timeout: config.get_oprf_key_material_timeout,
+            start_block: config.start_block,
+            started_services: started_services.clone(),
             cancellation_token,
-        )
+        })
     });
 
     tracing::info!("init oprf-service...");
-    let axum_rest_api = api::routes(
+    let axum_rest_api = api::routes(ApiRoutesArgs {
         party_id,
         threshold,
-        oprf_key_material_store,
-        oprf_req_auth_service,
-        config.wallet_address,
-        config.ws_max_message_size,
-        config.session_lifetime,
-    );
+        oprf_material_store: oprf_key_material_store,
+        req_auth_service: oprf_req_auth_service,
+        wallet_address: config.wallet_address,
+        max_message_size: config.ws_max_message_size,
+        max_connection_lifetime: config.session_lifetime,
+        started_services,
+    });
 
     Ok((axum_rest_api, key_event_watcher))
 }

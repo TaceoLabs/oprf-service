@@ -4,7 +4,7 @@
 //!
 //! The watcher subscribes to various key generation events and reports contributions back to the contract.
 
-use std::time::Duration;
+use std::{sync::atomic::Ordering, time::Duration};
 
 use alloy::{
     eips::BlockNumberOrTag,
@@ -20,43 +20,56 @@ use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use crate::services::{
-    oprf_key_material_store::OprfKeyMaterialStore, secret_manager::SecretManagerService,
+    StartedServices, oprf_key_material_store::OprfKeyMaterialStore,
+    secret_manager::SecretManagerService,
 };
+
+impl StartedServices {
+    /// Sets the key event watcher service to healthy.
+    fn key_event_watcher_ready(&self) {
+        self.key_event_watcher.store(true, Ordering::Relaxed);
+        tracing::info!("key event watcher is ready");
+    }
+}
+
+/// The arguments to start the key-even-watcher.
+pub(crate) struct KeyEventWatcherTaskArgs {
+    pub(crate) provider: DynProvider,
+    pub(crate) contract_address: Address,
+    pub(crate) secret_manager: SecretManagerService,
+    pub(crate) oprf_key_material_store: OprfKeyMaterialStore,
+    pub(crate) get_oprf_key_material_timeout: Duration,
+    pub(crate) start_block: Option<u64>,
+    pub(crate) started_services: StartedServices,
+    pub(crate) cancellation_token: CancellationToken,
+}
 
 /// Background task that subscribes to key generation events and handles them.
 ///
 /// Connects to the blockchain via WebSocket and verifies that the
 /// `OprfKeyRegistry` contract is ready.
 pub(crate) async fn key_event_watcher_task(
-    provider: DynProvider,
-    contract_address: Address,
-    secret_manager: SecretManagerService,
-    oprf_key_material_store: OprfKeyMaterialStore,
-    get_oprf_key_material_timeout: Duration,
-    start_block: Option<u64>,
-    cancellation_token: CancellationToken,
+    key_event_watcher_task_args: KeyEventWatcherTaskArgs,
 ) -> eyre::Result<()> {
     // shutdown service if event watcher encounters an error and drops this guard
+    let cancellation_token = key_event_watcher_task_args.cancellation_token.clone();
     let _drop_guard = cancellation_token.drop_guard_ref();
-    tracing::info!("checking OprfKeyRegistry ready state at address {contract_address}..");
-    let contract = OprfKeyRegistry::new(contract_address, provider.clone());
+
+    tracing::info!(
+        "checking OprfKeyRegistry ready state at address {}..",
+        key_event_watcher_task_args.contract_address
+    );
+    let contract = OprfKeyRegistry::new(
+        key_event_watcher_task_args.contract_address,
+        key_event_watcher_task_args.provider.clone(),
+    );
     if !contract.isContractReady().call().await? {
         eyre::bail!("OprfKeyRegistry contract not ready");
     }
     tracing::info!("ready!");
 
     tracing::info!("start handling events");
-    match handle_events(
-        provider,
-        contract_address,
-        oprf_key_material_store,
-        secret_manager,
-        get_oprf_key_material_timeout,
-        start_block,
-        cancellation_token.clone(),
-    )
-    .await
-    {
+    match handle_events(key_event_watcher_task_args).await {
         Ok(_) => tracing::info!("stopped key event watcher"),
         Err(err) => tracing::error!("key event watcher encountered an error: {err}"),
     }
@@ -64,15 +77,17 @@ pub(crate) async fn key_event_watcher_task(
 }
 
 /// Filters for various key generation event signatures and handles them
-async fn handle_events(
-    provider: DynProvider,
-    contract_address: Address,
-    oprf_key_material_store: OprfKeyMaterialStore,
-    secret_manager: SecretManagerService,
-    get_oprf_key_material_timeout: Duration,
-    start_block: Option<u64>,
-    cancellation_token: CancellationToken,
-) -> eyre::Result<()> {
+async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> eyre::Result<()> {
+    let KeyEventWatcherTaskArgs {
+        provider,
+        contract_address,
+        secret_manager,
+        oprf_key_material_store,
+        get_oprf_key_material_timeout,
+        start_block,
+        started_services: services_healthy,
+        cancellation_token,
+    } = key_event_watcher_task_args;
     let event_signatures = vec![
         OprfKeyRegistry::SecretGenFinalize::SIGNATURE_HASH,
         OprfKeyRegistry::KeyDeletion::SIGNATURE_HASH,
@@ -113,6 +128,8 @@ async fn handle_events(
     };
 
     let mut stream = sub.into_stream();
+    // finally set to healthy
+    services_healthy.key_event_watcher_ready();
     loop {
         let log = tokio::select! {
             log = stream.next() => {

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use crate::{auth::ExampleOprfRequestAuthenticator, config::ExampleOprfNodeConfig};
-use oprf_service::secret_manager::SecretManagerService;
+use oprf_service::{StartedServices, secret_manager::SecretManagerService};
 
 pub(crate) mod auth;
 pub mod config;
@@ -26,6 +26,7 @@ pub async fn start(
         service_config,
         secret_manager,
         oprf_req_auth_service,
+        StartedServices::default(),
         cancellation_token.clone(),
     )
     .await?;
