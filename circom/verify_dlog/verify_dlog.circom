@@ -2,7 +2,6 @@ pragma circom 2.2.2;
 
 include "poseidon2/poseidon2.circom";
 include "babyjubjub/babyjubjub.circom";
-include "babyjubjub/correct_sub_group.circom";
 
 // Poseidon sponge construction by hand to compute the challenge point e. We use state size 4 with capacity 1 and absorb all provided points and squeeze once. The challenge we output is the first element not counting the capacity from the squeeze.
 template ComputeChallengeHash() {
@@ -43,13 +42,12 @@ template VerifyDlog() {
     input signal c[2];
 
     // Point A is public input. This means we don't necessarily need to check this inside the circuit, but can delegate that to the verifier in Rust land.
-    BabyJubJubPoint {twisted_edwards } a_p <== BabyJubJubCheck()(a[0], a[1]);
-    BabyJubJubPoint {twisted_edwards } b_p <== BabyJubJubCheck()(b[0], b[1]);
-    BabyJubJubPoint {twisted_edwards } c_p <== BabyJubJubCheck()(c[0], c[1]);
-
+    BabyJubJubPoint { twisted_edwards } a_p_check <== BabyJubJubCheck()(a[0], a[1]);
+    // SAFETY: Point A has been checked to be on the curve and in the correct subgroup outside of the circuit.
+    BabyJubJubPoint { twisted_edwards_in_subgroup } a_p <== a_p_check;
     // check that B and C are on the correct subgroup - we don't need to check A, as this is a public point and we expect the verifier to check that in Rust land.
-    BabyJubJubCheckInCorrectSubgroup()(b_p);
-    BabyJubJubCheckInCorrectSubgroup()(c_p);
+    BabyJubJubPoint { twisted_edwards_in_subgroup } b_p <== BabyJubJubCheckAndSubgroupCheck()(b[0], b[1]);
+    BabyJubJubPoint { twisted_edwards_in_subgroup } c_p <== BabyJubJubCheckAndSubgroupCheck()(c[0], c[1]);
 
     // check if not the identity
     BabyJubJubCheckNotIdentity()(a_p);

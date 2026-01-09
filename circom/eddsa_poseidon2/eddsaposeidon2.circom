@@ -22,7 +22,6 @@ pragma circom 2.0.0;
 
 include "poseidon2/poseidon2.circom";
 include "babyjubjub/babyjubjub.circom";
-include "babyjubjub/correct_sub_group.circom";
 
 template EdDSAPoseidon2Verifier() {
     signal input Ax;
@@ -53,11 +52,10 @@ template EdDSAPoseidon2Verifier() {
 
     // We check that R is on the curve.
     // This is not strictly necessary for security, but since it only adds 3 constraints we do it anyway.
-    BabyJubJubPoint {twisted_edwards } R_p <== BabyJubJubCheck()(Rx, Ry);
-    // We check that A is on the curve.
-    BabyJubJubPoint {twisted_edwards } A_p <== BabyJubJubCheck()(Ax, Ay);
-    // We check that A is in the correct subgroup.
-    BabyJubJubCheckInCorrectSubgroup()(A_p);
+    // We do not require R to be in the correct subgroup, since it is only used in Twisted Edwards additions.
+    BabyJubJubPoint { twisted_edwards } R_p <== BabyJubJubCheck()(Rx, Ry);
+    // We check that A is on the curve and in the correct subgroup.
+    BabyJubJubPoint { twisted_edwards_in_subgroup } A_p <== BabyJubJubCheckAndSubgroupCheck()(Ax, Ay);
     // We check that A is not zero.
     component isZero = IsZero();
     isZero.in <== Ax;

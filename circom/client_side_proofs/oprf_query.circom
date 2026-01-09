@@ -104,7 +104,8 @@ template OprfQueryInner(MAX_DEPTH) {
     // 3. Query is computed correctly
     component hasher = EncodeToCurveBabyJubJub();
     hasher.in <== query;
-    BabyJubJubPoint() { twisted_edwards } p;
+    // SAFETY: EncodeToCurveBabyJubJub guarantees that the output point is on the curve and in the correct subgroup.
+    BabyJubJubPoint() { twisted_edwards_in_subgroup } p;
     p.x <== hasher.out[0];
     p.y <== hasher.out[1];
 

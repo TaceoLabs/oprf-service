@@ -9,7 +9,7 @@ template BabyJubJubScalarMulGeneratorTest() {
 
     BabyJubJubScalarField() in_e;
     in_e.f <== e;
-    BabyJubJubPoint() { twisted_edwards } result <== BabyJubJubScalarGenerator()(in_e);
+    BabyJubJubPoint() { twisted_edwards_in_subgroup } result <== BabyJubJubScalarGenerator()(in_e);
     out[0] <== result.x;
     out[1] <== result.y;
 }

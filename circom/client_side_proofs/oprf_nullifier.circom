@@ -156,10 +156,9 @@ template OprfNullifier(MAX_DEPTH) {
     BabyJubJubScalarField() beta_f;
     beta_f.f <== beta;
     // The following checks that the oprf_response is on the curve and in the correct subgroup.
-    component p_check = BabyJubJubCheck();
+    component p_check = BabyJubJubCheckAndSubgroupCheck();
     p_check.x <== oprf_response[0];
     p_check.y <== oprf_response[1];
-    BabyJubJubCheckInCorrectSubgroup()(p_check.p);
 
     // Preconditions: p_check.p is a valid point in the correct subgroup, checked above
     component unblinder = BabyJubJubScalarMul();

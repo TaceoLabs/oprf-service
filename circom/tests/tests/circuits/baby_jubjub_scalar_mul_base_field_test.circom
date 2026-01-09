@@ -10,11 +10,11 @@ template BabyJubJubScalarMulBaseFieldTest() {
     signal output out[2];
 
     BabyJubJubBaseField() in_e;
-    BabyJubJubPoint() { twisted_edwards } in_p;
+    BabyJubJubPoint() { twisted_edwards_in_subgroup } in_p;
     in_e.f <== e;
     in_p.x <== x;
     in_p.y <== y;
-    BabyJubJubPoint() { twisted_edwards } result <== BabyJubJubScalarMulBaseField()(in_e, in_p);
+    BabyJubJubPoint() { twisted_edwards_in_subgroup } result <== BabyJubJubScalarMulBaseField()(in_e, in_p);
     out[0] <== result.x;
     out[1] <== result.y;
 }

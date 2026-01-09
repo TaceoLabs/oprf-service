@@ -324,10 +324,10 @@ template EncryptAndCommit() {
     ////////////////////////////////////////////////////////////////////////////
 
     // Derive the symmetric keys for encryption
-    BabyJubJubPoint() { twisted_edwards } pk_p;
+    // SAFETY: pk_p is on the curve and in the correct subgroup, guaranteed outside of the ZK proof as this is a public input.
+    BabyJubJubPoint() { twisted_edwards_in_subgroup } pk_p;
     pk_p.x <== pk[0];
     pk_p.y <== pk[1];
-    // Precondition: pk_p is on the curve and in the correct subgroup, guaranteed outside of the ZK proof as this is a public input.
     component sym_key = BabyJubJubScalarMul();
     sym_key.p <== pk_p;
     sym_key.e <== my_sk;

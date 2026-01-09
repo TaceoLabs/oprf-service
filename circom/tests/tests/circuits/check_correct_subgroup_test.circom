@@ -1,6 +1,6 @@
 pragma circom 2.2.2;
 
-include "babyjubjub/correct_sub_group.circom";
+include "babyjubjub/babyjubjub.circom";
 
 template Tester() {
     signal input in[2];

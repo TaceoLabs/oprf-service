@@ -1,5 +1,5 @@
 pragma circom 2.2.0;
-include "babyjubjub/correct_sub_group.circom";
+include "babyjubjub/babyjubjub.circom";
 
 template Wrapper() {
     signal input x;

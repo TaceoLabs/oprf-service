@@ -6,7 +6,7 @@ include "babyjubjub/babyjubjub.circom";
 template BabyJubJubNotIdentityTest() {
     signal input p[2];
 
-    BabyJubJubPoint() { twisted_edwards } in_p;
+    BabyJubJubPoint() { twisted_edwards_in_subgroup } in_p;
     in_p.x <== p[0];
     in_p.y <== p[1];
     BabyJubJubCheckNotIdentity()(in_p);
