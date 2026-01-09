@@ -15,7 +15,7 @@ pub fn deploy_test_setup(
     let mut cmd = Command::new("forge");
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cmd = cmd
-        .current_dir(dir.join("../contracts"))
+        .current_dir(dir.join("../oprf-key-registry"))
         .env("TACEO_ADMIN_ADDRESS", taceo_admin_address)
         .env("NUM_PEERS", num_peers.to_string())
         .env("THRESHOLD", threshold.to_string())
@@ -56,11 +56,11 @@ pub fn init_key_gen(
     tracing::debug!("with rpc url: {rpc_url}");
     tracing::debug!("on contract: {rp_registry_contract}");
     let cmd = cmd
-        .current_dir(dir.join("../contracts/script/deploy/"))
+        .current_dir(dir.join("../oprf-key-registry"))
         .env("OPRF_KEY_REGISTRY_PROXY", rp_registry_contract.to_string())
         .env("OPRF_KEY_ID", oprf_key_id.to_string())
         .arg("script")
-        .arg("InitKeyGen.s.sol")
+        .arg("script/InitKeyGen.s.sol")
         .arg("--rpc-url")
         .arg(rpc_url)
         .arg("--broadcast")
@@ -88,11 +88,11 @@ pub fn init_reshare(
     tracing::debug!("with rpc url: {rpc_url}");
     tracing::debug!("on contract: {rp_registry_contract}");
     let cmd = cmd
-        .current_dir(dir.join("../contracts/script/deploy/"))
+        .current_dir(dir.join("../oprf-key-registry"))
         .env("OPRF_KEY_REGISTRY_PROXY", rp_registry_contract.to_string())
         .env("OPRF_KEY_ID", oprf_key_id.to_string())
         .arg("script")
-        .arg("InitReshare.s.sol")
+        .arg("script/InitReshare.s.sol")
         .arg("--rpc-url")
         .arg(rpc_url)
         .arg("--broadcast")
@@ -116,14 +116,14 @@ pub fn delete_oprf_key_material(
     let mut cmd = Command::new("forge");
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cmd = cmd
-        .current_dir(dir.join("../contracts/script/"))
+        .current_dir(dir.join("../oprf-key-registry"))
         .env(
             "OPRF_KEY_REGISTRY_PROXY",
             oprf_key_registry_contract.to_string(),
         )
         .env("OPRF_KEY_ID", oprf_key_id.to_string())
         .arg("script")
-        .arg("DeleteOprfKey.s.sol")
+        .arg("script/DeleteOprfKey.s.sol")
         .arg("--rpc-url")
         .arg(rpc_url)
         .arg("--broadcast")
