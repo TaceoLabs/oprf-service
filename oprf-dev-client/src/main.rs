@@ -351,7 +351,7 @@ async fn stress_test(
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
-    nodes_observability::install_tracing("oprf_dev_client=trace,warn");
+    nodes_observability::install_tracing("taceo_oprf_dev_client=trace,warn");
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
         .expect("can install");
