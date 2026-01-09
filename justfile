@@ -42,6 +42,60 @@ print-constraints:
     printf "%-20s %s\n" "Verify DLog" "$verify_dlog"
     printf "%-20s %s\n" "Subgroup Checks" "$subgroup_check"
 
+[group('build')]
+[working-directory('circom/main/query')]
+build-query-artifacts:
+    circom --r1cs ../OPRFQueryProof.circom -l ../../ --O2 --output ../
+    snarkjs groth16 setup ../OPRFQueryProof.r1cs ../../powersOfTau28_hez_final_17.ptau OPRFQuery.zkey
+    snarkjs zkey contribute OPRFQuery.zkey OPRFQuery.zkey.new --name="TACEO" -v
+    mv OPRFQuery.zkey.new OPRFQuery.zkey
+    snarkjs zkey export verificationkey OPRFQuery.zkey OPRFQuery.vk.json
+    convert-zkey-to-ark --zkey-path OPRFQuery.zkey --uncompressed
+    mv arks.zkey OPRFQuery.arks.zkey
+
+[group('build')]
+[working-directory('circom/main/nullifier')]
+build-nullifier-artifacts:
+    circom --r1cs ../OPRFNullifierProof.circom -l ../../ --O2 --output ../
+    snarkjs groth16 setup ../OPRFNullifierProof.r1cs ../../powersOfTau28_hez_final_17.ptau OPRFNullifier.zkey
+    snarkjs zkey contribute OPRFNullifier.zkey OPRFNullifier.zkey.new --name="TACEO" -v
+    mv OPRFNullifier.zkey.new OPRFNullifier.zkey
+    snarkjs zkey export verificationkey OPRFNullifier.zkey OPRFNullifier.vk.json
+    convert-zkey-to-ark --zkey-path OPRFNullifier.zkey --uncompressed
+    mv arks.zkey OPRFNullifier.arks.zkey
+
+[group('build')]
+[working-directory('circom/main/key-gen')]
+build-key-gen-artifacts:
+    circom --r1cs ../OPRFKeyGenProof.circom -l ../../ --O2 --output ../
+    snarkjs groth16 setup ../OPRFKeyGenProof.r1cs ../../powersOfTau28_hez_final_17.ptau OPRFKeyGen.zkey
+    snarkjs zkey contribute OPRFKeyGen.zkey OPRFKeyGen.zkey.new --name="TACEO" -v
+    mv OPRFKeyGen.zkey.new OPRFKeyGen.zkey
+    snarkjs zkey export verificationkey OPRFKeyGen.zkey OPRFKeyGen.vk.json
+    convert-zkey-to-ark --zkey-path OPRFKeyGen.zkey --uncompressed
+    mv arks.zkey OPRFKeyGen.arks.zkey
+
+[group('build')]
+[working-directory('circom/main/query')]
+build-query-graph:
+    circom --r1cs ../OPRFQueryProof.circom -l ../../ --O2 --output ../
+    cd ../../../../circom-witness-rs && WITNESS_CPP=../oprf-service/circom/main/OPRFQueryProof.circom CIRCOM_LIBRARY_PATH=../oprf-service/circom/ cargo run --bin generate-graph --features build-witness
+    mv ../../../../circom-witness-rs/graph.bin ./OPRFQueryGraph.bin
+
+[group('build')]
+[working-directory('circom/main/nullifier')]
+build-nullifier-graph:
+    circom --r1cs ../OPRFNullifierProof.circom -l ../../ --O2 --output ../
+    cd ../../../../circom-witness-rs && WITNESS_CPP=../oprf-service/circom/main/OPRFNullifierProof.circom CIRCOM_LIBRARY_PATH=../oprf-service/circom/ cargo run --bin generate-graph --features build-witness
+    mv ../../../../circom-witness-rs/graph.bin ./OPRFNullifierGraph.bin
+
+[group('build')]
+[working-directory('circom/main/key-gen')]
+build-key-gen-graph:
+    circom --r1cs ../OPRFKeyGenProof.circom -l ../../ --O2 --output ../
+    cd ../../../../circom-witness-rs && WITNESS_CPP=../oprf-service/circom/main/OPRFKeyGenProof.circom CIRCOM_LIBRARY_PATH=../oprf-service/circom/ cargo run --bin generate-graph --features build-witness
+    mv ../../../../circom-witness-rs/graph.bin ./OPRFKeyGenGraph.bin
+
 [group('test')]
 unit-tests:
     cargo test --release --all-features --lib
