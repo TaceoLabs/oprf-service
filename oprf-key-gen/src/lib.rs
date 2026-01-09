@@ -110,7 +110,6 @@ pub async fn start(
             contract_address,
             dlog_secret_gen_service,
             start_block: config.start_block,
-            max_epoch_cache_size: config.max_epoch_cache_size,
             secret_manager,
             transaction_handler,
             start_signal: key_event_watcher_started_signal,

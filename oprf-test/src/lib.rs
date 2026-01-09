@@ -1,6 +1,7 @@
 use crate::test_secret_manager::TestSecretManager;
 use alloy::primitives::{Address, address};
 use std::{path::PathBuf, sync::Arc, time::Duration};
+use tokio_util::sync::CancellationToken;
 
 pub mod health_checks;
 pub mod oprf_key_registry_scripts;
@@ -32,13 +33,14 @@ pub const OPRF_PEER_PRIVATE_KEY_4: &str =
     "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6";
 pub const OPRF_PEER_ADDRESS_4: Address = address!("0xa0Ee7A142d267C1f36714E4a8F75612F20a79720");
 
-async fn start_node(
+pub async fn start_node(
     id: usize,
     chain_ws_rpc_url: &str,
     secret_manager: TestSecretManager,
-    rp_registry_contract: Address,
+    oprf_key_registry_contract: Address,
     wallet_address: Address,
-) -> String {
+) -> (String, CancellationToken) {
+    let cancellation_token = CancellationToken::new();
     let url = format!("http://localhost:1{id:04}"); // set port based on id, e.g. 10001 for id 1
     let config = oprf_service_example::config::ExampleOprfNodeConfig {
         bind_addr: format!("0.0.0.0:1{id:04}").parse().unwrap(),
@@ -46,19 +48,30 @@ async fn start_node(
         service_config: oprf_service::config::OprfNodeConfig {
             environment: oprf_service::config::Environment::Dev,
             rp_secret_id_prefix: format!("oprf/rp/n{id}"),
-            oprf_key_registry_contract: rp_registry_contract,
+            oprf_key_registry_contract,
             chain_ws_rpc_url: chain_ws_rpc_url.into(),
             ws_max_message_size: 512 * 1024,
             session_lifetime: Duration::from_secs(60),
             wallet_address,
             get_oprf_key_material_timeout: Duration::from_secs(60),
-            start_block: Some(0),
+            start_block: None,
         },
     };
-    let never = async { futures::future::pending::<()>().await };
-    tokio::spawn(async move {
-        let res = oprf_service_example::start(config, Arc::new(secret_manager), never).await;
-        eprintln!("service failed to start: {res:?}");
+
+    tokio::spawn({
+        let cancellation_token = cancellation_token.clone();
+        let cancellation_token_axum = cancellation_token.clone();
+        async move {
+            let res = oprf_service_example::start(config, Arc::new(secret_manager), async move {
+                cancellation_token_axum.cancelled().await
+            })
+            .await;
+            if !cancellation_token.is_cancelled() {
+                eprintln!("service stopped unexpectedly: {res:?}");
+            } else {
+                println!("service with {id} stopped gracefully");
+            }
+        }
     });
     // very graceful timeout for CI
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -71,17 +84,18 @@ async fn start_node(
     })
     .await
     .expect("can start");
-    url
+    (url, cancellation_token)
 }
 
-async fn start_key_gen(
+pub async fn start_key_gen(
     id: usize,
     chain_ws_rpc_url: &str,
     secret_manager: TestSecretManager,
     rp_registry_contract: Address,
     key_gen_zkey_path: PathBuf,
     key_gen_witness_graph_path: PathBuf,
-) -> String {
+) -> (String, CancellationToken) {
+    let cancellation_token = CancellationToken::new();
     let url = format!("http://localhost:2{id:04}"); // set port based on id, e.g. 20001 for id 1
     let config = oprf_key_gen::config::OprfKeyGenConfig {
         environment: oprf_key_gen::config::Environment::Dev,
@@ -93,17 +107,27 @@ async fn start_key_gen(
         key_gen_zkey_path,
         key_gen_witness_graph_path,
         max_wait_time_shutdown: Duration::from_secs(10),
-        max_epoch_cache_size: 3,
-        start_block: Some(0),
+        max_epoch_cache_size: test_secret_manager::SECRET_MAX_CACHE_SIZE,
+        start_block: None,
         max_wait_time_transaction_confirmation: Duration::from_secs(30),
         max_transaction_attempts: 3,
     };
-    let never = async { futures::future::pending::<()>().await };
-    tokio::spawn(async move {
-        let res = oprf_key_gen::start(config, Arc::new(secret_manager), never).await;
-        eprintln!("key-gen failed to start: {res:?}");
+    tokio::spawn({
+        let cancellation_token = cancellation_token.clone();
+        let cancellation_token_axum = cancellation_token.clone();
+        async move {
+            let res = oprf_key_gen::start(config, Arc::new(secret_manager), async move {
+                cancellation_token_axum.cancelled().await
+            })
+            .await;
+            if !cancellation_token.is_cancelled() {
+                eprintln!("key-gen stopped unexpectedly: {res:?}");
+            } else {
+                println!("key-gen with {id} stopped gracefully");
+            }
+        }
     });
-    url
+    (url, cancellation_token)
 }
 
 pub fn create_3_secret_managers() -> [TestSecretManager; 3] {
@@ -128,9 +152,9 @@ pub async fn start_3_nodes(
     chain_ws_rpc_url: &str,
     secret_manager: [TestSecretManager; 3],
     key_gen_contract: Address,
-) -> [String; 3] {
+) -> ([String; 3], [CancellationToken; 3]) {
     let [secret_manager0, secret_manager1, secret_manager2] = secret_manager;
-    tokio::join!(
+    let (node0, node1, node2) = tokio::join!(
         start_node(
             0,
             chain_ws_rpc_url,
@@ -152,15 +176,15 @@ pub async fn start_3_nodes(
             key_gen_contract,
             OPRF_PEER_ADDRESS_2,
         )
-    )
-    .into()
+    );
+    ([node0.0, node1.0, node2.0], [node0.1, node1.1, node2.1])
 }
 
 pub async fn start_5_nodes(
     chain_ws_rpc_url: &str,
     secret_manager: [TestSecretManager; 5],
     key_gen_contract: Address,
-) -> [String; 5] {
+) -> ([String; 5], [CancellationToken; 5]) {
     let [
         secret_manager0,
         secret_manager1,
@@ -168,7 +192,7 @@ pub async fn start_5_nodes(
         secret_manager3,
         secret_manager4,
     ] = secret_manager;
-    tokio::join!(
+    let (node0, node1, node2, node3, node4) = tokio::join!(
         start_node(
             0,
             chain_ws_rpc_url,
@@ -204,20 +228,24 @@ pub async fn start_5_nodes(
             key_gen_contract,
             OPRF_PEER_ADDRESS_4,
         ),
+    );
+    (
+        [node0.0, node1.0, node2.0, node3.0, node4.0],
+        [node0.1, node1.1, node2.1, node3.1, node4.1],
     )
-    .into()
 }
 
 pub async fn start_3_key_gens(
     chain_ws_rpc_url: &str,
     secret_manager: [TestSecretManager; 3],
     key_gen_contract: Address,
-) -> [String; 3] {
+) -> ([String; 3], [CancellationToken; 3]) {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
     let key_get_zkey_path = dir.join("../circom/main/key-gen/OPRFKeyGen.13.arks.zkey");
     let key_gen_witness_graph_path = dir.join("../circom/main/key-gen/OPRFKeyGenGraph.13.bin");
     let [secret_manager0, secret_manager1, secret_manager2] = secret_manager;
-    tokio::join!(
+    let (node0, node1, node2) = tokio::join!(
         start_key_gen(
             0,
             chain_ws_rpc_url,
@@ -242,15 +270,15 @@ pub async fn start_3_key_gens(
             key_get_zkey_path.clone(),
             key_gen_witness_graph_path.clone()
         ),
-    )
-    .into()
+    );
+    ([node0.0, node1.0, node2.0], [node0.1, node1.1, node2.1])
 }
 
 pub async fn start_5_key_gens(
     chain_ws_rpc_url: &str,
     secret_manager: [TestSecretManager; 5],
     key_gen_contract: Address,
-) -> [String; 5] {
+) -> ([String; 5], [CancellationToken; 5]) {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let key_get_zkey_path = dir.join("../circom/main/key-gen/OPRFKeyGen.25.arks.zkey");
     let key_gen_witness_graph_path = dir.join("../circom/main/key-gen/OPRFKeyGenGraph.25.bin");
@@ -261,7 +289,7 @@ pub async fn start_5_key_gens(
         secret_manager3,
         secret_manager4,
     ] = secret_manager;
-    tokio::join!(
+    let (node0, node1, node2, node3, node4) = tokio::join!(
         start_key_gen(
             0,
             chain_ws_rpc_url,
@@ -302,6 +330,9 @@ pub async fn start_5_key_gens(
             key_get_zkey_path.clone(),
             key_gen_witness_graph_path.clone()
         ),
+    );
+    (
+        [node0.0, node1.0, node2.0, node3.0, node4.0],
+        [node0.1, node1.1, node2.1, node3.1, node4.1],
     )
-    .into()
 }

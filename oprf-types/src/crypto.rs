@@ -264,7 +264,14 @@ impl OprfKeyMaterial {
         self.shares.contains_key(&epoch)
     }
 
+    /// Sets the `max_cache`. Does not perform any truncating, but will remove all shares on the next insert that exceed this provided value.
+    pub fn set_max_size(&mut self, max_cache: usize) {
+        self.max_cache = max_cache;
+    }
+
     /// Inserts a new [`DLogShareShamir`] for the given epoch.
+    ///
+    /// Drops the oldest shares w.r.t. epoch that exceed `max_cache`.
     pub fn insert_share(&mut self, epoch: ShareEpoch, share: DLogShareShamir) {
         if self.shares.insert(epoch, share).is_some() {
             tracing::warn!("overwriting share for epoch {epoch}");
@@ -273,7 +280,7 @@ impl OprfKeyMaterial {
             "stored share with epoch {epoch} - now have {} epochs stored",
             self.shares.len()
         );
-        if self.shares.len() > self.max_cache {
+        while self.shares.len() > self.max_cache {
             // epochs are strictly increasing
             let (dropped_epoch, _) = self.shares.pop_first().expect("Is there we just checked");
             tracing::info!("removing share epoch {dropped_epoch}");

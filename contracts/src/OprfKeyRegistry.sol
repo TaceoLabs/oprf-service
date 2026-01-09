@@ -349,11 +349,6 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         if (st.generatedEpoch == 0) {
             revert BadContribution();
         }
-        // in contrast to key-gen we don't compute the running total, but we can check whether the commitments are correct from the previous reshare/key-gen.
-        Types.BabyJubJubElement memory shouldCommitment = st.shareCommitments[partyId];
-        if (!_isEqual(shouldCommitment, data.commShare)) {
-            revert BadContribution();
-        }
         // check if someone wants to be a consumer
         bool isEmptyCommShare = _isEmpty(data.commShare);
         bool isEmptyCommCoeffs = data.commCoeffs == 0;
@@ -369,6 +364,11 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         } else {
             // both commitments are set and we still need more producers
             _curveChecks(data.commShare);
+            // in contrast to key-gen we don't compute the running total, but we can check whether the commitments are correct from the previous reshare/key-gen.
+            Types.BabyJubJubElement memory shouldCommitment = st.shareCommitments[partyId];
+            if (!_isEqual(shouldCommitment, data.commShare)) {
+                revert BadContribution();
+            }
             st.nodeRoles[msg.sender] = Types.KeyGenRole.PRODUCER;
             st.numProducers += 1;
             // check if we are the last producer, then we can compute the lagrange coefficients
@@ -790,7 +790,7 @@ contract OprfKeyRegistry is Initializable, Ownable2StepUpgradeable, UUPSUpgradea
         // delete the old commitments now
         delete st.shareCommitments;
         st.shareCommitments = new Types.BabyJubJubElement[](numPeers);
-        emit Types.SecretGenRound2(oprfKeyId);
+        emit Types.SecretGenRound2(oprfKeyId, st.generatedEpoch);
     }
 
     function _tryEmitRound3Event(uint160 oprfKeyId, uint256 necessaryContributions, Types.OprfKeyGenState storage st)

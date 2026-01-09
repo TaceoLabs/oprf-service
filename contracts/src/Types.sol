@@ -75,7 +75,7 @@ library Types {
     event KeyGenConfirmation(uint160 indexed oprfKeyId, uint16 partyId, uint8 round, uint128 epoch);
     // events for key-gen
     event SecretGenRound1(uint160 indexed oprfKeyId, uint256 threshold);
-    event SecretGenRound2(uint160 indexed oprfKeyId);
+    event SecretGenRound2(uint160 indexed oprfKeyId, uint128 indexed epoch);
     event SecretGenRound3(uint160 indexed oprfKeyId);
     event SecretGenFinalize(uint160 indexed oprfKeyId, uint128 indexed epoch);
     // events for reshare
