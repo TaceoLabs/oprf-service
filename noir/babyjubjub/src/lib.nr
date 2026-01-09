@@ -231,10 +231,17 @@ fn test_babyjubjub_in_correct_subgroup() {
     assert(BabyJubJubPoint::check_sub_group(BabyJubJubPoint::new(p0, p1)));
 }
 
-#[test(should_fail)]
+#[test]
 fn test_two_torsion_not_correct_subgroup() {
     let p0 = 0;
     let p1 = -1;
 
-    assert(BabyJubJubPoint::check_sub_group(BabyJubJubPoint::new(p0, p1)));
+    assert(BabyJubJubPoint::check_sub_group(BabyJubJubPoint::new(p0, p1)) == false);
+}
+#[test]
+fn test_a_plus_two_torsion_not_correct_subgroup() {
+    let p0 = 4689731437944306428780974070575571025333825310181802403039288057202868837337;
+    let p1 = 14792220576807380471707687543579831579477508903129740636298855878394914021491;
+
+    assert(BabyJubJubPoint::check_sub_group(BabyJubJubPoint::new(p0, p1)) == false);
 }
