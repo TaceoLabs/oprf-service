@@ -78,6 +78,7 @@ impl fmt::Debug for OprfKeyRegistryErrors {
                 f.debug_tuple("UnsupportedNumPeersThreshold").finish()
             }
             Self::WrongRound(_) => f.debug_tuple("WrongRound").finish(),
+            Self::PartiesNotDistinct(_) => f.debug_tuple("PartiesNotDistinct").finish(),
         }
     }
 }
