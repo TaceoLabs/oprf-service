@@ -1,0 +1,22 @@
+{
+  "name": "oprf-safe-deploy",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "deploy:local": "tsx src/deploy.ts --network local",
+    "deploy:sepolia": "tsx src/deploy.ts --network sepolia",
+    "deploy:mainnet": "tsx src/deploy.ts --network mainnet"
+  },
+  "dependencies": {
+    "@safe-global/protocol-kit": "^5.0.4",
+    "@safe-global/api-kit": "^2.5.4",
+    "@safe-global/types-kit": "^1.0.0",
+    "viem": "^2.21.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

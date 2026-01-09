@@ -7,6 +7,8 @@ perf.data.old
 codebook.toml
 logs
 *.ptau
+node_modules/
+dist/
 
 # Foundry (forge)
 contracts/out/
