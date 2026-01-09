@@ -18,6 +18,20 @@ async fn health_check(health_url: String) {
     tracing::info!("healthy: {health_url}");
 }
 
+pub async fn service_down(service: &str, max_wait_time: Duration) -> eyre::Result<()> {
+    let health_url = format!("{service}/health");
+    tokio::time::timeout(max_wait_time, async move {
+        loop {
+            if reqwest::get(&health_url).await.is_err() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    })
+    .await
+    .map_err(|_| eyre::eyre!("services not healthy in provided time: {max_wait_time:?}"))
+}
+
 pub async fn services_health_check(
     services: &[String],
     max_wait_time: Duration,

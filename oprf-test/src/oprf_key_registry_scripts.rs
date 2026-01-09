@@ -44,6 +44,34 @@ pub fn deploy_test_setup(
     Address::from_str(&addr).expect("valid addr")
 }
 
+pub fn register_participants(
+    rpc_url: &str,
+    rp_registry_contract: Address,
+    taceo_admin_private_key: &str,
+    participant_addresses: &str,
+) {
+    let mut cmd = Command::new("forge");
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let cmd = cmd
+        .current_dir(dir.join("../contracts/script/deploy/"))
+        .env("OPRF_KEY_REGISTRY_PROXY", rp_registry_contract.to_string())
+        .env("PARTICIPANT_ADDRESSES", participant_addresses)
+        .arg("script")
+        .arg("RegisterParticipants.s.sol")
+        .arg("--rpc-url")
+        .arg(rpc_url)
+        .arg("--broadcast")
+        .arg("--private-key")
+        .arg(taceo_admin_private_key);
+    let output = cmd.output().expect("failed to run forge script");
+    assert!(
+        output.status.success(),
+        "forge script failed: {} {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 pub fn init_key_gen(
     rpc_url: &str,
     rp_registry_contract: Address,

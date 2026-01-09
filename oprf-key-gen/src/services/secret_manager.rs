@@ -11,7 +11,7 @@ use std::sync::Arc;
 use alloy::signers::local::PrivateKeySigner;
 use async_trait::async_trait;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfKeyMaterial};
+use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 
 pub mod aws;
 
@@ -38,27 +38,20 @@ pub trait SecretManager {
         generated_epoch: ShareEpoch,
     ) -> eyre::Result<Option<DLogShareShamir>>;
 
-    /// Stores the provided [`OprfKeyMaterial`] for the given [`OprfKeyId`].
-    ///
-    /// This method is intended **only** for initializing a new [`OprfKeyMaterial`]. For updating
-    /// existing shares, use [`Self::update_dlog_share`].
-    async fn store_oprf_key_material(
-        &self,
-        oprf_key_id: OprfKeyId,
-        oprf_key_material: OprfKeyMaterial,
-    ) -> eyre::Result<()>;
-
     /// Removes all information stored associated with the specified [`OprfKeyId`].
     ///
     /// Certain secret-managers might not be able to immediately delete the secret. In that case it shall mark the secret for deletion.
     async fn remove_oprf_key_material(&self, oprf_key_id: OprfKeyId) -> eyre::Result<()>;
 
-    /// Updates the [`DLogShareShamir`] of an existing [`OprfKeyId`] to a new epoch.
+    /// Stores an OPRF secret with at the secret-manager with the provided epoch.
     ///
-    /// Use this method for updating existing shares. For creating use [`Self::store_oprf_key_material`].
-    async fn update_dlog_share(
+    /// If epoch is zero or if the secret-manager does not contain a secret with this [`OprfKeyId`], calls `create_secret`.
+    ///
+    /// Otherwise, loads the existing secret, moves the current epoch to previous and stores the new share as the current epoch.
+    async fn store_dlog_share(
         &self,
         oprf_key_id: OprfKeyId,
+        public_key: OprfPublicKey,
         epoch: ShareEpoch,
         share: DLogShareShamir,
     ) -> eyre::Result<()>;

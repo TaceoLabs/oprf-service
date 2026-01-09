@@ -161,7 +161,21 @@ impl From<SecretGenCommitment> for Types::Round1Contribution {
         Self {
             commShare: value.comm_share.into(),
             commCoeffs: value.comm_coeffs.into(),
-            ephPubKey: value.eph_pub_key.inner().into(),
+            ephPubKey: value.eph_pub_key.into(),
+        }
+    }
+}
+
+impl From<EphemeralEncryptionPublicKey> for Types::Round1Contribution {
+    fn from(value: EphemeralEncryptionPublicKey) -> Self {
+        Self {
+            // zero values indicate to the smart contract that we are a consumer
+            commShare: Types::BabyJubJubElement {
+                x: U256::ZERO,
+                y: U256::ZERO,
+            },
+            commCoeffs: U256::ZERO,
+            ephPubKey: value.into(),
         }
     }
 }

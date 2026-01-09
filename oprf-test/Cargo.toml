@@ -43,6 +43,7 @@ tokio = { workspace = true, features = [
   "time",
   "tokio-macros",
 ] }
+tokio-util = { workspace = true }
 tracing.workspace = true
 
 [dev-dependencies]

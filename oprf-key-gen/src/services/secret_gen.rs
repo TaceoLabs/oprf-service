@@ -88,6 +88,12 @@ struct ToxicWasteRound2 {
     sk: EphemeralEncryptionPrivateKey,
 }
 
+impl From<EphemeralEncryptionPrivateKey> for ToxicWasteRound2 {
+    fn from(sk: EphemeralEncryptionPrivateKey) -> Self {
+        Self { sk }
+    }
+}
+
 impl EphemeralEncryptionPrivateKey {
     /// Generates a fresh private-key to be used in a single DLog generation.
     /// **Note**: do not reuse this key.
@@ -315,17 +321,39 @@ impl DLogSecretGenService {
         }
     }
 
+    /// Executes the consumer round 1 of the reshare protocol.
+    ///
+    /// If a party does not have the share for an [`OprfKeyId`] it needs to participate as a consumer in the reshare protocol. In that case the node will only produce an encryption key-pair and sends this on-chain so that the producers generate the share for the node.
+    pub(crate) fn consumer_round1<R: Rng + CryptoRng>(
+        &mut self,
+        oprf_key_id: OprfKeyId,
+        rng: &mut R,
+    ) -> EphemeralEncryptionPublicKey {
+        tracing::debug!("computing ephemeral encryption key");
+        let sk = EphemeralEncryptionPrivateKey::generate(rng);
+        let pk = sk.get_public_key();
+        if self
+            .toxic_waste_round2
+            .insert(oprf_key_id, ToxicWasteRound2::from(sk))
+            .is_some()
+        {
+            tracing::warn!("overwriting toxic waste for {oprf_key_id}");
+        }
+        pk
+    }
+
     /// Executes the consumer round 2 of the reshare protocol.
     ///
-    /// Only relevant for reshare as everyone is a producer in key-gen. A consuming node simply drops the polynomial it created in round1.
+    /// Only relevant for reshare as everyone is a producer in key-gen. A consuming node simply drops the polynomial it created in round1 if it created one in round 1.
     pub(crate) fn consumer_round2(&mut self, oprf_key_id: OprfKeyId) {
         tracing::debug!("reverting reshare...");
-        let toxic_waste_round1 = self
-            .toxic_waste_round1
-            .remove(&oprf_key_id)
-            .expect("how to handle this");
-        self.toxic_waste_round2
-            .insert(oprf_key_id, toxic_waste_round1.next());
+        if let Some(toxic_waste_round1) = self.toxic_waste_round1.remove(&oprf_key_id) {
+            self.toxic_waste_round2
+                .insert(oprf_key_id, toxic_waste_round1.next());
+            tracing::debug!("tried to be a producer in round 2 - dropping polynomial");
+        } else {
+            tracing::debug!("nothing to do as registered as consumer in round1");
+        }
     }
 }
 
