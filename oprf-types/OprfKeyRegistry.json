@@ -1104,6 +1104,11 @@
   },
   {
     "type": "error",
+    "name": "PartiesNotDistinct",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "UUPSUnauthorizedCallContext",
     "inputs": []
   },
