@@ -88,13 +88,18 @@ impl WebSocketSession {
                     tungstenite::Message::Close(close) => {
                         tracing::trace!("did get close frame: {:?}", close);
                         let _ = self.inner.close(None).await;
-                        if let Some(close_frame) = close {
+                        if let Some(close_frame) = close
+                            && close_frame.code != CloseCode::Normal
+                        {
                             tracing::trace!(
                                 "close code: {:?}, reason: {}",
                                 close_frame.code,
                                 close_frame.reason
                             );
-                            Err(Error::ServerError(close_frame.reason.to_string()))
+                            Err(Error::ServerError(format!(
+                                "{}: {}",
+                                close_frame.code, close_frame.reason
+                            )))
                         } else {
                             Err(Error::Eof)
                         }
