@@ -28,19 +28,24 @@ export-contract-abi:
 [working-directory('circom')]
 print-constraints:
     #!/usr/bin/env bash
-    key_gen=$(circom main/OPRFKeyGenProof.circom -l . --r1cs --O2 | grep -oP "non-linear constraints: \K[0-9]+")
+    key_gen13=$(circom main/OPRFKeyGenProof13.circom -l . --r1cs --O2 | grep -oP "non-linear constraints: \K[0-9]+")
+    key_gen25=$(circom main/OPRFKeyGenProof25.circom -l . --r1cs --O2 | grep -oP "non-linear constraints: \K[0-9]+")
+    key_gen37=$(circom main/OPRFKeyGenProof37.circom -l . --r1cs --O2 | grep -oP "non-linear constraints: \K[0-9]+")
     nullifier=$(circom main/OPRFNullifierProof.circom -l . --r1cs --O2 | grep -oP "non-linear constraints: \K[0-9]+")
     proof=$(circom main/OPRFQueryProof.circom -l . --r1cs --O2 | grep -oP "non-linear constraints: \K[0-9]+")
     eddsa_poseidon2=$(circom debug/eddsaposeidon2.circom -l . --r1cs --O2 | grep -oP "non-linear constraints: \K[0-9]+")
     verify_dlog=$(circom debug/verify_dlog.circom -l . --r1cs --O2 | grep -oP "non-linear constraints: \K[0-9]+")
     subgroup_check=$(circom debug/subgroup_check.circom -l . --r1cs --O2 | grep -oP "non-linear constraints: \K[0-9]+")
     printf "%-20s %s\n" "Circuit" "Constraints"
-    printf "%-20s %s\n" "KeyGen(3-1)" "$key_gen"
+    printf "%-20s %s\n" "KeyGen(3-1)" "$key_gen13"
+    printf "%-20s %s\n" "KeyGen(5-2)" "$key_gen25"
+    printf "%-20s %s\n" "KeyGen(7-3)" "$key_gen37"
     printf "%-20s %s\n" "OPRFNullifier" "$nullifier"
     printf "%-20s %s\n" "QueryProof" "$proof"
     printf "%-20s %s\n" "EdDSA-Poseidon2" "$eddsa_poseidon2"
     printf "%-20s %s\n" "Verify DLog" "$verify_dlog"
     printf "%-20s %s\n" "Subgroup Checks" "$subgroup_check"
+    rm OPRFKeyGenProof13.r1cs OPRFKeyGenProof25.r1cs OPRFKeyGenProof37.r1cs OPRFNullifierProof.r1cs OPRFQueryProof.r1cs eddsaposeidon2.r1cs subgroup_check.r1cs verify_dlog.r1cs
 
 [group('build')]
 [working-directory('circom/main/query')]
@@ -188,7 +193,7 @@ run-setup:
     echo "starting OPRF key-gen instances..."
     OPRF_NODE_OPRF_KEY_REGISTRY_CONTRACT=$oprf_key_registry just run-key-gen-instances
     echo "stopping containers..."
-    docker compose -f ./oprf-service-example/deploy/docker-compose.yml down 
+    docker compose -f ./oprf-service-example/deploy/docker-compose.yml down
 
 [group('dev-client')]
 run-dev-client *args:
