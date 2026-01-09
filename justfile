@@ -66,14 +66,14 @@ build-nullifier-artifacts:
 
 [group('build')]
 [working-directory('circom/main/key-gen')]
-build-key-gen-artifacts:
-    circom --r1cs ../OPRFKeyGenProof.circom -l ../../ --O2 --output ../
-    snarkjs groth16 setup ../OPRFKeyGenProof.r1cs ../../powersOfTau28_hez_final_17.ptau OPRFKeyGen.zkey
-    snarkjs zkey contribute OPRFKeyGen.zkey OPRFKeyGen.zkey.new --name="TACEO" -v
-    mv OPRFKeyGen.zkey.new OPRFKeyGen.zkey
-    snarkjs zkey export verificationkey OPRFKeyGen.zkey OPRFKeyGen.vk.json
-    convert-zkey-to-ark --zkey-path OPRFKeyGen.zkey --uncompressed
-    mv arks.zkey OPRFKeyGen.arks.zkey
+build-key-gen-artifacts degree-parties:
+    circom --r1cs ../OPRFKeyGenProof{{ degree-parties }}.circom -l ../../ --O2 --output ../
+    snarkjs groth16 setup ../OPRFKeyGenProof{{ degree-parties }}.r1cs ../../powersOfTau28_hez_final_17.ptau OPRFKeyGen.{{ degree-parties }}.zkey
+    snarkjs zkey contribute OPRFKeyGen.{{ degree-parties }}.zkey OPRFKeyGen.{{ degree-parties }}.zkey.new --name="TACEO" -v
+    mv OPRFKeyGen.{{ degree-parties }}.zkey.new OPRFKeyGen.{{ degree-parties }}.zkey
+    snarkjs zkey export verificationkey OPRFKeyGen.{{ degree-parties }}.zkey OPRFKeyGen.{{ degree-parties }}.vk.json
+    convert-zkey-to-ark --zkey-path OPRFKeyGen.{{ degree-parties }}.zkey --uncompressed
+    mv arks.zkey OPRFKeyGen.{{ degree-parties }}.arks.zkey
 
 [group('build')]
 [working-directory('circom/main/query')]
@@ -91,10 +91,10 @@ build-nullifier-graph:
 
 [group('build')]
 [working-directory('circom/main/key-gen')]
-build-key-gen-graph:
-    circom --r1cs ../OPRFKeyGenProof.circom -l ../../ --O2 --output ../
-    cd ../../../../circom-witness-rs && WITNESS_CPP=../oprf-service/circom/main/OPRFKeyGenProof.circom CIRCOM_LIBRARY_PATH=../oprf-service/circom/ cargo run --bin generate-graph --features build-witness
-    mv ../../../../circom-witness-rs/graph.bin ./OPRFKeyGenGraph.bin
+build-key-gen-graph degree-parties:
+    circom --r1cs ../OPRFKeyGenProof{{ degree-parties }}.circom -l ../../ --O2 --output ../
+    cd ../../../../circom-witness-rs && WITNESS_CPP=../oprf-service/circom/main/OPRFKeyGenProof{{ degree-parties }}.circom CIRCOM_LIBRARY_PATH=../oprf-service/circom/ cargo run --bin generate-graph --features build-witness
+    mv ../../../../circom-witness-rs/graph.bin ./OPRFKeyGenGraph.{{ degree-parties }}.bin
 
 [group('test')]
 unit-tests:
