@@ -591,7 +591,7 @@ contract OprfKeyRegistryTest is Test {
 
         vm.prank(carol);
         vm.expectEmit(true, true, true, true);
-        emit Types.SecretGenRound2(oprfKeyId);
+        emit Types.SecretGenRound2(oprfKeyId, 0);
         vm.expectEmit(true, true, true, true);
         emit Types.KeyGenConfirmation(oprfKeyId, 2, 1, 0);
         oprfKeyRegistry.addRound1KeyGenContribution(

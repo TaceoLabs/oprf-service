@@ -123,7 +123,6 @@ contract OprfKeyRegistryUpgradeTest is Test {
         emit OwnableUpgradeable.OwnershipTransferred(initOwner, taceoAdmin);
         oprfKeyRegistry.acceptOwnership();
         vm.stopPrank();
-
         assertEq(oprfKeyRegistry.owner(), taceoAdmin);
     }
 
@@ -160,7 +159,7 @@ contract OprfKeyRegistryUpgradeTest is Test {
 
         vm.prank(carol);
         vm.expectEmit(true, true, true, true);
-        emit Types.SecretGenRound2(oprfKeyId);
+        emit Types.SecretGenRound2(oprfKeyId, 0);
         vm.expectEmit(true, true, true, true);
         emit Types.KeyGenConfirmation(oprfKeyId, 2, 1, 0);
         oprfKeyRegistry.addRound1KeyGenContribution(
@@ -266,7 +265,7 @@ contract OprfKeyRegistryUpgradeTest is Test {
 
         vm.prank(carol);
         vm.expectEmit(true, true, true, true);
-        emit Types.SecretGenRound2(newOprfKeyId);
+        emit Types.SecretGenRound2(newOprfKeyId, 0);
         vm.expectEmit(true, true, true, true);
         emit Types.KeyGenConfirmation(newOprfKeyId, 2, 1, 0);
         oprfKeyRegistry.addRound1KeyGenContribution(
