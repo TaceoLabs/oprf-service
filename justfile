@@ -100,6 +100,8 @@ build-key-gen-graph degree-parties:
     circom --r1cs ../OPRFKeyGenProof{{ degree-parties }}.circom -l ../../ --O2 --output ../
     cd ../../../../circom-witness-rs && WITNESS_CPP=../oprf-service/circom/main/OPRFKeyGenProof{{ degree-parties }}.circom CIRCOM_LIBRARY_PATH=../oprf-service/circom/ cargo run --bin generate-graph --features build-witness
     mv ../../../../circom-witness-rs/graph.bin ./OPRFKeyGenGraph.{{ degree-parties }}.bin
+    groth16-sol-utils extract-verifier --vk OPRFKeyGen.{{ degree-parties }}.vk.json > ../../../oprf-key-registry/src/VerifierKeyGen{{ degree-parties }}.sol
+    cd ../../../oprf-key-registry && forge fmt
 
 [group('test')]
 unit-tests:
