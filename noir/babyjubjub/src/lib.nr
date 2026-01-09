@@ -3,15 +3,13 @@
 // Curve equation: a*x^2 + y^2 = 1 + d*x^2*y^2
 // where a = 168700, d = 168696
 
-use check_sub_group::esc_mul_fix_scalar;
 use escalar_mul_fix::generator_mul_fix;
-use std::field::bn254;
+use std::{field::bn254, static_assert};
 
 mod tests;
 pub mod hash_to_curve;
 pub(crate) mod montgomery;
 pub(crate) mod window_table;
-pub(crate) mod check_sub_group;
 pub(crate) mod escalar_mul_fix;
 
 // BabyJubJub curve constants
@@ -30,6 +28,17 @@ global BABYJUBJUB_GENERATOR_Y: Field =
 // Scalar field order (Fr) - prime order of BabyJubJub's scalar field
 global BABYJUBJUB_Fr: Field =
     2736030358979909402780800718157159386076813972158567259200215660948447373041;
+
+global BABYJUBJUB_CHARACTERISTIC: [u1; 251] = [
+    1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0,
+    0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 0,
+    0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0,
+    0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1,
+    1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1,
+    0, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0,
+    1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0,
+    0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1,
+];
 
 /// Represents a point on the BabyJubJub curve
 pub struct BabyJubJubPoint {
@@ -192,23 +201,21 @@ impl BabyJubJubPoint {
     }
 
     // Precondition: This method expects that the point is on-curve.
-    // For some points like the two-torsion point (0,-1), this method will not return a boolean, but rather will have unsatisfiable constraints.
-    // For a general check that is less efficient, use scalar_mul_bits with the group order and check for identity.
     pub fn check_sub_group(self) -> bool {
-        let characteristic: [u1; 251] = [
-            1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1,
-            1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1,
-            1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0,
-            0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1,
-            1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0,
-            0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0,
-            0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1,
-            0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1,
-            1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1,
-        ];
+        static_assert(
+            BABYJUBJUB_CHARACTERISTIC[250] == 1,
+            "Characteristic has high bit set",
+        );
 
-        let res = esc_mul_fix_scalar(characteristic, self);
-        res.is_identity()
+        let mut p = self;
+        for i in 0..250 {
+            p = p.double();
+            if BABYJUBJUB_CHARACTERISTIC[249 - i] == 1 {
+                p = p.add(self);
+            }
+        }
+
+        p.is_identity()
     }
 
     pub fn generator_scalar_mul(scalar: Field) -> Self {
