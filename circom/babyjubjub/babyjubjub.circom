@@ -107,7 +107,7 @@ template BabyJubJubScalarGeneratorBits() {
 
 // Performs fixed-point scalar multiplication e·P for a constant point P.
 // When P is known at compile time (e.g., the generator), prefer this over BabyJubJubScalarMul to reduce constraints.
-// 
+//
 // Note that this template assumes P is on the curve and belongs to the correct subgroup. It does not perform any checks to verify these conditions.
 template BabyJubJubScalarMulFix(BASE) {
     input BabyJubJubScalarField() e;
@@ -130,7 +130,7 @@ template BabyJubJubScalarMulFixBits(BASE) {
 
 
 // Performs scalar multiplication e·P for an arbitrary point P in Twisted Edwards form.
-// 
+//
 // Note that this template assumes P is on the curve and belongs to the correct subgroup. It does not perform any checks to verify these conditions.
 template BabyJubJubScalarMul() {
     input BabyJubJubScalarField() e;
@@ -141,7 +141,7 @@ template BabyJubJubScalarMul() {
 }
 
 // Performs scalar multiplication e·P for an arbitrary point P in Twisted Edwards form.
-// 
+//
 // Note that this template assumes P is on the curve and belongs to the correct subgroup. It does not perform any checks to verify these conditions.
 template BabyJubJubScalarMulBits() {
     signal input e[251];
@@ -155,11 +155,11 @@ template BabyJubJubScalarMulBits() {
 
 
 // Performs scalar multiplication e·P where e is provided in the base field Fq of BabyJubJub.
-// 
+//
 // The scalar field Fr has 251 bits. To avoid an explicit modular reduction in-circuit, we use a strict 254-bit decomposition. EscalarMulAny correctly handles the modular reduction internally despite the redundant high bits.
 //
 // This is useful for verifiers that provide scalars in Fq: reducing them to Fr in-circuit would be more expensive than letting EscalarMulAny handle the modular reduction.
-// 
+//
 // Note that this template assumes P is on the curve and belongs to the correct subgroup. It does not perform any checks to verify these conditions.
 template BabyJubJubScalarMulBaseField() {
     input BabyJubJubBaseField() e;
