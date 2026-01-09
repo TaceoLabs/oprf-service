@@ -222,3 +222,19 @@ impl BabyJubJubPoint {
         generator_mul_fix(scalar)
     }
 }
+
+#[test]
+fn test_babyjubjub_in_correct_subgroup() {
+    let p0 = 4597297048474520994314398800947075450541957920804155712178316083765998639288;
+    let p1 = 5569132826648062501012191259106565336315721760204071234863390487921354852142;
+
+    assert(BabyJubJubPoint::check_sub_group(BabyJubJubPoint::new(p0, p1)));
+}
+
+#[test(should_fail)]
+fn test_two_torsion_not_correct_subgroup() {
+    let p0 = 0;
+    let p1 = -1;
+
+    assert(BabyJubJubPoint::check_sub_group(BabyJubJubPoint::new(p0, p1)));
+}
