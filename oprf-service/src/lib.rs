@@ -125,7 +125,7 @@ pub async fn init<
     config: OprfNodeConfig,
     secret_manager: SecretManagerService,
     oprf_req_auth_service: OprfRequestAuthService<RequestAuth, RequestAuthError>,
-    started_services: StartedServices,
+    mut started_services: StartedServices,
     cancellation_token: CancellationToken,
 ) -> eyre::Result<(axum::Router, tokio::task::JoinHandle<eyre::Result<()>>)> {
     tracing::info!("init rpc provider..");
@@ -175,7 +175,7 @@ pub async fn init<
             oprf_key_material_store: oprf_key_material_store.clone(),
             get_oprf_key_material_timeout: config.get_oprf_key_material_timeout,
             start_block: config.start_block,
-            started_services: started_services.clone(),
+            started: started_services.new_service(),
             cancellation_token,
         })
     });

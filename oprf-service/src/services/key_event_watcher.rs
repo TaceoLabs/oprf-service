@@ -4,7 +4,13 @@
 //!
 //! The watcher subscribes to various key generation events and reports contributions back to the contract.
 
-use std::{sync::atomic::Ordering, time::Duration};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use alloy::{
     eips::BlockNumberOrTag,
@@ -20,17 +26,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use crate::services::{
-    StartedServices, oprf_key_material_store::OprfKeyMaterialStore,
-    secret_manager::SecretManagerService,
+    oprf_key_material_store::OprfKeyMaterialStore, secret_manager::SecretManagerService,
 };
-
-impl StartedServices {
-    /// Sets the key event watcher service to healthy.
-    fn key_event_watcher_ready(&self) {
-        self.key_event_watcher.store(true, Ordering::Relaxed);
-        tracing::info!("key event watcher is ready");
-    }
-}
 
 /// The arguments to start the key-even-watcher.
 pub(crate) struct KeyEventWatcherTaskArgs {
@@ -40,7 +37,7 @@ pub(crate) struct KeyEventWatcherTaskArgs {
     pub(crate) oprf_key_material_store: OprfKeyMaterialStore,
     pub(crate) get_oprf_key_material_timeout: Duration,
     pub(crate) start_block: Option<u64>,
-    pub(crate) started_services: StartedServices,
+    pub(crate) started: Arc<AtomicBool>,
     pub(crate) cancellation_token: CancellationToken,
 }
 
@@ -85,7 +82,7 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
         oprf_key_material_store,
         get_oprf_key_material_timeout,
         start_block,
-        started_services: services_healthy,
+        started,
         cancellation_token,
     } = key_event_watcher_task_args;
     let event_signatures = vec![
@@ -129,7 +126,8 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
 
     let mut stream = sub.into_stream();
     // finally set to healthy
-    services_healthy.key_event_watcher_ready();
+    tracing::info!("key event watcher is ready");
+    started.store(true, Ordering::Relaxed);
     loop {
         let log = tokio::select! {
             log = stream.next() => {

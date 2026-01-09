@@ -7,6 +7,8 @@
 //! From there, they can be fetched by the OPRF nodes that handle OPRF requests.
 //!
 //! For details on the OPRF protocol, see the [design document](https://github.com/TaceoLabs/nullifier-oracle-service/blob/491416de204dcad8d46ee1296d59b58b5be54ed9/docs/oprf.pdf).
+use std::sync::{Arc, atomic::AtomicBool};
+
 use crate::{
     config::OprfKeyGenConfig,
     services::{
@@ -95,10 +97,12 @@ pub async fn start(
     .await
     .context("while spawning transaction handler")?;
 
+    let key_event_watcher_started_signal = Arc::new(AtomicBool::default());
     tracing::info!("spawning key event watcher..");
     let key_event_watcher = tokio::spawn({
         let provider = provider.clone();
         let contract_address = config.oprf_key_registry_contract;
+        let key_event_watcher_started_signal = key_event_watcher_started_signal.clone();
         let cancellation_token = cancellation_token.clone();
         services::key_event_watcher::key_event_watcher_task(KeyEventWatcherTaskConfig {
             party_id,
@@ -109,11 +113,12 @@ pub async fn start(
             max_epoch_cache_size: config.max_epoch_cache_size,
             secret_manager,
             transaction_handler,
+            start_signal: key_event_watcher_started_signal,
             cancellation_token,
         })
     });
 
-    let key_gen_router = api::routes(address);
+    let key_gen_router = api::routes(address, key_event_watcher_started_signal);
 
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
     let axum_cancel_token = cancellation_token.clone();

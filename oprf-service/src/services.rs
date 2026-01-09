@@ -30,7 +30,6 @@ pub mod secret_manager;
 /// Relevant for the `/health` route. Implementations should call [`StartedServices::new_service`] for their services and set the bool to `true` if the service started successfully.
 #[derive(Debug, Clone, Default)]
 pub struct StartedServices {
-    key_event_watcher: Arc<AtomicBool>,
     external_service: Arc<Mutex<Vec<Arc<AtomicBool>>>>,
 }
 
@@ -49,15 +48,11 @@ impl StartedServices {
         service
     }
 
-    /// Returns `true` if all services did start at the time of calling.
-    ///
-    /// This method simply loads all flags sequentially without using a lock, which means potentially during this call a service's state changes. We do not care about this case, as we only go from `false` to `true` anyways and in worst-case someone needs to call `/health` once more.
+    /// Returns `true` if all services did start.
     pub(crate) fn all_started(&self) -> bool {
-        self.key_event_watcher.load(Ordering::Relaxed)
-            && self
-                .external_service
-                .lock()
-                .iter()
-                .all(|service| service.load(Ordering::Relaxed))
+        self.external_service
+            .lock()
+            .iter()
+            .all(|service| service.load(Ordering::Relaxed))
     }
 }

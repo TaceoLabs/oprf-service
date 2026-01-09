@@ -4,7 +4,13 @@
 //!
 //! The watcher subscribes to various key generation events and reports contributions back to the contract.
 
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use crate::services::{
     secret_gen::{Contributions, DLogSecretGenService},
@@ -43,6 +49,7 @@ pub(crate) struct KeyEventWatcherTaskConfig {
     pub(crate) start_block: Option<u64>,
     pub(crate) max_epoch_cache_size: usize,
     pub(crate) transaction_handler: TransactionHandler,
+    pub(crate) start_signal: Arc<AtomicBool>,
     pub(crate) cancellation_token: CancellationToken,
 }
 
@@ -83,6 +90,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
         start_block,
         max_epoch_cache_size,
         transaction_handler,
+        start_signal,
         cancellation_token,
     } = args;
     let contract = OprfKeyRegistry::new(contract_address, provider.clone());
@@ -134,6 +142,8 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
     };
 
     let mut stream = sub.into_stream();
+    start_signal.store(true, Ordering::Relaxed);
+    tracing::info!("key event watcher is ready");
     loop {
         let log = tokio::select! {
             log = stream.next() => {
