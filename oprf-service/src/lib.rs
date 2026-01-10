@@ -17,6 +17,7 @@
 //!
 //! Clients will connect via web-sockets to the OPRF node. Axum supports both HTTP/1.1 and HTTP/2.0 web-socket connections, therefore we accept connections with `any`.
 use crate::api::ApiRoutesArgs;
+use crate::metrics::METRICS_ID_NODE_SESSIONS_OPEN;
 use crate::services::key_event_watcher::KeyEventWatcherTaskArgs;
 ///
 /// If you want to enable HTTP/2.0, you either have to do it by hand or by calling `axum::serve`, which enabled HTTP/2.0 by default. Have a look at [Axum's HTTP2.0 example](https://github.com/tokio-rs/axum/blob/aeff16e91af6fa76efffdee8f3e5f464b458785b/examples/websockets-http2/src/main.rs#L57).
@@ -128,6 +129,7 @@ pub async fn init<
     mut started_services: StartedServices,
     cancellation_token: CancellationToken,
 ) -> eyre::Result<(axum::Router, tokio::task::JoinHandle<eyre::Result<()>>)> {
+    ::metrics::gauge!(METRICS_ID_NODE_SESSIONS_OPEN).set(0);
     tracing::info!("init rpc provider..");
     let ws = WsConnect::new(config.chain_ws_rpc_url.expose_secret());
     let provider = ProviderBuilder::new()

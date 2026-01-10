@@ -1,4 +1,9 @@
 use crate::api::errors::Error;
+use crate::metrics::{
+    METRICS_ID_NODE_OPRF_SUCCESS, METRICS_ID_NODE_PART_1_DURATION, METRICS_ID_NODE_PART_1_FINISH,
+    METRICS_ID_NODE_PART_1_START, METRICS_ID_NODE_PART_2_DURATION, METRICS_ID_NODE_PART_2_FINISH,
+    METRICS_ID_NODE_PART_2_START, METRICS_ID_NODE_SESSIONS_TIMEOUT,
+};
 use crate::services::open_sessions::OpenSessions;
 use crate::{OprfRequestAuthService, services::oprf_key_material_store::OprfKeyMaterialStore};
 use axum::{
@@ -16,7 +21,7 @@ use oprf_types::{
 };
 use serde::Deserialize;
 use serde::Serialize;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tracing::instrument;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -74,16 +79,22 @@ async fn ws<
             )
             .await
             {
-                Ok(Ok(_)) => Some(CloseFrame {
-                    code: close_code::NORMAL,
-                    reason: "success".into(),
-                }),
+                Ok(Ok(_)) => {
+                    ::metrics::counter!(METRICS_ID_NODE_OPRF_SUCCESS).increment(1);
+                    Some(CloseFrame {
+                        code: close_code::NORMAL,
+                        reason: "success".into(),
+                    })
+                }
                 Ok(Err(err)) => err.into_close_frame(),
 
-                Err(_) => Some(CloseFrame {
-                    code: oprf_error_codes::TIMEOUT,
-                    reason: "timeout".into(),
-                }),
+                Err(_) => {
+                    ::metrics::counter!(METRICS_ID_NODE_SESSIONS_TIMEOUT).increment(1);
+                    Some(CloseFrame {
+                        code: oprf_error_codes::TIMEOUT,
+                        reason: "timeout".into(),
+                    })
+                }
             };
             if let Some(close_frame) = close_frame {
                 tracing::trace!(" < sending close frame");
@@ -116,7 +127,9 @@ async fn partial_oprf<
     req_auth_service: OprfRequestAuthService<ReqAuth, ReqAuthError>,
 ) -> Result<(), Error> {
     tracing::trace!("> new oprf session - reading request...");
+    ::metrics::counter!(METRICS_ID_NODE_PART_1_START).increment(1);
     let (init_request, human_readable) = read_request::<OprfRequest<ReqAuth>>(socket).await?;
+    let start_part_one = Instant::now();
     let request_id = init_request.request_id;
 
     tracing::debug!("starting with request id: {request_id}");
@@ -154,10 +167,15 @@ async fn partial_oprf<
     };
 
     tracing::debug!("sending response...");
+    let duration_part_one = start_part_one.elapsed();
+    ::metrics::histogram!(METRICS_ID_NODE_PART_1_DURATION).record(duration_part_one.as_secs_f64());
     write_response(response, human_readable, socket).await?;
+    ::metrics::counter!(METRICS_ID_NODE_PART_1_FINISH).increment(1);
 
     tracing::debug!("reading challenge...");
     let (challenge, _) = read_request::<DLogCommitmentsShamir>(socket).await?;
+    ::metrics::counter!(METRICS_ID_NODE_PART_2_START).increment(1);
+    let start_part_two = Instant::now();
 
     let coeffs = challenge.get_contributing_parties();
     let num_coeffs = coeffs.len();
@@ -194,8 +212,12 @@ async fn partial_oprf<
         init_request.share_identifier,
     )?;
 
+    let duration_part_two = start_part_two.elapsed();
+    ::metrics::histogram!(METRICS_ID_NODE_PART_2_DURATION).record(duration_part_two.as_secs_f64());
+
     tracing::debug!("sending challenge response to client...");
     write_response(proof_share, human_readable, socket).await?;
+    ::metrics::counter!(METRICS_ID_NODE_PART_2_FINISH).increment(1);
     Ok(())
 }
 
