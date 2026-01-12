@@ -4,6 +4,7 @@ flamegraph.svg
 perf.data
 perf.data.old
 *.pdf
+!docs/oprf.pdf
 codebook.toml
 logs
 *.ptau
