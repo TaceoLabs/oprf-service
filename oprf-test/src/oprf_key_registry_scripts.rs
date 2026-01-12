@@ -53,7 +53,7 @@ pub fn register_participants(
     let mut cmd = Command::new("forge");
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cmd = cmd
-        .current_dir(dir.join("../contracts/script/deploy/"))
+        .current_dir(dir.join("../contracts/script/"))
         .env("OPRF_KEY_REGISTRY_PROXY", rp_registry_contract.to_string())
         .env("PARTICIPANT_ADDRESSES", participant_addresses)
         .arg("script")
