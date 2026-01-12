@@ -154,13 +154,13 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
             }
         };
         // skip logs from blocks we've already handled with get_logs
-        if let Some(block_number) = log.block_number {
-            if block_number <= latest_block {
-                tracing::info!(
-                    "skipping event from block {block_number} - already handled up to {latest_block}"
-                );
-                continue;
-            }
+        if let Some(block_number) = log.block_number
+            && block_number <= latest_block
+        {
+            tracing::info!(
+                "skipping event from block {block_number} - already handled up to {latest_block}"
+            );
+            continue;
         }
         handle_log(
             party_id,

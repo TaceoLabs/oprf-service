@@ -59,7 +59,7 @@ pub async fn start(
     let provider = ProviderBuilder::new()
         .filler(ChainIdFiller::default())
         .with_simple_nonce_management()
-        .filler(BlobGasFiller)
+        .filler(BlobGasFiller::default())
         .with_gas_estimation()
         .wallet(wallet)
         .connect_ws(ws)
