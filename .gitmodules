@@ -1,4 +1,4 @@
 
 [submodule "oprf-key-registry"]
-	path = oprf-key-registry
+	path = contracts
 	url = https://github.com/TaceoLabs/oprf-key-registry.git

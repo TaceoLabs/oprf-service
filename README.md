@@ -14,7 +14,6 @@ This is a monorepo containing:
 * `oprf-core`: A crate implementing a verifiable OPRF based on the TwoHashDH OPRF construction + a threshold variant of it.
 * `oprf-dev-client`: A crate implementing a dev client binary.
 * `oprf-key-gen`: A crate implementing a OPRF key generation instance.
-* `oprf-key-registry`: A submodule with the OPRFKeyRegistry contract.
 * `oprf-service`: A crate implementing a service lib for the OPRF service.
 * `oprf-service-example`: A crate implementing a example OPRF node.
 * `oprf-test`: A crate implementing integration tests and required mocks.
@@ -33,7 +32,7 @@ This is a monorepo containing:
 To install the dependencies for the smart contracts run the following command:
 
 ```bash
-cd oprf-key-registry && forge install
+cd contracts && forge install
 ```
 
 ## Test & Run
