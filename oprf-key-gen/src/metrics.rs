@@ -40,8 +40,10 @@ pub const METRICS_ID_KEY_GEN_DELETION_START: &str = "taceo.oprf.key_gen.deletion
 /// Finished processing deletion on our side
 pub const METRICS_ID_KEY_GEN_DELETION_FINISH: &str = "taceo.oprf.key_gen.deletion.finish";
 
-/// Number of ETH RPC retry steps
+/// Number of null-response errors from Alchemy and transaction not recorded on-chain.
 pub const METRICS_ID_KEY_GEN_RPC_RETRY: &str = "taceo.oprf.key_gen.rpc_retry";
+/// Number of null-response errors from Alchemy but transaction recorded on-chain.
+pub const METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK: &str = "taceo.oprf.key_gen.rpc_null_but_ok";
 
 /// Describe all metrics used by the service.
 ///
@@ -100,6 +102,11 @@ pub fn describe_metrics() {
     metrics::describe_counter!(
         METRICS_ID_KEY_GEN_RPC_RETRY,
         metrics::Unit::Count,
-        "Number of retries due to ETH RPC problems"
+        "Number of null-response errors from Alchemy and transaction not recorded on-chain, leading to a retry."
+    );
+    metrics::describe_counter!(
+        METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK,
+        metrics::Unit::Count,
+        "Number of null-response errors from Alchemy but transaction recorded on-chain."
     );
 }

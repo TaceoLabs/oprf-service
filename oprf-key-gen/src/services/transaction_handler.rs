@@ -23,7 +23,7 @@ use oprf_types::{
 use tokio::{sync::oneshot, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
-use crate::metrics::METRICS_ID_KEY_GEN_RPC_RETRY;
+use crate::metrics::{METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK, METRICS_ID_KEY_GEN_RPC_RETRY};
 
 /// Indicates the transaction type. We need this to distinguish between events.
 #[repr(u8)]
@@ -227,9 +227,11 @@ impl TransactionHandler {
                         tracing::debug!(
                             "received confirmation! we can continue as our contribution is registered"
                         );
+                        ::metrics::counter!(METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK).increment(1);
                         return Ok(());
                     } else {
                         tracing::debug!("ran into timeout while waiting for nonce event...");
+                        ::metrics::counter!(METRICS_ID_KEY_GEN_RPC_RETRY).increment(1);
                     }
                 }
                 Err(err) => eyre::bail!(err),
@@ -237,7 +239,6 @@ impl TransactionHandler {
             if attempt >= self.attempts {
                 eyre::bail!("could not finish transaction with configured attempts");
             }
-            ::metrics::counter!(METRICS_ID_KEY_GEN_RPC_RETRY).increment(1);
             attempt += 1;
         }
     }
