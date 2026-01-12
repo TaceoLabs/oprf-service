@@ -46,5 +46,5 @@ tokio = { workspace = true, features = [
 tracing.workspace = true
 
 [dev-dependencies]
-serial_test = { version = "3.2", features = ["file_locks"] }
+serial_test = { version = "3.3", features = ["file_locks"] }
 tokio-tungstenite = { workspace = true }
