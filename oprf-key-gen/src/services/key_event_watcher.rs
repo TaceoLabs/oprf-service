@@ -12,10 +12,22 @@ use std::{
     },
 };
 
-use crate::services::{
-    secret_gen::{Contributions, DLogSecretGenService},
-    secret_manager::SecretManagerService,
-    transaction_handler::{TransactionHandler, TransactionIdentifier, TransactionType},
+use crate::{
+    metrics::{
+        METRICS_ATTRID_PROTOCOL, METRICS_ATTRID_ROLE, METRICS_ATTRVAL_PROTOCOL_KEY_GEN,
+        METRICS_ATTRVAL_PROTOCOL_RESHARE, METRICS_ATTRVAL_ROLE_CONSUMER,
+        METRICS_ATTRVAL_ROLE_PRODUCER, METRICS_ID_KEY_GEN_DELETION_FINISH,
+        METRICS_ID_KEY_GEN_DELETION_START, METRICS_ID_KEY_GEN_ROUND_1_FINISH,
+        METRICS_ID_KEY_GEN_ROUND_1_START, METRICS_ID_KEY_GEN_ROUND_2_FINISH,
+        METRICS_ID_KEY_GEN_ROUND_2_START, METRICS_ID_KEY_GEN_ROUND_3_FINISH,
+        METRICS_ID_KEY_GEN_ROUND_3_START, METRICS_ID_KEY_GEN_ROUND_4_FINISH,
+        METRICS_ID_KEY_GEN_ROUND_4_START,
+    },
+    services::{
+        secret_gen::{Contributions, DLogSecretGenService},
+        secret_manager::SecretManagerService,
+        transaction_handler::{TransactionHandler, TransactionIdentifier, TransactionType},
+    },
 };
 use alloy::{
     eips::BlockNumberOrTag,
@@ -248,6 +260,9 @@ async fn handle_keygen_round1(
     transaction_handler: &TransactionHandler,
 ) -> eyre::Result<()> {
     tracing::info!("Received KeyGenRound1 event");
+    ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_1_START,
+        METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_KEY_GEN)
+    .increment(1);
     let log = log
         .log_decode()
         .context("while decoding key-gen round1 event")?;
@@ -275,6 +290,9 @@ async fn handle_keygen_round1(
                 .addRound1KeyGenContribution(oprf_key_id.into_inner(), contribution.clone().into())
         })
         .await?;
+    ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_1_FINISH,
+        METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_KEY_GEN)
+    .increment(1);
     Ok(())
 }
 
@@ -287,6 +305,8 @@ async fn handle_round2(
     transaction_handler: &TransactionHandler,
 ) -> eyre::Result<()> {
     tracing::info!("Received SecretGenRound2 event");
+    // we don't know yet whether we are producer or consumer, FINISH holds this information
+    ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_2_START).increment(1);
     let round2 = log
         .log_decode()
         .context("while decoding secret-gen round2 event")?;
@@ -304,6 +324,9 @@ async fn handle_round2(
     if nodes.is_empty() {
         tracing::debug!("I am not a producer - nothing do to for me except clean after me");
         secret_gen.consumer_round2(oprf_key_id);
+        ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_2_FINISH,
+            METRICS_ATTRID_ROLE => METRICS_ATTRVAL_ROLE_CONSUMER)
+        .increment(1);
         return Ok(());
     }
     tracing::debug!("got keys from chain - parsing..");
@@ -330,6 +353,9 @@ async fn handle_round2(
             contract.addRound2Contribution(res.oprf_key_id.into_inner(), contribution.clone())
         })
         .await?;
+    ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_2_FINISH,
+            METRICS_ATTRID_ROLE => METRICS_ATTRVAL_ROLE_PRODUCER)
+    .increment(1);
     Ok(())
 }
 
@@ -342,6 +368,9 @@ async fn handle_keygen_round3(
     transaction_handler: &TransactionHandler,
 ) -> eyre::Result<()> {
     tracing::info!("Received SecretGenRound3 event");
+    ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_3_START,
+        METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_KEY_GEN)
+    .increment(1);
     let round3 = log
         .log_decode()
         .context("while decoding secret-gen round3 event")?;
@@ -352,7 +381,7 @@ async fn handle_keygen_round3(
     let oprf_key_id = OprfKeyId::from(oprfKeyId);
     let transaction_identifier =
         TransactionIdentifier::keygen(oprf_key_id, party_id, TransactionType::Round3);
-    handle_round3_inner(
+    let result = handle_round3_inner(
         oprf_key_id,
         contract,
         secret_gen,
@@ -360,7 +389,11 @@ async fn handle_keygen_round3(
         transaction_identifier,
         transaction_handler,
     )
-    .await
+    .await;
+    ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_3_FINISH,
+        METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_KEY_GEN)
+    .increment(1);
+    result
 }
 
 #[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty, epoch=tracing::field::Empty))]
@@ -372,6 +405,8 @@ async fn handle_finalize(
     max_epoch_cache_size: usize,
 ) -> eyre::Result<()> {
     tracing::info!("Received SecretGenFinalize event");
+    // we don't know yet whether we are key_gen or reshare, FINISH holds this information
+    ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_4_START).increment(1);
     let finalize = log
         .log_decode()
         .context("while decoding secret-gen finalize event")?;
@@ -396,13 +431,20 @@ async fn handle_finalize(
         secret_manager
             .store_oprf_key_material(oprf_key_id, oprf_key_material)
             .await
-            .context("while storing share to secret manager")
+            .context("while storing share to secret manager")?;
+        ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_4_FINISH,
+            METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_KEY_GEN)
+        .increment(1);
     } else {
         secret_manager
             .update_dlog_share(oprf_key_id, epoch, dlog_share)
             .await
-            .context("while updating DLog share")
+            .context("while updating DLog share")?;
+        ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_4_FINISH,
+            METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_RESHARE)
+        .increment(1);
     }
+    Ok(())
 }
 
 #[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty, epoch=tracing::field::Empty))]
@@ -415,6 +457,9 @@ async fn handle_reshare_round1(
     transaction_handler: &TransactionHandler,
 ) -> eyre::Result<()> {
     tracing::info!("Received ReshareRound1 event");
+    ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_1_START,
+        METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_RESHARE)
+    .increment(1);
     let log = log
         .log_decode()
         .context("while decoding reshare round1 event")?;
@@ -459,7 +504,9 @@ async fn handle_reshare_round1(
     } else {
         todo!("we are not a producer")
     }
-
+    ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_1_FINISH,
+            METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_RESHARE)
+    .increment(1);
     Ok(())
 }
 
@@ -472,6 +519,9 @@ async fn handle_reshare_round3(
     transaction_handler: &TransactionHandler,
 ) -> eyre::Result<()> {
     tracing::info!("Received ReshareRound3 event");
+    ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_3_START,
+        METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_RESHARE)
+    .increment(1);
     let log = log
         .log_decode()
         .context("while decoding reshare round3 event")?;
@@ -507,7 +557,11 @@ async fn handle_reshare_round3(
         transaction_identifier,
         transaction_handler,
     )
-    .await
+    .await?;
+    ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_3_FINISH,
+        METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_RESHARE)
+    .increment(1);
+    Ok(())
 }
 
 #[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty))]
@@ -516,6 +570,8 @@ async fn handle_delete(
     secret_gen: &mut DLogSecretGenService,
     secret_manager: &SecretManagerService,
 ) -> eyre::Result<()> {
+    tracing::info!("Received Delete event");
+    ::metrics::counter!(METRICS_ID_KEY_GEN_DELETION_START).increment(1);
     let key_delete = log
         .log_decode()
         .context("while decoding key deletion event")?;
@@ -529,7 +585,9 @@ async fn handle_delete(
     secret_manager
         .remove_oprf_key_material(oprf_key_id)
         .await
-        .context("while storing share to secret manager")
+        .context("while storing share to secret manager")?;
+    ::metrics::counter!(METRICS_ID_KEY_GEN_DELETION_FINISH).increment(1);
+    Ok(())
 }
 
 async fn handle_round3_inner(

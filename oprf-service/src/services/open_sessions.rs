@@ -8,6 +8,7 @@ use parking_lot::Mutex;
 use uuid::Uuid;
 
 use crate::api::errors::Error;
+use crate::metrics::METRICS_ID_NODE_SESSIONS_OPEN;
 
 /// Keeps track of all currently opened sessions.
 #[derive(Default, Clone)]
@@ -36,6 +37,7 @@ impl OpenSessions {
     /// On success, returns a [`SessionDropGuard`] that marks the session as reserved.
     pub(crate) fn insert_new_session(&self, session: Uuid) -> Result<SessionDropGuard, Error> {
         if self.0.lock().insert(session) {
+            ::metrics::gauge!(METRICS_ID_NODE_SESSIONS_OPEN).increment(1);
             Ok(SessionDropGuard {
                 session,
                 open_sessions: self.clone(),
@@ -50,5 +52,6 @@ impl OpenSessions {
     /// Is private so only the `Drop` implementation can call this.
     fn remove_session(&self, session: Uuid) {
         self.0.lock().remove(&session);
+        ::metrics::gauge!(METRICS_ID_NODE_SESSIONS_OPEN).decrement(1);
     }
 }
