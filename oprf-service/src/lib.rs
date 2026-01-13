@@ -192,6 +192,7 @@ pub async fn init<
         max_message_size: config.ws_max_message_size,
         max_connection_lifetime: config.session_lifetime,
         started_services,
+        version_req: config.version_req,
     });
 
     Ok((axum_rest_api, key_event_watcher))
@@ -213,6 +214,7 @@ mod tests {
         api::v1::{OprfResponse, ShareIdentifier},
         crypto::{OprfKeyMaterial, OprfPublicKey},
     };
+    use semver::VersionReq;
     use uuid::Uuid;
 
     use crate::{
@@ -275,25 +277,27 @@ mod tests {
             ark_babyjubjub::EdwardsAffine::rand(&mut rng),
             vec![0, 1],
         );
-        let router = api::v1::routes(
-            PartyId(0),
-            2,
-            OprfKeyMaterialStore::new(HashMap::from([(
-                oprf_key_id,
-                OprfKeyMaterial::new(
-                    BTreeMap::from([(
-                        ShareEpoch::default(),
-                        DLogShareShamir::from(ark_babyjubjub::Fr::rand(&mut rng)),
-                    )]),
-                    OprfPublicKey::new(ark_babyjubjub::EdwardsAffine::default()),
-                    3,
-                ),
-            )])),
-            OpenSessions::default(),
-            Arc::new(WithoutAuthentication),
-            1024 * 1024,
-            std::time::Duration::from_secs(60),
-        );
+        let oprf_material_store = OprfKeyMaterialStore::new(HashMap::from([(
+            oprf_key_id,
+            OprfKeyMaterial::new(
+                BTreeMap::from([(
+                    ShareEpoch::default(),
+                    DLogShareShamir::from(ark_babyjubjub::Fr::rand(&mut rng)),
+                )]),
+                OprfPublicKey::new(ark_babyjubjub::EdwardsAffine::default()),
+                3,
+            ),
+        )]));
+        let router = api::v1::routes(api::v1::V1Args {
+            party_id: PartyId(0),
+            threshold: 2,
+            oprf_material_store,
+            open_sessions: OpenSessions::default(),
+            req_auth_service: Arc::new(WithoutAuthentication),
+            version_req: VersionReq::STAR,
+            max_message_size: 1024 * 1024,
+            max_connection_lifetime: std::time::Duration::from_secs(60),
+        });
         let server = TestServer::builder()
             .http_transport()
             .build(router)

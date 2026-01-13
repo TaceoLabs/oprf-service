@@ -1,3 +1,4 @@
+use crate::api::ProtocolVersion;
 use crate::api::errors::Error;
 use crate::metrics::{
     METRICS_ID_NODE_OPRF_SUCCESS, METRICS_ID_NODE_PART_1_DURATION, METRICS_ID_NODE_PART_1_FINISH,
@@ -6,6 +7,7 @@ use crate::metrics::{
 };
 use crate::services::open_sessions::OpenSessions;
 use crate::{OprfRequestAuthService, services::oprf_key_material_store::OprfKeyMaterialStore};
+use axum::response::IntoResponse;
 use axum::{
     Router,
     extract::{
@@ -14,31 +16,51 @@ use axum::{
     },
     routing::any,
 };
+use axum_extra::TypedHeader;
+use http::StatusCode;
 use oprf_core::ddlog_equality::shamir::DLogCommitmentsShamir;
 use oprf_types::{
     api::v1::{OprfRequest, OprfResponse, oprf_error_codes},
     crypto::PartyId,
 };
+use semver::VersionReq;
 use serde::Deserialize;
 use serde::Serialize;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+
 use tracing::instrument;
+
+pub(crate) struct V1Args<ReqAuth, ReqAuthError> {
+    pub(crate) party_id: PartyId,
+    pub(crate) threshold: usize,
+    pub(crate) oprf_material_store: OprfKeyMaterialStore,
+    pub(crate) open_sessions: OpenSessions,
+    pub(crate) req_auth_service: OprfRequestAuthService<ReqAuth, ReqAuthError>,
+    pub(crate) version_req: VersionReq,
+    pub(crate) max_message_size: usize,
+    pub(crate) max_connection_lifetime: Duration,
+}
+
+struct WsArgs<ReqAuth, ReqAuthError> {
+    party_id: PartyId,
+    threshold: usize,
+    oprf_material_store: OprfKeyMaterialStore,
+    open_sessions: OpenSessions,
+    req_auth_service: OprfRequestAuthService<ReqAuth, ReqAuthError>,
+    version_req: VersionReq,
+    max_message_size: usize,
+    max_connection_lifetime: Duration,
+
+    // axum extracted values
+    ws: WebSocketUpgrade,
+    client_version: semver::Version,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum HumanReadable {
     Yes,
     No,
-}
-
-struct WebSocketArgs<ReqAuth, ReqAuthError> {
-    ws: WebSocketUpgrade,
-    party_id: PartyId,
-    threshold: usize,
-    open_sessions: OpenSessions,
-    oprf_material_store: OprfKeyMaterialStore,
-    req_auth_service: OprfRequestAuthService<ReqAuth, ReqAuthError>,
-    max_message_size: usize,
-    max_connection_lifetime: Duration,
 }
 
 /// Web-socket handler.
@@ -58,50 +80,60 @@ async fn ws<
     ReqAuth: for<'de> Deserialize<'de> + Send + 'static,
     ReqAuthError: Send + 'static + std::error::Error,
 >(
-    args: WebSocketArgs<ReqAuth, ReqAuthError>,
+    args: WsArgs<ReqAuth, ReqAuthError>,
 ) -> axum::response::Response {
-    args.ws
-        .max_message_size(args.max_message_size)
-        .on_failed_upgrade(|err| {
-            tracing::warn!("could not establish websocket connection: {err:?}");
-        })
-        .on_upgrade(move |mut ws| async move {
-            let close_frame = match tokio::time::timeout(
-                args.max_connection_lifetime,
-                partial_oprf::<ReqAuth, ReqAuthError>(
-                    &mut ws,
-                    args.party_id,
-                    args.threshold,
-                    args.open_sessions,
-                    args.oprf_material_store,
-                    args.req_auth_service,
-                ),
-            )
-            .await
-            {
-                Ok(Ok(_)) => {
-                    ::metrics::counter!(METRICS_ID_NODE_OPRF_SUCCESS).increment(1);
-                    Some(CloseFrame {
-                        code: close_code::NORMAL,
-                        reason: "success".into(),
-                    })
-                }
-                Ok(Err(err)) => err.into_close_frame(),
+    tracing::trace!("checking version header: {:?}", args.client_version);
+    if !args.version_req.matches(&args.client_version) {
+        args.ws
+            .max_message_size(args.max_message_size)
+            .on_failed_upgrade(|err| {
+                tracing::warn!("could not establish websocket connection: {err:?}");
+            })
+            .on_upgrade(move |mut ws| async move {
+                let close_frame = match tokio::time::timeout(
+                    args.max_connection_lifetime,
+                    partial_oprf::<ReqAuth, ReqAuthError>(
+                        &mut ws,
+                        args.party_id,
+                        args.threshold,
+                        args.open_sessions,
+                        args.oprf_material_store,
+                        args.req_auth_service,
+                    ),
+                )
+                .await
+                {
+                    Ok(Ok(_)) => {
+                        ::metrics::counter!(METRICS_ID_NODE_OPRF_SUCCESS).increment(1);
+                        Some(CloseFrame {
+                            code: close_code::NORMAL,
+                            reason: "success".into(),
+                        })
+                    }
+                    Ok(Err(err)) => err.into_close_frame(),
 
-                Err(_) => {
-                    ::metrics::counter!(METRICS_ID_NODE_SESSIONS_TIMEOUT).increment(1);
-                    Some(CloseFrame {
-                        code: oprf_error_codes::TIMEOUT,
-                        reason: "timeout".into(),
-                    })
+                    Err(_) => {
+                        ::metrics::counter!(METRICS_ID_NODE_SESSIONS_TIMEOUT).increment(1);
+                        Some(CloseFrame {
+                            code: oprf_error_codes::TIMEOUT,
+                            reason: "timeout".into(),
+                        })
+                    }
+                };
+                if let Some(close_frame) = close_frame {
+                    tracing::trace!(" < sending close frame");
+                    // In their example, axum just sends the frame and ignores the error afterwards and also don't wait for the peers close frame. Therefore we do the same,
+                    let _ = ws.send(ws::Message::Close(Some(close_frame))).await;
                 }
-            };
-            if let Some(close_frame) = close_frame {
-                tracing::trace!(" < sending close frame");
-                // In their example, axum just sends the frame and ignores the error afterwards and also don't wait for the peers close frame. Therefore we do the same,
-                let _ = ws.send(ws::Message::Close(Some(close_frame))).await;
-            }
-        })
+            })
+    } else {
+        tracing::trace!("rejecting because version mismatch");
+        (
+            StatusCode::BAD_REQUEST,
+            format!("invalid version, expected: {}", args.version_req),
+        )
+            .into_response()
+    }
 }
 
 /// The whole life-cycle of a single user session.
@@ -273,26 +305,33 @@ pub fn routes<
     ReqAuth: for<'de> Deserialize<'de> + Send + 'static,
     ReqAuthError: Send + 'static + std::error::Error,
 >(
-    party_id: PartyId,
-    threshold: usize,
-    oprf_material_store: OprfKeyMaterialStore,
-    open_sessions: OpenSessions,
-    req_auth_service: OprfRequestAuthService<ReqAuth, ReqAuthError>,
-    max_message_size: usize,
-    max_connection_lifetime: Duration,
+    v1_args: V1Args<ReqAuth, ReqAuthError>,
 ) -> Router {
+    let V1Args {
+        party_id,
+        threshold,
+        oprf_material_store,
+        open_sessions,
+        req_auth_service,
+        version_req,
+        max_message_size,
+        max_connection_lifetime,
+    } = v1_args;
     Router::new().route(
         "/oprf",
-        any(move |websocket_upgrade| {
-            ws::<ReqAuth, ReqAuthError>(WebSocketArgs {
-                ws: websocket_upgrade,
+        any(move |websocket_upgrade, version_header| {
+            let TypedHeader(ProtocolVersion(client_version)) = version_header;
+            ws::<ReqAuth, ReqAuthError>(WsArgs {
                 party_id,
                 threshold,
-                open_sessions,
-                oprf_material_store,
-                req_auth_service,
+                oprf_material_store: oprf_material_store.clone(),
+                open_sessions: open_sessions.clone(),
+                req_auth_service: Arc::clone(&req_auth_service),
+                version_req: version_req.clone(),
                 max_message_size,
                 max_connection_lifetime,
+                ws: websocket_upgrade,
+                client_version,
             })
         }),
     )
