@@ -15,7 +15,7 @@ use oprf_types::{
 };
 use parking_lot::Mutex;
 
-pub const SECRET_MAX_CACHE_SIZE: usize = 2;
+pub const SECRET_MAX_CACHE_SIZE: u8 = 2;
 
 #[derive(Clone)]
 pub struct TestSecretManager {
@@ -87,7 +87,7 @@ impl oprf_key_gen::secret_manager::SecretManager for TestSecretManager {
                         OprfKeyMaterial::new(
                             BTreeMap::from([(epoch, share)]),
                             public_key,
-                            SECRET_MAX_CACHE_SIZE
+                            usize::from(SECRET_MAX_CACHE_SIZE)
                         )
                     )
                     .is_none(),
