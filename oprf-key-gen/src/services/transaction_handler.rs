@@ -52,6 +52,7 @@ pub(crate) struct TransactionIdentifier {
 }
 
 impl TransactionIdentifier {
+    /// Creates a new identifier for key-gen transactions (setting epoch to 0).
     pub(crate) fn keygen(
         oprf_key_id: OprfKeyId,
         party_id: PartyId,
@@ -64,6 +65,8 @@ impl TransactionIdentifier {
             epoch: ShareEpoch::default(),
         }
     }
+
+    /// Creates a new identifier for reshare transactions.
     pub(crate) fn reshare(
         oprf_key_id: OprfKeyId,
         party_id: PartyId,
@@ -90,21 +93,32 @@ impl From<OprfKeyRegistry::KeyGenConfirmation> for TransactionIdentifier {
     }
 }
 
+/// The verdict of the transaction confirmation in case the event was registered at chain. We need this for redundant key-gen binaries because we need to know whether a clone's or this instance's transaction was registered on chain.
+///
+/// For that every node sends a nonce with their transaction to identify which node's transaction was registered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum TransactionResult {
+    /// Our transaction was registered
     Success,
+    /// Transaction of another instance was registered
     NotByUs,
 }
 
 /// A signal that fires when we get the confirmation of a dedicated transaction.
 struct TransactionSignal(oneshot::Receiver<TransactionResult>);
 
+/// Counter part to [`TransactionSignal`].
+///
+/// Also stores the nonce of this instances transaction to distinguish between this instance or a clone.
 struct TransactionSignalSender {
     tx: oneshot::Sender<TransactionResult>,
     nonce: U256,
 }
 
 impl TransactionSignalSender {
+    /// Resolves this signal by consuming `self` and sending the final [`TransactionResult`] to a potential waiting party.
+    ///
+    /// Sends `TransactionResult::Success` in case this instances nonce was recorded, `TransactionResult::NotByUs`.
     fn resolve(self, nonce: U256) {
         if self.nonce == nonce {
             tracing::debug!("our nonce was recorded!");
@@ -117,7 +131,10 @@ impl TransactionSignalSender {
 }
 
 impl TransactionSignal {
-    /// Wait for the confirmation for this transaction. Returns `true` iff the transaction confirmation was recorded, `false` if we did not record it in time.
+    /// Wait for the confirmation for this transaction.
+    ///
+    /// Returns `None` if the confirmation was not recorded in the configured time frame.
+    /// Returns `Some(TransactionResult)` otherwise.
     async fn confirmation(self) -> Option<TransactionResult> {
         self.0.await.ok()
     }
@@ -125,7 +142,9 @@ impl TransactionSignal {
 
 /// Service that handles transaction submitting, error handling and RPC failure.
 ///
-/// On startup, spawns a task that listens for the `KeyGenConfirmation` logs. The implementation will receive all confirmation events, also from the other nodes, but will just ignore them. If the task records a [`TransactionIdentifier`] that is currently in the store it send an `Ok` value to the waiting channel.
+/// On startup, spawns a task that listens for the `KeyGenConfirmation` logs. The implementation will receive all confirmation events, also from the other nodes and from clones of the same instance (redundant nodes from same party). The events from other parties are simply ignored, whereas the events from the cloned instances will be recorded. These events are distinguished by a nonce that every instance sends with their transaction. The calling node will know whether a clone's contribution was registered or their own.
+///
+/// If the task records a [`TransactionIdentifier`] that is currently in the store and has the same nonce embedded it sends an `TransactionResult::Success` value to the waiting channel. If the nonce doesn't match, it sends `TransactionResult::NotByUs`.
 ///
 /// On every transaction, it will additionally spawn a dedicated `tokio::task`, that waits `max_wait_time` and then removes the transaction from the store, signaling a waiting task that we could not get the confirmation in time.
 #[derive(Clone)]
@@ -193,14 +212,7 @@ impl TransactionHandler {
         });
         Ok((transaction_handler, handle))
     }
-
-    /// Attempts to send a transaction with configured provider.
-    ///
-    /// We wait for the receipt we get from our RPC. If we successfully get the receipt we check its status. If everything was successful we return with an `Ok`. If we get a receipt signaling a failure we try to do the same call once more, but without doing a transaction to get the potential revert data. This should only act as debug information and not be taken at face value.
-    ///
-    /// Now, if the RPC responds with a null response (which occurs quite often with e.g., Alchemy) we wait for a dedicated event emitted by the smart-contract that was created by the transaction. Apparently, when getting this null response error, the transaction might still have been successful, therefore we can't rely on the response from the RPC. In most cases, we still get the ordinary receipt with a success, so this is a fail safe. If this runs into a timeout, we try to redo the transaction a configured amount of times.
-    ///
-    /// If we could not send the transaction at all, we return with an error.
+    /// Attempts to send a transaction using the configured provider.
     ///
     /// Takes an `Fn` that produces a `CallBuilder`. This can be done e.g., with
     /// ```rust,ignore
@@ -214,6 +226,36 @@ impl TransactionHandler {
     ///     .await?;
     /// ```
     /// This method will then attempt to send the transaction via the provided RPC.
+    ///
+    /// ## Normal flow
+    /// 1. Send the transaction and wait for the transaction receipt from the RPC.
+    /// 2. If a receipt is returned:
+    ///    - If the receipt signals success, return `Ok`.
+    ///    - If the receipt signals failure, continue with failure handling.
+    ///
+    /// ## Failure handling
+    /// If the receipt indicates a failure, we wait for the `KeyGenConfirmation` event:
+    /// - Using the embedded nonce, we determine whether this node’s confirmation
+    ///   was still recorded, or whether the event originated from a redundant clone.
+    /// - If the confirmation shows that the transaction was effectively recorded,
+    ///   we treat the operation as successful.
+    ///
+    /// If this check fails, we retry the same call once more *without* sending a
+    /// transaction, in order to retrieve potential revert data. This result is
+    /// intended for debugging purposes only and must not be taken at face value.
+    ///
+    /// ## RPC null-response handling
+    /// In some cases (e.g., with Alchemy), the RPC may return a null response instead
+    /// of a receipt. Even in this case, the transaction may still have been executed
+    /// successfully.
+    /// - When this happens, we wait for the `KeyGenConfirmation` event emitted by the smart
+    ///   contract to confirm whether the transaction was processed.
+    /// - In most cases, a normal receipt with a success status is still received,
+    ///   so this serves purely as a fail-safe mechanism.
+    ///
+    /// ## Retries
+    /// If waiting for the confirmation event times out, we retry sending the
+    /// transaction up to a configured number of attempts.
     pub(crate) async fn attempt_transaction<P, D, N, F>(
         &self,
         transaction_identifier: TransactionIdentifier,
@@ -317,8 +359,6 @@ impl TransactionHandler {
 }
 
 /// Helper function to get the revert data in case the transaction failed.
-///
-/// In case we get `WrongRound`/`AlreadySubmitted` error,
 async fn check_receipt<P, D, N, F>(
     transaction: F,
     registered_transaction: TransactionSignal,

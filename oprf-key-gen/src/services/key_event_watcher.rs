@@ -285,7 +285,7 @@ async fn handle_keygen_round1(
         tracing::debug!("Need to cleanup after me");
         secret_gen.delete_oprf_key_material(oprf_key_id);
     } else {
-        tracing::debug!("out contribution was registered");
+        tracing::debug!("our contribution was registered");
     }
     ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_1_FINISH,
         METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_KEY_GEN)
@@ -499,12 +499,11 @@ async fn handle_reshare_round1(
             )
         })
         .await?;
-    // this is not actually needed currently as we
     if transaction_result == TransactionResult::NotByUs {
         tracing::debug!("Need to cleanup after me");
         secret_gen.delete_oprf_key_material(oprf_key_id);
     } else {
-        tracing::debug!("out contribution was registered");
+        tracing::debug!("our contribution was registered");
     }
     ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_1_FINISH,
             METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_RESHARE)
