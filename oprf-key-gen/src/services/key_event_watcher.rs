@@ -459,7 +459,7 @@ async fn handle_reshare_round1(
         tracing::debug!("finished producer round1 - now reporting to chain..");
         Round1Contribution::from(contribution)
     } else {
-        tracing::info!("we down have the necessary share - we are a consumer");
+        tracing::info!("we don't have the necessary share - we are a consumer");
         let contribution = secret_gen.consumer_round1(oprf_key_id, &mut rand::thread_rng());
         tracing::debug!("finished consumer round1 - now reporting to chain..");
         Round1Contribution::from(contribution)
