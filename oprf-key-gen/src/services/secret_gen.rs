@@ -171,6 +171,21 @@ impl DLogSecretGenService {
         }
     }
 
+    /// Checks whether the data from round 1 is stored. Returns `true` iff possible to start round 2.
+    pub(crate) fn can_do_round2(&self, oprf_key_id: OprfKeyId) -> bool {
+        self.toxic_waste_round1.contains_key(&oprf_key_id)
+    }
+
+    /// Checks whether the data from round 2 is stored. Returns `true` iff possible to start round 3.
+    pub(crate) fn can_do_round3(&self, oprf_key_id: OprfKeyId) -> bool {
+        self.toxic_waste_round2.contains_key(&oprf_key_id)
+    }
+
+    /// Checks whether the data from round 3 is stored. Returns `true` iff possible to start finalize.
+    pub(crate) fn can_do_finalize(&self, oprf_key_id: OprfKeyId) -> bool {
+        self.finished_shares.contains_key(&oprf_key_id)
+    }
+
     /// Deletes all material associated with the [`OprfKeyId`].
     /// This includes:
     /// * [`ToxicWasteRound1`]
@@ -218,15 +233,22 @@ impl DLogSecretGenService {
     /// # Arguments
     /// * `oprf_key_id` - Identifier of the OPRF key that we generate.
     /// * `pks` - List of public keys for nodes participating in the protocol.
+    ///
+    /// # Panics
+    /// Panics if the round 1 data is not stored. We expect callsite to call [`DLogSecretGenService::can_do_round2`] before calling this function.
     pub(crate) fn producer_round2(
         &mut self,
         oprf_key_id: OprfKeyId,
         pks: Vec<EphemeralEncryptionPublicKey>,
     ) -> eyre::Result<SecretGenRound2Contribution> {
+        assert!(
+            self.can_do_round2(oprf_key_id),
+            "Cannot do round2. Should be checked before calling this"
+        );
         let toxic_waste_r1 = self
             .toxic_waste_round1
             .remove(&oprf_key_id)
-            .expect("todo how to handle this");
+            .expect("Checked above");
         let (contribution, toxix_waste_r2) =
             compute_keygen_proof(&self.key_gen_material, toxic_waste_r1, pks)
                 .context("while computing proof for round2")?;
@@ -244,6 +266,9 @@ impl DLogSecretGenService {
     /// * `ciphers` - Ciphertexts received from other parties in round 2.
     /// * `sharing_type` - Defines how the resulting share is secret-shared. `Linear` for key-gen, `Shamir` for reshare.
     /// * `pks` - The ephemeral public-keys of the producers needed for DHE.
+    ///
+    /// # Panics
+    /// Panics if the round 2 data is not stored. We expect callsite to call [`DLogSecretGenService::can_do_round3`] before calling this function.
     #[instrument(level = "info", skip_all, fields(oprf_key_id=%oprf_key_id))]
     pub(crate) fn round3(
         &mut self,
@@ -252,11 +277,15 @@ impl DLogSecretGenService {
         sharing_type: Contributions,
         pks: Vec<EphemeralEncryptionPublicKey>,
     ) -> eyre::Result<SecretGenRound3Contribution> {
+        assert!(
+            self.can_do_round3(oprf_key_id),
+            "Cannot do round3. Should be checked before calling this"
+        );
         tracing::info!("calling round3 with {}", ciphers.len());
         let toxic_waste_r2 = self
             .toxic_waste_round2
             .remove(&oprf_key_id)
-            .expect("todo what if not here?");
+            .expect("Checked above");
         let share = decrypt_key_gen_ciphertexts(ciphers, toxic_waste_r2, sharing_type, pks)
             .context("while computing DLogShare")?;
         // We need to store the computed share - as soon as we get ready
@@ -269,11 +298,18 @@ impl DLogSecretGenService {
     ///
     /// # Arguments
     /// * `oprf_key_id` - Identifier of the RP for which the secret is being finalized.
+    ///
+    /// # Panics
+    /// Panics if finished share is not stored. We expect callsite to call [`DLogSecretGenService::can_do_finalize`] before calling this function.
     pub(crate) fn finalize(&mut self, oprf_key_id: OprfKeyId) -> eyre::Result<DLogShareShamir> {
+        assert!(
+            self.can_do_finalize(oprf_key_id),
+            "Cannot do finalize. Should be checked before calling this"
+        );
         tracing::info!("finalize..");
         self.finished_shares
             .remove(&oprf_key_id)
-            .context("cannot find computed DLogShare")
+            .context("Checked above")
     }
 
     /// Executes round 1 of the reshare protocol.
