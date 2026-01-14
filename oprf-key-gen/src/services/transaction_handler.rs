@@ -8,7 +8,7 @@ use alloy::{
     contract::{CallBuilder, CallDecoder},
     eips::BlockNumberOrTag,
     network::{Network, ReceiptResponse as _},
-    primitives::{Address, U256},
+    primitives::Address,
     providers::{DynProvider, PendingTransactionError, Provider},
     rpc::types::Filter,
     sol_types::SolEvent,
@@ -93,50 +93,13 @@ impl From<OprfKeyRegistry::KeyGenConfirmation> for TransactionIdentifier {
     }
 }
 
-/// The verdict of the transaction confirmation in case the event was registered at chain. We need this for redundant key-gen binaries because we need to know whether a clone's or this instance's transaction was registered on chain.
-///
-/// For that every node sends a nonce with their transaction to identify which node's transaction was registered.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) enum TransactionResult {
-    /// Our transaction was registered
-    Success,
-    /// Transaction of another instance was registered
-    NotByUs,
-}
-
 /// A signal that fires when we get the confirmation of a dedicated transaction.
-struct TransactionSignal(oneshot::Receiver<TransactionResult>);
-
-/// Counter part to [`TransactionSignal`].
-///
-/// Also stores the nonce of this instances transaction to distinguish between this instance or a clone.
-struct TransactionSignalSender {
-    tx: oneshot::Sender<TransactionResult>,
-    nonce: U256,
-}
-
-impl TransactionSignalSender {
-    /// Resolves this signal by consuming `self` and sending the final [`TransactionResult`] to a potential waiting party.
-    ///
-    /// Sends `TransactionResult::Success` in case this instances nonce was recorded, `TransactionResult::NotByUs`.
-    fn resolve(self, nonce: U256) {
-        if self.nonce == nonce {
-            tracing::debug!("our nonce was recorded!");
-            let _ = self.tx.send(TransactionResult::Success);
-        } else {
-            tracing::debug!("nonce of something else recorded - need to cleanup");
-            let _ = self.tx.send(TransactionResult::NotByUs);
-        }
-    }
-}
+struct TransactionSignal(oneshot::Receiver<()>);
 
 impl TransactionSignal {
-    /// Wait for the confirmation for this transaction.
-    ///
-    /// Returns `None` if the confirmation was not recorded in the configured time frame.
-    /// Returns `Some(TransactionResult)` otherwise.
-    async fn confirmation(self) -> Option<TransactionResult> {
-        self.0.await.ok()
+    /// Wait for the confirmation for this transaction. Returns `true` iff the transaction confirmation was recorded, `false` if we did not record it in time.
+    async fn confirmation(self) -> bool {
+        self.0.await.is_ok()
     }
 }
 
@@ -152,7 +115,7 @@ pub(crate) struct TransactionHandler {
     max_wait_time: Duration,
     attempts: usize,
     party_id: PartyId,
-    store: Arc<Mutex<HashMap<TransactionIdentifier, TransactionSignalSender>>>,
+    store: Arc<Mutex<HashMap<TransactionIdentifier, oneshot::Sender<()>>>>,
 }
 
 impl TransactionHandler {
@@ -203,9 +166,8 @@ impl TransactionHandler {
                         .log_decode()
                         .context("while decoding transaction-nonce event")?;
                     let confirmation: OprfKeyRegistry::KeyGenConfirmation = log.inner.data;
-                    let nonce = confirmation.nonce;
                     tracing::trace!("got transaction nonce confirmation: {confirmation:?}");
-                    transaction_handler.signal_recorded_nonce(confirmation.into(), nonce);
+                    transaction_handler.signal_recorded_nonce(confirmation.into());
                 }
                 eyre::Ok(())
             }
@@ -260,12 +222,12 @@ impl TransactionHandler {
         &self,
         transaction_identifier: TransactionIdentifier,
         transaction: F,
-    ) -> eyre::Result<TransactionResult>
+    ) -> eyre::Result<()>
     where
         P: Provider<N>,
         D: CallDecoder + Unpin,
         N: Network,
-        F: Fn(U256) -> CallBuilder<P, D, N>,
+        F: Fn() -> CallBuilder<P, D, N>,
     {
         let mut attempt = 0;
         loop {
@@ -275,9 +237,8 @@ impl TransactionHandler {
                 self.attempts
             );
             // start the timer for this transaction
-            let (registered_transaction, nonce) = self.register_transaction(transaction_identifier);
-            tracing::trace!("sending with nonce: {nonce}");
-            let transaction_result = transaction(nonce)
+            let transaction_nonce = self.register_transaction(transaction_identifier);
+            let transaction_result = transaction()
                 .gas(10000000) // FIXME this is only for dummy smart contract
                 .send()
                 .await
@@ -285,20 +246,17 @@ impl TransactionHandler {
                 .get_receipt()
                 .await;
             match transaction_result {
-                Ok(receipt) => {
-                    return check_receipt(transaction, registered_transaction, receipt, nonce)
-                        .await;
-                }
+                Ok(receipt) => return check_receipt(transaction, receipt).await,
                 Err(PendingTransactionError::TransportError(
                     alloy::transports::RpcError::NullResp,
                 )) => {
                     tracing::debug!("got null response - trying to wait for confirmation event...");
-                    if let Some(transaction_result) = registered_transaction.confirmation().await {
+                    if transaction_nonce.confirmation().await {
                         tracing::debug!(
                             "received confirmation! we can continue as our contribution is registered"
                         );
                         ::metrics::counter!(METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK).increment(1);
-                        return Ok(transaction_result);
+                        return Ok(());
                     } else {
                         tracing::debug!("ran into timeout while waiting for nonce event...");
                         ::metrics::counter!(METRICS_ID_KEY_GEN_RPC_RETRY).increment(1);
@@ -314,7 +272,7 @@ impl TransactionHandler {
     }
 
     /// Tries to signal to a waiting task that we recorded the specified transaction confirmation. Does nothing if the transaction is not in store.
-    fn signal_recorded_nonce(&self, confirmation: TransactionIdentifier, nonce: U256) {
+    fn signal_recorded_nonce(&self, confirmation: TransactionIdentifier) {
         // If not in store either nonce belongs to someone else or we ran into timeout
         if confirmation.party_id == self.party_id
             && let Some(tx) = self
@@ -327,20 +285,19 @@ impl TransactionHandler {
                 "maybe someone waiting for confirmation from {}",
                 confirmation.oprf_key_id
             );
-            tx.resolve(nonce);
+            let _ = tx.send(());
         }
     }
 
     /// Creates a new [`TransactionSignal`].
     ///
     /// Additionally, spawns a task that drops signal from the store, signaling that we did not get the transaction confirmation in time.
-    fn register_transaction(&self, identifier: TransactionIdentifier) -> (TransactionSignal, U256) {
-        let nonce = rand::random();
+    fn register_transaction(&self, identifier: TransactionIdentifier) -> TransactionSignal {
         let (tx, rx) = oneshot::channel();
         self.store
             .lock()
             .expect("Not poisoned")
-            .insert(identifier, TransactionSignalSender { tx, nonce });
+            .insert(identifier, tx);
         tokio::task::spawn({
             let max_wait_time = self.max_wait_time;
             let store = self.clone();
@@ -354,33 +311,25 @@ impl TransactionHandler {
                     .remove(&identifier);
             }
         });
-        (TransactionSignal(rx), nonce)
+        TransactionSignal(rx)
     }
 }
 
 /// Helper function to get the revert data in case the transaction failed.
-async fn check_receipt<P, D, N, F>(
-    transaction: F,
-    registered_transaction: TransactionSignal,
-    receipt: N::ReceiptResponse,
-    nonce: U256,
-) -> eyre::Result<TransactionResult>
+async fn check_receipt<P, D, N, F>(transaction: F, receipt: N::ReceiptResponse) -> eyre::Result<()>
 where
     P: Provider<N>,
     D: CallDecoder + Unpin,
     N: Network,
-    F: Fn(U256) -> CallBuilder<P, D, N>,
+    F: Fn() -> CallBuilder<P, D, N>,
 {
     if receipt.status() {
         // we did it!
         tracing::debug!("successfully sent transaction");
-        Ok(TransactionResult::Success)
-    } else if let Some(transaction_result) = registered_transaction.confirmation().await {
-        tracing::debug!("received transaction confirmation!");
-        Ok(transaction_result)
+        Ok(())
     } else {
         tracing::debug!("could not send transaction - do a call to get revert data");
-        match transaction(nonce).call().await {
+        match transaction().call().await {
             Ok(_) => {
                 eyre::bail!("cannot finish transaction for unknown reason: {receipt:?}");
             }

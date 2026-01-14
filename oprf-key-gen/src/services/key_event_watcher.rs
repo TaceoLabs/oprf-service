@@ -23,9 +23,7 @@ use crate::{
     services::{
         secret_gen::{Contributions, DLogSecretGenService},
         secret_manager::SecretManagerService,
-        transaction_handler::{
-            TransactionHandler, TransactionIdentifier, TransactionResult, TransactionType,
-        },
+        transaction_handler::{TransactionHandler, TransactionIdentifier, TransactionType},
     },
 };
 use alloy::{
@@ -272,21 +270,12 @@ async fn handle_keygen_round1(
     tracing::debug!("finished round1 - now reporting to chain..");
     let transaction_identifier =
         TransactionIdentifier::keygen(oprf_key_id, party_id, TransactionType::Round1);
-    let transaction_result = transaction_handler
-        .attempt_transaction(transaction_identifier, |nonce| {
-            contract.addRound1KeyGenContribution(
-                oprf_key_id.into_inner(),
-                contribution.clone().into(),
-                nonce,
-            )
+    transaction_handler
+        .attempt_transaction(transaction_identifier, || {
+            contract
+                .addRound1KeyGenContribution(oprf_key_id.into_inner(), contribution.clone().into())
         })
         .await?;
-    if transaction_result == TransactionResult::NotByUs {
-        tracing::debug!("Need to cleanup after me");
-        secret_gen.delete_oprf_key_material(oprf_key_id);
-    } else {
-        tracing::debug!("our contribution was registered");
-    }
     ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_1_FINISH,
         METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_KEY_GEN)
     .increment(1);
@@ -312,10 +301,6 @@ async fn handle_round2(
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
     handle_span.record("epoch", epoch.to_string());
     let oprf_key_id = OprfKeyId::from(oprfKeyId);
-    if !secret_gen.can_do_round2(oprf_key_id) {
-        tracing::debug!("we don't have material to do round 2");
-        return Ok(());
-    }
     tracing::info!("fetching ephemeral public keys from chain..");
     let nodes = contract
         .loadPeerPublicKeysForProducers(oprfKeyId)
@@ -346,12 +331,8 @@ async fn handle_round2(
     let transaction_identifier =
         TransactionIdentifier::keygen(oprf_key_id, party_id, TransactionType::Round2);
     transaction_handler
-        .attempt_transaction(transaction_identifier, |nonce| {
-            contract.addRound2Contribution(
-                res.oprf_key_id.into_inner(),
-                contribution.clone(),
-                nonce,
-            )
+        .attempt_transaction(transaction_identifier, || {
+            contract.addRound2Contribution(res.oprf_key_id.into_inner(), contribution.clone())
         })
         .await?;
     ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_2_FINISH,
@@ -415,13 +396,8 @@ async fn handle_finalize(
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
     handle_span.record("epoch", epoch.to_string());
     tracing::info!("Event for {oprfKeyId} with epoch {epoch}");
-    let oprf_key_id = OprfKeyId::from(oprfKeyId);
-    tracing::info!("Event for {oprf_key_id} with epoch {epoch}");
-    if !secret_gen.can_do_finalize(oprf_key_id) {
-        tracing::debug!("we don't have material to do finalize");
-        return Ok(());
-    }
     let oprf_public_key = contract.getOprfPublicKey(oprfKeyId).call().await?;
+    let oprf_key_id = OprfKeyId::from(oprfKeyId);
     let oprf_public_key = OprfPublicKey::new(oprf_public_key.try_into()?);
     let epoch = ShareEpoch::from(epoch);
     let dlog_share = secret_gen
@@ -490,21 +466,11 @@ async fn handle_reshare_round1(
     };
     let transaction_identifier =
         TransactionIdentifier::reshare(oprf_key_id, party_id, TransactionType::Round1, epoch);
-    let transaction_result = transaction_handler
-        .attempt_transaction(transaction_identifier, |nonce| {
-            contract.addRound1ReshareContribution(
-                oprf_key_id.into_inner(),
-                contribution.clone(),
-                nonce,
-            )
+    transaction_handler
+        .attempt_transaction(transaction_identifier, || {
+            contract.addRound1ReshareContribution(oprf_key_id.into_inner(), contribution.clone())
         })
         .await?;
-    if transaction_result == TransactionResult::NotByUs {
-        tracing::debug!("Need to cleanup after me");
-        secret_gen.delete_oprf_key_material(oprf_key_id);
-    } else {
-        tracing::debug!("our contribution was registered");
-    }
     ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_1_FINISH,
             METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_RESHARE)
     .increment(1);
@@ -600,10 +566,6 @@ async fn handle_round3_inner(
     transaction_identifier: TransactionIdentifier,
     transaction_handler: &TransactionHandler,
 ) -> eyre::Result<()> {
-    if !secret_gen.can_do_round3(oprf_key_id) {
-        tracing::debug!("we don't have material to do round 3");
-        return Ok(());
-    }
     tracing::info!("Event for {oprf_key_id}");
     tracing::info!("reading ciphers from chain..");
     let ciphers = contract
@@ -631,8 +593,8 @@ async fn handle_round3_inner(
         .context("while doing round3")?;
     tracing::debug!("finished round 3 - now reporting");
     transaction_handler
-        .attempt_transaction(transaction_identifier, |nonce| {
-            contract.addRound3Contribution(res.oprf_key_id.into_inner(), nonce)
+        .attempt_transaction(transaction_identifier, || {
+            contract.addRound3Contribution(res.oprf_key_id.into_inner())
         })
         .await?;
     Ok(())
