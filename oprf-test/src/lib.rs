@@ -1,5 +1,6 @@
 use crate::test_secret_manager::TestSecretManager;
 use alloy::primitives::{Address, address};
+use semver::VersionReq;
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 
@@ -55,6 +56,8 @@ pub async fn start_node(
             wallet_address,
             get_oprf_key_material_timeout: Duration::from_secs(60),
             start_block: None,
+            // allow all versions (does not match pre-releases)
+            version_req: VersionReq::STAR,
         },
     };
 

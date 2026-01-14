@@ -16,6 +16,7 @@ use crate::{
 use alloy::primitives::Address;
 use axum::Router;
 use oprf_types::crypto::PartyId;
+use semver::VersionReq;
 use serde::Deserialize;
 use std::time::Duration;
 use tower_http::trace::TraceLayer;
@@ -34,6 +35,7 @@ pub(crate) struct ApiRoutesArgs<
     pub(crate) threshold: usize,
     pub(crate) oprf_material_store: OprfKeyMaterialStore,
     pub(crate) req_auth_service: OprfRequestAuthService<RequestAuth, RequestAuthError>,
+    pub(crate) version_req: VersionReq,
     pub(crate) wallet_address: Address,
     pub(crate) max_message_size: usize,
     pub(crate) max_connection_lifetime: Duration,
@@ -59,6 +61,7 @@ pub fn routes<
     let ApiRoutesArgs {
         party_id,
         threshold,
+        version_req,
         oprf_material_store,
         req_auth_service,
         wallet_address,
@@ -71,15 +74,16 @@ pub fn routes<
     Router::new()
         .nest(
             "/api/v1",
-            v1::routes(
+            v1::routes(v1::V1Args {
                 party_id,
                 threshold,
-                oprf_material_store.clone(),
-                open_sessions,
-                req_auth_service.clone(),
+                oprf_material_store: oprf_material_store.clone(),
+                open_sessions: open_sessions.clone(),
+                req_auth_service: req_auth_service.clone(),
+                version_req,
                 max_message_size,
                 max_connection_lifetime,
-            ),
+            }),
         )
         .merge(health::routes(services_healthy))
         .merge(info::routes(oprf_material_store.clone(), wallet_address))

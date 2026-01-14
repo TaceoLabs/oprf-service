@@ -4,6 +4,7 @@
 //!
 //! Currently exposes the version 1 OPRF API types under [`v1`].
 
+use http::HeaderName;
 use serde::{Deserialize, Serialize};
 
 use crate::{ShareEpoch, crypto::OprfPublicKey};
@@ -17,3 +18,7 @@ pub struct OprfPublicKeyWithEpoch {
     /// The current epoch
     pub epoch: ShareEpoch,
 }
+
+/// The name of the oprf-protocol-version header.
+pub static OPRF_PROTOCOL_VERSION_HEADER: HeaderName =
+    http::HeaderName::from_static("x-taceo-oprf-protocol-version");

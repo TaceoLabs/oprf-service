@@ -24,6 +24,7 @@ circom-types = { workspace = true, features = [
 ] }
 eyre = { workspace = true }
 groth16-sol = { workspace = true }
+http = { workspace = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.2" }
 serde = { workspace = true, features = ["derive"] }
 tracing = { workspace = true }

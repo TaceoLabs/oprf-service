@@ -9,6 +9,7 @@ use std::time::Duration;
 use alloy::primitives::Address;
 use clap::{Parser, ValueEnum};
 use secrecy::SecretString;
+use semver::VersionReq;
 
 /// The environment the service is running in.
 ///
@@ -91,4 +92,8 @@ pub struct OprfNodeConfig {
     /// If not set, will start from the latest block.
     #[clap(long, env = "OPRF_NODE_START_BLOCK")]
     pub start_block: Option<u64>,
+
+    /// Accepted SemVer versions of clients.
+    #[clap(long, env = "OPRF_NODE_ACCEPTED_VERSIONS", value_parser=VersionReq::parse)]
+    pub version_req: VersionReq,
 }
