@@ -31,8 +31,8 @@ k256 = { workspace = true, features = ["ecdsa", "serde"] }
 metrics = { workspace = true }
 nodes-common = { workspace = true }
 nodes-observability = { workspace = true }
-oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.2" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.2" }
+oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.3" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.3" }
 rand.workspace = true
 rustls = { workspace = true }
 secrecy = { workspace = true }
