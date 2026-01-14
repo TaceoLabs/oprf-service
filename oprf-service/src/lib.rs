@@ -204,7 +204,8 @@ mod tests {
 
     use alloy::uint;
     use ark_ff::UniformRand as _;
-    use axum_extra::headers::Header;
+
+    use axum_extra::headers::Header as _;
     use axum_test::{TestServer, TestWebSocket};
     use http::StatusCode;
     use oprf_client::BlindingFactor;
@@ -220,7 +221,7 @@ mod tests {
     use uuid::Uuid;
 
     use crate::{
-        api::ProtocolVersion, oprf_key_material_store::OprfKeyMaterialStore,
+        api::v1::ProtocolVersion, oprf_key_material_store::OprfKeyMaterialStore,
         services::open_sessions::OpenSessions,
     };
 

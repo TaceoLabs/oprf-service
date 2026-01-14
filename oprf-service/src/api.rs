@@ -15,10 +15,8 @@ use crate::{
 };
 use alloy::primitives::Address;
 use axum::Router;
-use axum_extra::headers::{self, Header};
-use http::{HeaderName, HeaderValue};
 use oprf_types::crypto::PartyId;
-use semver::{Version, VersionReq};
+use semver::VersionReq;
 use serde::Deserialize;
 use std::time::Duration;
 use tower_http::trace::TraceLayer;
@@ -27,50 +25,6 @@ pub(crate) mod errors;
 pub(crate) mod health;
 pub(crate) mod info;
 pub(crate) mod v1;
-
-static OPRF_PROTOCOL_VERSION_HEADER: HeaderName =
-    http::HeaderName::from_static("x-taceo-oprf-protocol-version");
-
-#[derive(Debug, Clone)]
-pub(crate) struct ProtocolVersion(Version);
-
-impl Header for ProtocolVersion {
-    fn name() -> &'static http::HeaderName {
-        &OPRF_PROTOCOL_VERSION_HEADER
-    }
-
-    fn decode<'i, I>(values: &mut I) -> Result<Self, axum_extra::headers::Error>
-    where
-        Self: Sized,
-        I: Iterator<Item = &'i http::HeaderValue>,
-    {
-        let version_req = values
-            .next()
-            .ok_or_else(headers::Error::invalid)?
-            .to_str()
-            .map_err(|err| {
-                tracing::trace!("could not convert header to string: {err:?}");
-
-                headers::Error::invalid()
-            })?;
-        println!("got {version_req}");
-        if values.next().is_some() {
-            Err(headers::Error::invalid())
-        } else {
-            let version = Version::parse(version_req).map_err(|err| {
-                tracing::trace!("could not parse header version: {err:?}");
-                headers::Error::invalid()
-            })?;
-            Ok(ProtocolVersion(version))
-        }
-    }
-
-    fn encode<E: Extend<http::HeaderValue>>(&self, values: &mut E) {
-        let encoded = HeaderValue::from_bytes(self.0.to_string().as_bytes())
-            .expect("Cannot encode header version");
-        values.extend(std::iter::once(encoded));
-    }
-}
 
 /// The arguments to start the api routes.
 pub(crate) struct ApiRoutesArgs<

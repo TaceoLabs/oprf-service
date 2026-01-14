@@ -14,7 +14,7 @@ use oprf_types::{
     crypto::OprfPublicKey,
 };
 use serde::Serialize;
-use tokio_tungstenite::tungstenite;
+use tokio_tungstenite::tungstenite::{self, http::uri::InvalidUri};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -52,6 +52,9 @@ pub enum Error {
     /// The DLog equality proof failed verification.
     #[error("DLog proof could not be verified")]
     InvalidDLogProof,
+    /// The used service is not a valid URI
+    #[error(transparent)]
+    InvalidUri(#[from] InvalidUri),
     /// Wrapping inner tungstenite error
     #[error(transparent)]
     WsError(#[from] tungstenite::Error),
@@ -105,6 +108,10 @@ pub async fn distributed_oprf<OprfRequestAuth>(
 where
     OprfRequestAuth: Clone + Serialize + Send + 'static,
 {
+    tracing::trace!(
+        "starting distributed oprf. my version: {}",
+        env!("CARGO_PKG_VERSION")
+    );
     let mut services_dedup = services.to_vec();
     services_dedup.sort();
     services_dedup.dedup();

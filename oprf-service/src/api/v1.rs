@@ -1,4 +1,3 @@
-use crate::api::ProtocolVersion;
 use crate::api::errors::Error;
 use crate::metrics::{
     METRICS_ID_NODE_OPRF_SUCCESS, METRICS_ID_NODE_PART_1_DURATION, METRICS_ID_NODE_PART_1_FINISH,
@@ -16,8 +15,9 @@ use axum::{
     },
     routing::any,
 };
-use axum_extra::TypedHeader;
-use http::StatusCode;
+use axum_extra::headers::Header;
+use axum_extra::{TypedHeader, headers};
+use http::{HeaderValue, StatusCode};
 use oprf_core::ddlog_equality::shamir::DLogCommitmentsShamir;
 use oprf_types::{
     api::v1::{OprfRequest, OprfResponse, oprf_error_codes},
@@ -30,6 +30,47 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tracing::instrument;
+
+/// A custom header that clients need to send to OPRF servers to indicate their version.
+#[derive(Debug, Clone)]
+pub(crate) struct ProtocolVersion(semver::Version);
+
+impl Header for ProtocolVersion {
+    fn name() -> &'static http::HeaderName {
+        &oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER
+    }
+
+    fn decode<'i, I>(values: &mut I) -> Result<Self, axum_extra::headers::Error>
+    where
+        Self: Sized,
+        I: Iterator<Item = &'i http::HeaderValue>,
+    {
+        let version_req = values
+            .next()
+            .ok_or_else(headers::Error::invalid)?
+            .to_str()
+            .map_err(|err| {
+                tracing::trace!("could not convert header to string: {err:?}");
+
+                headers::Error::invalid()
+            })?;
+        if values.next().is_some() {
+            Err(headers::Error::invalid())
+        } else {
+            let version = semver::Version::parse(version_req).map_err(|err| {
+                tracing::trace!("could not parse header version: {err:?}");
+                headers::Error::invalid()
+            })?;
+            Ok(ProtocolVersion(version))
+        }
+    }
+
+    fn encode<E: Extend<http::HeaderValue>>(&self, values: &mut E) {
+        let encoded = HeaderValue::from_bytes(self.0.to_string().as_bytes())
+            .expect("Cannot encode header version");
+        values.extend(std::iter::once(encoded));
+    }
+}
 
 pub(crate) struct V1Args<ReqAuth, ReqAuthError> {
     pub(crate) party_id: PartyId,
@@ -82,7 +123,7 @@ async fn ws<
 >(
     args: WsArgs<ReqAuth, ReqAuthError>,
 ) -> axum::response::Response {
-    tracing::trace!("checking version header: {:?}", args.client_version);
+    tracing::trace!("checking version header: {}", args.client_version);
     if args.version_req.matches(&args.client_version) {
         args.ws
             .max_message_size(args.max_message_size)
