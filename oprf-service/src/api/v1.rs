@@ -83,7 +83,7 @@ async fn ws<
     args: WsArgs<ReqAuth, ReqAuthError>,
 ) -> axum::response::Response {
     tracing::trace!("checking version header: {:?}", args.client_version);
-    if !args.version_req.matches(&args.client_version) {
+    if args.version_req.matches(&args.client_version) {
         args.ws
             .max_message_size(args.max_message_size)
             .on_failed_upgrade(|err| {

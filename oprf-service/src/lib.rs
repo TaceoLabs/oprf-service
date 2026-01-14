@@ -204,7 +204,9 @@ mod tests {
 
     use alloy::uint;
     use ark_ff::UniformRand as _;
+    use axum_extra::headers::Header;
     use axum_test::{TestServer, TestWebSocket};
+    use http::StatusCode;
     use oprf_client::BlindingFactor;
     use oprf_core::ddlog_equality::shamir::{
         DLogCommitmentsShamir, DLogProofShareShamir, DLogShareShamir,
@@ -218,7 +220,8 @@ mod tests {
     use uuid::Uuid;
 
     use crate::{
-        oprf_key_material_store::OprfKeyMaterialStore, services::open_sessions::OpenSessions,
+        api::ProtocolVersion, oprf_key_material_store::OprfKeyMaterialStore,
+        services::open_sessions::OpenSessions,
     };
 
     use super::*;
@@ -250,7 +253,12 @@ mod tests {
         }
     }
 
-    async fn test_setup() -> (TestOprfNode, OprfRequest<()>, DLogCommitmentsShamir) {
+    async fn test_setup() -> (
+        TestOprfNode,
+        OprfRequest<()>,
+        DLogCommitmentsShamir,
+        TestServer,
+    ) {
         let mut rng = rand::thread_rng();
         let oprf_key_id = OprfKeyId::new(uint!(0_U160));
         let request_id = Uuid::new_v4();
@@ -294,7 +302,7 @@ mod tests {
             oprf_material_store,
             open_sessions: OpenSessions::default(),
             req_auth_service: Arc::new(WithoutAuthentication),
-            version_req: VersionReq::STAR,
+            version_req: VersionReq::parse("=1.3.101").expect("Works"),
             max_message_size: 1024 * 1024,
             max_connection_lifetime: std::time::Duration::from_secs(60),
         });
@@ -302,8 +310,19 @@ mod tests {
             .http_transport()
             .build(router)
             .expect("failed to build test server");
-        let websocket = server.get_websocket("/oprf").await.into_websocket().await;
-        let websocket_session_reuse = server.get_websocket("/oprf").await.into_websocket().await;
+        let websocket = server
+            .get_websocket("/oprf")
+            .add_header(ProtocolVersion::name(), "1.3.101")
+            .await
+            .into_websocket()
+            .await;
+        let websocket_session_reuse = server
+            .get_websocket("/oprf")
+            .add_header(ProtocolVersion::name(), "1.3.101")
+            .await
+            .into_websocket()
+            .await;
+
         (
             TestOprfNode {
                 websocket,
@@ -311,12 +330,13 @@ mod tests {
             },
             oprf_req,
             challenge_req,
+            server,
         )
     }
 
     #[tokio::test]
     async fn init_and_challenge() -> eyre::Result<()> {
-        let (mut node, oprf_req, challenge_req) = test_setup().await;
+        let (mut node, oprf_req, challenge_req, _) = test_setup().await;
         node.send_oprf_request(&oprf_req).await;
         node.receive_oprf_response().await;
         node.send_challenge_request(&challenge_req).await;
@@ -325,8 +345,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn wrong_client_version() -> eyre::Result<()> {
+        let (_, _, _, server) = test_setup().await;
+        let invalid_request = server
+            .get_websocket("/oprf")
+            .add_header(ProtocolVersion::name(), "2.0.0")
+            .await;
+        assert_eq!(invalid_request.status_code(), StatusCode::BAD_REQUEST);
+        invalid_request.assert_text("invalid version, expected: =1.3.101");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn no_protocol_version_header() -> eyre::Result<()> {
+        let (_, _, _, server) = test_setup().await;
+        let invalid_request = server.get_websocket("/oprf").await;
+        assert_eq!(invalid_request.status_code(), StatusCode::BAD_REQUEST);
+        invalid_request.assert_text("Header of type `x-taceo-oprf-protocol-version` was missing");
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn init_unknown_oprf_key_id() -> eyre::Result<()> {
-        let (mut node, mut oprf_req, _) = test_setup().await;
+        let (mut node, mut oprf_req, _, _) = test_setup().await;
         oprf_req.share_identifier.oprf_key_id = OprfKeyId::new(uint!(1_U160));
         node.send_oprf_request(&oprf_req).await;
         node.websocket
@@ -337,7 +378,7 @@ mod tests {
 
     #[tokio::test]
     async fn init_unknown_share_epoch() -> eyre::Result<()> {
-        let (mut node, mut oprf_req, _) = test_setup().await;
+        let (mut node, mut oprf_req, _, _) = test_setup().await;
         oprf_req.share_identifier.share_epoch = ShareEpoch::new(1);
         node.send_oprf_request(&oprf_req).await;
         node.websocket
@@ -348,7 +389,7 @@ mod tests {
 
     #[tokio::test]
     async fn init_session_reuse() -> eyre::Result<()> {
-        let (mut node, oprf_req, _) = test_setup().await;
+        let (mut node, oprf_req, _, _) = test_setup().await;
         node.send_oprf_request(&oprf_req).await;
         node.websocket_session_reuse
             .send_text(serde_json::to_string(&oprf_req)?)
@@ -361,7 +402,7 @@ mod tests {
 
     #[tokio::test]
     async fn init_bad_blinded_query() -> eyre::Result<()> {
-        let (mut node, mut oprf_req, _) = test_setup().await;
+        let (mut node, mut oprf_req, _, _) = test_setup().await;
         oprf_req.blinded_query = ark_babyjubjub::EdwardsAffine::zero();
         node.send_oprf_request(&oprf_req).await;
         node.websocket
@@ -372,7 +413,7 @@ mod tests {
 
     #[tokio::test]
     async fn challenge_without_init() -> eyre::Result<()> {
-        let (mut node, _, challenge_req) = test_setup().await;
+        let (mut node, _, challenge_req, _) = test_setup().await;
         node.send_challenge_request(&challenge_req).await;
         node.websocket
             .assert_receive_text("unexpected message")
@@ -383,7 +424,7 @@ mod tests {
     #[tokio::test]
     async fn challenge_bad_contributing_parties() -> eyre::Result<()> {
         let mut rng = rand::thread_rng();
-        let (mut node, oprf_req, _) = test_setup().await;
+        let (mut node, oprf_req, _, _) = test_setup().await;
         node.send_oprf_request(&oprf_req).await;
         node.receive_oprf_response().await;
         let challenge_req = DLogCommitmentsShamir::new(
@@ -404,7 +445,7 @@ mod tests {
     #[tokio::test]
     async fn challenge_bad_not_a_contributing_party() -> eyre::Result<()> {
         let mut rng = rand::thread_rng();
-        let (mut node, oprf_req, _) = test_setup().await;
+        let (mut node, oprf_req, _, _) = test_setup().await;
         node.send_oprf_request(&oprf_req).await;
         node.receive_oprf_response().await;
         let challenge_req = DLogCommitmentsShamir::new(

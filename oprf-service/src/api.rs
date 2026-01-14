@@ -53,6 +53,7 @@ impl Header for ProtocolVersion {
 
                 headers::Error::invalid()
             })?;
+        println!("got {version_req}");
         if values.next().is_some() {
             Err(headers::Error::invalid())
         } else {
