@@ -35,7 +35,6 @@ impl fmt::Debug for KeyGenConfirmation {
             .field("party_id", &self.partyId)
             .field("round", &self.round)
             .field("epoch", &self.epoch)
-            .field("nonce", &self.nonce)
             .finish()
     }
 }

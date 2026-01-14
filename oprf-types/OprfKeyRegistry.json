@@ -104,11 +104,6 @@
             ]
           }
         ]
-      },
-      {
-        "name": "nonce",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "outputs": [],
@@ -168,11 +163,6 @@
             ]
           }
         ]
-      },
-      {
-        "name": "nonce",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "outputs": [],
@@ -232,11 +222,6 @@
             ]
           }
         ]
-      },
-      {
-        "name": "nonce",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "outputs": [],
@@ -250,11 +235,6 @@
         "name": "oprfKeyId",
         "type": "uint160",
         "internalType": "uint160"
-      },
-      {
-        "name": "nonce",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "outputs": [],
@@ -820,12 +800,6 @@
         "type": "uint128",
         "indexed": false,
         "internalType": "uint128"
-      },
-      {
-        "name": "nonce",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
       }
     ],
     "anonymous": false
