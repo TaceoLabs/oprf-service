@@ -18,8 +18,8 @@ eyre.workspace = true
 humantime = { workspace = true }
 nodes-common = { workspace = true }
 nodes-observability = { workspace = true }
-oprf-service = { package = "taceo-oprf-service", path = "../oprf-service", version = "0.1" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.2" }
+oprf-service = { package = "taceo-oprf-service", path = "../oprf-service", version = "0.2" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.3" }
 rustls = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
@@ -37,7 +37,7 @@ uuid = { workspace = true, features = ["serde", "v4"] }
 [dev-dependencies]
 axum-test = { workspace = true }
 eddsa-babyjubjub = { workspace = true }
-oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.1" }
+oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.2" }
 oprf-test = { package = "taceo-oprf-test", path = "../oprf-test", version = "0.1" }
 poseidon2 = { workspace = true }
 testcontainers-modules = { version = "0.14", features = ["localstack"] }
