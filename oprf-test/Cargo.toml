@@ -9,6 +9,11 @@ repository.workspace = true
 license.workspace = true
 publish = false
 
+[[bin]]
+name = "generate-test-transcript"
+path = "src/bin/generate-test-transcript.rs"
+required-features = ["generate-test-transcript"]
+
 [dependencies]
 alloy = { workspace = true, features = [
   "full",
@@ -17,11 +22,17 @@ alloy = { workspace = true, features = [
   "rpc-client-ws"
 ] }
 ark-babyjubjub = { workspace = true }
+ark-bn254.workspace = true
 ark-ec.workspace = true
 ark-ff.workspace = true
+askama = { version = "0.14.0", optional = true }
 async-trait = { workspace = true }
+clap = { workspace = true, optional = true }
 eyre.workspace = true
+groth16-material = { workspace = true, optional = true }
+groth16-sol = { workspace = true, optional = true }
 itertools.workspace = true
+nodes-observability = { workspace = true, optional = true }
 oprf-client-example = { package = "taceo-oprf-client-example", path = "../oprf-client-example", version = "0.1" }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.3" }
 oprf-key-gen = { package = "taceo-oprf-key-gen", path = "../oprf-key-gen", version = "0.1" }
@@ -49,3 +60,12 @@ tracing.workspace = true
 [dev-dependencies]
 serial_test = { version = "3.3", features = ["file_locks"] }
 tokio-tungstenite = { workspace = true }
+
+[features]
+default = []
+generate-test-transcript = [
+  "dep:askama",
+  "dep:clap",
+  "dep:groth16-material",
+  "dep:nodes-observability"
+]

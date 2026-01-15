@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import {Types} from "../src/Types.sol";
+
+library Contributions {
+
+    uint256 public constant SHOULD_OPRF_PUBLIC_KEY_X = {{ oprf_key_x }};
+    uint256 public constant SHOULD_OPRF_PUBLIC_KEY_Y = {{ oprf_key_y }};
+
+    uint256 public constant LAGRANGE_RESHARE1_0 = {{ reshare1.lagrange[0] }};
+    uint256 public constant LAGRANGE_RESHARE1_1 = {{ reshare1.lagrange[1] }};
+
+    uint256 public constant LAGRANGE_RESHARE2_0 = {{ reshare2.lagrange[0] }};
+    uint256 public constant LAGRANGE_RESHARE2_1 = {{ reshare2.lagrange[1] }};
+
+    {# ======= KeyGen Contributions ======= #}
+    {{ keygen.alice.round1 }}
+    {{ keygen.bob.round1 }}
+    {{ keygen.carol.round1 }}
+
+    {{ keygen.alice.round2 }}
+    {{ keygen.bob.round2 }}
+    {{ keygen.carol.round2 }}
+
+    {# ======= Reshare 1 Contributions ======= #}
+    {{ reshare1.alice.round1 }}
+    {{ reshare1.bob.round1 }}
+    {{ reshare1.carol.round1 }}
+
+    {{ reshare1.alice.round2 }}
+    {{ reshare1.bob.round2 }}
+
+    {# ======= Reshare 2 Contributions ======= #}
+    {{ reshare2.alice.round1 }}
+    {{ reshare2.bob.round1 }}
+    {{ reshare2.carol.round1 }}
+
+    {{ reshare2.bob.round2 }}
+    {{ reshare2.carol.round2 }}
+}

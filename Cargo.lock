@@ -6386,9 +6386,12 @@ name = "taceo-oprf-test"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "ark-bn254",
  "ark-ec",
  "ark-ff 0.5.0",
+ "askama",
  "async-trait",
+ "clap",
  "eyre",
  "itertools 0.14.0",
  "parking_lot",
@@ -6400,6 +6403,9 @@ dependencies = [
  "serde_json",
  "serial_test",
  "taceo-ark-babyjubjub",
+ "taceo-groth16-material",
+ "taceo-groth16-sol",
+ "taceo-nodes-observability",
  "taceo-oprf-client-example",
  "taceo-oprf-core",
  "taceo-oprf-key-gen",
