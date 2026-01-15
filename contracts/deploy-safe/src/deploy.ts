@@ -24,14 +24,17 @@ const NETWORKS = {
   local: {
     rpc: process.env.LOCAL_RPC_URL || 'http://127.0.0.1:8545',
     chainId: 11155111n, // Sepolia chain ID (since we forked Sepolia)
+    txServiceUrl: undefined,
   },
   sepolia: {
     rpc: process.env.SEPOLIA_RPC_URL!,
     chainId: 11155111n,
+    txServiceUrl: undefined,
   },
   mainnet: {
     rpc: process.env.MAINNET_RPC_URL!,
-    chainId: 1n,
+    chainId: 480n,
+    txServiceUrl: 'https://safe-transaction-worldchain.safe.global/api',
   },
 } as const
 
@@ -243,7 +246,10 @@ async function proposeToSafe(config: DeploymentConfig) {
     safeAddress: config.safeAddress,
   })
 
-  const apiKit = new SafeApiKit({ chainId })
+  const apiKit = new SafeApiKit({
+    chainId,
+    txServiceUrl: NETWORKS[config.network].txServiceUrl
+  })
 
   console.log('Safe address:', await safe.getAddress())
   console.log('Network:', config.network)
