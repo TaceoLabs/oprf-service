@@ -126,6 +126,11 @@ contract-tests:
 [group('test')]
 all-tests: all-rust-tests circom-tests contract-tests
 
+[group('test')]
+generate-contract-kats:
+    cargo run --bin generate-test-transcript --features="generate-test-transcript" -- --key-gen-zkey-path circom/main/key-gen/OPRFKeyGen.13.arks.zkey --key-gen-witness-graph-path circom/main/key-gen/OPRFKeyGenGraph.13.bin --output contracts/test/Contributions.t.sol
+    cd contracts && forge fmt
+
 [group('ci')]
 check-pr: lint all-rust-tests circom-tests contract-tests
 
