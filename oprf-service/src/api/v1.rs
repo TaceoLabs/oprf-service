@@ -206,6 +206,15 @@ async fn partial_oprf<
     let request_id = init_request.request_id;
 
     tracing::debug!("starting with request id: {request_id}");
+    let oprf_public_key = oprf_material_store
+        .get_oprf_public_key(init_request.share_identifier.oprf_key_id)
+        .ok_or_else(|| {
+            Error::BadRequest(format!(
+                "unknown OPRF key id: {}",
+                init_request.share_identifier.oprf_key_id
+            ))
+        })?;
+
     let _session_guard = open_sessions.insert_new_session(init_request.request_id)?;
 
     let oprf_span = tracing::Span::current();
@@ -233,10 +242,6 @@ async fn partial_oprf<
     );
     let (session, commitments) = oprf_material_store
         .partial_commit(init_request.blinded_query, init_request.share_identifier)?;
-
-    let oprf_public_key = oprf_material_store
-        .get_oprf_public_key(init_request.share_identifier.oprf_key_id)
-        .expect("oprf_material_store contains public key for oprf_key_id check in partial_commit");
 
     let response = OprfResponse {
         commitments,
