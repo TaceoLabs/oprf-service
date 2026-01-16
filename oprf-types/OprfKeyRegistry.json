@@ -19,6 +19,32 @@
   },
   {
     "type": "function",
+    "name": "abortKeygen",
+    "inputs": [
+      {
+        "name": "oprfKeyId",
+        "type": "uint160",
+        "internalType": "uint160"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "abortReshare",
+    "inputs": [
+      {
+        "name": "oprfKeyId",
+        "type": "uint160",
+        "internalType": "uint160"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "acceptOwnership",
     "inputs": [],
     "outputs": [],
@@ -800,6 +826,19 @@
         "type": "uint128",
         "indexed": false,
         "internalType": "uint128"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "KeyReshareAborted",
+    "inputs": [
+      {
+        "name": "oprfKeyId",
+        "type": "uint160",
+        "indexed": true,
+        "internalType": "uint160"
       }
     ],
     "anonymous": false
