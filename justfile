@@ -229,6 +229,16 @@ deploy-oprf-key-registry-dry-run *args:
 deploy-oprf-key-registry *args:
     forge script OprfKeyRegistry.s.sol --broadcast --interactives 1 -vvvvv {{ args }} --rpc-url $RPC_URL --verify --verifier etherscan --etherscan-api-key $ETHERSCAN_API_KEY
 
+[group('deploy-safe-wallet')]
+[working-directory('contracts')]
+deploy-safe-wallet-oprf-key-registry-with-deps target:
+    forge build --silent && cd deploy-safe-wallet && npm run deployOprfKeyRegistryWithDeps:{{ target }}
+    
+[group('deploy-safe-wallet')]
+[working-directory('contracts')]
+deploy-safe-wallet-oprf-key-registry target:
+    forge build --silent && cd deploy-safe-wallet && npm run deployOprfKeyRegistry:{{ target }}
+
 [group('contract')]
 [working-directory('contracts/script')]
 register-participants *args:
