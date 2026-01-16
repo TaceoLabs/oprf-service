@@ -107,6 +107,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
         OprfKeyRegistry::ReshareRound1::SIGNATURE_HASH,
         OprfKeyRegistry::ReshareRound3::SIGNATURE_HASH,
         OprfKeyRegistry::KeyDeletion::SIGNATURE_HASH,
+        OprfKeyRegistry::KeyReshareAborted::SIGNATURE_HASH,
     ];
     let filter = Filter::new()
         .address(contract_address)
