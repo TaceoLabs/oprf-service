@@ -58,6 +58,9 @@ pub enum Error {
     /// Wrapping inner tungstenite error
     #[error(transparent)]
     WsError(#[from] tungstenite::Error),
+    /// OPRF nodes returned different public keys
+    #[error("OPRF nodes returned different public keys")]
+    InconsistentOprfPublicKeys,
 }
 
 /// The result of the distributed OPRF protocol.
@@ -73,6 +76,8 @@ pub struct VerifiableOprfOutput {
     pub blinded_response: ark_babyjubjub::EdwardsAffine,
     /// The unblinded OPRF response.
     pub unblinded_response: ark_babyjubjub::EdwardsAffine,
+    /// The `OprfPublicKey` for the used `OprfKeyId`.
+    pub oprf_public_key: OprfPublicKey,
 }
 
 /// Executes the distributed OPRF protocol.
@@ -96,7 +101,6 @@ pub struct VerifiableOprfOutput {
 pub async fn distributed_oprf<OprfRequestAuth>(
     services: &[String],
     threshold: usize,
-    oprf_public_key: OprfPublicKey,
     oprf_key_id: OprfKeyId,
     share_epoch: ShareEpoch,
     query: ark_babyjubjub::Fq,
@@ -139,6 +143,23 @@ where
 
     tracing::debug!("initializing sessions at {} services", services.len());
     let sessions = sessions::init_sessions(services, threshold, oprf_req, connector).await?;
+
+    let oprf_public_key = sessions
+        .oprf_public_keys
+        .first()
+        .copied()
+        .expect("at least one session");
+    if !sessions
+        .oprf_public_keys
+        .iter()
+        .all(|pk| *pk == oprf_public_key)
+    {
+        tracing::error!(
+            "inconsistent OPRF public keys for OPRF key id {oprf_key_id} received from nodes"
+        );
+        return Err(Error::InconsistentOprfPublicKeys);
+    }
+
     tracing::debug!("compute the challenges for the services..");
     let challenge = generate_challenge_request(&sessions);
 
@@ -173,6 +194,7 @@ where
         blinded_response,
         dlog_proof,
         unblinded_response,
+        oprf_public_key,
     })
 }
 

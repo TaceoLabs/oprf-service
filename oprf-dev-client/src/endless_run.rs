@@ -48,7 +48,6 @@ pub(super) async fn endless_run(
                         tested_epoch,
                         config.threshold,
                         oprf_key_id,
-                        oprf_public_key,
                         connector,
                     )
                     .await

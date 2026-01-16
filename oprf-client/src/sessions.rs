@@ -10,6 +10,7 @@ use oprf_core::ddlog_equality::shamir::DLogProofShareShamir;
 use oprf_core::ddlog_equality::shamir::PartialDLogCommitmentsShamir;
 use oprf_types::api::v1::OprfRequest;
 use oprf_types::api::v1::OprfResponse;
+use oprf_types::crypto::OprfPublicKey;
 use oprf_types::crypto::PartyId;
 use serde::Serialize;
 use tokio::sync::mpsc;
@@ -22,6 +23,7 @@ pub struct OprfSessions {
     pub(super) ws: Vec<WebSocketSession>,
     pub(super) party_ids: Vec<PartyId>,
     pub(super) commitments: Vec<PartialDLogCommitmentsShamir>,
+    pub(super) oprf_public_keys: Vec<OprfPublicKey>,
 }
 
 impl OprfSessions {
@@ -32,6 +34,7 @@ impl OprfSessions {
             ws: Vec::with_capacity(capacity),
             party_ids: Vec::with_capacity(capacity),
             commitments: Vec::with_capacity(capacity),
+            oprf_public_keys: Vec::with_capacity(capacity),
         }
     }
 
@@ -40,6 +43,7 @@ impl OprfSessions {
         let OprfResponse {
             commitments,
             party_id,
+            oprf_public_key,
         } = response;
         if let Some(position) = self
             .party_ids
@@ -51,6 +55,7 @@ impl OprfSessions {
         self.ws.push(ws);
         self.party_ids.push(party_id);
         self.commitments.push(commitments);
+        self.oprf_public_keys.push(oprf_public_key);
         Ok(())
     }
 
@@ -61,18 +66,22 @@ impl OprfSessions {
 
     /// Sorts the sessions, party IDs and commitments by party ID in ascending order.
     fn sort_by_party_id(&mut self) {
-        let mut combined: Vec<(WebSocketSession, PartyId, PartialDLogCommitmentsShamir)> = self
+        let mut combined = self
             .ws
             .drain(..)
             .zip(self.party_ids.drain(..))
             .zip(self.commitments.drain(..))
-            .map(|((ws, party_id), commitments)| (ws, party_id, commitments))
-            .collect();
-        combined.sort_by_key(|(_, party_id, _)| *party_id);
-        for (ws, party_id, commitments) in combined {
+            .zip(self.oprf_public_keys.drain(..))
+            .map(|(((ws, party_id), commitments), oprf_public_key)| {
+                (ws, party_id, commitments, oprf_public_key)
+            })
+            .collect::<Vec<_>>();
+        combined.sort_by_key(|(_, party_id, _, _)| *party_id);
+        for (ws, party_id, commitments, oprf_public_key) in combined {
             self.ws.push(ws);
             self.party_ids.push(party_id);
             self.commitments.push(commitments);
+            self.oprf_public_keys.push(oprf_public_key);
         }
     }
 }

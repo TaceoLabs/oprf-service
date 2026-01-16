@@ -126,7 +126,6 @@ async fn test_run(
         start_epoch,
         config.threshold,
         oprf_key_id,
-        oprf_public_key,
         connector.clone(),
     )
     .await?;
@@ -156,7 +155,6 @@ async fn test_run(
             next_epoch,
             config.threshold,
             oprf_key_id,
-            oprf_public_key,
             connector,
         )
         .await?;
@@ -170,7 +168,6 @@ async fn run_oprf(
     epoch: ShareEpoch,
     threshold: usize,
     oprf_key_id: OprfKeyId,
-    oprf_public_key: OprfPublicKey,
     connector: Connector,
 ) -> eyre::Result<()> {
     let mut rng = rand_chacha::ChaCha12Rng::from_entropy();
@@ -181,7 +178,6 @@ async fn run_oprf(
     oprf_client_example::distributed_oprf(
         &nodes,
         threshold,
-        oprf_public_key,
         oprf_key_id,
         epoch,
         action,

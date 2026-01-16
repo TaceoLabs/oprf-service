@@ -206,6 +206,15 @@ async fn partial_oprf<
     let request_id = init_request.request_id;
 
     tracing::debug!("starting with request id: {request_id}");
+    let oprf_public_key = oprf_material_store
+        .get_oprf_public_key(init_request.share_identifier.oprf_key_id)
+        .ok_or_else(|| {
+            Error::BadRequest(format!(
+                "unknown OPRF key id: {}",
+                init_request.share_identifier.oprf_key_id
+            ))
+        })?;
+
     let _session_guard = open_sessions.insert_new_session(init_request.request_id)?;
 
     let oprf_span = tracing::Span::current();
@@ -237,6 +246,7 @@ async fn partial_oprf<
     let response = OprfResponse {
         commitments,
         party_id,
+        oprf_public_key,
     };
 
     tracing::debug!("sending response...");

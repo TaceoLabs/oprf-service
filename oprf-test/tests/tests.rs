@@ -77,7 +77,6 @@ async fn oprf_example_with_reshare_e2e_test_13() -> eyre::Result<()> {
     let _verifiable_oprf_output = oprf_client_example::distributed_oprf(
         oprf_services.as_slice(),
         2,
-        oprf_public_key,
         oprf_key_id,
         start_epoch,
         action,
@@ -109,7 +108,6 @@ async fn oprf_example_with_reshare_e2e_test_13() -> eyre::Result<()> {
         oprf_client_example::distributed_oprf(
             oprf_services.as_slice(),
             2,
-            oprf_public_key,
             oprf_key_id,
             start_epoch,
             action,
@@ -119,7 +117,6 @@ async fn oprf_example_with_reshare_e2e_test_13() -> eyre::Result<()> {
         oprf_client_example::distributed_oprf(
             oprf_services.as_slice(),
             2,
-            oprf_public_key,
             oprf_key_id,
             next_epoch,
             action,
@@ -177,7 +174,7 @@ async fn oprf_example_e2e_test_25() -> eyre::Result<()> {
     println!("init key-gen with rp id: {oprf_key_id}");
 
     println!("Fetching OPRF public-key...");
-    let oprf_public_key = health_checks::oprf_public_key_from_services(
+    let _oprf_public_key = health_checks::oprf_public_key_from_services(
         oprf_key_id,
         ShareEpoch::default(),
         &oprf_services,
@@ -192,7 +189,6 @@ async fn oprf_example_e2e_test_25() -> eyre::Result<()> {
     let _verifiable_oprf_output = oprf_client_example::distributed_oprf(
         oprf_services.as_slice(),
         3,
-        oprf_public_key,
         oprf_key_id,
         ShareEpoch::default(),
         action,
@@ -358,7 +354,6 @@ async fn oprf_example_reshare_with_consumer() -> eyre::Result<()> {
     let _verifiable_oprf_output = oprf_client_example::distributed_oprf(
         oprf_services.as_slice(),
         2,
-        oprf_public_key,
         oprf_key_id,
         start_epoch,
         action,
@@ -448,7 +443,6 @@ async fn oprf_example_reshare_with_consumer() -> eyre::Result<()> {
         oprf_client_example::distributed_oprf(
             oprf_services.as_slice(),
             2,
-            oprf_public_key,
             oprf_key_id,
             start_epoch,
             action,
@@ -458,7 +452,6 @@ async fn oprf_example_reshare_with_consumer() -> eyre::Result<()> {
         oprf_client_example::distributed_oprf(
             services_with_new_one.as_slice(),
             2,
-            oprf_public_key,
             oprf_key_id,
             next_epoch,
             action,

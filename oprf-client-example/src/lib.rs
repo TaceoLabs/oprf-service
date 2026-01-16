@@ -2,17 +2,14 @@ use ark_ec::AffineRepr as _;
 use ark_ff::PrimeField as _;
 use eyre::Context;
 use oprf_client::{BlindingFactor, Connector, VerifiableOprfOutput};
-use oprf_types::crypto::OprfPublicKey;
 use oprf_types::{OprfKeyId, ShareEpoch};
 use rand::{CryptoRng, Rng};
 use tracing::instrument;
 
 #[instrument(level = "debug", skip_all)]
-#[allow(clippy::too_many_arguments)]
 pub async fn distributed_oprf<R: Rng + CryptoRng>(
     services: &[String],
     threshold: usize,
-    oprf_public_key: OprfPublicKey,
     oprf_key_id: OprfKeyId,
     share_epoch: ShareEpoch,
     action: ark_babyjubjub::Fq,
@@ -30,10 +27,10 @@ pub async fn distributed_oprf<R: Rng + CryptoRng>(
         blinded_response,
         unblinded_response: _,
         blinded_request,
+        oprf_public_key,
     } = oprf_client::distributed_oprf(
         services,
         threshold,
-        oprf_public_key,
         oprf_key_id,
         share_epoch,
         query,
