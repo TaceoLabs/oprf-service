@@ -13,7 +13,10 @@ use oprf_core::ddlog_equality::shamir::PartialDLogCommitmentsShamir;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{OprfKeyId, ShareEpoch, crypto::PartyId};
+use crate::{
+    OprfKeyId, ShareEpoch,
+    crypto::{OprfPublicKey, PartyId},
+};
 use ark_serde_compat::babyjubjub;
 
 /// TACEO:Oprf specific websocket error codes.
@@ -57,6 +60,8 @@ pub struct OprfResponse {
     pub commitments: PartialDLogCommitmentsShamir,
     /// The party ID of the node
     pub party_id: PartyId,
+    /// The `OprfPublicKey` for the requested `OprfKeyId`.
+    pub oprf_public_key: OprfPublicKey,
 }
 
 impl<OprfReqestAuth> fmt::Debug for OprfRequest<OprfReqestAuth> {

@@ -234,9 +234,14 @@ async fn partial_oprf<
     let (session, commitments) = oprf_material_store
         .partial_commit(init_request.blinded_query, init_request.share_identifier)?;
 
+    let oprf_public_key = oprf_material_store
+        .get_oprf_public_key(init_request.share_identifier.oprf_key_id)
+        .expect("oprf_material_store contains public key for oprf_key_id check in partial_commit");
+
     let response = OprfResponse {
         commitments,
         party_id,
+        oprf_public_key,
     };
 
     tracing::debug!("sending response...");
