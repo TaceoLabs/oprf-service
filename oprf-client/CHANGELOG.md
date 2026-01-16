@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.2.0...taceo-oprf-client-v0.3.0)
+
+### ⛰️ Features
+
+
+- [**breaking**] Receive OprfPublicKey during distributed_oprf ([#366](https://github.com/TaceoLabs/oprf-service/pull/366)) - ([10eeb99](https://github.com/TaceoLabs/oprf-service/commit/10eeb999f2ab48f1ebe612b19745432c8239d73a))
+
+
 ## [0.2.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.1.0...taceo-oprf-client-v0.2.0)
 
 ### ⛰️ Features

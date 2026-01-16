@@ -14,7 +14,7 @@ ark-babyjubjub = { workspace = true }
 ark-ec.workspace = true
 ark-ff = { workspace = true }
 eyre.workspace = true
-oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.2" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.3" }
+oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.3" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.4" }
 rand.workspace = true
 tracing.workspace = true
