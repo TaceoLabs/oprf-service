@@ -42,6 +42,12 @@ pub const METRICS_ID_KEY_GEN_DELETION_START: &str = "taceo.oprf.key_gen.deletion
 /// Finished processing deletion on our side
 pub const METRICS_ID_KEY_GEN_DELETION_FINISH: &str = "taceo.oprf.key_gen.deletion.finish";
 
+/// Observed event for start of an abort
+pub const METRICS_ID_KEY_GEN_ABORT_START: &str = "taceo.oprf.key_gen.abort.start";
+
+/// Observed event for start of a deletion
+pub const METRICS_ID_KEY_GEN_ABORT_FINISH: &str = "taceo.oprf.key_gen.abort.finish";
+
 /// Number of null-response errors from Alchemy and transaction not recorded on-chain.
 pub const METRICS_ID_KEY_GEN_RPC_RETRY: &str = "taceo.oprf.key_gen.rpc_retry";
 /// Number of null-response errors from Alchemy but transaction recorded on-chain.

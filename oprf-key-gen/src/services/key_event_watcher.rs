@@ -13,7 +13,8 @@ use crate::{
     metrics::{
         METRICS_ATTRID_PROTOCOL, METRICS_ATTRID_ROLE, METRICS_ATTRVAL_PROTOCOL_KEY_GEN,
         METRICS_ATTRVAL_PROTOCOL_RESHARE, METRICS_ATTRVAL_ROLE_CONSUMER,
-        METRICS_ATTRVAL_ROLE_PRODUCER, METRICS_ID_KEY_GEN_DELETION_FINISH,
+        METRICS_ATTRVAL_ROLE_PRODUCER, METRICS_ID_KEY_GEN_ABORT_FINISH,
+        METRICS_ID_KEY_GEN_ABORT_START, METRICS_ID_KEY_GEN_DELETION_FINISH,
         METRICS_ID_KEY_GEN_DELETION_START, METRICS_ID_KEY_GEN_ROUND_1_FINISH,
         METRICS_ID_KEY_GEN_ROUND_1_START, METRICS_ID_KEY_GEN_ROUND_2_FINISH,
         METRICS_ID_KEY_GEN_ROUND_2_START, METRICS_ID_KEY_GEN_ROUND_3_FINISH,
@@ -107,6 +108,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
         OprfKeyRegistry::ReshareRound1::SIGNATURE_HASH,
         OprfKeyRegistry::ReshareRound3::SIGNATURE_HASH,
         OprfKeyRegistry::KeyDeletion::SIGNATURE_HASH,
+        OprfKeyRegistry::KeyGenAbort::SIGNATURE_HASH,
     ];
     let filter = Filter::new()
         .address(contract_address)
@@ -225,6 +227,9 @@ async fn handle_log(
                 .await
                 .context("while handling round3")?
         }
+        Some(&OprfKeyRegistry::KeyGenAbort::SIGNATURE_HASH) => handle_abort(log, secret_gen)
+            .await
+            .context("while handling deletion")?,
         Some(&OprfKeyRegistry::KeyDeletion::SIGNATURE_HASH) => {
             handle_delete(log, secret_gen, secret_manager)
                 .await
@@ -548,13 +553,36 @@ async fn handle_delete(
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
     let oprf_key_id = OprfKeyId::from(oprfKeyId);
     tracing::info!("got key deletion event for {oprf_key_id}");
-    // we need to delete all the toxic waste associated with the rp id
+    // we need to delete all the toxic waste associated with the oprf key-id
     secret_gen.delete_oprf_key_material(oprf_key_id);
+    // Additionally, for delete we remove the shares from the secret-manager.
     secret_manager
         .remove_oprf_key_material(oprf_key_id)
         .await
         .context("while storing share to secret manager")?;
     ::metrics::counter!(METRICS_ID_KEY_GEN_DELETION_FINISH).increment(1);
+    Ok(())
+}
+
+#[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty))]
+async fn handle_abort(
+    log: Log<LogData>,
+    secret_gen: &mut DLogSecretGenService,
+) -> eyre::Result<()> {
+    tracing::info!("Received Abort event");
+    ::metrics::counter!(METRICS_ID_KEY_GEN_ABORT_START).increment(1);
+    let key_delete = log
+        .log_decode()
+        .context("while decoding key deletion event")?;
+    let OprfKeyRegistry::KeyGenAbort { oprfKeyId } = key_delete.inner.data;
+    let handle_span = tracing::Span::current();
+    handle_span.record("oprf_key_id", oprfKeyId.to_string());
+    let oprf_key_id = OprfKeyId::from(oprfKeyId);
+    tracing::info!("got key-gen abort event for {oprf_key_id}");
+    // we need to delete all the toxic waste associated with the oprf key-id
+    secret_gen.delete_oprf_key_material(oprf_key_id);
+    // in contrast to delete we only remove the intermediate values and NOT from the secret-manager.
+    ::metrics::counter!(METRICS_ID_KEY_GEN_ABORT_FINISH).increment(1);
     Ok(())
 }
 
