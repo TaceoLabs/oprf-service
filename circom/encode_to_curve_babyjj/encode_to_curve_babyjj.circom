@@ -1,5 +1,6 @@
 pragma circom 2.2.2;
 
+include "babyjubjub/babyjubjub.circom";
 include "poseidon2/poseidon2.circom";
 include "circomlib/mux1.circom";
 include "circomlib/babyjub.circom";
@@ -70,10 +71,10 @@ template MapToCurveElligator2() {
     // this is just a runtime assertion and not a constraint
     assert(e2 == 0 || e2 == 1);
     assert(e3 == 0 || e3 == 1);
-    signal xor <== XOR()(e2,e3); 
+    signal xor <== XOR()(e2,e3);
     signal multiplication <== Mux1()([1,-1], xor);
     signal y_1 <== y * multiplication;
-    
+
     out[0] <== x * k;
     out[1] <== y_1 * k;
 }
@@ -122,24 +123,28 @@ template RationalMapMontToTwistedEdwardsBabyJubJub() {
 // This internally uses a birationally equivalent Montgomery curve to perform the mapping, then uses a rational map to convert the point to the Edwards curve.
 template MapToCurveTwistedEdwards() {
     signal input in;
-    signal output out[2];
+    output BabyJubJubPoint() { twisted_edwards } out;
 
     signal ell2[2] <== MapToCurveElligator2()(in);
-    out <== RationalMapMontToTwistedEdwardsBabyJubJub()(ell2);
+    signal outxy[2] <== RationalMapMontToTwistedEdwardsBabyJubJub()(ell2);
+    // SAFETY: The output of the rational map from Mont to TE results in a point on the BJJ curve
+    out.x <== outxy[0];
+    out.y <== outxy[1];
 }
 
 
 // Performs cofactor clearing for BabyJubJub.
 // The default method is simply to multiply by the cofactor, which is 8 for BabyJubJub.
 template ClearCoFactorBabyJubJub() {
-    signal input in[2];
-    signal output out[2];
+    input BabyJubJubPoint() { twisted_edwards } in;
+    output BabyJubJubPoint() { twisted_edwards_in_subgroup } out;
 
-    signal (double_x, double_y) <== BabyDbl()(in[0], in[1]);
+    signal (double_x, double_y) <== BabyDbl()(in.x, in.y);
     signal (quadruple_x, quadruple_y) <== BabyDbl()(double_x, double_y);
     signal (eight_x, eight_y) <==  BabyDbl()(quadruple_x, quadruple_y);
-    out[0] <== eight_x;
-    out[1] <== eight_y;
+    // SAFETY: Clearing the small-order terms of a point on the curve places it in the prime-order subgroup
+    out.x <== eight_x;
+    out.y <== eight_y;
 }
 
 // A curve encoding function that maps a field element to a point on the curve, based on https://www.rfc-editor.org/rfc/rfc9380.html#name-encoding-byte-strings-to-el.
@@ -147,9 +152,9 @@ template ClearCoFactorBabyJubJub() {
 // As mentioned in the RFC, this encoding is non uniformly random in E, as this can only hit about half of the of the curve points.
 template EncodeToCurveBabyJubJub() {
     signal input in;
-    signal output out[2];
+    output BabyJubJubPoint() { twisted_edwards_in_subgroup } out;
 
     signal u <== HashToField()(in);
-    signal q[2] <== MapToCurveTwistedEdwards()(u);
+    BabyJubJubPoint() { twisted_edwards } q <== MapToCurveTwistedEdwards()(u);
     out <== ClearCoFactorBabyJubJub()(q);
 }
