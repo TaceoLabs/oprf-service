@@ -68,10 +68,7 @@ template BabyJubJubCheckAndSubgroupCheck() {
     signal input x;
     signal input y;
     output BabyJubJubPoint() { twisted_edwards_in_subgroup } p;
-    BabyJubJubPoint() { twisted_edwards } p_on_curve;
-    BabyCheck()(x,y);
-    p_on_curve.x <== x;
-    p_on_curve.y <== y;
+    BabyJubJubPoint() { twisted_edwards } p_on_curve <== BabyJubJubCheck()(x,y);
     BabyJubJubCheckInCorrectSubgroup()(p_on_curve);
     p.x <== x;
     p.y <== y;
