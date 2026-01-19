@@ -105,7 +105,7 @@ template OprfNullifier(MAX_DEPTH) {
     signal input nonce; // Public
     // Commitment to the id
     signal input id_commitment_r;
-    signal output id_commitment; // Public
+    signal input id_commitment; // Public
     // Nullifier computation
     signal output nullifier; // Public
 
@@ -175,7 +175,12 @@ template OprfNullifier(MAX_DEPTH) {
     // Produce the commitment to the id
     var DS_C = 5199521648757207593; // b"H(id, r)"
     var poseidon_comm[3] = Poseidon2(3)([DS_C, mt_index, id_commitment_r]);
-    id_commitment <== poseidon_comm[1];
+    signal computed_id_commitment <== poseidon_comm[1];
+    // id commitment either needs to be equal to computed, or 0
+    // Below term is zero if:
+    // - id_commitment == 0, as intended
+    // - id_commitment - computed_id_commitment == 0, meaning id_commitment == computed_id_commitment, as intended
+    id_commitment * (id_commitment - computed_id_commitment) === 0;
 
     // Dummy square to prevent tampering signal_hash.
     // Same as done in Semaphore
@@ -184,4 +189,4 @@ template OprfNullifier(MAX_DEPTH) {
     signal nonce_squared <== nonce * nonce;
 }
 
-// component main {public [issuer_schema_id, cred_pk, current_timestamp, cred_genesis_issued_at_min, merkle_root, depth, rp_id, action, oprf_pk, signal_hash, nonce]} = OprfNullifier(30);
+// component main {public [issuer_schema_id, cred_pk, current_timestamp, cred_genesis_issued_at_min, merkle_root, depth, rp_id, action, oprf_pk, signal_hash, nonce, id_commitment]} = OprfNullifier(30);
