@@ -126,12 +126,10 @@ template OprfDelegate(MAX_DEPTH, RP_MAX_DEPTH) {
     // 5. Unblind the OPRF response
     BabyJubJubScalarField() beta_f;
     beta_f.f <== beta;
-    // The following checks that the oprf_response is on the curve.
     // The following checks that the oprf_response is on the curve and in the correct subgroup.
-    component p_check = BabyJubJubCheck();
+    component p_check = BabyJubJubCheckAndSubgroupCheck();
     p_check.x <== oprf_response[0];
     p_check.y <== oprf_response[1];
-    BabyJubJubCheckInCorrectSubgroup()(p_check.p);
 
     // Precondition: p_check.p is in the correct subgroup, checked above.
     component unblinder = BabyJubJubScalarMul();
@@ -176,7 +174,7 @@ template OprfDelegate(MAX_DEPTH, RP_MAX_DEPTH) {
 
     // Derive the symmetric keys for encryption
     component sym_keys[3];
-    BabyJubJubPoint() { twisted_edwards } pk_p[3];
+    BabyJubJubPoint() { twisted_edwards_in_subgroup } pk_p[3];
     for (var i=0; i<3; i++) {
         pk_p[i].x <== mpc_public_keys[i][0];
         pk_p[i].y <== mpc_public_keys[i][1];
