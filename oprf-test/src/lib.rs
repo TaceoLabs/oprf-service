@@ -1,11 +1,18 @@
 use crate::test_secret_manager::TestSecretManager;
-use alloy::primitives::{Address, address};
+use alloy::{
+    network::EthereumWallet,
+    node_bindings::{Anvil, AnvilInstance},
+    primitives::{Address, address},
+    providers::{DynProvider, Provider as _, ProviderBuilder},
+    signers::local::PrivateKeySigner,
+};
+use eyre::Context as _;
 use semver::VersionReq;
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{path::PathBuf, str::FromStr as _, sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 
 pub mod health_checks;
-pub mod oprf_key_registry_scripts;
+pub mod oprf_key_registry;
 pub mod test_secret_manager;
 
 /// anvil wallet 0
@@ -33,6 +40,140 @@ pub const OPRF_PEER_ADDRESS_3: Address = address!("0x23618e81E3f5cdF7f54C3d65f7F
 pub const OPRF_PEER_PRIVATE_KEY_4: &str =
     "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6";
 pub const OPRF_PEER_ADDRESS_4: Address = address!("0xa0Ee7A142d267C1f36714E4a8F75612F20a79720");
+
+pub type TestSetup13 = TestSetup<1, 3>;
+pub type TestSetup25 = TestSetup<2, 5>;
+
+pub struct TestSetup<const DEGREE: usize, const NUM_PEERS: usize> {
+    pub anvil: AnvilInstance,
+    pub provider: DynProvider,
+    pub oprf_key_registry: Address,
+    pub secret_managers: [TestSecretManager; NUM_PEERS],
+    pub nodes: [String; NUM_PEERS],
+    pub node_cancellation_tokens: [CancellationToken; NUM_PEERS],
+    pub key_gens: [String; NUM_PEERS],
+    pub key_gen_cancellation_tokens: [CancellationToken; NUM_PEERS],
+}
+
+impl TestSetup<1, 3> {
+    pub async fn new() -> eyre::Result<Self> {
+        let anvil = Anvil::new().spawn();
+        let private_key = PrivateKeySigner::from_str(TACEO_ADMIN_PRIVATE_KEY)?;
+        let wallet = EthereumWallet::from(private_key);
+        let provider = ProviderBuilder::new()
+            .wallet(wallet)
+            .connect(&anvil.endpoint())
+            .await
+            .context("while connecting to RPC")?
+            .erased();
+
+        println!("Deploying OprfKeyRegistry contract...");
+        let oprf_key_registry =
+            oprf_key_registry::deploy_oprf_key_registry_13(provider.clone(), TACEO_ADMIN_ADDRESS)
+                .await?;
+        oprf_key_registry::register_oprf_nodes(
+            provider.clone(),
+            oprf_key_registry,
+            vec![
+                OPRF_PEER_ADDRESS_0,
+                OPRF_PEER_ADDRESS_1,
+                OPRF_PEER_ADDRESS_2,
+            ],
+        )
+        .await?;
+
+        let secret_managers = create_3_secret_managers();
+        println!("Starting OPRF key-gens...");
+        let (key_gens, key_gen_cancellation_tokens) = start_3_key_gens(
+            &anvil.ws_endpoint(),
+            secret_managers.clone(),
+            oprf_key_registry,
+        )
+        .await;
+
+        println!("Starting OPRF nodes...");
+        let (nodes, node_cancellation_tokens) = start_3_nodes(
+            &anvil.ws_endpoint(),
+            secret_managers.clone(),
+            oprf_key_registry,
+        )
+        .await;
+
+        health_checks::services_health_check(&key_gens, Duration::from_secs(60)).await?;
+
+        Ok(Self {
+            anvil,
+            provider,
+            oprf_key_registry,
+            secret_managers,
+            nodes,
+            node_cancellation_tokens,
+            key_gens,
+            key_gen_cancellation_tokens,
+        })
+    }
+}
+
+impl TestSetup<2, 5> {
+    pub async fn new() -> eyre::Result<Self> {
+        let anvil = Anvil::new().spawn();
+        let private_key = PrivateKeySigner::from_str(TACEO_ADMIN_PRIVATE_KEY)?;
+        let wallet = EthereumWallet::from(private_key);
+        let provider = ProviderBuilder::new()
+            .wallet(wallet)
+            .connect(&anvil.endpoint())
+            .await
+            .context("while connecting to RPC")?
+            .erased();
+
+        println!("Deploying OprfKeyRegistry contract...");
+        let oprf_key_registry =
+            oprf_key_registry::deploy_oprf_key_registry_25(provider.clone(), TACEO_ADMIN_ADDRESS)
+                .await?;
+        oprf_key_registry::register_oprf_nodes(
+            provider.clone(),
+            oprf_key_registry,
+            vec![
+                OPRF_PEER_ADDRESS_0,
+                OPRF_PEER_ADDRESS_1,
+                OPRF_PEER_ADDRESS_2,
+                OPRF_PEER_ADDRESS_3,
+                OPRF_PEER_ADDRESS_4,
+            ],
+        )
+        .await?;
+
+        let secret_managers = create_5_secret_managers();
+        println!("Starting OPRF key-gens...");
+        let (key_gens, key_gen_cancellation_tokens) = start_5_key_gens(
+            &anvil.ws_endpoint(),
+            secret_managers.clone(),
+            oprf_key_registry,
+        )
+        .await;
+
+        println!("Starting OPRF nodes...");
+        let (nodes, node_cancellation_tokens) = start_5_nodes(
+            &anvil.ws_endpoint(),
+            secret_managers.clone(),
+            oprf_key_registry,
+        )
+        .await;
+
+        health_checks::services_health_check(&key_gens, Duration::from_secs(60)).await?;
+
+        Ok(Self {
+            anvil,
+            provider,
+            oprf_key_registry,
+            secret_managers,
+            nodes,
+            node_cancellation_tokens,
+            key_gens,
+            key_gen_cancellation_tokens,
+        })
+    }
+}
 
 pub async fn start_node(
     id: usize,
