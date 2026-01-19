@@ -137,14 +137,12 @@ async fn stress_test(
     oprf_public_key: OprfPublicKey,
     connector: Connector,
 ) -> eyre::Result<()> {
-    let mut request_ids = HashMap::with_capacity(cmd.runs);
     let mut blinded_requests = HashMap::with_capacity(cmd.runs);
     let mut init_requests = HashMap::with_capacity(cmd.runs);
 
     tracing::info!("preparing requests..");
     for _ in 0..cmd.runs {
         let (request_id, blinded_req, req) = prepare_oprf_stress_test_oprf_request(oprf_key_id)?;
-        request_ids.insert(request_id, request_id);
         blinded_requests.insert(request_id, blinded_req);
         init_requests.insert(request_id, req);
     }
@@ -251,7 +249,6 @@ async fn main() -> eyre::Result<()> {
         .context("while doing health checks")?;
     tracing::info!("everyone online..");
 
-    let share_epoch = ShareEpoch::from(config.share_epoch); // TODO
     let private_key = PrivateKeySigner::from_str(config.taceo_private_key.expose_secret())?;
     let wallet = EthereumWallet::from(private_key.clone());
 
@@ -263,8 +260,10 @@ async fn main() -> eyre::Result<()> {
         .context("while connecting to RPC")?
         .erased();
 
-    let (oprf_key_id, oprf_public_key) = if let Some(oprf_key_id) = config.oprf_key_id {
+    let (oprf_key_id, share_epoch, oprf_public_key) = if let Some(oprf_key_id) = config.oprf_key_id
+    {
         let oprf_key_id = OprfKeyId::new(oprf_key_id);
+        let share_epoch = ShareEpoch::from(config.share_epoch);
         let oprf_public_key = health_checks::oprf_public_key_from_services(
             oprf_key_id,
             share_epoch,
@@ -272,15 +271,16 @@ async fn main() -> eyre::Result<()> {
             config.max_wait_time,
         )
         .await?;
-        (oprf_key_id, oprf_public_key)
+        (oprf_key_id, share_epoch, oprf_public_key)
     } else {
-        oprf_dev_client::init_key_gen(
+        let (oprf_key_id, oprf_public_key) = oprf_dev_client::init_key_gen(
             &config.nodes,
             config.oprf_key_registry_contract,
             provider.clone(),
             config.max_wait_time,
         )
-        .await?
+        .await?;
+        (oprf_key_id, ShareEpoch::default(), oprf_public_key)
     };
 
     // setup TLS config - even if we are http
