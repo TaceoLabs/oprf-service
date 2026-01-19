@@ -12,7 +12,8 @@ This is a monorepo containing:
 * `oprf-client`: A crate implementing a client lib for the OPRF service.
 * `oprf-client-example`: A crate implementing example a client.
 * `oprf-core`: A crate implementing a verifiable OPRF based on the TwoHashDH OPRF construction + a threshold variant of it.
-* `oprf-dev-client`: A crate implementing a dev client binary.
+* `oprf-dev-client`: A crate implementing common dev client functionality.
+* `oprf-dev-client-example`: A crate implementing a example dev client binary.
 * `oprf-key-gen`: A crate implementing a OPRF key generation instance.
 * `oprf-service`: A crate implementing a service lib for the OPRF service.
 * `oprf-service-example`: A crate implementing a example OPRF node.

@@ -5,6 +5,7 @@ members = [
   "oprf-client-example",
   "oprf-core",
   "oprf-dev-client",
+  "oprf-dev-client-example",
   "oprf-key-gen",
   "oprf-service",
   "oprf-service-example",

@@ -1,5 +1,5 @@
 [package]
-name = "taceo-oprf-dev-client"
+name = "taceo-oprf-dev-client-example"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -7,7 +7,7 @@ readme.workspace = true
 homepage.workspace = true
 repository.workspace = true
 license.workspace = true
-publish = false
+publish.workspace = true
 
 [dependencies]
 alloy = { workspace = true, features = ["full", "rpc", "rpc-client-ws"] }
@@ -17,16 +17,16 @@ clap = { workspace = true, features = ["derive", "env"] }
 eyre.workspace = true
 humantime.workspace = true
 nodes-observability.workspace = true
-oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.3" }
+oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.2" }
 oprf-client-example = { package = "taceo-oprf-client-example", path = "../oprf-client-example", version = "0.1" }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.3" }
+oprf-dev-client = { package = "taceo-oprf-dev-client", path = "../oprf-dev-client", version = "0.1" }
 oprf-test = { package = "taceo-oprf-test", path = "../oprf-test", version = "0.1" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.4" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.3" }
 rand.workspace = true
 rand_chacha.workspace = true
 rustls = { workspace = true }
 secrecy.workspace = true
-serde.workspace = true
 tokio = { workspace = true, features = [
   "net",
   "rt-multi-thread",
