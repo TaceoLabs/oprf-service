@@ -277,6 +277,37 @@ pub async fn start_3_key_gens(
     ([node0.0, node1.0, node2.0], [node0.1, node1.1, node2.1])
 }
 
+pub async fn start_2_key_gens(
+    chain_ws_rpc_url: &str,
+    secret_manager: [TestSecretManager; 2],
+    key_gen_contract: Address,
+) -> ([String; 2], [CancellationToken; 2]) {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+    let key_get_zkey_path = dir.join("../circom/main/key-gen/OPRFKeyGen.13.arks.zkey");
+    let key_gen_witness_graph_path = dir.join("../circom/main/key-gen/OPRFKeyGenGraph.13.bin");
+    let [secret_manager0, secret_manager1] = secret_manager;
+    let (node0, node1) = tokio::join!(
+        start_key_gen(
+            0,
+            chain_ws_rpc_url,
+            secret_manager0,
+            key_gen_contract,
+            key_get_zkey_path.clone(),
+            key_gen_witness_graph_path.clone()
+        ),
+        start_key_gen(
+            1,
+            chain_ws_rpc_url,
+            secret_manager1,
+            key_gen_contract,
+            key_get_zkey_path.clone(),
+            key_gen_witness_graph_path.clone()
+        )
+    );
+    ([node0.0, node1.0], [node0.1, node1.1])
+}
+
 pub async fn start_5_key_gens(
     chain_ws_rpc_url: &str,
     secret_manager: [TestSecretManager; 5],
