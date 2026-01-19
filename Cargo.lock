@@ -6257,26 +6257,17 @@ name = "taceo-oprf-dev-client"
 version = "0.1.0"
 dependencies = [
  "alloy",
- "ark-ff 0.5.0",
  "clap",
  "eyre",
- "humantime",
  "rand 0.8.5",
- "rand_chacha 0.3.1",
- "rustls 0.23.36",
- "secrecy",
  "serde",
- "taceo-ark-babyjubjub",
- "taceo-nodes-observability",
  "taceo-oprf-client",
- "taceo-oprf-client-example",
  "taceo-oprf-core",
- "taceo-oprf-test",
+ "taceo-oprf-test-utils",
  "taceo-oprf-types",
  "tokio",
  "tracing",
  "uuid",
- "webpki-roots 1.0.5",
 ]
 
 [[package]]
@@ -6298,7 +6289,7 @@ dependencies = [
  "taceo-oprf-client-example",
  "taceo-oprf-core",
  "taceo-oprf-dev-client",
- "taceo-oprf-test",
+ "taceo-oprf-test-utils",
  "taceo-oprf-types",
  "tokio",
  "tracing",
@@ -6414,6 +6405,29 @@ name = "taceo-oprf-test"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "ark-ff 0.5.0",
+ "eyre",
+ "rand 0.8.5",
+ "reqwest",
+ "semver 1.0.27",
+ "serial_test",
+ "taceo-ark-babyjubjub",
+ "taceo-oprf-client-example",
+ "taceo-oprf-key-gen",
+ "taceo-oprf-service",
+ "taceo-oprf-service-example",
+ "taceo-oprf-test-utils",
+ "taceo-oprf-types",
+ "tokio",
+ "tokio-tungstenite 0.28.0",
+ "tokio-util",
+]
+
+[[package]]
+name = "taceo-oprf-test-utils"
+version = "0.1.0"
+dependencies = [
+ "alloy",
  "ark-bn254",
  "ark-ec",
  "ark-ff 0.5.0",
@@ -6425,24 +6439,16 @@ dependencies = [
  "parking_lot",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
- "regex",
  "reqwest",
- "semver 1.0.27",
- "serde_json",
- "serial_test",
  "taceo-ark-babyjubjub",
  "taceo-groth16-material",
  "taceo-groth16-sol",
  "taceo-nodes-observability",
- "taceo-oprf-client-example",
  "taceo-oprf-core",
  "taceo-oprf-key-gen",
  "taceo-oprf-service",
- "taceo-oprf-service-example",
  "taceo-oprf-types",
  "tokio",
- "tokio-tungstenite 0.28.0",
- "tokio-util",
  "tracing",
 ]
 

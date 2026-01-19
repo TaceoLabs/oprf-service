@@ -1,15 +1,16 @@
 use ark_ff::UniformRand as _;
 use eyre::Context as _;
+use oprf_test_utils::test_secret_manager::TestSecretManager;
+use oprf_test_utils::{health_checks, oprf_key_registry};
 use oprf_types::chain::OprfKeyRegistry;
 use oprf_types::crypto::OprfPublicKey;
 use oprf_types::{OprfKeyId, ShareEpoch};
 use rand::Rng;
 use std::path::PathBuf;
 use std::time::Duration;
-use taceo_oprf_test::test_secret_manager::TestSecretManager;
 use taceo_oprf_test::{
     OPRF_PEER_ADDRESS_0, OPRF_PEER_ADDRESS_1, OPRF_PEER_ADDRESS_2, OPRF_PEER_ADDRESS_3,
-    OPRF_PEER_PRIVATE_KEY_3, TestSetup13, TestSetup25, health_checks, oprf_key_registry,
+    OPRF_PEER_PRIVATE_KEY_3, TestSetup13, TestSetup25,
 };
 use tokio_tungstenite::Connector;
 
@@ -21,12 +22,8 @@ async fn oprf_example_with_reshare_e2e_test_13() -> eyre::Result<()> {
 
     let oprf_key_id = OprfKeyId::new(rng.r#gen());
     println!("init key-gen with oprf key id: {oprf_key_id}");
-    taceo_oprf_test::oprf_key_registry::init_key_gen(
-        setup.provider.clone(),
-        setup.oprf_key_registry,
-        oprf_key_id,
-    )
-    .await?;
+    oprf_key_registry::init_key_gen(setup.provider.clone(), setup.oprf_key_registry, oprf_key_id)
+        .await?;
 
     println!("Fetching OPRF public-key...");
     let start_epoch = ShareEpoch::default();
@@ -56,12 +53,7 @@ async fn oprf_example_with_reshare_e2e_test_13() -> eyre::Result<()> {
 
     let next_epoch = start_epoch.next();
     println!("init reshare with oprf key id: {oprf_key_id}");
-    taceo_oprf_test::oprf_key_registry::init_reshare(
-        setup.provider,
-        setup.oprf_key_registry,
-        oprf_key_id,
-    )
-    .await?;
+    oprf_key_registry::init_reshare(setup.provider, setup.oprf_key_registry, oprf_key_id).await?;
     let oprf_public_key_reshare = health_checks::oprf_public_key_from_services(
         oprf_key_id,
         next_epoch,
@@ -108,12 +100,8 @@ async fn oprf_example_e2e_test_25() -> eyre::Result<()> {
 
     let oprf_key_id = OprfKeyId::new(rng.r#gen());
     println!("init key-gen with oprf key id: {oprf_key_id}");
-    taceo_oprf_test::oprf_key_registry::init_key_gen(
-        setup.provider.clone(),
-        setup.oprf_key_registry,
-        oprf_key_id,
-    )
-    .await?;
+    oprf_key_registry::init_key_gen(setup.provider.clone(), setup.oprf_key_registry, oprf_key_id)
+        .await?;
 
     println!("Fetching OPRF public-key...");
     let _oprf_public_key = health_checks::oprf_public_key_from_services(
@@ -150,12 +138,8 @@ async fn test_delete_oprf_key() -> eyre::Result<()> {
 
     let oprf_key_id = OprfKeyId::new(rng.r#gen());
     println!("init key-gen with oprf key id: {oprf_key_id}");
-    taceo_oprf_test::oprf_key_registry::init_key_gen(
-        setup.provider.clone(),
-        setup.oprf_key_registry,
-        oprf_key_id,
-    )
-    .await?;
+    oprf_key_registry::init_key_gen(setup.provider.clone(), setup.oprf_key_registry, oprf_key_id)
+        .await?;
 
     println!("Fetching OPRF public-key...");
     let start_epoch = ShareEpoch::default();
@@ -215,12 +199,8 @@ async fn oprf_example_reshare_with_consumer() -> eyre::Result<()> {
 
     let oprf_key_id = OprfKeyId::new(rng.r#gen());
     println!("init key-gen with oprf key id: {oprf_key_id}");
-    taceo_oprf_test::oprf_key_registry::init_key_gen(
-        setup.provider.clone(),
-        setup.oprf_key_registry,
-        oprf_key_id,
-    )
-    .await?;
+    oprf_key_registry::init_key_gen(setup.provider.clone(), setup.oprf_key_registry, oprf_key_id)
+        .await?;
 
     println!("Fetching OPRF public-key...");
     let start_epoch = ShareEpoch::default();
@@ -300,7 +280,7 @@ async fn oprf_example_reshare_with_consumer() -> eyre::Result<()> {
     setup.key_gens[killed_party] = new_key_gen;
 
     println!("doing health check");
-    health_checks::services_health_check(&setup.nodes, Duration::from_secs(60)).await?;
+    health_checks::services_health_check(&setup.key_gens, Duration::from_secs(60)).await?;
 
     // do a reshare
     let next_epoch = start_epoch.next();

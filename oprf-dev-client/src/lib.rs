@@ -7,11 +7,13 @@ use alloy::{primitives::Address, providers::DynProvider};
 use clap::{Parser, Subcommand};
 use oprf_client::{Connector, OprfSessions};
 use oprf_core::ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir};
-use oprf_test::health_checks;
+use oprf_test_utils::{health_checks, oprf_key_registry};
 use oprf_types::{OprfKeyId, ShareEpoch, api::v1::OprfRequest, crypto::OprfPublicKey};
 use serde::Serialize;
 use tokio::task::JoinSet;
 use uuid::Uuid;
+
+pub use oprf_test_utils;
 
 #[derive(Clone, Parser, Debug)]
 pub struct StressTestCommand {
@@ -161,7 +163,7 @@ pub async fn init_key_gen(
 ) -> eyre::Result<(OprfKeyId, OprfPublicKey)> {
     let oprf_key_id = OprfKeyId::new(rand::random());
     tracing::info!("init OPRF key gen with: {oprf_key_id}");
-    oprf_test::oprf_key_registry::init_key_gen(provider, oprf_key_registry, oprf_key_id).await?;
+    oprf_key_registry::init_key_gen(provider, oprf_key_registry, oprf_key_id).await?;
     tracing::info!("waiting for key-gen to finish..");
     let oprf_public_key = health_checks::oprf_public_key_from_services(
         oprf_key_id,
@@ -183,7 +185,7 @@ pub async fn reshare(
     share_epoch: ShareEpoch,
 ) -> eyre::Result<(ShareEpoch, OprfPublicKey)> {
     tracing::info!("init reshare for: {oprf_key_id}");
-    oprf_test::oprf_key_registry::init_reshare(provider, oprf_key_registry, oprf_key_id).await?;
+    oprf_key_registry::init_reshare(provider, oprf_key_registry, oprf_key_id).await?;
     tracing::info!("waiting for reshare to finish..");
     let next_epoch = share_epoch.next();
     let oprf_public_key =

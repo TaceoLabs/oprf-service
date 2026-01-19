@@ -1,19 +1,18 @@
-use crate::test_secret_manager::TestSecretManager;
 use alloy::{
     network::EthereumWallet,
     node_bindings::{Anvil, AnvilInstance},
-    primitives::{Address, address},
+    primitives::{Address, Bytes, U256, address},
     providers::{DynProvider, Provider as _, ProviderBuilder},
     signers::local::PrivateKeySigner,
+    sol,
+    sol_types::SolCall as _,
+    uint,
 };
 use eyre::Context as _;
+use oprf_test_utils::{health_checks, oprf_key_registry, test_secret_manager::TestSecretManager};
 use semver::VersionReq;
 use std::{path::PathBuf, str::FromStr as _, sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
-
-pub mod health_checks;
-pub mod oprf_key_registry;
-pub mod test_secret_manager;
 
 /// anvil wallet 0
 pub const TACEO_ADMIN_PRIVATE_KEY: &str =
@@ -40,6 +39,127 @@ pub const OPRF_PEER_ADDRESS_3: Address = address!("0x23618e81E3f5cdF7f54C3d65f7F
 pub const OPRF_PEER_PRIVATE_KEY_4: &str =
     "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6";
 pub const OPRF_PEER_ADDRESS_4: Address = address!("0xa0Ee7A142d267C1f36714E4a8F75612F20a79720");
+
+sol!(
+    #[allow(clippy::too_many_arguments)]
+    #[sol(rpc, ignore_unlinked)]
+    VerifierKeyGen13,
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../contracts/out/VerifierKeyGen13.sol/Verifier.json"
+    )
+);
+
+sol!(
+    #[allow(clippy::too_many_arguments)]
+    #[sol(rpc, ignore_unlinked)]
+    VerifierKeyGen25,
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../contracts/out/VerifierKeyGen25.sol/Verifier.json"
+    )
+);
+
+sol!(
+    #[allow(clippy::too_many_arguments)]
+    #[sol(rpc, ignore_unlinked)]
+    BabyJubJub,
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../contracts/out/BabyJubJub.sol/BabyJubJub.json"
+    )
+);
+
+sol!(
+    #[allow(clippy::too_many_arguments)]
+    #[sol(rpc, ignore_unlinked)]
+    OprfKeyRegistry,
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../contracts/out/OprfKeyRegistry.sol/OprfKeyRegistry.json"
+    )
+);
+
+sol!(
+    #[sol(rpc)]
+    ERC1967Proxy,
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json"
+    )
+);
+
+/// Deploys the `OprfKeyRegistry` contract using the supplied signer.
+async fn deploy_oprf_key_registry(
+    provider: DynProvider,
+    admin: Address,
+    key_gen_verifier: Address,
+    threshold: U256,
+    num_peers: U256,
+) -> eyre::Result<Address> {
+    let babyjubjub = BabyJubJub::deploy(provider.clone())
+        .await
+        .context("failed to deploy BabyJubJub contract")?;
+
+    let oprf_key_registry = OprfKeyRegistry::deploy(provider.clone())
+        .await
+        .context("failed to deploy OprfKeyRegistry contract")?;
+
+    let init_data = Bytes::from(
+        OprfKeyRegistry::initializeCall {
+            _keygenAdmin: admin,
+            _keyGenVerifierAddress: key_gen_verifier,
+            _accumulatorAddress: *babyjubjub.address(),
+            _threshold: threshold,
+            _numPeers: num_peers,
+        }
+        .abi_encode(),
+    );
+
+    let proxy = ERC1967Proxy::deploy(provider, *oprf_key_registry.address(), init_data)
+        .await
+        .context("failed to deploy OprfKeyRegistry proxy")?;
+
+    Ok(*proxy.address())
+}
+
+/// Deploys the `OprfKeyRegistry` contract using the supplied signer.
+pub async fn deploy_oprf_key_registry_13(
+    provider: DynProvider,
+    admin: Address,
+) -> eyre::Result<Address> {
+    let key_gen_verifier = VerifierKeyGen13::deploy(provider.clone())
+        .await
+        .context("failed to deploy Groth16VerifierKeyGen13 contract")?;
+
+    deploy_oprf_key_registry(
+        provider,
+        admin,
+        *key_gen_verifier.address(),
+        uint!(2_U256),
+        uint!(3_U256),
+    )
+    .await
+}
+
+/// Deploys the `OprfKeyRegistry` contract using the supplied signer.
+pub async fn deploy_oprf_key_registry_25(
+    provider: DynProvider,
+    admin: Address,
+) -> eyre::Result<Address> {
+    let key_gen_verifier = VerifierKeyGen25::deploy(provider.clone())
+        .await
+        .context("failed to deploy Groth16VerifierKeyGen25 contract")?;
+
+    deploy_oprf_key_registry(
+        provider,
+        admin,
+        *key_gen_verifier.address(),
+        uint!(3_U256),
+        uint!(5_U256),
+    )
+    .await
+}
 
 pub type TestSetup13 = TestSetup<1, 3>;
 pub type TestSetup25 = TestSetup<2, 5>;
@@ -69,8 +189,7 @@ impl TestSetup<1, 3> {
 
         println!("Deploying OprfKeyRegistry contract...");
         let oprf_key_registry =
-            oprf_key_registry::deploy_oprf_key_registry_13(provider.clone(), TACEO_ADMIN_ADDRESS)
-                .await?;
+            deploy_oprf_key_registry_13(provider.clone(), TACEO_ADMIN_ADDRESS).await?;
         oprf_key_registry::register_oprf_nodes(
             provider.clone(),
             oprf_key_registry,
@@ -128,8 +247,7 @@ impl TestSetup<2, 5> {
 
         println!("Deploying OprfKeyRegistry contract...");
         let oprf_key_registry =
-            oprf_key_registry::deploy_oprf_key_registry_25(provider.clone(), TACEO_ADMIN_ADDRESS)
-                .await?;
+            deploy_oprf_key_registry_25(provider.clone(), TACEO_ADMIN_ADDRESS).await?;
         oprf_key_registry::register_oprf_nodes(
             provider.clone(),
             oprf_key_registry,

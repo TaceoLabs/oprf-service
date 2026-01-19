@@ -12,7 +12,7 @@ use eyre::Context as _;
 use oprf_client::{BlindingFactor, Connector};
 use oprf_core::oprf::BlindedOprfRequest;
 use oprf_dev_client::{Command, StressTestCommand};
-use oprf_test::health_checks;
+use oprf_test_utils::health_checks;
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     api::v1::{OprfRequest, ShareIdentifier},

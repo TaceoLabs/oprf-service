@@ -10,6 +10,7 @@ members = [
   "oprf-service",
   "oprf-service-example",
   "oprf-test",
+  "oprf-test-utils",
   "oprf-types"
 ]
 
