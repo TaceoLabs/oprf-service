@@ -104,7 +104,6 @@ template OprfQueryInner(MAX_DEPTH) {
     // 3. Query is computed correctly
     component hasher = EncodeToCurveBabyJubJub();
     hasher.in <== query;
-    // SAFETY: EncodeToCurveBabyJubJub guarantees that the output point is on the curve and in the correct subgroup.
 
     // Preconditions to this multiplication are correct, since beta is range checked and p is guaranteed to be on the curve and in the correct subgroup by EncodeToCurveBabyJubJub.
     component multiplier = BabyJubJubScalarMul();
