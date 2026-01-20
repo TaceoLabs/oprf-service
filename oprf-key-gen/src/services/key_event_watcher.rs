@@ -13,13 +13,11 @@ use crate::{
     metrics::{
         METRICS_ATTRID_PROTOCOL, METRICS_ATTRID_ROLE, METRICS_ATTRVAL_PROTOCOL_KEY_GEN,
         METRICS_ATTRVAL_PROTOCOL_RESHARE, METRICS_ATTRVAL_ROLE_CONSUMER,
-        METRICS_ATTRVAL_ROLE_PRODUCER, METRICS_ID_KEY_GEN_ABORT_FINISH,
-        METRICS_ID_KEY_GEN_ABORT_START, METRICS_ID_KEY_GEN_DELETION_FINISH,
-        METRICS_ID_KEY_GEN_DELETION_START, METRICS_ID_KEY_GEN_ROUND_1_FINISH,
-        METRICS_ID_KEY_GEN_ROUND_1_START, METRICS_ID_KEY_GEN_ROUND_2_FINISH,
-        METRICS_ID_KEY_GEN_ROUND_2_START, METRICS_ID_KEY_GEN_ROUND_3_FINISH,
-        METRICS_ID_KEY_GEN_ROUND_3_START, METRICS_ID_KEY_GEN_ROUND_4_FINISH,
-        METRICS_ID_KEY_GEN_ROUND_4_START,
+        METRICS_ATTRVAL_ROLE_PRODUCER, METRICS_ID_KEY_GEN_ABORT, METRICS_ID_KEY_GEN_DELETION,
+        METRICS_ID_KEY_GEN_ROUND_1_FINISH, METRICS_ID_KEY_GEN_ROUND_1_START,
+        METRICS_ID_KEY_GEN_ROUND_2_FINISH, METRICS_ID_KEY_GEN_ROUND_2_START,
+        METRICS_ID_KEY_GEN_ROUND_3_FINISH, METRICS_ID_KEY_GEN_ROUND_3_START,
+        METRICS_ID_KEY_GEN_ROUND_4_FINISH, METRICS_ID_KEY_GEN_ROUND_4_START,
     },
     services::{
         secret_gen::{Contributions, DLogSecretGenService},
@@ -544,7 +542,7 @@ async fn handle_delete(
     secret_manager: &SecretManagerService,
 ) -> eyre::Result<()> {
     tracing::info!("Received Delete event");
-    ::metrics::counter!(METRICS_ID_KEY_GEN_DELETION_START).increment(1);
+    ::metrics::counter!(METRICS_ID_KEY_GEN_DELETION).increment(1);
     let key_delete = log
         .log_decode()
         .context("while decoding key deletion event")?;
@@ -560,7 +558,6 @@ async fn handle_delete(
         .remove_oprf_key_material(oprf_key_id)
         .await
         .context("while storing share to secret manager")?;
-    ::metrics::counter!(METRICS_ID_KEY_GEN_DELETION_FINISH).increment(1);
     Ok(())
 }
 
@@ -570,7 +567,7 @@ async fn handle_abort(
     secret_gen: &mut DLogSecretGenService,
 ) -> eyre::Result<()> {
     tracing::info!("Received Abort event");
-    ::metrics::counter!(METRICS_ID_KEY_GEN_ABORT_START).increment(1);
+    ::metrics::counter!(METRICS_ID_KEY_GEN_ABORT).increment(1);
     let key_delete = log
         .log_decode()
         .context("while decoding key deletion event")?;
@@ -582,7 +579,6 @@ async fn handle_abort(
     // we need to delete all the toxic waste associated with the oprf key-id
     secret_gen.delete_oprf_key_material(oprf_key_id);
     // in contrast to delete we only remove the intermediate values and NOT the shares from the secret-manager
-    ::metrics::counter!(METRICS_ID_KEY_GEN_ABORT_FINISH).increment(1);
     Ok(())
 }
 
