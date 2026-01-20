@@ -518,7 +518,7 @@ async fn oprf_example_abort_keygen() -> eyre::Result<()> {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let key_get_zkey_path = dir.join("../circom/main/key-gen/OPRFKeyGen.13.arks.zkey");
     let key_gen_witness_graph_path = dir.join("../circom/main/key-gen/OPRFKeyGenGraph.13.bin");
-    taceo_oprf_test::start_key_gen(
+    let (new_key_gen, _) = taceo_oprf_test::start_key_gen(
         2,
         &anvil.ws_endpoint(),
         last_secret_manager,
@@ -527,6 +527,11 @@ async fn oprf_example_abort_keygen() -> eyre::Result<()> {
         key_gen_witness_graph_path,
     )
     .await;
+
+    let [oprf_key_gen0, oprf_key_gen1] = oprf_key_gens;
+    let oprf_key_gens = [oprf_key_gen0, oprf_key_gen1, new_key_gen];
+
+    health_checks::services_health_check(&oprf_key_gens, Duration::from_secs(60)).await?;
 
     println!("redo key-gen with same id");
     let oprf_key_id = oprf_key_registry_scripts::init_key_gen(
