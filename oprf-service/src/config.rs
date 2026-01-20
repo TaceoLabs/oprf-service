@@ -98,6 +98,6 @@ pub struct OprfNodeConfig {
     pub version_req: VersionReq,
 
     /// The Region this node is deployed in.
-    #[clap(long, env = "OPRF_NODE_REGION", default_value = "no-region")]
+    #[clap(long, env = "OPRF_NODE_REGION", default_value = "unknown")]
     pub region: String,
 }

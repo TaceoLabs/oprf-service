@@ -70,6 +70,9 @@ async fn oprf_key_available(
     }
 }
 
+/// Responds with the region the oprf node is deployed in
+///
+/// Returns `200 OK` with a string response.
 async fn region(region_info: String) -> impl IntoResponse {
     (StatusCode::OK, region_info)
 }
