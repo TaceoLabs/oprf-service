@@ -1,9 +1,9 @@
 function {{ function_name }}Round1Contribution()
     internal
     pure
-    returns (Types.Round1Contribution memory)
+    returns (OprfKeyGen.Round1Contribution memory)
 {
-    return Types.Round1Contribution({
+    return OprfKeyGen.Round1Contribution({
         commShare: BabyJubJub.Affine({
             x: {{ comm_share_x }},
             y: {{ comm_share_y }}

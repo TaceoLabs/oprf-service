@@ -5,6 +5,9 @@
 //!
 //! Use these types to encode the payloads that nodes send and receive on-chain.
 
+// we need this because the sol macro is angry otherwise
+#![allow(missing_docs)]
+
 use std::fmt;
 
 use alloy::{primitives::U256, sol};
@@ -22,7 +25,7 @@ use crate::{
 
 // Codegen from ABI file to interact with the contract.
 sol!(
-    #[allow(missing_docs, clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     #[sol(rpc)]
     OprfKeyRegistry,
     "./OprfKeyRegistry.json"
@@ -62,7 +65,6 @@ impl fmt::Debug for OprfKeyRegistryErrors {
             Self::NotInitializing(_) => f.debug_tuple("NotInitializing").finish(),
             Self::NotReady(_) => f.debug_tuple("NotReady").finish(),
             Self::OnlyAdmin(_) => f.debug_tuple("OnlyAdmin").finish(),
-            Self::OutdatedNullifier(_) => f.debug_tuple("OutdatedNullifier").finish(),
             Self::OwnableInvalidOwner(_) => f.debug_tuple("OwnableInvalidOwner").finish(),
             Self::OwnableUnauthorizedAccount(_) => {
                 f.debug_tuple("OwnableUnauthorizedAccount").finish()
@@ -117,25 +119,25 @@ pub struct SecretGenRound3Contribution {
     pub oprf_key_id: OprfKeyId,
 }
 
-impl From<EphemeralEncryptionPublicKey> for Types::BabyJubJubElement {
+impl From<EphemeralEncryptionPublicKey> for BabyJubJub::Affine {
     fn from(value: EphemeralEncryptionPublicKey) -> Self {
         Self::from(value.inner())
     }
 }
 
-impl TryFrom<Types::BabyJubJubElement> for EphemeralEncryptionPublicKey {
+impl TryFrom<BabyJubJub::Affine> for EphemeralEncryptionPublicKey {
     type Error = eyre::Report;
 
-    fn try_from(value: Types::BabyJubJubElement) -> Result<Self, Self::Error> {
+    fn try_from(value: BabyJubJub::Affine) -> Result<Self, Self::Error> {
         let point = ark_babyjubjub::EdwardsAffine::try_from(value)?;
         Ok(Self::new_unchecked(point))
     }
 }
 
-impl TryFrom<Types::BabyJubJubElement> for ark_babyjubjub::EdwardsAffine {
+impl TryFrom<BabyJubJub::Affine> for ark_babyjubjub::EdwardsAffine {
     type Error = eyre::Report;
 
-    fn try_from(value: Types::BabyJubJubElement) -> Result<Self, Self::Error> {
+    fn try_from(value: BabyJubJub::Affine) -> Result<Self, Self::Error> {
         let p = Self::new_unchecked(value.x.try_into()?, value.y.try_into()?);
         if !p.is_on_curve() {
             eyre::bail!("point not on curve");
@@ -147,7 +149,7 @@ impl TryFrom<Types::BabyJubJubElement> for ark_babyjubjub::EdwardsAffine {
     }
 }
 
-impl From<ark_babyjubjub::EdwardsAffine> for Types::BabyJubJubElement {
+impl From<ark_babyjubjub::EdwardsAffine> for BabyJubJub::Affine {
     fn from(value: ark_babyjubjub::EdwardsAffine) -> Self {
         Self {
             x: value.x.into(),
@@ -156,7 +158,7 @@ impl From<ark_babyjubjub::EdwardsAffine> for Types::BabyJubJubElement {
     }
 }
 
-impl From<SecretGenCommitment> for Types::Round1Contribution {
+impl From<SecretGenCommitment> for OprfKeyGen::Round1Contribution {
     fn from(value: SecretGenCommitment) -> Self {
         Self {
             commShare: value.comm_share.into(),
@@ -166,11 +168,11 @@ impl From<SecretGenCommitment> for Types::Round1Contribution {
     }
 }
 
-impl From<EphemeralEncryptionPublicKey> for Types::Round1Contribution {
+impl From<EphemeralEncryptionPublicKey> for OprfKeyGen::Round1Contribution {
     fn from(value: EphemeralEncryptionPublicKey) -> Self {
         Self {
             // zero values indicate to the smart contract that we are a consumer
-            commShare: Types::BabyJubJubElement {
+            commShare: BabyJubJub::Affine {
                 x: U256::ZERO,
                 y: U256::ZERO,
             },
@@ -180,7 +182,7 @@ impl From<EphemeralEncryptionPublicKey> for Types::Round1Contribution {
     }
 }
 
-impl From<SecretGenCiphertext> for Types::SecretGenCiphertext {
+impl From<SecretGenCiphertext> for OprfKeyGen::SecretGenCiphertext {
     fn from(value: SecretGenCiphertext) -> Self {
         Self {
             nonce: value.nonce.into(),
@@ -190,10 +192,10 @@ impl From<SecretGenCiphertext> for Types::SecretGenCiphertext {
     }
 }
 
-impl TryFrom<Types::SecretGenCiphertext> for SecretGenCiphertext {
+impl TryFrom<OprfKeyGen::SecretGenCiphertext> for SecretGenCiphertext {
     type Error = eyre::Report;
 
-    fn try_from(value: Types::SecretGenCiphertext) -> Result<Self, Self::Error> {
+    fn try_from(value: OprfKeyGen::SecretGenCiphertext) -> Result<Self, Self::Error> {
         Ok(Self {
             nonce: value.nonce.try_into()?,
             cipher: value.cipher.try_into()?,
@@ -202,7 +204,7 @@ impl TryFrom<Types::SecretGenCiphertext> for SecretGenCiphertext {
     }
 }
 
-impl From<SecretGenCiphertexts> for Types::Round2Contribution {
+impl From<SecretGenCiphertexts> for OprfKeyGen::Round2Contribution {
     fn from(value: SecretGenCiphertexts) -> Self {
         Self {
             compressedProof: groth16_sol::prepare_compressed_proof(&value.proof.into()),

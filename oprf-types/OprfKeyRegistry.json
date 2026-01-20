@@ -19,23 +19,23 @@
   },
   {
     "type": "function",
-    "name": "acceptOwnership",
-    "inputs": [],
+    "name": "abortKeyGen",
+    "inputs": [
+      {
+        "name": "oprfKeyId",
+        "type": "uint160",
+        "internalType": "uint160"
+      }
+    ],
     "outputs": [],
     "stateMutability": "nonpayable"
   },
   {
     "type": "function",
-    "name": "accumulator",
+    "name": "acceptOwnership",
     "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IBabyJubJub"
-      }
-    ],
-    "stateMutability": "view"
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -62,12 +62,12 @@
       {
         "name": "data",
         "type": "tuple",
-        "internalType": "struct Types.Round1Contribution",
+        "internalType": "struct OprfKeyGen.Round1Contribution",
         "components": [
           {
             "name": "commShare",
             "type": "tuple",
-            "internalType": "struct Types.BabyJubJubElement",
+            "internalType": "struct BabyJubJub.Affine",
             "components": [
               {
                 "name": "x",
@@ -89,7 +89,7 @@
           {
             "name": "ephPubKey",
             "type": "tuple",
-            "internalType": "struct Types.BabyJubJubElement",
+            "internalType": "struct BabyJubJub.Affine",
             "components": [
               {
                 "name": "x",
@@ -121,12 +121,12 @@
       {
         "name": "data",
         "type": "tuple",
-        "internalType": "struct Types.Round1Contribution",
+        "internalType": "struct OprfKeyGen.Round1Contribution",
         "components": [
           {
             "name": "commShare",
             "type": "tuple",
-            "internalType": "struct Types.BabyJubJubElement",
+            "internalType": "struct BabyJubJub.Affine",
             "components": [
               {
                 "name": "x",
@@ -148,7 +148,7 @@
           {
             "name": "ephPubKey",
             "type": "tuple",
-            "internalType": "struct Types.BabyJubJubElement",
+            "internalType": "struct BabyJubJub.Affine",
             "components": [
               {
                 "name": "x",
@@ -180,7 +180,7 @@
       {
         "name": "data",
         "type": "tuple",
-        "internalType": "struct Types.Round2Contribution",
+        "internalType": "struct OprfKeyGen.Round2Contribution",
         "components": [
           {
             "name": "compressedProof",
@@ -190,7 +190,7 @@
           {
             "name": "ciphers",
             "type": "tuple[]",
-            "internalType": "struct Types.SecretGenCiphertext[]",
+            "internalType": "struct OprfKeyGen.SecretGenCiphertext[]",
             "components": [
               {
                 "name": "nonce",
@@ -205,7 +205,7 @@
               {
                 "name": "commitment",
                 "type": "tuple",
-                "internalType": "struct Types.BabyJubJubElement",
+                "internalType": "struct BabyJubJub.Affine",
                 "components": [
                   {
                     "name": "x",
@@ -267,7 +267,7 @@
       {
         "name": "",
         "type": "tuple[]",
-        "internalType": "struct Types.SecretGenCiphertext[]",
+        "internalType": "struct OprfKeyGen.SecretGenCiphertext[]",
         "components": [
           {
             "name": "nonce",
@@ -282,7 +282,7 @@
           {
             "name": "commitment",
             "type": "tuple",
-            "internalType": "struct Types.BabyJubJubElement",
+            "internalType": "struct BabyJubJub.Affine",
             "components": [
               {
                 "name": "x",
@@ -328,7 +328,7 @@
       {
         "name": "",
         "type": "tuple",
-        "internalType": "struct Types.BabyJubJubElement",
+        "internalType": "struct BabyJubJub.Affine",
         "components": [
           {
             "name": "x",
@@ -359,12 +359,12 @@
       {
         "name": "",
         "type": "tuple",
-        "internalType": "struct Types.RegisteredOprfPublicKey",
+        "internalType": "struct OprfKeyGen.RegisteredOprfPublicKey",
         "components": [
           {
             "name": "key",
             "type": "tuple",
-            "internalType": "struct Types.BabyJubJubElement",
+            "internalType": "struct BabyJubJub.Affine",
             "components": [
               {
                 "name": "x",
@@ -448,19 +448,14 @@
         "internalType": "address"
       },
       {
-        "name": "_accumulatorAddress",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
         "name": "_threshold",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint16",
+        "internalType": "uint16"
       },
       {
         "name": "_numPeers",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint16",
+        "internalType": "uint16"
       }
     ],
     "outputs": [],
@@ -525,7 +520,7 @@
       {
         "name": "",
         "type": "tuple[]",
-        "internalType": "struct Types.BabyJubJubElement[]",
+        "internalType": "struct BabyJubJub.Affine[]",
         "components": [
           {
             "name": "x",
@@ -556,7 +551,7 @@
       {
         "name": "",
         "type": "tuple[]",
-        "internalType": "struct Types.BabyJubJubElement[]",
+        "internalType": "struct BabyJubJub.Affine[]",
         "components": [
           {
             "name": "x",
@@ -580,8 +575,8 @@
     "outputs": [
       {
         "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint16",
+        "internalType": "uint16"
       }
     ],
     "stateMutability": "view"
@@ -684,8 +679,8 @@
     "outputs": [
       {
         "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
+        "type": "uint16",
+        "internalType": "uint16"
       }
     ],
     "stateMutability": "view"
@@ -737,6 +732,19 @@
   {
     "type": "event",
     "name": "KeyDeletion",
+    "inputs": [
+      {
+        "name": "oprfKeyId",
+        "type": "uint160",
+        "indexed": true,
+        "internalType": "uint160"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "KeyGenAbort",
     "inputs": [
       {
         "name": "oprfKeyId",
@@ -1083,11 +1091,6 @@
   },
   {
     "type": "error",
-    "name": "OutdatedNullifier",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "OwnableInvalidOwner",
     "inputs": [
       {
@@ -1159,6 +1162,12 @@
   {
     "type": "error",
     "name": "WrongRound",
-    "inputs": []
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "enum OprfKeyGen.Round"
+      }
+    ]
   }
 ]
