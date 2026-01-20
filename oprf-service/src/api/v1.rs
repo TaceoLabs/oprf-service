@@ -313,15 +313,10 @@ async fn read_request<Msg: for<'de> Deserialize<'de>>(
 ) -> Result<(Msg, HumanReadable), Error> {
     let res = match socket.recv().await.ok_or(Error::ConnectionClosed)?? {
         ws::Message::Text(json) => (
-            serde_json::from_slice::<Msg>(json.as_bytes())
-                .map_err(|err| Error::BadRequest(err.to_string()))?,
+            serde_json::from_slice::<Msg>(json.as_bytes())?,
             HumanReadable::Yes,
         ),
-        ws::Message::Binary(cbor) => (
-            ciborium::from_reader(cbor.as_ref())
-                .map_err(|err| Error::BadRequest(err.to_string()))?,
-            HumanReadable::No,
-        ),
+        ws::Message::Binary(cbor) => (ciborium::from_reader(cbor.as_ref())?, HumanReadable::No),
         ws::Message::Close(_) => return Err(Error::ConnectionClosed),
         _ => return Err(Error::UnexpectedMessage),
     };

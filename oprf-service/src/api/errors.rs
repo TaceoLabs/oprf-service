@@ -18,6 +18,10 @@ pub(crate) enum Error {
     UnexpectedMessage,
     #[error("cannot authenticate: {0}")]
     Auth(String),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    Cbor(#[from] ciborium::de::Error<std::io::Error>),
     #[error("bad request: {0}")]
     BadRequest(String),
 }
@@ -50,6 +54,14 @@ impl Error {
             Error::BadRequest(err) => Some(CloseFrame {
                 code: oprf_error_codes::BAD_REQUEST,
                 reason: err.into(),
+            }),
+            Error::Json(err) => Some(CloseFrame {
+                code: oprf_error_codes::BAD_REQUEST,
+                reason: err.to_string().into(),
+            }),
+            Error::Cbor(err) => Some(CloseFrame {
+                code: oprf_error_codes::BAD_REQUEST,
+                reason: err.to_string().into(),
             }),
         }
     }
