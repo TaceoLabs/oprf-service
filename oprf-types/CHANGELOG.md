@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.3.0...taceo-oprf-types-v0.4.0)
+
+### ⛰️ Features
+
+
+- [**breaking**] Fix number of share in OprfKeyMaterial to 2 ([#377](https://github.com/TaceoLabs/oprf-service/pull/377)) - ([d5e08b5](https://github.com/TaceoLabs/oprf-service/commit/d5e08b5fe5b7b08494f14269175627c1e9a59532))
+- [**breaking**] Receive OprfPublicKey during distributed_oprf ([#366](https://github.com/TaceoLabs/oprf-service/pull/366)) - ([10eeb99](https://github.com/TaceoLabs/oprf-service/commit/10eeb999f2ab48f1ebe612b19745432c8239d73a))
+
+### 🚜 Refactor
+
+
+- [**breaking**] Update rust contract interface with new changes related to Library improvements - ([0ee6043](https://github.com/TaceoLabs/oprf-service/commit/0ee604395f48307e3bc4d8f7f899da35b64518fc))
+
+
 ## [0.3.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.2.0...taceo-oprf-types-v0.3.0)
 
 ### ⛰️ Features
