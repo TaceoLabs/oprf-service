@@ -205,7 +205,7 @@ run-setup:
 [group('dev-client')]
 run-dev-client *args:
     #!/usr/bin/env bash
-    cargo build -p taceo-oprf-client-example --release
+    cargo build -p taceo-oprf-dev-client-example --release
     oprf_key_registry=$(grep -oP 'OprfKeyRegistry deployed to: \K0x[a-fA-F0-9]+' logs/deploy_oprf_key_registry.log)
     OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$oprf_key_registry ./target/release/oprf-dev-client-example {{ args }}
 

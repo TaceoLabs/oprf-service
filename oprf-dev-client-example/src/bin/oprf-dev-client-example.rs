@@ -157,7 +157,7 @@ async fn stress_test(
     )
     .await?;
 
-    tracing::info!("sending init requests..");
+    tracing::info!("sending finish requests..");
     let responses =
         oprf_dev_client::send_finish_requests(sessions, cmd.sequential, finish_requests.clone())
             .await?;
@@ -184,7 +184,7 @@ async fn stress_test(
 async fn reshare_test(
     nodes: &[String],
     threshold: usize,
-    opef_key_registry: Address,
+    oprf_key_registry: Address,
     oprf_key_id: OprfKeyId,
     share_epoch: ShareEpoch,
     oprf_public_key: OprfPublicKey,
@@ -203,18 +203,18 @@ async fn reshare_test(
     .await?;
     tracing::info!("OPRF successful");
 
-    let (next_epoch, oprf_public_key_) = oprf_dev_client::reshare(
+    let (share_epoch_1, oprf_public_key_1) = oprf_dev_client::reshare(
         nodes,
-        opef_key_registry,
-        provider,
+        oprf_key_registry,
+        provider.clone(),
         max_wait_time,
         oprf_key_id,
         share_epoch,
     )
     .await?;
-    assert_eq!(oprf_public_key, oprf_public_key_);
+    assert_eq!(oprf_public_key, oprf_public_key_1);
 
-    tracing::info!("running OPRF with old epoch");
+    tracing::info!("running OPRF with epoch 0 after 1st reshare");
     run_oprf(
         nodes,
         threshold,
@@ -225,9 +225,61 @@ async fn reshare_test(
     .await?;
     tracing::info!("OPRF successful");
 
-    tracing::info!("running OPRF with new epoch");
-    run_oprf(nodes, threshold, oprf_key_id, next_epoch, connector.clone()).await?;
+    tracing::info!("running OPRF with epoch 1 after 1st reshare");
+    run_oprf(
+        nodes,
+        threshold,
+        oprf_key_id,
+        share_epoch_1,
+        connector.clone(),
+    )
+    .await?;
     tracing::info!("OPRF successful");
+
+    let (share_epoch_2, oprf_public_key_2) = oprf_dev_client::reshare(
+        nodes,
+        oprf_key_registry,
+        provider,
+        max_wait_time,
+        oprf_key_id,
+        share_epoch_1,
+    )
+    .await?;
+    assert_eq!(oprf_public_key, oprf_public_key_2);
+
+    tracing::info!("running OPRF with epoch 1 after 2nd reshare");
+    run_oprf(
+        nodes,
+        threshold,
+        oprf_key_id,
+        share_epoch_1,
+        connector.clone(),
+    )
+    .await?;
+    tracing::info!("OPRF successful");
+
+    tracing::info!("running OPRF with epoch 2 after 2nd reshare");
+    run_oprf(
+        nodes,
+        threshold,
+        oprf_key_id,
+        share_epoch_2,
+        connector.clone(),
+    )
+    .await?;
+    tracing::info!("OPRF successful");
+
+    tracing::info!("running OPRF with epoch 0 after 2nd reshare - should fail");
+    let _ = run_oprf(
+        nodes,
+        threshold,
+        oprf_key_id,
+        share_epoch,
+        connector.clone(),
+    )
+    .await
+    .expect_err("should fail");
+    tracing::info!("OPRF failed as expected");
 
     Ok(())
 }
