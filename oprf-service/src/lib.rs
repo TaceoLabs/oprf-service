@@ -413,11 +413,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn init_bad_request() -> eyre::Result<()> {
+        let (mut node, _, _, _) = test_setup().await;
+        node.websocket.send_text("{ \"foo\": 1 }").await;
+        node.websocket
+            .assert_receive_text("missing field `request_id` at line 1 column 12")
+            .await;
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn challenge_without_init() -> eyre::Result<()> {
         let (mut node, _, challenge_req, _) = test_setup().await;
         node.send_challenge_request(&challenge_req).await;
         node.websocket
-            .assert_receive_text("unexpected message")
+            .assert_receive_text_contains("missing field `request_id`")
             .await;
         Ok(())
     }
