@@ -21,6 +21,8 @@ use std::{collections::HashMap, sync::Arc};
 use tracing::instrument;
 use uuid::Uuid;
 
+use crate::metrics::METRICS_ID_NODE_OPRF_SECRETS;
+
 type OprfKeyMaterialStoreResult<T> = std::result::Result<T, OprfKeyMaterialStoreError>;
 
 /// Errors returned by the [`OprfKeyMaterial`].
@@ -46,6 +48,7 @@ pub struct OprfKeyMaterialStore(Arc<RwLock<HashMap<OprfKeyId, OprfKeyMaterial>>>
 impl OprfKeyMaterialStore {
     /// Creates a new storage instance with the provided initial shares.
     pub(crate) fn new(inner: HashMap<OprfKeyId, OprfKeyMaterial>) -> Self {
+        ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).set(inner.len() as f64);
         Self(Arc::new(RwLock::new(inner)))
     }
 
@@ -147,6 +150,9 @@ impl OprfKeyMaterialStore {
     pub(super) fn insert(&self, oprf_key_id: OprfKeyId, key_material: OprfKeyMaterial) {
         if self.0.write().insert(oprf_key_id, key_material).is_some() {
             tracing::debug!("overwriting material for {oprf_key_id}");
+        } else {
+            ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).increment(1);
+            tracing::debug!("added {oprf_key_id:?} material to OprfKeyMaterialStore");
         }
     }
 
@@ -155,6 +161,7 @@ impl OprfKeyMaterialStore {
     /// If the id is not registered, doesn't do anything.
     pub(super) fn remove(&self, oprf_key_id: OprfKeyId) {
         if self.0.write().remove(&oprf_key_id).is_some() {
+            ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).decrement(1);
             tracing::debug!("removed {oprf_key_id:?} material from OprfKeyMaterialStore");
         }
     }
