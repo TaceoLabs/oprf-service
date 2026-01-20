@@ -2,21 +2,21 @@ function {{ function_name }}Round2Contribution() internal pure returns (Types.Ro
     Types.SecretGenCiphertext[] memory ciphers = new Types.SecretGenCiphertext[](3);
     ciphers[0].cipher = {{ cipher0 }};
     ciphers[0].nonce = {{ nonce0 }};
-    ciphers[0].commitment = Types.BabyJubJubElement({
+    ciphers[0].commitment = BabyJubJub.Affine({
         x: {{ commitment0x }},
         y: {{ commitment0y }}
     });
 
     ciphers[1].cipher = {{ cipher1 }};
     ciphers[1].nonce = {{ nonce1 }};
-    ciphers[1].commitment = Types.BabyJubJubElement({
+    ciphers[1].commitment = BabyJubJub.Affine({
         x: {{ commitment1x }},
         y: {{ commitment1y }}
     });
 
     ciphers[2].cipher = {{ cipher2 }};
     ciphers[2].nonce = {{ nonce2 }};
-    ciphers[2].commitment = Types.BabyJubJubElement({
+    ciphers[2].commitment = BabyJubJub.Affine({
         x: {{ commitment2x }},
         y: {{ commitment2y }}
     });
