@@ -5,6 +5,7 @@ use std::{
 };
 
 use alloy::{
+    consensus::constants::ETH_TO_WEI,
     contract::{CallBuilder, CallDecoder},
     eips::BlockNumberOrTag,
     network::{Network, ReceiptResponse as _},
@@ -23,7 +24,10 @@ use oprf_types::{
 use tokio::{sync::oneshot, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
-use crate::metrics::{METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK, METRICS_ID_KEY_GEN_RPC_RETRY};
+use crate::metrics::{
+    METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK,
+    METRICS_ID_KEY_GEN_RPC_RETRY, METRICS_ID_KEY_GEN_WALLET_BALANCE,
+};
 
 /// Indicates the transaction type. We need this to distinguish between events.
 #[repr(u8)]
@@ -116,6 +120,8 @@ pub(crate) struct TransactionHandler {
     attempts: usize,
     party_id: PartyId,
     store: Arc<Mutex<HashMap<TransactionIdentifier, oneshot::Sender<()>>>>,
+    wallet_address: Address,
+    provider: DynProvider,
 }
 
 impl TransactionHandler {
@@ -127,6 +133,7 @@ impl TransactionHandler {
     /// * `party_id` the party id of this node
     /// * `contract_address` the contract address that emits the events
     /// * `provider` the provider for subscribing
+    /// * `wallet_address` the wallet address of this node
     /// * `cancellation_token` token to stop the subscribe task and signaling if the subscribe task encountered an error
     pub(crate) async fn new(
         max_wait_time: Duration,
@@ -134,6 +141,7 @@ impl TransactionHandler {
         party_id: PartyId,
         contract_address: Address,
         provider: DynProvider,
+        wallet_address: Address,
         cancellation_token: CancellationToken,
     ) -> eyre::Result<(Self, JoinHandle<eyre::Result<()>>)> {
         let filter = Filter::new()
@@ -148,6 +156,8 @@ impl TransactionHandler {
             attempts,
             party_id,
             store: Arc::new(Mutex::new(HashMap::new())),
+            wallet_address,
+            provider,
         };
         let handle = tokio::task::spawn({
             let transaction_handler = transaction_handler.clone();
@@ -245,6 +255,16 @@ impl TransactionHandler {
                 .context("while broadcasting to network")?
                 .get_receipt()
                 .await;
+            if let Ok(balance) = self.provider.get_balance(self.wallet_address).await {
+                tracing::debug!(
+                    "current wallet balance: {} ETH",
+                    alloy::primitives::utils::format_ether(balance)
+                );
+                ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ATTRID_WALLET_ADDRESS => self.wallet_address.to_string())
+                    .set(f64::from(balance) / ETH_TO_WEI as f64);
+            } else {
+                tracing::warn!("could not fetch current wallet balance");
+            }
             match transaction_result {
                 Ok(receipt) => return check_receipt(transaction, receipt).await,
                 Err(PendingTransactionError::TransportError(

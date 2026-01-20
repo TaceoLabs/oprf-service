@@ -11,12 +11,14 @@ use std::sync::{Arc, atomic::AtomicBool};
 
 use crate::{
     config::OprfKeyGenConfig,
+    metrics::{METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_KEY_GEN_WALLET_BALANCE},
     services::{
         key_event_watcher::KeyEventWatcherTaskConfig, secret_gen::DLogSecretGenService,
         secret_manager::SecretManagerService, transaction_handler::TransactionHandler,
     },
 };
 use alloy::{
+    consensus::constants::ETH_TO_WEI,
     network::EthereumWallet,
     providers::{
         Provider as _, ProviderBuilder, WsConnect,
@@ -67,6 +69,17 @@ pub async fn start(
         .context("while connecting to RPC")?
         .erased();
 
+    let balance = provider
+        .get_balance(address)
+        .await
+        .context("while get_balance")?;
+    tracing::info!(
+        "wallet balance: {} ETH",
+        alloy::primitives::utils::format_ether(balance)
+    );
+    ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ATTRID_WALLET_ADDRESS => address.to_string())
+        .set(f64::from(balance) / ETH_TO_WEI as f64);
+
     tracing::info!("loading party id..");
     let contract = OprfKeyRegistry::new(config.oprf_key_registry_contract, provider.clone());
     let party_id = PartyId(
@@ -92,6 +105,7 @@ pub async fn start(
         party_id,
         config.oprf_key_registry_contract,
         provider.clone(),
+        address,
         cancellation_token.clone(),
     )
     .await

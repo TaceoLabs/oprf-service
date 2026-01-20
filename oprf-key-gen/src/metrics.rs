@@ -8,6 +8,8 @@
 pub const METRICS_ATTRID_PROTOCOL: &str = "protocol";
 /// Attribute ID attached to KEY_GEN_ROUND* metrics distinguishing producer vs consumer
 pub const METRICS_ATTRID_ROLE: &str = "role";
+/// Attribute ID attached to METRICS_ID_KEY_GEN_WALLET_BALANCE metric to easily see wallet address
+pub const METRICS_ATTRID_WALLET_ADDRESS: &str = "wallet_address";
 
 /// Attribute value for ROLE describing a producer
 pub const METRICS_ATTRVAL_ROLE_PRODUCER: &str = "producer";
@@ -44,6 +46,9 @@ pub const METRICS_ID_KEY_GEN_DELETION_FINISH: &str = "taceo.oprf.key_gen.deletio
 pub const METRICS_ID_KEY_GEN_RPC_RETRY: &str = "taceo.oprf.key_gen.rpc_retry";
 /// Number of null-response errors from Alchemy but transaction recorded on-chain.
 pub const METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK: &str = "taceo.oprf.key_gen.rpc_null_but_ok";
+
+/// Balance of the wallet used for key generation
+pub const METRICS_ID_KEY_GEN_WALLET_BALANCE: &str = "taceo.oprf.key_gen.wallet_balance";
 
 /// Describe all metrics used by the service.
 ///
@@ -108,5 +113,10 @@ pub fn describe_metrics() {
         METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK,
         metrics::Unit::Count,
         "Number of null-response errors from Alchemy but transaction recorded on-chain."
+    );
+    metrics::describe_gauge!(
+        METRICS_ID_KEY_GEN_WALLET_BALANCE,
+        metrics::Unit::Count,
+        "Balance of the wallet used for key generation"
     );
 }
