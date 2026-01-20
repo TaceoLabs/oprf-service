@@ -47,7 +47,7 @@ pub const METRICS_ID_KEY_GEN_RPC_RETRY: &str = "taceo.oprf.key_gen.rpc_retry";
 /// Number of null-response errors from Alchemy but transaction recorded on-chain.
 pub const METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK: &str = "taceo.oprf.key_gen.rpc_null_but_ok";
 
-/// Balance of the wallet used for key generation (FIXME if we have multiple key-gens, this might get overwritten)
+/// Balance of the wallet used for key generation
 pub const METRICS_ID_KEY_GEN_WALLET_BALANCE: &str = "taceo.oprf.key_gen.wallet_balance";
 
 /// Describe all metrics used by the service.
