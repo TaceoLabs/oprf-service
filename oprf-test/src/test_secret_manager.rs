@@ -15,8 +15,6 @@ use oprf_types::{
 };
 use parking_lot::Mutex;
 
-pub const SECRET_MAX_CACHE_SIZE: u8 = 2;
-
 #[derive(Clone)]
 pub struct TestSecretManager {
     wallet_private_key: PrivateKeySigner,
@@ -84,11 +82,7 @@ impl oprf_key_gen::secret_manager::SecretManager for TestSecretManager {
                 store
                     .insert(
                         oprf_key_id,
-                        OprfKeyMaterial::new(
-                            BTreeMap::from([(epoch, share)]),
-                            public_key,
-                            usize::from(SECRET_MAX_CACHE_SIZE)
-                        )
+                        OprfKeyMaterial::new(BTreeMap::from([(epoch, share)]), public_key,)
                     )
                     .is_none(),
                 "On initial epoch, secret-manager must be empty"

@@ -36,7 +36,6 @@ async fn main() -> eyre::Result<ExitCode> {
             aws_config,
             &config.rp_secret_id_prefix,
             &config.wallet_private_key_secret_id,
-            usize::from(config.max_epoch_cache_size),
         )
         .await,
     );

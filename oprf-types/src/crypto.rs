@@ -224,22 +224,22 @@ impl From<PartyId> for u16 {
 /// * The [`OprfPublicKey`] associated with the share.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OprfKeyMaterial {
-    max_cache: usize,
     shares: BTreeMap<ShareEpoch, DLogShareShamir>,
     oprf_public_key: OprfPublicKey,
 }
 
 impl OprfKeyMaterial {
+    /// The maximum number of shares to store in the material.
+    const MAX_NUM_SHARES: usize = 2;
+
     /// Creates a new [`OprfKeyMaterial`] from the provided shares and [`OprfPublicKey`].
     pub fn new(
         shares: BTreeMap<ShareEpoch, DLogShareShamir>,
         oprf_public_key: OprfPublicKey,
-        max_cache: usize,
     ) -> Self {
         Self {
             shares,
             oprf_public_key,
-            max_cache,
         }
     }
 
@@ -264,11 +264,6 @@ impl OprfKeyMaterial {
         self.shares.contains_key(&epoch)
     }
 
-    /// Sets the `max_cache`. Does not perform any truncating, but will remove all shares on the next insert that exceed this provided value.
-    pub fn set_max_size(&mut self, max_cache: usize) {
-        self.max_cache = max_cache;
-    }
-
     /// Inserts a new [`DLogShareShamir`] for the given epoch.
     ///
     /// Drops the oldest shares w.r.t. epoch that exceed `max_cache`.
@@ -280,7 +275,7 @@ impl OprfKeyMaterial {
             "stored share with epoch {epoch} - now have {} epochs stored",
             self.shares.len()
         );
-        while self.shares.len() > self.max_cache {
+        while self.shares.len() > Self::MAX_NUM_SHARES {
             // epochs are strictly increasing
             let (dropped_epoch, _) = self.shares.pop_first().expect("Is there we just checked");
             tracing::info!("removing share epoch {dropped_epoch}");
