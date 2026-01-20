@@ -229,7 +229,7 @@ async fn handle_log(
         }
         Some(&OprfKeyRegistry::KeyGenAbort::SIGNATURE_HASH) => handle_abort(log, secret_gen)
             .await
-            .context("while handling deletion")?,
+            .context("while handling abort")?,
         Some(&OprfKeyRegistry::KeyDeletion::SIGNATURE_HASH) => {
             handle_delete(log, secret_gen, secret_manager)
                 .await
@@ -555,7 +555,7 @@ async fn handle_delete(
     tracing::info!("got key deletion event for {oprf_key_id}");
     // we need to delete all the toxic waste associated with the oprf key-id
     secret_gen.delete_oprf_key_material(oprf_key_id);
-    // Additionally, for delete we remove the shares from the secret-manager.
+    // Additionally, we remove the shares from the secret-manager
     secret_manager
         .remove_oprf_key_material(oprf_key_id)
         .await
@@ -581,7 +581,7 @@ async fn handle_abort(
     tracing::info!("got key-gen abort event for {oprf_key_id}");
     // we need to delete all the toxic waste associated with the oprf key-id
     secret_gen.delete_oprf_key_material(oprf_key_id);
-    // in contrast to delete we only remove the intermediate values and NOT from the secret-manager.
+    // in contrast to delete we only remove the intermediate values and NOT the shares from the secret-manager
     ::metrics::counter!(METRICS_ID_KEY_GEN_ABORT_FINISH).increment(1);
     Ok(())
 }
