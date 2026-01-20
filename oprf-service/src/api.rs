@@ -40,6 +40,7 @@ pub(crate) struct ApiRoutesArgs<
     pub(crate) max_message_size: usize,
     pub(crate) max_connection_lifetime: Duration,
     pub(crate) started_services: StartedServices,
+    pub(crate) region: String,
 }
 
 /// Builds the main API router for the OPRF node service.
@@ -68,6 +69,7 @@ pub fn routes<
         max_message_size,
         max_connection_lifetime,
         started_services: services_healthy,
+        region,
     } = api_routes_args;
     // Create the bookkeeping service for the open-sessions. If we add a v2 at some point, we need to reuse this service, therefore we create it here.
     let open_sessions = OpenSessions::default();
@@ -86,6 +88,10 @@ pub fn routes<
             }),
         )
         .merge(health::routes(services_healthy))
-        .merge(info::routes(oprf_material_store.clone(), wallet_address))
+        .merge(info::routes(
+            oprf_material_store.clone(),
+            wallet_address,
+            region,
+        ))
         .layer(TraceLayer::new_for_http())
 }

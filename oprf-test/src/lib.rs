@@ -58,6 +58,7 @@ pub async fn start_node(
             start_block: None,
             // allow all versions (does not match pre-releases)
             version_req: VersionReq::STAR,
+            region: "test_region".to_string(),
         },
     };
 
