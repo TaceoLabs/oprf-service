@@ -4,12 +4,12 @@ function {{ function_name }}Round1Contribution()
     returns (Types.Round1Contribution memory)
 {
     return Types.Round1Contribution({
-        commShare: Types.BabyJubJubElement({
+        commShare: BabyJubJub.Affine({
             x: {{ comm_share_x }},
             y: {{ comm_share_y }}
         }),
         commCoeffs: {{ comm_coeffs }},
-        ephPubKey: Types.BabyJubJubElement({
+        ephPubKey: BabyJubJub.Affine({
             x: {{ eph_pub_key_x }},
             y: {{ eph_pub_key_y }}
         })

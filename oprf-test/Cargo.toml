@@ -67,5 +67,6 @@ generate-test-transcript = [
   "dep:askama",
   "dep:clap",
   "dep:groth16-material",
+  "dep:groth16-sol",
   "dep:nodes-observability"
 ]

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {Types} from "../src/Types.sol";
+import {BabyJubJub} from "../src/BabyJubJub.sol";
 
 library Contributions {
 

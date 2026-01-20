@@ -215,7 +215,7 @@ fn producer_contributions<R: Rng + CryptoRng>(
         poly.coeffs().to_vec().iter().map(|x| x.into()).collect(),
     );
     input.insert("nonces", nonces.iter().map(|n| n.into()).collect_vec());
-    tracing::info!("computing proof for {function_name}");
+    tracing::debug!("computing proof for {function_name}");
     let (proof, public) = compute_key_gen_proof(input, key_gen_material, rng)?;
 
     let round1 = SolidityRound1Call::new(
