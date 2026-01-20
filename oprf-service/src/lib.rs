@@ -150,14 +150,13 @@ pub async fn init<
     );
     tracing::info!("we are party id: {party_id}");
 
-    let threshold = usize::try_from(
+    let threshold = usize::from(
         contract
             .threshold()
             .call()
             .await
             .context("while loading threshold")?,
-    )
-    .context("while converting threshold to usize")?;
+    );
 
     tracing::info!("init OPRF material-store..");
     let oprf_key_material_store = secret_manager

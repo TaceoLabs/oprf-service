@@ -1,5 +1,5 @@
-function {{ function_name }}Round2Contribution() internal pure returns (Types.Round2Contribution memory) {
-    Types.SecretGenCiphertext[] memory ciphers = new Types.SecretGenCiphertext[](3);
+function {{ function_name }}Round2Contribution() internal pure returns (OprfKeyGen.Round2Contribution memory) {
+    OprfKeyGen.SecretGenCiphertext[] memory ciphers = new OprfKeyGen.SecretGenCiphertext[](3);
     ciphers[0].cipher = {{ cipher0 }};
     ciphers[0].nonce = {{ nonce0 }};
     ciphers[0].commitment = BabyJubJub.Affine({
@@ -21,7 +21,7 @@ function {{ function_name }}Round2Contribution() internal pure returns (Types.Ro
         y: {{ commitment2y }}
     });
 
-    return Types.Round2Contribution({
+    return OprfKeyGen.Round2Contribution({
         compressedProof: [{{ proof }}],
         ciphers: ciphers
     });

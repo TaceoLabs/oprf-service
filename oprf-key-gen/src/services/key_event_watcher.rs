@@ -38,9 +38,9 @@ use futures::StreamExt as _;
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     chain::{
+        OprfKeyGen::{Round1Contribution, Round2Contribution},
         OprfKeyRegistry::{self, OprfKeyRegistryInstance},
         SecretGenRound1Contribution,
-        Types::{Round1Contribution, Round2Contribution},
     },
     crypto::{EphemeralEncryptionPublicKey, OprfPublicKey, PartyId, SecretGenCiphertext},
 };
