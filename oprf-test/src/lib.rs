@@ -111,7 +111,6 @@ pub async fn start_key_gen(
         key_gen_zkey_path,
         key_gen_witness_graph_path,
         max_wait_time_shutdown: Duration::from_secs(10),
-        max_epoch_cache_size: test_secret_manager::SECRET_MAX_CACHE_SIZE,
         start_block: None,
         max_wait_time_transaction_confirmation: Duration::from_secs(30),
         max_transaction_attempts: 3,

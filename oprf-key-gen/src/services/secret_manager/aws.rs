@@ -34,7 +34,6 @@ pub struct AwsSecretManager {
     client: aws_sdk_secretsmanager::Client,
     oprf_secret_id_prefix: String,
     wallet_private_key_secret_id: String,
-    max_cache_size: usize,
 }
 
 impl AwsSecretManager {
@@ -46,7 +45,6 @@ impl AwsSecretManager {
         aws_config: aws_config::SdkConfig,
         oprf_secret_id_prefix: &str,
         wallet_private_key_secret_id: &str,
-        max_cache_size: usize,
     ) -> Self {
         // loads the latest defaults for aws
         let client = aws_sdk_secretsmanager::Client::new(&aws_config);
@@ -54,7 +52,6 @@ impl AwsSecretManager {
             client,
             oprf_secret_id_prefix: oprf_secret_id_prefix.to_string(),
             wallet_private_key_secret_id: wallet_private_key_secret_id.to_string(),
-            max_cache_size,
         }
     }
 
@@ -89,7 +86,7 @@ impl AwsSecretManager {
         share: DLogShareShamir,
     ) -> eyre::Result<()> {
         let oprf_key_material =
-            OprfKeyMaterial::new(BTreeMap::from([(epoch, share)]), oprf_public_key, 0);
+            OprfKeyMaterial::new(BTreeMap::from([(epoch, share)]), oprf_public_key);
         self.client
             .create_secret()
             .name(secret_id)
@@ -268,8 +265,6 @@ impl SecretManager for AwsSecretManager {
                     let mut oprf_key_material: OprfKeyMaterial =
                         serde_json::from_str(&secret_value)
                             .context("Cannot deserialize AWS Secret")?;
-                    // we explicitly set the max size because it may have changed since we created the secret.
-                    oprf_key_material.set_max_size(self.max_cache_size);
                     oprf_key_material.insert_share(epoch, share);
 
                     self.update_secret(&secret_id, oprf_key_material, oprf_key_id, epoch)
@@ -357,7 +352,7 @@ mod test {
         let (_localstack_container, localstack_url) = localstack_testcontainer().await?;
         let (client, config) = localstack_client(&localstack_url).await;
         let secret_manager =
-            AwsSecretManager::init(config, OPRF_SECRET_ID_PREFIX, WALLET_SECRET_ID, 3).await;
+            AwsSecretManager::init(config, OPRF_SECRET_ID_PREFIX, WALLET_SECRET_ID).await;
         let _ = load_secret(client.clone(), WALLET_SECRET_ID)
             .await
             .expect_err("should not be there");

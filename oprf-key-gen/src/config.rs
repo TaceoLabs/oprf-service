@@ -81,10 +81,6 @@ pub struct OprfKeyGenConfig {
     )]
     pub max_wait_time_shutdown: Duration,
 
-    /// Max cache size for epochs. Only the latest `max_epoch_cache_size` will be stored in the secret-manager!
-    #[clap(long, env = "OPRF_NODE_MAX_EPOCH_CACHE_SIZE", default_value = "3", value_parser = clap::value_parser!(u8).range(2..))]
-    pub max_epoch_cache_size: u8,
-
     /// Max time we wait for a transaction confirmation event until we assume the transaction didn't go through.
     ///
     /// We need this because RPCs are not very reliable, so we need to verify whether a transaction did get through or not.

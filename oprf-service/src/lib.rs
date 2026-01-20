@@ -295,7 +295,6 @@ mod tests {
                     DLogShareShamir::from(ark_babyjubjub::Fr::rand(&mut rng)),
                 )]),
                 OprfPublicKey::new(ark_babyjubjub::EdwardsAffine::default()),
-                3,
             ),
         )]));
         let router = api::v1::routes(api::v1::V1Args {
