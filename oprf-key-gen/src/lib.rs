@@ -11,7 +11,7 @@ use std::sync::{Arc, atomic::AtomicBool};
 
 use crate::{
     config::OprfKeyGenConfig,
-    metrics::METRICS_ID_KEY_GEN_WALLET_BALANCE,
+    metrics::{METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_KEY_GEN_WALLET_BALANCE},
     services::{
         key_event_watcher::KeyEventWatcherTaskConfig, secret_gen::DLogSecretGenService,
         secret_manager::SecretManagerService, transaction_handler::TransactionHandler,
@@ -77,7 +77,7 @@ pub async fn start(
         "wallet balance: {} ETH",
         alloy::primitives::utils::format_ether(balance)
     );
-    ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE)
+    ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ATTRID_WALLET_ADDRESS => address.to_string())
         .set(f64::from(balance) / ETH_TO_WEI as f64);
 
     tracing::info!("loading party id..");

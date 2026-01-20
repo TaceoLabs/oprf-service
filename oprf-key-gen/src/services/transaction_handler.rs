@@ -25,8 +25,8 @@ use tokio::{sync::oneshot, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
 use crate::metrics::{
-    METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK, METRICS_ID_KEY_GEN_RPC_RETRY,
-    METRICS_ID_KEY_GEN_WALLET_BALANCE,
+    METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK,
+    METRICS_ID_KEY_GEN_RPC_RETRY, METRICS_ID_KEY_GEN_WALLET_BALANCE,
 };
 
 /// Indicates the transaction type. We need this to distinguish between events.
@@ -260,7 +260,7 @@ impl TransactionHandler {
                     "current wallet balance: {} ETH",
                     alloy::primitives::utils::format_ether(balance)
                 );
-                ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE)
+                ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ATTRID_WALLET_ADDRESS => self.wallet_address.to_string())
                     .set(f64::from(balance) / ETH_TO_WEI as f64);
             } else {
                 tracing::warn!("could not fetch current wallet balance");
