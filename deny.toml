@@ -182,6 +182,7 @@ deny = [
     # Wrapper crates can optionally be specified to allow the crate when it
     # is a direct dependency of the otherwise banned crate
     #{ crate = "ansi_term@0.11.0", wrappers = ["this-crate-directly-depends-on-ansi_term"] },
+    { crate = "metrics", deny-multiple-versions = true, reason = "metrics crate uses a global recorder - multiple versions may break metrics silently" },
 ]
 
 # List of features to allow/deny
