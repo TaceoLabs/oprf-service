@@ -30,7 +30,7 @@ pub(crate) fn routes(
     Router::new()
         .route("/version", get(version))
         .route("/wallet", get(move || wallet(wallet_address)))
-        .route("/region", get(region_info))
+        .route("/region", get(move || region(region_info)))
         .route(
             "/oprf_pub/{id}",
             get(move |path| oprf_key_available(oprf_material_store, path)),
@@ -70,7 +70,6 @@ async fn oprf_key_available(
     }
 }
 
-#[allow(dead_code)]
 async fn region(region_info: String) -> impl IntoResponse {
     (StatusCode::OK, region_info)
 }
