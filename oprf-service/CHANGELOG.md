@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.2.0...taceo-oprf-service-v0.3.0)
+
+### ⛰️ Features
+
+
+- Improve oprf-service WS error responses [TAC-112] ([#380](https://github.com/TaceoLabs/oprf-service/pull/380)) - ([abfd9d6](https://github.com/TaceoLabs/oprf-service/commit/abfd9d6c14673efdfc641b75c6e59b1341044f57))
+- Emit METRICS_ID_NODE_OPRF_SECRETS metric ([#384](https://github.com/TaceoLabs/oprf-service/pull/384)) - ([31f7720](https://github.com/TaceoLabs/oprf-service/commit/31f77206b7ccd8089d19d7b7d9bff4091a126a7d))
+- [**breaking**] Fix number of share in OprfKeyMaterial to 2 ([#377](https://github.com/TaceoLabs/oprf-service/pull/377)) - ([d5e08b5](https://github.com/TaceoLabs/oprf-service/commit/d5e08b5fe5b7b08494f14269175627c1e9a59532))
+- Added region route to oprf_nodes ([#379](https://github.com/TaceoLabs/oprf-service/pull/379)) - ([dc88acc](https://github.com/TaceoLabs/oprf-service/commit/dc88acc980423678f809df3211a24c17a44c380a))
+- [**breaking**] Receive OprfPublicKey during distributed_oprf ([#366](https://github.com/TaceoLabs/oprf-service/pull/366)) - ([10eeb99](https://github.com/TaceoLabs/oprf-service/commit/10eeb999f2ab48f1ebe612b19745432c8239d73a))
+
+### 🚜 Refactor
+
+
+- [**breaking**] Update rust contract interface with new changes related to Library improvements - ([0ee6043](https://github.com/TaceoLabs/oprf-service/commit/0ee604395f48307e3bc4d8f7f899da35b64518fc))
+
+
 ## [0.2.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.1.0...taceo-oprf-service-v0.2.0)
 
 ### ⛰️ Features
