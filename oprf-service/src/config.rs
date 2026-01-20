@@ -96,4 +96,8 @@ pub struct OprfNodeConfig {
     /// Accepted SemVer versions of clients.
     #[clap(long, env = "OPRF_NODE_ACCEPTED_VERSIONS", value_parser=VersionReq::parse)]
     pub version_req: VersionReq,
+
+    /// The Region this node is deployed in.
+    #[clap(long, env = "OPRF_NODE_REGION", default_value = "unknown")]
+    pub region: String,
 }

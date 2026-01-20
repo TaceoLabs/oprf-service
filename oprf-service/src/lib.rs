@@ -193,6 +193,7 @@ pub async fn init<
         max_connection_lifetime: config.session_lifetime,
         started_services,
         version_req: config.version_req,
+        region: config.region,
     });
 
     Ok((axum_rest_api, key_event_watcher))

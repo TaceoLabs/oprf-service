@@ -22,10 +22,15 @@ use tower_http::set_header::SetResponseHeaderLayer;
 /// Create a router containing the info endpoints.
 ///
 /// All endpoints have `Cache-Control: no-cache` set.
-pub(crate) fn routes(oprf_material_store: OprfKeyMaterialStore, wallet_address: Address) -> Router {
+pub(crate) fn routes(
+    oprf_material_store: OprfKeyMaterialStore,
+    wallet_address: Address,
+    region_info: String,
+) -> Router {
     Router::new()
         .route("/version", get(version))
         .route("/wallet", get(move || wallet(wallet_address)))
+        .route("/region", get(move || region(region_info)))
         .route(
             "/oprf_pub/{id}",
             get(move |path| oprf_key_available(oprf_material_store, path)),
@@ -63,4 +68,11 @@ async fn oprf_key_available(
     } else {
         StatusCode::NOT_FOUND.into_response()
     }
+}
+
+/// Responds with the region the oprf node is deployed in
+///
+/// Returns `200 OK` with a string response.
+async fn region(region_info: String) -> impl IntoResponse {
+    (StatusCode::OK, region_info)
 }
