@@ -38,9 +38,10 @@ pub const METRICS_ID_KEY_GEN_ROUND_4_START: &str = "taceo.oprf.key_gen.round_4.s
 /// Finished processing round 4 on our side
 pub const METRICS_ID_KEY_GEN_ROUND_4_FINISH: &str = "taceo.oprf.key_gen.round_4.finish";
 /// Observed event for start of a deletion
-pub const METRICS_ID_KEY_GEN_DELETION_START: &str = "taceo.oprf.key_gen.deletion.start";
-/// Finished processing deletion on our side
-pub const METRICS_ID_KEY_GEN_DELETION_FINISH: &str = "taceo.oprf.key_gen.deletion.finish";
+pub const METRICS_ID_KEY_GEN_DELETION: &str = "taceo.oprf.key_gen.deletion";
+
+/// Observed event for keygen abort
+pub const METRICS_ID_KEY_GEN_ABORT: &str = "taceo.oprf.key_gen.abort";
 
 /// Number of null-response errors from Alchemy and transaction not recorded on-chain.
 pub const METRICS_ID_KEY_GEN_RPC_RETRY: &str = "taceo.oprf.key_gen.rpc_retry";
@@ -95,14 +96,14 @@ pub fn describe_metrics() {
         "Number of finished round 4 steps of key_gen/reshare"
     );
     metrics::describe_counter!(
-        METRICS_ID_KEY_GEN_DELETION_START,
+        METRICS_ID_KEY_GEN_DELETION,
         metrics::Unit::Count,
         "Number of observed deletion events"
     );
     metrics::describe_counter!(
-        METRICS_ID_KEY_GEN_DELETION_FINISH,
+        METRICS_ID_KEY_GEN_ABORT,
         metrics::Unit::Count,
-        "Number of finished handled deletion events"
+        "Number of observed abort events"
     );
     metrics::describe_counter!(
         METRICS_ID_KEY_GEN_RPC_RETRY,

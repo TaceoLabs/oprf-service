@@ -464,3 +464,103 @@ async fn oprf_example_reshare_with_consumer() -> eyre::Result<()> {
 
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
+#[serial_test::file_serial]
+async fn oprf_example_abort_keygen() -> eyre::Result<()> {
+    let anvil = Anvil::new().spawn();
+    let mut rng = rand::thread_rng();
+
+    println!("Deploying OprfKeyRegistry contract...");
+    let oprf_key_registry_contract = oprf_key_registry_scripts::deploy_test_setup(
+        &anvil.endpoint(),
+        &TACEO_ADMIN_ADDRESS.to_string(),
+        TACEO_ADMIN_PRIVATE_KEY,
+        &format!("{OPRF_PEER_ADDRESS_0},{OPRF_PEER_ADDRESS_1},{OPRF_PEER_ADDRESS_2}"),
+        2,
+        3,
+    );
+
+    let secret_managers = taceo_oprf_test::create_3_secret_managers();
+    println!("Starting OPRF key-gens...");
+    let (oprf_key_gens, _) = taceo_oprf_test::start_2_key_gens(
+        &anvil.ws_endpoint(),
+        [secret_managers[0].clone(), secret_managers[1].clone()],
+        oprf_key_registry_contract,
+    )
+    .await;
+    let last_secret_manager = secret_managers[2].clone();
+    println!("Starting OPRF nodes...");
+    let (oprf_services, _) = taceo_oprf_test::start_3_nodes(
+        &anvil.ws_endpoint(),
+        secret_managers,
+        oprf_key_registry_contract,
+    )
+    .await;
+
+    health_checks::services_health_check(&oprf_key_gens, Duration::from_secs(60)).await?;
+
+    let oprf_key_id = oprf_key_registry_scripts::init_key_gen(
+        &anvil.endpoint(),
+        oprf_key_registry_contract,
+        TACEO_ADMIN_PRIVATE_KEY,
+    );
+    println!("init key-gen with oprf key id: {oprf_key_id}");
+    println!("now abort key-gen");
+
+    oprf_key_registry_scripts::key_gen_abort(
+        &anvil.endpoint(),
+        oprf_key_registry_contract,
+        TACEO_ADMIN_PRIVATE_KEY,
+    );
+
+    // start the third key-gen
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let key_get_zkey_path = dir.join("../circom/main/key-gen/OPRFKeyGen.13.arks.zkey");
+    let key_gen_witness_graph_path = dir.join("../circom/main/key-gen/OPRFKeyGenGraph.13.bin");
+    let (new_key_gen, _) = taceo_oprf_test::start_key_gen(
+        2,
+        &anvil.ws_endpoint(),
+        last_secret_manager,
+        oprf_key_registry_contract,
+        key_get_zkey_path,
+        key_gen_witness_graph_path,
+    )
+    .await;
+
+    let [oprf_key_gen0, oprf_key_gen1] = oprf_key_gens;
+    let oprf_key_gens = [oprf_key_gen0, oprf_key_gen1, new_key_gen];
+
+    health_checks::services_health_check(&oprf_key_gens, Duration::from_secs(60)).await?;
+
+    println!("redo key-gen with same id");
+    let oprf_key_id = oprf_key_registry_scripts::init_key_gen(
+        &anvil.endpoint(),
+        oprf_key_registry_contract,
+        TACEO_ADMIN_PRIVATE_KEY,
+    );
+    let _oprf_public_key = health_checks::oprf_public_key_from_services(
+        oprf_key_id,
+        ShareEpoch::default(),
+        &oprf_services,
+        Duration::from_secs(120), // graceful timeout for CI
+    )
+    .await
+    .context("while loading OPRF key-material from services")?;
+    println!("Running OPRF client flow...");
+    let action = ark_babyjubjub::Fq::rand(&mut rng);
+
+    // The client example verifies the DLogEquality
+    let _verifiable_oprf_output = oprf_client_example::distributed_oprf(
+        oprf_services.as_slice(),
+        2,
+        oprf_key_id,
+        ShareEpoch::default(),
+        action,
+        Connector::Plain,
+        &mut rng,
+    )
+    .await?;
+
+    Ok(())
+}

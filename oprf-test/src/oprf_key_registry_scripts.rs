@@ -46,7 +46,7 @@ pub fn deploy_test_setup(
 
 pub fn register_participants(
     rpc_url: &str,
-    rp_registry_contract: Address,
+    oprf_key_registry_contract: Address,
     taceo_admin_private_key: &str,
     participant_addresses: &str,
 ) {
@@ -54,7 +54,10 @@ pub fn register_participants(
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let cmd = cmd
         .current_dir(dir.join("../contracts/script/"))
-        .env("OPRF_KEY_REGISTRY_PROXY", rp_registry_contract.to_string())
+        .env(
+            "OPRF_KEY_REGISTRY_PROXY",
+            oprf_key_registry_contract.to_string(),
+        )
         .env("PARTICIPANT_ADDRESSES", participant_addresses)
         .arg("script")
         .arg("RegisterParticipants.s.sol")
@@ -72,20 +75,23 @@ pub fn register_participants(
     );
 }
 
-pub fn init_key_gen(
+pub fn init_key_gen_with_id(
     rpc_url: &str,
-    rp_registry_contract: Address,
+    oprf_key_registry_contract: Address,
     taceo_admin_private_key: &str,
-) -> OprfKeyId {
+    oprf_key_id: OprfKeyId,
+) {
     let mut cmd = Command::new("forge");
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let oprf_key_id = rand::random::<u32>();
     tracing::debug!("init key gen with oprf_key_id: {oprf_key_id}");
     tracing::debug!("with rpc url: {rpc_url}");
-    tracing::debug!("on contract: {rp_registry_contract}");
+    tracing::debug!("on contract: {oprf_key_registry_contract}");
     let cmd = cmd
         .current_dir(dir.join("../contracts"))
-        .env("OPRF_KEY_REGISTRY_PROXY", rp_registry_contract.to_string())
+        .env(
+            "OPRF_KEY_REGISTRY_PROXY",
+            oprf_key_registry_contract.to_string(),
+        )
         .env("OPRF_KEY_ID", oprf_key_id.to_string())
         .arg("script")
         .arg("script/InitKeyGen.s.sol")
@@ -101,23 +107,66 @@ pub fn init_key_gen(
         "forge script failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    OprfKeyId::new(U160::from(oprf_key_id))
+}
+
+pub fn init_key_gen(
+    rpc_url: &str,
+    oprf_key_registry_contract: Address,
+    taceo_admin_private_key: &str,
+) -> OprfKeyId {
+    let oprf_key_id = OprfKeyId::new(U160::from(rand::random::<u32>()));
+    init_key_gen_with_id(
+        rpc_url,
+        oprf_key_registry_contract,
+        taceo_admin_private_key,
+        oprf_key_id,
+    );
+    oprf_key_id
+}
+
+pub fn key_gen_abort(
+    rpc_url: &str,
+    oprf_key_registry_contract: Address,
+    taceo_admin_private_key: &str,
+) {
+    let mut cmd = Command::new("forge");
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let oprf_key_id = rand::random::<u32>();
+    let cmd = cmd
+        .current_dir(dir.join("../contracts"))
+        .env(
+            "OPRF_KEY_REGISTRY_PROXY",
+            oprf_key_registry_contract.to_string(),
+        )
+        .env("OPRF_KEY_ID", oprf_key_id.to_string())
+        .arg("script")
+        .arg("script/AbortKeyGen.s.sol")
+        .arg("--rpc-url")
+        .arg(rpc_url)
+        .arg("--broadcast")
+        .arg("--private-key")
+        .arg(taceo_admin_private_key);
+    tracing::debug!("executing cmd: {:?}", cmd);
+    cmd.output().expect("failed to run forge script");
 }
 
 pub fn init_reshare(
     oprf_key_id: OprfKeyId,
     rpc_url: &str,
-    rp_registry_contract: Address,
+    oprf_key_registry_contract: Address,
     taceo_admin_private_key: &str,
 ) {
     let mut cmd = Command::new("forge");
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     tracing::debug!("init reshare for oprf_key_id: {oprf_key_id}");
     tracing::debug!("with rpc url: {rpc_url}");
-    tracing::debug!("on contract: {rp_registry_contract}");
+    tracing::debug!("on contract: {oprf_key_registry_contract}");
     let cmd = cmd
         .current_dir(dir.join("../contracts"))
-        .env("OPRF_KEY_REGISTRY_PROXY", rp_registry_contract.to_string())
+        .env(
+            "OPRF_KEY_REGISTRY_PROXY",
+            oprf_key_registry_contract.to_string(),
+        )
         .env("OPRF_KEY_ID", oprf_key_id.to_string())
         .arg("script")
         .arg("script/InitReshare.s.sol")
