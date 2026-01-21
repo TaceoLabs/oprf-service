@@ -1,12 +1,19 @@
-use crate::test_secret_manager::TestSecretManager;
-use alloy::primitives::{Address, address};
+use alloy::{
+    hex,
+    network::EthereumWallet,
+    node_bindings::{Anvil, AnvilInstance},
+    primitives::{Address, Bytes, TxKind, address},
+    providers::{DynProvider, Provider as _, ProviderBuilder},
+    rpc::types::TransactionRequest,
+    signers::local::PrivateKeySigner,
+    sol,
+    sol_types::SolCall as _,
+};
+use eyre::{Context as _, ContextCompat as _};
+use oprf_test_utils::{health_checks, oprf_key_registry, test_secret_manager::TestSecretManager};
 use semver::VersionReq;
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{path::PathBuf, str::FromStr as _, sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
-
-pub mod health_checks;
-pub mod oprf_key_registry_scripts;
-pub mod test_secret_manager;
 
 /// anvil wallet 0
 pub const TACEO_ADMIN_PRIVATE_KEY: &str =
@@ -33,6 +40,348 @@ pub const OPRF_PEER_ADDRESS_3: Address = address!("0x23618e81E3f5cdF7f54C3d65f7F
 pub const OPRF_PEER_PRIVATE_KEY_4: &str =
     "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6";
 pub const OPRF_PEER_ADDRESS_4: Address = address!("0xa0Ee7A142d267C1f36714E4a8F75612F20a79720");
+
+sol!(
+    #[allow(clippy::too_many_arguments)]
+    #[sol(rpc, ignore_unlinked)]
+    VerifierKeyGen13,
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../contracts/out/VerifierKeyGen13.sol/Verifier.json"
+    )
+);
+
+sol!(
+    #[allow(clippy::too_many_arguments)]
+    #[sol(rpc, ignore_unlinked)]
+    VerifierKeyGen25,
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../contracts/out/VerifierKeyGen25.sol/Verifier.json"
+    )
+);
+
+sol!(
+    #[allow(clippy::too_many_arguments)]
+    #[sol(rpc, ignore_unlinked)]
+    OprfKeyRegistry,
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../contracts/out/OprfKeyRegistry.sol/OprfKeyRegistry.json"
+    )
+);
+
+sol!(
+    #[sol(rpc)]
+    ERC1967Proxy,
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json"
+    )
+);
+
+async fn deploy_contract(
+    provider: DynProvider,
+    bytecode: Bytes,
+    constructor_args: Bytes,
+) -> eyre::Result<Address> {
+    let mut deployment_bytecode = bytecode.to_vec();
+    deployment_bytecode.extend_from_slice(&constructor_args);
+
+    let tx = TransactionRequest {
+        to: Some(TxKind::Create),
+        input: deployment_bytecode.into(),
+        ..Default::default()
+    };
+
+    let pending_tx = provider.send_transaction(tx).await?;
+    let receipt = pending_tx.get_receipt().await?;
+
+    receipt
+        .contract_address
+        .context("contract deployment failed - no address in receipt")
+}
+
+/// Links a library to bytecode hex string and returns the hex string (no decoding).
+///
+/// Use this when you need to link multiple libraries before decoding.
+fn link_bytecode_hex(
+    json: &str,
+    bytecode_str: &str,
+    library_path: &str,
+    library_address: Address,
+) -> eyre::Result<String> {
+    let json: serde_json::Value = serde_json::from_str(json)?;
+    let link_refs = &json["bytecode"]["linkReferences"];
+    let (file_path, library_name) = library_path
+        .split_once(':')
+        .context("library_path must be in format 'file:Library'")?;
+
+    let references = link_refs
+        .get(file_path)
+        .and_then(|v| v.get(library_name))
+        .and_then(|v| v.as_array())
+        .context("library reference not found")?;
+
+    // Format library address as 40-character hex (20 bytes, no 0x prefix)
+    let lib_addr_hex = format!("{library_address:040x}");
+
+    let mut linked_bytecode = bytecode_str.to_string();
+
+    // Process all references in reverse order to maintain correct positions
+    let mut refs: Vec<_> = references
+        .iter()
+        .filter_map(|r| {
+            let start = r["start"].as_u64()? as usize * 2; // byte offset -> hex offset
+            Some(start)
+        })
+        .collect();
+    refs.sort_by(|a, b| b.cmp(a)); // Sort descending
+
+    for start_pos in refs {
+        if start_pos + 40 <= linked_bytecode.len() {
+            linked_bytecode.replace_range(start_pos..start_pos + 40, &lib_addr_hex);
+        }
+    }
+
+    Ok(linked_bytecode)
+}
+
+/// Deploys the `OprfKeyRegistry` contract using the supplied signer.
+async fn deploy_oprf_key_registry(
+    provider: DynProvider,
+    admin: Address,
+    key_gen_verifier: Address,
+    threshold: u16,
+    num_peers: u16,
+) -> eyre::Result<Address> {
+    // Deploy BabyJubJub library (no dependencies)
+    let baby_jub_jub_json = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../contracts/out/BabyJubJub.sol/BabyJubJub.json"
+    ));
+    let json_value: serde_json::Value = serde_json::from_str(baby_jub_jub_json)?;
+    let bytecode_str = json_value["bytecode"]["object"]
+        .as_str()
+        .context("bytecode not found in JSON")?
+        .strip_prefix("0x")
+        .unwrap_or_else(|| {
+            json_value["bytecode"]["object"]
+                .as_str()
+                .expect("bytecode should be a string")
+        })
+        .to_string();
+    let baby_jub_jub_bytecode = Bytes::from(hex::decode(bytecode_str)?);
+
+    let baby_jub_jub_address =
+        deploy_contract(provider.clone(), baby_jub_jub_bytecode, Bytes::new())
+            .await
+            .context("failed to deploy BabyJubJub library")?;
+
+    // Link BabyJubJub to OprfKeyRegistry
+    let oprf_key_registry_json = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../contracts/out/OprfKeyRegistry.sol/OprfKeyRegistry.json"
+    ));
+    let json_value: serde_json::Value = serde_json::from_str(oprf_key_registry_json)?;
+    let mut bytecode_str = json_value["bytecode"]["object"]
+        .as_str()
+        .context("bytecode not found in JSON")?
+        .strip_prefix("0x")
+        .unwrap_or_else(|| {
+            json_value["bytecode"]["object"]
+                .as_str()
+                .expect("bytecode should be a string")
+        })
+        .to_string();
+
+    bytecode_str = link_bytecode_hex(
+        oprf_key_registry_json,
+        &bytecode_str,
+        "src/BabyJubJub.sol:BabyJubJub",
+        baby_jub_jub_address,
+    )?;
+
+    // Decode the fully-linked bytecode
+    let oprf_key_registry_bytecode = Bytes::from(hex::decode(bytecode_str)?);
+
+    let implementation_address =
+        deploy_contract(provider.clone(), oprf_key_registry_bytecode, Bytes::new())
+            .await
+            .context("failed to deploy OprfKeyRegistry implementation")?;
+
+    let init_data = Bytes::from(
+        OprfKeyRegistry::initializeCall {
+            _keygenAdmin: admin,
+            _keyGenVerifierAddress: key_gen_verifier,
+            _threshold: threshold,
+            _numPeers: num_peers,
+        }
+        .abi_encode(),
+    );
+
+    let proxy = ERC1967Proxy::deploy(provider, implementation_address, init_data)
+        .await
+        .context("failed to deploy OprfKeyRegistry proxy")?;
+
+    Ok(*proxy.address())
+}
+
+/// Deploys the `OprfKeyRegistry` contract using the supplied signer.
+pub async fn deploy_oprf_key_registry_13(
+    provider: DynProvider,
+    admin: Address,
+) -> eyre::Result<Address> {
+    let key_gen_verifier = VerifierKeyGen13::deploy(provider.clone())
+        .await
+        .context("failed to deploy Groth16VerifierKeyGen13 contract")?;
+
+    deploy_oprf_key_registry(provider, admin, *key_gen_verifier.address(), 2, 3).await
+}
+
+/// Deploys the `OprfKeyRegistry` contract using the supplied signer.
+pub async fn deploy_oprf_key_registry_25(
+    provider: DynProvider,
+    admin: Address,
+) -> eyre::Result<Address> {
+    let key_gen_verifier = VerifierKeyGen25::deploy(provider.clone())
+        .await
+        .context("failed to deploy Groth16VerifierKeyGen25 contract")?;
+
+    deploy_oprf_key_registry(provider, admin, *key_gen_verifier.address(), 3, 5).await
+}
+
+pub type TestSetup13 = TestSetup<1, 3>;
+pub type TestSetup25 = TestSetup<2, 5>;
+
+pub struct TestSetup<const DEGREE: usize, const NUM_PEERS: usize> {
+    pub anvil: AnvilInstance,
+    pub provider: DynProvider,
+    pub oprf_key_registry: Address,
+    pub secret_managers: [TestSecretManager; NUM_PEERS],
+    pub nodes: [String; NUM_PEERS],
+    pub node_cancellation_tokens: [CancellationToken; NUM_PEERS],
+    pub key_gens: [String; NUM_PEERS],
+    pub key_gen_cancellation_tokens: [CancellationToken; NUM_PEERS],
+}
+
+impl TestSetup<1, 3> {
+    pub async fn new() -> eyre::Result<Self> {
+        let anvil = Anvil::new().spawn();
+        let private_key = PrivateKeySigner::from_str(TACEO_ADMIN_PRIVATE_KEY)?;
+        let wallet = EthereumWallet::from(private_key);
+        let provider = ProviderBuilder::new()
+            .wallet(wallet)
+            .connect(&anvil.endpoint())
+            .await
+            .context("while connecting to RPC")?
+            .erased();
+
+        println!("Deploying OprfKeyRegistry contract...");
+        let oprf_key_registry =
+            deploy_oprf_key_registry_13(provider.clone(), TACEO_ADMIN_ADDRESS).await?;
+        oprf_key_registry::register_oprf_nodes(
+            provider.clone(),
+            oprf_key_registry,
+            vec![
+                OPRF_PEER_ADDRESS_0,
+                OPRF_PEER_ADDRESS_1,
+                OPRF_PEER_ADDRESS_2,
+            ],
+        )
+        .await?;
+
+        let secret_managers = create_3_secret_managers();
+        println!("Starting OPRF key-gens...");
+        let (key_gens, key_gen_cancellation_tokens) = start_3_key_gens(
+            &anvil.ws_endpoint(),
+            secret_managers.clone(),
+            oprf_key_registry,
+        )
+        .await;
+
+        println!("Starting OPRF nodes...");
+        let (nodes, node_cancellation_tokens) = start_3_nodes(
+            &anvil.ws_endpoint(),
+            secret_managers.clone(),
+            oprf_key_registry,
+        )
+        .await;
+
+        health_checks::services_health_check(&key_gens, Duration::from_secs(60)).await?;
+
+        Ok(Self {
+            anvil,
+            provider,
+            oprf_key_registry,
+            secret_managers,
+            nodes,
+            node_cancellation_tokens,
+            key_gens,
+            key_gen_cancellation_tokens,
+        })
+    }
+}
+
+impl TestSetup<2, 5> {
+    pub async fn new() -> eyre::Result<Self> {
+        let anvil = Anvil::new().spawn();
+        let private_key = PrivateKeySigner::from_str(TACEO_ADMIN_PRIVATE_KEY)?;
+        let wallet = EthereumWallet::from(private_key);
+        let provider = ProviderBuilder::new()
+            .wallet(wallet)
+            .connect(&anvil.endpoint())
+            .await
+            .context("while connecting to RPC")?
+            .erased();
+
+        println!("Deploying OprfKeyRegistry contract...");
+        let oprf_key_registry =
+            deploy_oprf_key_registry_25(provider.clone(), TACEO_ADMIN_ADDRESS).await?;
+        oprf_key_registry::register_oprf_nodes(
+            provider.clone(),
+            oprf_key_registry,
+            vec![
+                OPRF_PEER_ADDRESS_0,
+                OPRF_PEER_ADDRESS_1,
+                OPRF_PEER_ADDRESS_2,
+                OPRF_PEER_ADDRESS_3,
+                OPRF_PEER_ADDRESS_4,
+            ],
+        )
+        .await?;
+
+        let secret_managers = create_5_secret_managers();
+        println!("Starting OPRF key-gens...");
+        let (key_gens, key_gen_cancellation_tokens) = start_5_key_gens(
+            &anvil.ws_endpoint(),
+            secret_managers.clone(),
+            oprf_key_registry,
+        )
+        .await;
+
+        println!("Starting OPRF nodes...");
+        let (nodes, node_cancellation_tokens) = start_5_nodes(
+            &anvil.ws_endpoint(),
+            secret_managers.clone(),
+            oprf_key_registry,
+        )
+        .await;
+
+        health_checks::services_health_check(&key_gens, Duration::from_secs(60)).await?;
+
+        Ok(Self {
+            anvil,
+            provider,
+            oprf_key_registry,
+            secret_managers,
+            nodes,
+            node_cancellation_tokens,
+            key_gens,
+            key_gen_cancellation_tokens,
+        })
+    }
+}
 
 pub async fn start_node(
     id: usize,

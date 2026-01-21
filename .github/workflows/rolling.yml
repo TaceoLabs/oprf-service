@@ -28,7 +28,7 @@ jobs:
         with:
           submodules: true
       - uses: foundry-rs/foundry-toolchain@v1
-      - run: cd contracts && forge install
+      - run: cd contracts && forge install && forge build
       - run: sudo apt-get install git-lfs
       - run: git lfs pull
       - name: Install nightly
@@ -51,7 +51,7 @@ jobs:
         with:
           submodules: true
       - uses: foundry-rs/foundry-toolchain@v1
-      - run: cd contracts && forge install
+      - run: cd contracts && forge install && forge build
       - run: sudo apt-get install git-lfs
       - run: git lfs pull
       - name: Install beta

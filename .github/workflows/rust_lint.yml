@@ -22,10 +22,14 @@ jobs:
       RUSTDOCFLAGS: "-D warnings"
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
           components: rustfmt, clippy
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: cd contracts && forge install && forge build
       - name: Rustfmt
         run: cargo fmt --all -- --check
       - name: Clippy

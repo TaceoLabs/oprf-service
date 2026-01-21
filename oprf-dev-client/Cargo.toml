@@ -11,21 +11,14 @@ publish = false
 
 [dependencies]
 alloy = { workspace = true, features = ["full", "rpc", "rpc-client-ws"] }
-ark-babyjubjub = { workspace = true }
-ark-ff.workspace = true
 clap = { workspace = true, features = ["derive", "env"] }
 eyre.workspace = true
-humantime.workspace = true
-nodes-observability.workspace = true
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.3" }
-oprf-client-example = { package = "taceo-oprf-client-example", path = "../oprf-client-example", version = "0.1" }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.3" }
-oprf-test = { package = "taceo-oprf-test", path = "../oprf-test", version = "0.1" }
+oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.1" }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.4" }
 rand.workspace = true
-rand_chacha.workspace = true
-rustls = { workspace = true }
-secrecy.workspace = true
+serde.workspace = true
 tokio = { workspace = true, features = [
   "net",
   "rt-multi-thread",
@@ -36,4 +29,3 @@ tokio = { workspace = true, features = [
 ] }
 tracing.workspace = true
 uuid.workspace = true
-webpki-roots = { workspace = true }

@@ -145,7 +145,7 @@ lint:
 run-key-gen-instances:
     #!/usr/bin/env bash
     mkdir -p logs
-    cargo build --workspace --release
+    cargo build -p taceo-oprf-key-gen --release
     # anvil wallet 7
     RUST_LOG="taceo_oprf_key_gen=trace,warn" ./target/release/oprf-key-gen --bind-addr 127.0.0.1:20000 --rp-secret-id-prefix oprf/rp/n0 --environment dev --wallet-private-key-secret-id oprf/eth/n0 --key-gen-zkey-path ./circom/main/key-gen/OPRFKeyGen.13.arks.zkey --key-gen-witness-graph-path ./circom/main/key-gen/OPRFKeyGenGraph.13.bin  > logs/key-gen0.log 2>&1 &
     pid0=$!
@@ -165,7 +165,7 @@ run-key-gen-instances:
 run-nodes:
     #!/usr/bin/env bash
     mkdir -p logs
-    cargo build --workspace --release
+    cargo build -p taceo-oprf-service-example --release
     # anvil wallet 7
     RUST_LOG="taceo_oprf_service=trace,taceo_oprf_service_example=trace,oprf_service_example=trace,warn" ./target/release/oprf-service-example --bind-addr 127.0.0.1:10000 --rp-secret-id-prefix oprf/rp/n0 --environment dev --wallet-address 0x14dC79964da2C08b23698B3D3cc7Ca32193d9955 --version-req ">=0.0.0" > logs/node0.log 2>&1 &
     pid0=$!
@@ -204,7 +204,10 @@ run-setup:
 
 [group('dev-client')]
 run-dev-client *args:
-    cargo run --release --bin taceo-oprf-dev-client {{ args }}
+    #!/usr/bin/env bash
+    cargo build -p taceo-oprf-dev-client-example --release
+    oprf_key_registry=$(grep -oP 'OprfKeyRegistry deployed to: \K0x[a-fA-F0-9]+' logs/deploy_oprf_key_registry.log)
+    OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$oprf_key_registry ./target/release/oprf-dev-client-example {{ args }}
 
 [working-directory('contracts')]
 show-contract-errors:
