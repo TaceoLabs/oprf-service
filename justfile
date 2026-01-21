@@ -138,10 +138,10 @@ contract-tests:
 
 [group('test')]
 e2e-tests:
-    cd contracts && forge test
+    @bash e2e-test.sh || { echo -e "\033[1;41m===== TEST FAILED =====\033[0m" ; exit 1; }
 
 [group('test')]
-all-tests: all-rust-tests circom-tests contract-tests
+all-tests: all-rust-tests circom-tests contract-tests e2e-tests
 
 [group('test')]
 generate-contract-kats:
@@ -158,7 +158,7 @@ run-setup:
     docker compose -f ./oprf-service-example/deploy/docker-compose.yml down
 
 [group('ci')]
-check-pr: lint all-rust-tests circom-tests contract-tests
+check-pr: lint all-tests
 
 [group('ci')]
 lint:
