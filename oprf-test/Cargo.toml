@@ -28,6 +28,7 @@ oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "
 rand.workspace = true
 reqwest = { workspace = true }
 semver.workspace = true
+serde_json.workspace = true
 tokio = { workspace = true, features = [
   "net",
   "rt-multi-thread",

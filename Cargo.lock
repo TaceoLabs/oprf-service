@@ -6410,6 +6410,7 @@ dependencies = [
  "rand 0.8.5",
  "reqwest",
  "semver 1.0.27",
+ "serde_json",
  "serial_test",
  "taceo-ark-babyjubjub",
  "taceo-oprf-client-example",

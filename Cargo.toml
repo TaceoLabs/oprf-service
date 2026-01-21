@@ -46,7 +46,6 @@ criterion = "0.8"
 eddsa-babyjubjub = { package = "taceo-eddsa-babyjubjub", version = "^0.5.3" }
 eyre = { version = "0.6" }
 futures = "0.3"
-git-version = "0.3"
 groth16-material = { package = "taceo-groth16-material", version = "0.1", default-features = false }
 groth16-sol = { package = "taceo-groth16-sol", version = "0.1" }
 http = "1"
@@ -61,7 +60,6 @@ parking_lot = "0.12"
 poseidon2 = { package = "taceo-poseidon2", version = "0.2", default-features = false }
 rand = { version = "0.8" }
 rand_chacha = { version = "0.3" }
-regex = "1"
 reqwest = { version = "0.12", default-features = false, features = [
   "json",
   "rustls-tls",

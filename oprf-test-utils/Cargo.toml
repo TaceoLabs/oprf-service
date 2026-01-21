@@ -35,8 +35,8 @@ itertools.workspace = true
 nodes-observability = { workspace = true, optional = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.3" }
 oprf-key-gen = { package = "taceo-oprf-key-gen", path = "../oprf-key-gen", version = "0.1" }
-oprf-service = { package = "taceo-oprf-service", path = "../oprf-service", version = "0.2" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.3" }
+oprf-service = { package = "taceo-oprf-service", path = "../oprf-service", version = "0.3" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.4" }
 parking_lot = { workspace = true }
 rand.workspace = true
 rand_chacha.workspace = true

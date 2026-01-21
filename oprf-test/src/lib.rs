@@ -1,14 +1,15 @@
 use alloy::{
+    hex,
     network::EthereumWallet,
     node_bindings::{Anvil, AnvilInstance},
-    primitives::{Address, Bytes, U256, address},
+    primitives::{Address, Bytes, TxKind, address},
     providers::{DynProvider, Provider as _, ProviderBuilder},
+    rpc::types::TransactionRequest,
     signers::local::PrivateKeySigner,
     sol,
     sol_types::SolCall as _,
-    uint,
 };
-use eyre::Context as _;
+use eyre::{Context as _, ContextCompat as _};
 use oprf_test_utils::{health_checks, oprf_key_registry, test_secret_manager::TestSecretManager};
 use semver::VersionReq;
 use std::{path::PathBuf, str::FromStr as _, sync::Arc, time::Duration};
@@ -63,16 +64,6 @@ sol!(
 sol!(
     #[allow(clippy::too_many_arguments)]
     #[sol(rpc, ignore_unlinked)]
-    BabyJubJub,
-    concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../contracts/out/BabyJubJub.sol/BabyJubJub.json"
-    )
-);
-
-sol!(
-    #[allow(clippy::too_many_arguments)]
-    #[sol(rpc, ignore_unlinked)]
     OprfKeyRegistry,
     concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -89,34 +80,147 @@ sol!(
     )
 );
 
+async fn deploy_contract(
+    provider: DynProvider,
+    bytecode: Bytes,
+    constructor_args: Bytes,
+) -> eyre::Result<Address> {
+    let mut deployment_bytecode = bytecode.to_vec();
+    deployment_bytecode.extend_from_slice(&constructor_args);
+
+    let tx = TransactionRequest {
+        to: Some(TxKind::Create),
+        input: deployment_bytecode.into(),
+        ..Default::default()
+    };
+
+    let pending_tx = provider.send_transaction(tx).await?;
+    let receipt = pending_tx.get_receipt().await?;
+
+    receipt
+        .contract_address
+        .context("contract deployment failed - no address in receipt")
+}
+
+/// Links a library to bytecode hex string and returns the hex string (no decoding).
+///
+/// Use this when you need to link multiple libraries before decoding.
+fn link_bytecode_hex(
+    json: &str,
+    bytecode_str: &str,
+    library_path: &str,
+    library_address: Address,
+) -> eyre::Result<String> {
+    let json: serde_json::Value = serde_json::from_str(json)?;
+    let link_refs = &json["bytecode"]["linkReferences"];
+    let (file_path, library_name) = library_path
+        .split_once(':')
+        .context("library_path must be in format 'file:Library'")?;
+
+    let references = link_refs
+        .get(file_path)
+        .and_then(|v| v.get(library_name))
+        .and_then(|v| v.as_array())
+        .context("library reference not found")?;
+
+    // Format library address as 40-character hex (20 bytes, no 0x prefix)
+    let lib_addr_hex = format!("{library_address:040x}");
+
+    let mut linked_bytecode = bytecode_str.to_string();
+
+    // Process all references in reverse order to maintain correct positions
+    let mut refs: Vec<_> = references
+        .iter()
+        .filter_map(|r| {
+            let start = r["start"].as_u64()? as usize * 2; // byte offset -> hex offset
+            Some(start)
+        })
+        .collect();
+    refs.sort_by(|a, b| b.cmp(a)); // Sort descending
+
+    for start_pos in refs {
+        if start_pos + 40 <= linked_bytecode.len() {
+            linked_bytecode.replace_range(start_pos..start_pos + 40, &lib_addr_hex);
+        }
+    }
+
+    Ok(linked_bytecode)
+}
+
 /// Deploys the `OprfKeyRegistry` contract using the supplied signer.
 async fn deploy_oprf_key_registry(
     provider: DynProvider,
     admin: Address,
     key_gen_verifier: Address,
-    threshold: U256,
-    num_peers: U256,
+    threshold: u16,
+    num_peers: u16,
 ) -> eyre::Result<Address> {
-    let babyjubjub = BabyJubJub::deploy(provider.clone())
-        .await
-        .context("failed to deploy BabyJubJub contract")?;
+    // Deploy BabyJubJub library (no dependencies)
+    let baby_jub_jub_json = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../contracts/out/BabyJubJub.sol/BabyJubJub.json"
+    ));
+    let json_value: serde_json::Value = serde_json::from_str(baby_jub_jub_json)?;
+    let bytecode_str = json_value["bytecode"]["object"]
+        .as_str()
+        .context("bytecode not found in JSON")?
+        .strip_prefix("0x")
+        .unwrap_or_else(|| {
+            json_value["bytecode"]["object"]
+                .as_str()
+                .expect("bytecode should be a string")
+        })
+        .to_string();
+    let baby_jub_jub_bytecode = Bytes::from(hex::decode(bytecode_str)?);
 
-    let oprf_key_registry = OprfKeyRegistry::deploy(provider.clone())
-        .await
-        .context("failed to deploy OprfKeyRegistry contract")?;
+    let baby_jub_jub_address =
+        deploy_contract(provider.clone(), baby_jub_jub_bytecode, Bytes::new())
+            .await
+            .context("failed to deploy BabyJubJub library")?;
+
+    // Link BabyJubJub to OprfKeyRegistry
+    let oprf_key_registry_json = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../contracts/out/OprfKeyRegistry.sol/OprfKeyRegistry.json"
+    ));
+    let json_value: serde_json::Value = serde_json::from_str(oprf_key_registry_json)?;
+    let mut bytecode_str = json_value["bytecode"]["object"]
+        .as_str()
+        .context("bytecode not found in JSON")?
+        .strip_prefix("0x")
+        .unwrap_or_else(|| {
+            json_value["bytecode"]["object"]
+                .as_str()
+                .expect("bytecode should be a string")
+        })
+        .to_string();
+
+    bytecode_str = link_bytecode_hex(
+        oprf_key_registry_json,
+        &bytecode_str,
+        "src/BabyJubJub.sol:BabyJubJub",
+        baby_jub_jub_address,
+    )?;
+
+    // Decode the fully-linked bytecode
+    let oprf_key_registry_bytecode = Bytes::from(hex::decode(bytecode_str)?);
+
+    let implementation_address =
+        deploy_contract(provider.clone(), oprf_key_registry_bytecode, Bytes::new())
+            .await
+            .context("failed to deploy OprfKeyRegistry implementation")?;
 
     let init_data = Bytes::from(
         OprfKeyRegistry::initializeCall {
             _keygenAdmin: admin,
             _keyGenVerifierAddress: key_gen_verifier,
-            _accumulatorAddress: *babyjubjub.address(),
             _threshold: threshold,
             _numPeers: num_peers,
         }
         .abi_encode(),
     );
 
-    let proxy = ERC1967Proxy::deploy(provider, *oprf_key_registry.address(), init_data)
+    let proxy = ERC1967Proxy::deploy(provider, implementation_address, init_data)
         .await
         .context("failed to deploy OprfKeyRegistry proxy")?;
 
@@ -132,14 +236,7 @@ pub async fn deploy_oprf_key_registry_13(
         .await
         .context("failed to deploy Groth16VerifierKeyGen13 contract")?;
 
-    deploy_oprf_key_registry(
-        provider,
-        admin,
-        *key_gen_verifier.address(),
-        uint!(2_U256),
-        uint!(3_U256),
-    )
-    .await
+    deploy_oprf_key_registry(provider, admin, *key_gen_verifier.address(), 2, 3).await
 }
 
 /// Deploys the `OprfKeyRegistry` contract using the supplied signer.
@@ -151,14 +248,7 @@ pub async fn deploy_oprf_key_registry_25(
         .await
         .context("failed to deploy Groth16VerifierKeyGen25 contract")?;
 
-    deploy_oprf_key_registry(
-        provider,
-        admin,
-        *key_gen_verifier.address(),
-        uint!(3_U256),
-        uint!(5_U256),
-    )
-    .await
+    deploy_oprf_key_registry(provider, admin, *key_gen_verifier.address(), 3, 5).await
 }
 
 pub type TestSetup13 = TestSetup<1, 3>;
