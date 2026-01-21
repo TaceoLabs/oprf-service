@@ -24,7 +24,7 @@ use crate::oprf::{
 ///
 /// # Returns
 ///
-/// Tuple of [`BlindedOprfRequest`] and [`BlindingFactor`].
+/// A [`BlindedOprfRequest`].
 pub fn blind_query(query: BaseField, blinding_factor: BlindingFactor) -> BlindedOprfRequest {
     // The blinding factor shall not be zero. As the chance of getting a zero is negligible we just panic here.
     if blinding_factor.beta().is_zero() {
