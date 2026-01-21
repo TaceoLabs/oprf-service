@@ -1,40 +1,39 @@
-use std::{slice::from_ref, vec};
+use std::vec;
 
 use ark_babyjubjub::{EdwardsAffine, EdwardsProjective};
 use ark_bn254::Bn254;
 use ark_ec::{CurveGroup, PrimeGroup};
-use ark_ff::UniformRand;
+use ark_ff::{AdditiveGroup, UniformRand};
 use ark_groth16::{Groth16, Proof};
 use ark_serialize::CanonicalDeserialize;
-use circom_types::groth16::JsonPublicInput;
+use circom_types::groth16::{Proof as Groth16Proof, PublicInput};
 use criterion::*;
-use oprf_core::{
+use rand::seq::IteratorRandom;
+use taceo_oprf_core::{
     ddlog_equality::{
         additive::{DLogCommitmentsAdditive, DLogSessionAdditive},
         shamir::{DLogCommitmentsShamir, DLogSessionShamir},
     },
     oprf::{
-        self,
+        self, BlindingFactor,
         server::{OprfKey, OprfServer},
     },
     shamir,
 };
-use oprf_zk::groth16_serde::Groth16Proof;
-use rand::seq::IteratorRandom;
 use uuid::Uuid;
 
 const VK_BYTES: &[u8] = include_bytes!("vk.bin");
 const PROOF_JSON: &str = include_str!("proof.json");
 const PUBLIC_JSON: &str = include_str!("public.json");
 
-fn groth16_proof() -> Groth16Proof {
+fn groth16_proof() -> Groth16Proof<Bn254> {
     serde_json::from_str(PROOF_JSON).expect("works")
 }
 
 fn groth16_public() -> Vec<ark_bn254::Fr> {
-    serde_json::from_str::<JsonPublicInput<ark_bn254::Fr>>(PUBLIC_JSON)
+    serde_json::from_str::<PublicInput<ark_bn254::Fr>>(PUBLIC_JSON)
         .expect("works")
-        .values
+        .0
 }
 
 fn vk() -> ark_groth16::PreparedVerifyingKey<Bn254> {
@@ -45,8 +44,9 @@ fn oprf_bench(c: &mut Criterion) {
     c.bench_function("OPRF Client Query", |b| {
         let rng = &mut rand::thread_rng();
         let query = ark_babyjubjub::Fq::rand(rng);
+        let blinding_factor = BlindingFactor::rand(rng);
 
-        b.iter(|| oprf::client::blind_query(query, rng));
+        b.iter(|| oprf::client::blind_query(query, blinding_factor.clone()));
     });
 
     c.bench_function("OPRF Client Proof Verify", |b| {
@@ -61,12 +61,12 @@ fn oprf_bench(c: &mut Criterion) {
         let rng = &mut rand::thread_rng();
         let key = OprfKey::random(rng);
         let server = OprfServer::new(key);
-        let q = ark_babyjubjub::Fq::rand(rng);
 
         b.iter_batched(
             || {
-                let (query, _) = oprf::client::blind_query(q, rng);
-                query
+                let blinding_factor = BlindingFactor::rand(rng);
+                let q = ark_babyjubjub::Fq::rand(rng);
+                oprf::client::blind_query(q, blinding_factor)
             },
             |query| server.answer_query(query),
             BatchSize::SmallInput,
@@ -77,12 +77,12 @@ fn oprf_bench(c: &mut Criterion) {
         let rng = &mut rand::thread_rng();
         let key = OprfKey::random(rng);
         let server = OprfServer::new(key);
-        let q = ark_babyjubjub::Fq::rand(rng);
 
         b.iter_batched(
             || {
-                let (query, _) = oprf::client::blind_query(q, rng);
-                query
+                let blinding_factor = BlindingFactor::rand(rng);
+                let q = ark_babyjubjub::Fq::rand(rng);
+                oprf::client::blind_query(q, blinding_factor)
             },
             |query| server.answer_query_with_proof(query),
             BatchSize::SmallInput,
@@ -93,18 +93,19 @@ fn oprf_bench(c: &mut Criterion) {
         let rng = &mut rand::thread_rng();
         let key = OprfKey::random(rng);
         let server = OprfServer::new(key);
-        let q = ark_babyjubjub::Fq::rand(rng);
 
         b.iter_batched(
             || {
-                let (query, blinding) = oprf::client::blind_query(q, rng);
-                let blinding = blinding.prepare();
+                let blinding_factor = BlindingFactor::rand(rng);
+                let q = ark_babyjubjub::Fq::rand(rng);
+                let query = oprf::client::blind_query(q, blinding_factor.clone());
+                let blinding = blinding_factor.prepare();
                 let response = server.answer_query(query);
-                (response, blinding)
+                (q, response, blinding)
             },
-            |(response, blinding)| {
+            |(q, response, blinding)| {
                 // Call the OPRF evaluate function here
-                oprf::client::finalize_query(response, blinding)
+                oprf::client::finalize_query(q, response, blinding, ark_babyjubjub::Fq::ZERO)
             },
             BatchSize::SmallInput,
         );
@@ -114,18 +115,26 @@ fn oprf_bench(c: &mut Criterion) {
         let key = OprfKey::random(rng);
         let pk = key.public_key();
         let server = OprfServer::new(key);
-        let q = ark_babyjubjub::Fq::rand(rng);
 
         b.iter_batched(
             || {
-                let (query, blinding) = oprf::client::blind_query(q, rng);
-                let blinding = blinding.prepare();
+                let blinding_factor = BlindingFactor::rand(rng);
+                let q = ark_babyjubjub::Fq::rand(rng);
+                let query = oprf::client::blind_query(q, blinding_factor.clone());
+                let blinding = blinding_factor.prepare();
                 let (response, proof) = server.answer_query_with_proof(query);
-                (response, proof, blinding)
+                (q, response, proof, blinding)
             },
-            |(response, proof, blinding)| {
+            |(q, response, proof, blinding)| {
                 // Call the OPRF evaluate function here
-                oprf::client::finalize_query_and_verify_proof(pk, response, proof, blinding)
+                oprf::client::finalize_query_and_verify_proof(
+                    pk,
+                    q,
+                    response,
+                    proof,
+                    blinding,
+                    ark_babyjubjub::Fq::ZERO,
+                )
             },
             BatchSize::SmallInput,
         );
@@ -234,13 +243,7 @@ fn ddlog_bench(c: &mut Criterion) {
                     (challenge, responses)
                 },
                 |(challenge, responses)| {
-                    challenge.combine_proofs(
-                        session_id,
-                        &participating_parties,
-                        &responses,
-                        pk,
-                        point,
-                    )
+                    challenge.combine_proofs(session_id, &responses, pk, point)
                 },
                 BatchSize::SmallInput,
             );
