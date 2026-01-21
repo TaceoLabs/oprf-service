@@ -149,12 +149,12 @@ start_nodes() {
 # -------------------------
 main() {
     rm -rf logs/*
-    docker compose -f ./oprf-service-example/deploy/docker-compose.yml up -d localstack anvil
+    docker compose -f ./oprf-service/examples/deploy/docker-compose.yml up -d localstack anvil
 
     # centralized teardown
     teardown() {
         echo "Tearing down..."
-        docker compose -f ./oprf-service-example/deploy/docker-compose.yml down
+        docker compose -f ./oprf-service/examples/deploy/docker-compose.yml down
 
         for pid in "${keygen_pids[@]-}"; do kill "$pid" 2>/dev/null || true; done
         for pid in "${nodes_pids[@]-}"; do kill "$pid" 2>/dev/null || true; done

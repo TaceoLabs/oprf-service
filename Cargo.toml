@@ -3,13 +3,10 @@ resolver = "3"
 members = [
   "oprf",
   "oprf-client",
-  "oprf-client-example",
   "oprf-core",
   "oprf-dev-client",
-  "oprf-dev-client-example",
   "oprf-key-gen",
   "oprf-service",
-  "oprf-service-example",
   "oprf-test",
   "oprf-test-utils",
   "oprf-types"

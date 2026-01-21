@@ -152,10 +152,10 @@ generate-contract-kats:
 run-setup:
     mkdir -p logs
     rm -rf logs/*
-    docker compose -f ./oprf-service-example/deploy/docker-compose.yml up -d localstack anvil
+    docker compose -f ./oprf-service/examples/deploy/docker-compose.yml up -d localstack anvil
     sleep 1
     - just run-setup-inner
-    docker compose -f ./oprf-service-example/deploy/docker-compose.yml down
+    docker compose -f ./oprf-service/examples/deploy/docker-compose.yml down
 
 [group('ci')]
 check-pr: lint all-tests
