@@ -41,6 +41,7 @@ parking_lot = { workspace = true }
 rand.workspace = true
 rand_chacha.workspace = true
 reqwest = { workspace = true }
+serde_json = { workspace = true, optional = true }
 tokio = { workspace = true, features = [
   "net",
   "rt-multi-thread",
@@ -52,7 +53,8 @@ tokio = { workspace = true, features = [
 tracing.workspace = true
 
 [features]
-default = []
+default = ["deploy-anvil"]
+deploy-anvil = ["dep:serde_json"]
 generate-test-transcript = [
   "dep:ark-bn254",
   "dep:askama",

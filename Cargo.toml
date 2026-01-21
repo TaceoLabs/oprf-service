@@ -7,7 +7,6 @@ members = [
   "oprf-dev-client",
   "oprf-key-gen",
   "oprf-service",
-  "oprf-test",
   "oprf-test-utils",
   "oprf-types"
 ]

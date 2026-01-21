@@ -3173,16 +3173,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 
 [[package]]
-name = "fslock"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04412b8935272e3a9bae6f48c7bfff74c2911f60525404edfdd28e49884c3bfb"
-dependencies = [
- "libc",
- "winapi",
-]
-
-[[package]]
 name = "funty"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5527,15 +5517,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "scc"
-version = "2.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46e6f046b7fef48e2660c57ed794263155d713de679057f2d0c169bfc6e756cc"
-dependencies = [
- "sdd",
-]
-
-[[package]]
 name = "schannel"
 version = "0.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5589,12 +5570,6 @@ dependencies = [
  "ring",
  "untrusted",
 ]
-
-[[package]]
-name = "sdd"
-version = "3.0.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "490dcfcbfef26be6800d11870ff2df8774fa6e86d047e3e8c8a76b25655e41ca"
 
 [[package]]
 name = "sec1"
@@ -5823,33 +5798,6 @@ checksum = "a84f14a19e9a014bb9f4512488d9829a68e04ecabffb0f9904cd1ace94598177"
 dependencies = [
  "base16ct",
  "serde",
-]
-
-[[package]]
-name = "serial_test"
-version = "3.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d0b343e184fc3b7bb44dff0705fffcf4b3756ba6aff420dddd8b24ca145e555"
-dependencies = [
- "fslock",
- "futures-executor",
- "futures-util",
- "log",
- "once_cell",
- "parking_lot",
- "scc",
- "serial_test_derive",
-]
-
-[[package]]
-name = "serial_test_derive"
-version = "3.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f50427f258fb77356e4cd4aa0e87e2bd2c66dbcee41dc405282cae2bfc26c83"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.111",
 ]
 
 [[package]]
@@ -6151,26 +6099,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "taceo-eddsa-babyjubjub"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "965bab462ca0ece0fe2616282f7f8bd5568dbf31611a88748163a99ab4ee15d6"
-dependencies = [
- "ark-ec",
- "ark-ff 0.5.0",
- "ark-serialize 0.5.0",
- "blake3",
- "eyre",
- "num-bigint",
- "rand 0.8.5",
- "serde",
- "taceo-ark-babyjubjub",
- "taceo-ark-serde-compat",
- "taceo-poseidon2",
- "zeroize",
-]
-
-[[package]]
 name = "taceo-groth16"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6290,21 +6218,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "taceo-oprf-client-example"
-version = "0.1.0"
-dependencies = [
- "ark-ec",
- "ark-ff 0.5.0",
- "eyre",
- "rand 0.8.5",
- "taceo-ark-babyjubjub",
- "taceo-oprf-client",
- "taceo-oprf-core",
- "taceo-oprf-types",
- "tracing",
-]
-
-[[package]]
 name = "taceo-oprf-core"
 version = "0.3.0"
 dependencies = [
@@ -6348,33 +6261,6 @@ dependencies = [
  "taceo-nodes-observability",
  "taceo-oprf-client",
  "taceo-oprf-core",
- "taceo-oprf-test-utils",
- "taceo-oprf-types",
- "tokio",
- "tracing",
- "uuid",
- "webpki-roots 1.0.5",
-]
-
-[[package]]
-name = "taceo-oprf-dev-client-example"
-version = "0.1.0"
-dependencies = [
- "alloy",
- "ark-ff 0.5.0",
- "clap",
- "eyre",
- "humantime",
- "rand 0.8.5",
- "rand_chacha 0.3.1",
- "rustls 0.23.36",
- "secrecy",
- "taceo-ark-babyjubjub",
- "taceo-nodes-observability",
- "taceo-oprf-client",
- "taceo-oprf-client-example",
- "taceo-oprf-core",
- "taceo-oprf-dev-client",
  "taceo-oprf-test-utils",
  "taceo-oprf-types",
  "tokio",
@@ -6461,58 +6347,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "taceo-oprf-service-example"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "aws-config",
- "axum",
- "axum-test",
- "clap",
- "eyre",
- "humantime",
- "rustls 0.23.36",
- "serde",
- "taceo-eddsa-babyjubjub",
- "taceo-nodes-common",
- "taceo-nodes-observability",
- "taceo-oprf-client",
- "taceo-oprf-service",
- "taceo-oprf-test",
- "taceo-oprf-types",
- "taceo-poseidon2",
- "testcontainers-modules",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "taceo-oprf-test"
-version = "0.1.0"
-dependencies = [
- "alloy",
- "ark-ff 0.5.0",
- "eyre",
- "rand 0.8.5",
- "reqwest",
- "semver 1.0.27",
- "serde_json",
- "serial_test",
- "taceo-ark-babyjubjub",
- "taceo-oprf-client-example",
- "taceo-oprf-key-gen",
- "taceo-oprf-service",
- "taceo-oprf-service-example",
- "taceo-oprf-test-utils",
- "taceo-oprf-types",
- "tokio",
- "tokio-tungstenite 0.28.0",
- "tokio-util",
-]
-
-[[package]]
 name = "taceo-oprf-test-utils"
 version = "0.1.0"
 dependencies = [
@@ -6529,6 +6363,7 @@ dependencies = [
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "reqwest",
+ "serde_json",
  "taceo-ark-babyjubjub",
  "taceo-groth16-material",
  "taceo-groth16-sol",
