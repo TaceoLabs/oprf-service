@@ -52,4 +52,6 @@ uuid = { workspace = true, features = ["serde", "v4"] }
 [dev-dependencies]
 ark-ff = { workspace = true }
 axum-test = { workspace = true, features = ["ws"] }
+nodes-observability = { workspace = true }
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.3" }
+rustls = { workspace = true }

@@ -20,6 +20,19 @@ prepare-localstack-secrets:
       --name oprf/eth/n2 \
       --secret-string '0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6'
 
+[private]
+run-setup-inner:
+    just prepare-localstack-secrets
+    just deploy-oprf-key-registry-with-deps-anvil | tee logs/deploy_oprf_key_registry.log
+    OPRF_KEY_REGISTRY_PROXY=$(just load-key-registry) just register-participants-anvil
+    OPRF_NODE_OPRF_KEY_REGISTRY_CONTRACT=$(just load-key-registry) just run-nodes &
+    OPRF_NODE_OPRF_KEY_REGISTRY_CONTRACT=$(just load-key-registry) just run-key-gen-instances
+
+[private]
+[working-directory('logs')]
+load-key-registry:
+    grep -oP 'OprfKeyRegistry deployed to: \K0x[a-fA-F0-9]+' deploy_oprf_key_registry.log
+
 [group('build')]
 export-contract-abi:
     cd contracts && forge build --silent && jq '.abi' out/OprfKeyRegistry.sol/OprfKeyRegistry.json > ../oprf-types/OprfKeyRegistry.json
@@ -124,12 +137,25 @@ contract-tests:
     cd contracts && forge test
 
 [group('test')]
+e2e-tests:
+    cd contracts && forge test
+
+[group('test')]
 all-tests: all-rust-tests circom-tests contract-tests
 
 [group('test')]
 generate-contract-kats:
     cargo run --bin generate-test-transcript --features="generate-test-transcript" -- --key-gen-zkey-path circom/main/key-gen/OPRFKeyGen.13.arks.zkey --key-gen-witness-graph-path circom/main/key-gen/OPRFKeyGenGraph.13.bin --output contracts/test/Contributions.t.sol
     cd contracts && forge fmt
+
+[group('local-setup')]
+run-setup:
+    mkdir -p logs
+    rm -rf logs/*
+    docker compose -f ./oprf-service-example/deploy/docker-compose.yml up -d localstack anvil
+    sleep 1
+    - just run-setup-inner
+    docker compose -f ./oprf-service-example/deploy/docker-compose.yml down
 
 [group('ci')]
 check-pr: lint all-rust-tests circom-tests contract-tests
@@ -147,67 +173,41 @@ run-key-gen-instances:
     mkdir -p logs
     cargo build -p taceo-oprf-key-gen --release
     # anvil wallet 7
-    RUST_LOG="taceo_oprf_key_gen=trace,warn" ./target/release/oprf-key-gen --bind-addr 127.0.0.1:20000 --rp-secret-id-prefix oprf/rp/n0 --environment dev --wallet-private-key-secret-id oprf/eth/n0 --key-gen-zkey-path ./circom/main/key-gen/OPRFKeyGen.13.arks.zkey --key-gen-witness-graph-path ./circom/main/key-gen/OPRFKeyGenGraph.13.bin --confirmations-for-transaction 1 > logs/key-gen0.log 2>&1 &
+    RUST_LOG="taceo_oprf_key_gen=trace,warn" cargo run --release --bin oprf-key-gen -- --bind-addr 127.0.0.1:20000 --rp-secret-id-prefix oprf/rp/n0 --environment dev --wallet-private-key-secret-id oprf/eth/n0 --key-gen-zkey-path ./circom/main/key-gen/OPRFKeyGen.13.arks.zkey --key-gen-witness-graph-path ./circom/main/key-gen/OPRFKeyGenGraph.13.bin  > logs/key-gen0.log 2>&1 &
     pid0=$!
     echo "started key-gen0 with PID $pid0"
     # anvil wallet 8
-    RUST_LOG="taceo_oprf_key_gen=trace,warn" ./target/release/oprf-key-gen --bind-addr 127.0.0.1:20001 --rp-secret-id-prefix oprf/rp/n1 --environment dev --wallet-private-key-secret-id oprf/eth/n1 --key-gen-zkey-path ./circom/main/key-gen/OPRFKeyGen.13.arks.zkey --key-gen-witness-graph-path ./circom/main/key-gen/OPRFKeyGenGraph.13.bin  --confirmations-for-transaction 1 > logs/key-gen1.log 2>&1 &
+    RUST_LOG="taceo_oprf_key_gen=trace,warn" cargo run --release --bin oprf-key-gen -- --bind-addr 127.0.0.1:20001 --rp-secret-id-prefix oprf/rp/n1 --environment dev --wallet-private-key-secret-id oprf/eth/n1 --key-gen-zkey-path ./circom/main/key-gen/OPRFKeyGen.13.arks.zkey --key-gen-witness-graph-path ./circom/main/key-gen/OPRFKeyGenGraph.13.bin  > logs/key-gen1.log 2>&1 &
     pid1=$!
     echo "started key-gen1 with PID $pid1"
     # anvil wallet 9
-    RUST_LOG="taceo_oprf_key_gen=trace,warn" ./target/release/oprf-key-gen --bind-addr 127.0.0.1:20002 --rp-secret-id-prefix oprf/rp/n2 --environment dev --wallet-private-key-secret-id oprf/eth/n2 --key-gen-zkey-path ./circom/main/key-gen/OPRFKeyGen.13.arks.zkey --key-gen-witness-graph-path ./circom/main/key-gen/OPRFKeyGenGraph.13.bin --confirmations-for-transaction 1 > logs/key-gen2.log 2>&1  &
+    RUST_LOG="taceo_oprf_key_gen=trace,warn" cargo run --release --bin oprf-key-gen -- --bind-addr 127.0.0.1:20002 --rp-secret-id-prefix oprf/rp/n2 --environment dev --wallet-private-key-secret-id oprf/eth/n2 --key-gen-zkey-path ./circom/main/key-gen/OPRFKeyGen.13.arks.zkey --key-gen-witness-graph-path ./circom/main/key-gen/OPRFKeyGenGraph.13.bin  > logs/key-gen2.log 2>&1  &
     pid2=$!
     echo "started key-gen2 with PID $pid2"
     trap "kill $pid0 $pid1 $pid2" SIGINT SIGTERM
     wait $pid0 $pid1 $pid2
 
-[group('local-setup')]
+[private]
 run-nodes:
     #!/usr/bin/env bash
-    mkdir -p logs
-    cargo build -p taceo-oprf-service-example --release
     # anvil wallet 7
-    RUST_LOG="taceo_oprf_service=trace,taceo_oprf_service_example=trace,oprf_service_example=trace,warn" ./target/release/oprf-service-example --bind-addr 127.0.0.1:10000 --rp-secret-id-prefix oprf/rp/n0 --environment dev --wallet-address 0x14dC79964da2C08b23698B3D3cc7Ca32193d9955 --version-req ">=0.0.0" > logs/node0.log 2>&1 &
+    RUST_LOG="taceo_oprf_service=trace,taceo_oprf_service_example=trace,oprf_service_example=trace,warn" cargo run --release --example oprf-service-example -- --bind-addr 127.0.0.1:10000 --rp-secret-id-prefix oprf/rp/n0 --environment dev --wallet-address 0x14dC79964da2C08b23698B3D3cc7Ca32193d9955 --version-req ">=0.0.0" > logs/node0.log 2>&1 &
     pid0=$!
     echo "started node0 with PID $pid0"
     # anvil wallet 8
-    RUST_LOG="taceo_oprf_service=trace,taceo_oprf_service_example=trace,oprf_service_example=trace,warn" ./target/release/oprf-service-example --bind-addr 127.0.0.1:10001 --rp-secret-id-prefix oprf/rp/n1 --environment dev --wallet-address 0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f --version-req ">=0.0.0" > logs/node1.log 2>&1 &
+    RUST_LOG="taceo_oprf_service=trace,taceo_oprf_service_example=trace,oprf_service_example=trace,warn" cargo run --release --example oprf-service-example -- --bind-addr 127.0.0.1:10001 --rp-secret-id-prefix oprf/rp/n1 --environment dev --wallet-address 0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f --version-req ">=0.0.0" > logs/node1.log 2>&1 &
     pid1=$!
     echo "started node1 with PID $pid1"
     # anvil wallet 9
-    RUST_LOG="taceo_oprf_service=trace,taceo_oprf_service_example=trace,oprf_service_example=trace,warn" ./target/release/oprf-service-example --bind-addr 127.0.0.1:10002 --rp-secret-id-prefix oprf/rp/n2 --environment dev --wallet-address 0xa0Ee7A142d267C1f36714E4a8F75612F20a79720 --version-req ">=0.0.0" > logs/node2.log 2>&1  &
+    RUST_LOG="taceo_oprf_service=trace,taceo_oprf_service_example=trace,oprf_service_example=trace,warn" cargo run --release --example oprf-service-example -- --bind-addr 127.0.0.1:10002 --rp-secret-id-prefix oprf/rp/n2 --environment dev --wallet-address 0xa0Ee7A142d267C1f36714E4a8F75612F20a79720 --version-req ">=0.0.0" > logs/node2.log 2>&1  &
     pid2=$!
     echo "started node2 with PID $pid2"
     trap "kill $pid0 $pid1 $pid2" SIGINT SIGTERM
     wait $pid0 $pid1 $pid2
 
-[group('local-setup')]
-run-setup:
-    #!/usr/bin/env bash
-    mkdir -p logs
-    echo "starting localstack and anvil"
-    docker compose -f ./oprf-service-example/deploy/docker-compose.yml up -d localstack anvil
-    sleep 1
-    echo "preparing localstack"
-    just prepare-localstack-secrets
-    echo "starting OprfKeyRegistry contract.."
-    just deploy-oprf-key-registry-with-deps-anvil | tee logs/deploy_oprf_key_registry.log
-    oprf_key_registry=$(grep -oP 'OprfKeyRegistry proxy deployed to: \K0x[a-fA-F0-9]+' logs/deploy_oprf_key_registry.log)
-    echo "register oprf-nodes..."
-    OPRF_KEY_REGISTRY_PROXY=$oprf_key_registry just register-participants-anvil
-    echo "starting OPRF nodes..."
-    OPRF_NODE_OPRF_KEY_REGISTRY_CONTRACT=$oprf_key_registry just run-nodes &
-    echo "starting OPRF key-gen instances..."
-    OPRF_NODE_OPRF_KEY_REGISTRY_CONTRACT=$oprf_key_registry just run-key-gen-instances
-    echo "stopping containers..."
-    docker compose -f ./oprf-service-example/deploy/docker-compose.yml down
-
 [group('dev-client')]
 run-dev-client *args:
-    #!/usr/bin/env bash
-    cargo build -p taceo-oprf-dev-client-example --release
-    oprf_key_registry=$(grep -oP 'OprfKeyRegistry proxy deployed to: \K0x[a-fA-F0-9]+' logs/deploy_oprf_key_registry.log)
-    OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$oprf_key_registry ./target/release/oprf-dev-client-example {{ args }}
+    OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$(just load-key-registry) cargo run --release --example dev-client-example {{ args }}
 
 [working-directory('contracts')]
 show-contract-errors:

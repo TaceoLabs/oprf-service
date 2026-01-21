@@ -6334,10 +6334,18 @@ name = "taceo-oprf-dev-client"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "ark-ec",
+ "ark-ff 0.5.0",
  "clap",
  "eyre",
+ "humantime",
  "rand 0.8.5",
+ "rand_chacha 0.3.1",
+ "rustls 0.23.36",
+ "secrecy",
  "serde",
+ "taceo-ark-babyjubjub",
+ "taceo-nodes-observability",
  "taceo-oprf-client",
  "taceo-oprf-core",
  "taceo-oprf-test-utils",
@@ -6345,6 +6353,7 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+ "webpki-roots 1.0.5",
 ]
 
 [[package]]
@@ -6432,12 +6441,14 @@ dependencies = [
  "metrics",
  "parking_lot",
  "rand 0.8.5",
+ "rustls 0.23.36",
  "secrecy",
  "semver 1.0.27",
  "serde",
  "serde_json",
  "taceo-ark-babyjubjub",
  "taceo-nodes-common",
+ "taceo-nodes-observability",
  "taceo-oprf-client",
  "taceo-oprf-core",
  "taceo-oprf-types",

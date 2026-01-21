@@ -29,3 +29,14 @@ tokio = { workspace = true, features = [
 ] }
 tracing.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+ark-babyjubjub = { workspace = true }
+ark-ec.workspace = true
+ark-ff = { workspace = true }
+humantime.workspace = true
+nodes-observability = { workspace = true }
+rand_chacha = { workspace = true }
+rustls = { workspace = true }
+secrecy = { workspace = true }
+webpki-roots = { workspace = true }
