@@ -2,7 +2,8 @@ use crate::api::errors::Error;
 use crate::metrics::{
     METRICS_ID_NODE_OPRF_SUCCESS, METRICS_ID_NODE_PART_1_DURATION, METRICS_ID_NODE_PART_1_FINISH,
     METRICS_ID_NODE_PART_1_START, METRICS_ID_NODE_PART_2_DURATION, METRICS_ID_NODE_PART_2_FINISH,
-    METRICS_ID_NODE_PART_2_START, METRICS_ID_NODE_SESSIONS_TIMEOUT,
+    METRICS_ID_NODE_PART_2_START, METRICS_ID_NODE_REQUEST_VERIFY_DURATION,
+    METRICS_ID_NODE_SESSIONS_TIMEOUT,
 };
 use crate::services::open_sessions::OpenSessions;
 use crate::{OprfRequestAuthService, services::oprf_key_material_store::OprfKeyMaterialStore};
@@ -221,6 +222,7 @@ async fn partial_oprf<
     oprf_span.record("request_id", request_id.to_string());
 
     tracing::debug!("verifying request with auth service...");
+    let start_verify = Instant::now();
     req_auth_service
         .verify(&init_request)
         .await
@@ -228,6 +230,9 @@ async fn partial_oprf<
             tracing::debug!("Could not auth request: {err:?}");
             Error::Auth(err.to_string())
         })?;
+    let duration_verify = start_verify.elapsed();
+    ::metrics::histogram!(METRICS_ID_NODE_REQUEST_VERIFY_DURATION)
+        .record(duration_verify.as_secs_f64());
 
     // check that blinded query (B) is not the identity element
     if init_request.blinded_query.is_zero() {

@@ -12,6 +12,8 @@ pub const METRICS_ID_NODE_SESSIONS_OPEN: &str = "taceo.oprf.node.sessions.open";
 pub const METRICS_ID_NODE_SESSIONS_TIMEOUT: &str = "taceo.oprf.node.sessions.timeout";
 /// Metrics key for registered DLogSecrets.
 pub const METRICS_ID_NODE_OPRF_SECRETS: &str = "taceo.oprf.node.secrets";
+/// Metrics key for the duration of the OprfRequestAuth verification
+pub const METRICS_ID_NODE_REQUEST_VERIFY_DURATION: &str = "taceo.oprf.node.request_verify.duration";
 /// Metrics key for the duration of part one of the OPRF computation
 pub const METRICS_ID_NODE_PART_1_DURATION: &str = "taceo.oprf.node.part_1.duration";
 /// Metrics key for the duration of part two of the OPRF computation
@@ -51,6 +53,12 @@ pub fn describe_metrics() {
         METRICS_ID_NODE_OPRF_SECRETS,
         metrics::Unit::Count,
         "Number of secrets stored"
+    );
+
+    metrics::describe_histogram!(
+        METRICS_ID_NODE_REQUEST_VERIFY_DURATION,
+        metrics::Unit::Seconds,
+        "Duration of the OprfRequestAuth verification"
     );
 
     metrics::describe_histogram!(
