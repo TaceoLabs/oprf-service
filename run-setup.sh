@@ -9,6 +9,8 @@ keygen_pids=()
 nodes_pids=()
 DEPLOYED_ADDRESS=""
 
+RUN_MODE="${1:-sleep}"  # default to 'sleep' if no argument provided
+
 create_secret() {
     local name="$1"
     local value="$2"
@@ -39,7 +41,7 @@ run_deploy() {
     forge script OprfKeyRegistryWithDeps.s.sol --broadcast --fork-url http://127.0.0.1:8545 -vvvvv --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80) \
     2>&1 | tee logs/deploy_oprf_key_registry.log
 
-    DEPLOYED_ADDRESS=$(grep -oP 'OprfKeyRegistry deployed to: \K0x[a-fA-F0-9]+' logs/deploy_oprf_key_registry.log)
+    DEPLOYED_ADDRESS=$(grep -oP 'OprfKeyRegistry proxy deployed to: \K0x[a-fA-F0-9]+' logs/deploy_oprf_key_registry.log)
     echo "Deployed to $DEPLOYED_ADDRESS"
 
     # register participants
@@ -48,8 +50,10 @@ run_deploy() {
     OPRF_KEY_REGISTRY_PROXY=$DEPLOYED_ADDRESS \
     forge script RegisterParticipants.s.sol --broadcast --fork-url http://127.0.0.1:8545 -vvvvv --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80)
 
-    # Start keygen and service nodes
+    echo "staring keygen"
     start_keygen "$DEPLOYED_ADDRESS"
+
+    echo "staring nodes"
     start_nodes "$DEPLOYED_ADDRESS"
 
     # Wait for all nodes to be healthy
@@ -108,6 +112,7 @@ start_keygen() {
             --key-gen-zkey-path ./circom/main/key-gen/OPRFKeyGen.13.arks.zkey \
             --key-gen-witness-graph-path ./circom/main/key-gen/OPRFKeyGenGraph.13.bin \
             --oprf-key-registry-contract $oprf_key_registry \
+            --confirmations-for-transaction 1 \
             > logs/key-gen$i.log 2>&1 &
         keygen_pids+=($!)
         echo "started key-gen$i with PID ${keygen_pids[$i]}"
@@ -165,15 +170,17 @@ main() {
     # Deploy everything
     run_deploy
 
-    echo "All nodes started and healthy. Running further commands..."
-
-    # Example follow-up commands
-    OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$DEPLOYED_ADDRESS \
-        cargo run --release --example dev-client-example reshare-test
-    OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$DEPLOYED_ADDRESS \
-        cargo run --release --example dev-client-example stress-test
-
-    echo "All test succeeded"
+    if [[ "$RUN_MODE" == "e2e-test" ]]; then
+        echo "Running dev-client tests..."
+        OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$DEPLOYED_ADDRESS \
+            cargo run --release --example dev-client-example reshare-test
+        OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$DEPLOYED_ADDRESS \
+            cargo run --release --example dev-client-example stress-test
+        echo "Dev-client tests completed successfully"
+    else
+        echo "No dev-client tests requested, entering sleep mode. Press Ctrl+C to stop..."
+        while true; do sleep 3600; done
+    fi
 }
 
 main "$@"

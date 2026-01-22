@@ -29,6 +29,7 @@ askama = { version = "0.15", optional = true }
 async-trait = { workspace = true }
 clap = { workspace = true, optional = true }
 eyre.workspace = true
+futures = { workspace = true }
 groth16-material = { workspace = true, optional = true }
 groth16-sol = { workspace = true, optional = true }
 itertools.workspace = true
@@ -50,11 +51,13 @@ tokio = { workspace = true, features = [
   "time",
   "tokio-macros",
 ] }
+tokio-util = { workspace = true, optional = true }
 tracing.workspace = true
 
 [features]
 default = ["deploy-anvil"]
-deploy-anvil = ["dep:serde_json"]
+ci = []
+deploy-anvil = ["dep:serde_json", "dep:tokio-util"]
 generate-test-transcript = [
   "dep:ark-bn254",
   "dep:askama",

@@ -47,7 +47,7 @@ pub async fn services_health_check(
     Ok(())
 }
 
-async fn load_oprf_public_key(oprf_key_url: String, epoch: ShareEpoch) -> OprfPublicKey {
+pub async fn load_oprf_public_key(oprf_key_url: String, epoch: ShareEpoch) -> OprfPublicKey {
     loop {
         if let Ok(response) = reqwest::get(&oprf_key_url)
             .await
@@ -87,7 +87,7 @@ pub async fn oprf_public_key_from_services(
         Err(_) => eyre::bail!("couldn't load OPRF material within time"),
     }
 }
-async fn oprf_public_key_not_known_check(health_url: String) {
+pub async fn oprf_public_key_not_known_check(health_url: String) {
     loop {
         if let Err(err) = reqwest::get(&health_url)
             .await

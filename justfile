@@ -21,21 +21,18 @@ prepare-localstack-secrets:
       --secret-string '0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6'
 
 [private]
-run-setup-inner:
-    just prepare-localstack-secrets
-    just deploy-oprf-key-registry-with-deps-anvil | tee logs/deploy_oprf_key_registry.log
-    OPRF_KEY_REGISTRY_PROXY=$(just load-key-registry) just register-participants-anvil
-    OPRF_NODE_OPRF_KEY_REGISTRY_CONTRACT=$(just load-key-registry) just run-nodes &
-    OPRF_NODE_OPRF_KEY_REGISTRY_CONTRACT=$(just load-key-registry) just run-key-gen-instances
-
-[private]
 [working-directory('logs')]
 load-key-registry:
     grep -oP 'OprfKeyRegistry deployed to: \K0x[a-fA-F0-9]+' deploy_oprf_key_registry.log
 
 [group('build')]
+[working-directory('contracts')]
 export-contract-abi:
-    cd contracts && forge build --silent && jq '.abi' out/OprfKeyRegistry.sol/OprfKeyRegistry.json > ../oprf-types/OprfKeyRegistry.json
+    forge build --silent && jq '.abi' out/OprfKeyRegistry.sol/OprfKeyRegistry.json > ../oprf-types/OprfKeyRegistry.json
+    cp out/VerifierKeyGen13.sol/Verifier.json ../oprf-test-utils/contracts/Verifier.13.json
+    cp out/VerifierKeyGen25.sol/Verifier.json ../oprf-test-utils/contracts/Verifier.25.json
+    cp out/TestOprfKeyRegistry.sol/TestOprfKeyRegistry.json ../oprf-test-utils/contracts
+    cp out/ERC1967Proxy.sol/ERC1967Proxy.json ../oprf-test-utils/contracts
 
 [group('build')]
 [working-directory('circom')]
@@ -117,15 +114,7 @@ build-key-gen-graph degree-parties:
     cd ../../../contracts && forge fmt
 
 [group('test')]
-unit-tests:
-    cargo test --release --all-features --lib
-
-[group('test')]
-integration-tests:
-    cargo test --release --package taceo-oprf-test
-
-[group('test')]
-all-rust-tests:
+rust-tests:
     cargo test --release --workspace --all-features
 
 [group('test')]
@@ -138,10 +127,10 @@ contract-tests:
 
 [group('test')]
 e2e-tests:
-    @bash e2e-test.sh || { echo -e "\033[1;41m===== TEST FAILED =====\033[0m" ; exit 1; }
+    @bash run-setup.sh e2e-test || { echo -e "\033[1;41m===== TEST FAILED =====\033[0m" ; exit 1; }
 
 [group('test')]
-all-tests: all-rust-tests circom-tests contract-tests e2e-tests
+all-tests: rust-tests circom-tests contract-tests e2e-tests
 
 [group('test')]
 generate-contract-kats:
@@ -150,12 +139,7 @@ generate-contract-kats:
 
 [group('local-setup')]
 run-setup:
-    mkdir -p logs
-    rm -rf logs/*
-    docker compose -f ./oprf-service/examples/deploy/docker-compose.yml up -d localstack anvil
-    sleep 1
-    - just run-setup-inner
-    docker compose -f ./oprf-service/examples/deploy/docker-compose.yml down
+    @bash run-setup.sh sleep
 
 [group('ci')]
 check-pr: lint all-tests
@@ -166,44 +150,6 @@ lint:
     cargo clippy --workspace --tests --examples --benches --bins -q -- -D warnings
     RUSTDOCFLAGS='-D warnings' cargo doc --workspace -q --no-deps --document-private-items
     cd contracts && forge fmt
-
-[group('local-setup')]
-run-key-gen-instances:
-    #!/usr/bin/env bash
-    mkdir -p logs
-    cargo build -p taceo-oprf-key-gen --release
-    # anvil wallet 7
-    RUST_LOG="taceo_oprf_key_gen=trace,warn" cargo run --release --bin oprf-key-gen -- --bind-addr 127.0.0.1:20000 --rp-secret-id-prefix oprf/rp/n0 --environment dev --wallet-private-key-secret-id oprf/eth/n0 --key-gen-zkey-path ./circom/main/key-gen/OPRFKeyGen.13.arks.zkey --key-gen-witness-graph-path ./circom/main/key-gen/OPRFKeyGenGraph.13.bin  > logs/key-gen0.log 2>&1 &
-    pid0=$!
-    echo "started key-gen0 with PID $pid0"
-    # anvil wallet 8
-    RUST_LOG="taceo_oprf_key_gen=trace,warn" cargo run --release --bin oprf-key-gen -- --bind-addr 127.0.0.1:20001 --rp-secret-id-prefix oprf/rp/n1 --environment dev --wallet-private-key-secret-id oprf/eth/n1 --key-gen-zkey-path ./circom/main/key-gen/OPRFKeyGen.13.arks.zkey --key-gen-witness-graph-path ./circom/main/key-gen/OPRFKeyGenGraph.13.bin  > logs/key-gen1.log 2>&1 &
-    pid1=$!
-    echo "started key-gen1 with PID $pid1"
-    # anvil wallet 9
-    RUST_LOG="taceo_oprf_key_gen=trace,warn" cargo run --release --bin oprf-key-gen -- --bind-addr 127.0.0.1:20002 --rp-secret-id-prefix oprf/rp/n2 --environment dev --wallet-private-key-secret-id oprf/eth/n2 --key-gen-zkey-path ./circom/main/key-gen/OPRFKeyGen.13.arks.zkey --key-gen-witness-graph-path ./circom/main/key-gen/OPRFKeyGenGraph.13.bin  > logs/key-gen2.log 2>&1  &
-    pid2=$!
-    echo "started key-gen2 with PID $pid2"
-    trap "kill $pid0 $pid1 $pid2" SIGINT SIGTERM
-    wait $pid0 $pid1 $pid2
-
-[private]
-run-nodes:
-    #!/usr/bin/env bash
-    # anvil wallet 7
-    RUST_LOG="taceo_oprf_service=trace,taceo_oprf_service_example=trace,oprf_service_example=trace,warn" cargo run --release --example oprf-service-example -- --bind-addr 127.0.0.1:10000 --rp-secret-id-prefix oprf/rp/n0 --environment dev --wallet-address 0x14dC79964da2C08b23698B3D3cc7Ca32193d9955 --version-req ">=0.0.0" > logs/node0.log 2>&1 &
-    pid0=$!
-    echo "started node0 with PID $pid0"
-    # anvil wallet 8
-    RUST_LOG="taceo_oprf_service=trace,taceo_oprf_service_example=trace,oprf_service_example=trace,warn" cargo run --release --example oprf-service-example -- --bind-addr 127.0.0.1:10001 --rp-secret-id-prefix oprf/rp/n1 --environment dev --wallet-address 0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f --version-req ">=0.0.0" > logs/node1.log 2>&1 &
-    pid1=$!
-    echo "started node1 with PID $pid1"
-    # anvil wallet 9
-    RUST_LOG="taceo_oprf_service=trace,taceo_oprf_service_example=trace,oprf_service_example=trace,warn" cargo run --release --example oprf-service-example -- --bind-addr 127.0.0.1:10002 --rp-secret-id-prefix oprf/rp/n2 --environment dev --wallet-address 0xa0Ee7A142d267C1f36714E4a8F75612F20a79720 --version-req ">=0.0.0" > logs/node2.log 2>&1  &
-    pid2=$!
-    echo "started node2 with PID $pid2"
-    trap "kill $pid0 $pid1 $pid2" SIGINT SIGTERM
-    wait $pid0 $pid1 $pid2
 
 [group('dev-client')]
 run-dev-client *args:

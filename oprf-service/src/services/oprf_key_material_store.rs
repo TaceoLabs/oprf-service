@@ -47,7 +47,7 @@ pub struct OprfKeyMaterialStore(Arc<RwLock<HashMap<OprfKeyId, OprfKeyMaterial>>>
 
 impl OprfKeyMaterialStore {
     /// Creates a new storage instance with the provided initial shares.
-    pub(crate) fn new(inner: HashMap<OprfKeyId, OprfKeyMaterial>) -> Self {
+    pub fn new(inner: HashMap<OprfKeyId, OprfKeyMaterial>) -> Self {
         ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).set(inner.len() as f64);
         Self(Arc::new(RwLock::new(inner)))
     }

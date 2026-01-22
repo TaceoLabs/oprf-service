@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use axum::{http::StatusCode, response::IntoResponse};
-use oprf_types::api::v1::OprfRequest;
+use oprf_types::api::{OprfRequest, OprfRequestAuthenticator};
 use serde::{Deserialize, Serialize};
-use taceo_oprf_service::OprfRequestAuthenticator;
 use uuid::Uuid;
 
 #[derive(Clone, Serialize, Deserialize)]

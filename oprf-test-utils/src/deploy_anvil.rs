@@ -34,43 +34,50 @@ pub const OPRF_PEER_PRIVATE_KEY_4: &str =
     "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6";
 pub const OPRF_PEER_ADDRESS_4: Address = address!("0xa0Ee7A142d267C1f36714E4a8F75612F20a79720");
 
+pub const PEER_ADDRESSES: [Address; 5] = [
+    OPRF_PEER_ADDRESS_0,
+    OPRF_PEER_ADDRESS_1,
+    OPRF_PEER_ADDRESS_2,
+    OPRF_PEER_ADDRESS_3,
+    OPRF_PEER_ADDRESS_4,
+];
+
+pub const PEER_PRIVATE_KEYS: [&str; 5] = [
+    OPRF_PEER_PRIVATE_KEY_0,
+    OPRF_PEER_PRIVATE_KEY_1,
+    OPRF_PEER_PRIVATE_KEY_2,
+    OPRF_PEER_PRIVATE_KEY_3,
+    OPRF_PEER_PRIVATE_KEY_4,
+];
+
 sol!(
     #[allow(clippy::too_many_arguments)]
     #[sol(rpc, ignore_unlinked)]
     VerifierKeyGen13,
-    concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../contracts/out/VerifierKeyGen13.sol/Verifier.json"
-    )
+    concat!(env!("CARGO_MANIFEST_DIR"), "/contracts/Verifier.13.json")
 );
 
 sol!(
     #[allow(clippy::too_many_arguments)]
     #[sol(rpc, ignore_unlinked)]
     VerifierKeyGen25,
-    concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../contracts/out/VerifierKeyGen25.sol/Verifier.json"
-    )
+    concat!(env!("CARGO_MANIFEST_DIR"), "/contracts/Verifier.25.json")
 );
 
 sol!(
     #[allow(clippy::too_many_arguments)]
     #[sol(rpc, ignore_unlinked)]
-    OprfKeyRegistry,
+    TestOprfKeyRegistry,
     concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../contracts/out/OprfKeyRegistry.sol/OprfKeyRegistry.json"
+        "/contracts/TestOprfKeyRegistry.json"
     )
 );
 
 sol!(
     #[sol(rpc)]
     ERC1967Proxy,
-    concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json"
-    )
+    concat!(env!("CARGO_MANIFEST_DIR"), "/contracts/ERC1967Proxy.json")
 );
 
 async fn deploy_contract(
@@ -174,7 +181,7 @@ async fn deploy_oprf_key_registry(
     // Link BabyJubJub to OprfKeyRegistry
     let oprf_key_registry_json = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../contracts/out/OprfKeyRegistry.sol/OprfKeyRegistry.json"
+        "/../contracts/out/TestOprfKeyRegistry.sol/TestOprfKeyRegistry.json"
     ));
     let json_value: serde_json::Value = serde_json::from_str(oprf_key_registry_json)?;
     let mut bytecode_str = json_value["bytecode"]["object"]
@@ -204,11 +211,12 @@ async fn deploy_oprf_key_registry(
             .context("failed to deploy OprfKeyRegistry implementation")?;
 
     let init_data = Bytes::from(
-        OprfKeyRegistry::initializeCall {
+        TestOprfKeyRegistry::initializeCall {
             _keygenAdmin: admin,
             _keyGenVerifierAddress: key_gen_verifier,
             _threshold: threshold,
             _numPeers: num_peers,
+            _owner: admin,
         }
         .abi_encode(),
     );

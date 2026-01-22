@@ -1,8 +1,13 @@
-use std::{net::SocketAddr, process::ExitCode, sync::Arc, time::Duration};
+use std::{
+    net::SocketAddr,
+    process::ExitCode,
+    sync::{Arc, atomic::Ordering},
+    time::Duration,
+};
 
 use clap::Parser;
 use taceo_oprf_service::{
-    StartedServices,
+    OprfServiceBuilder, StartedServices,
     config::{Environment, OprfNodeConfig},
     secret_manager::{SecretManagerService, aws::AwsSecretManager},
 };
@@ -80,20 +85,22 @@ pub async fn start_service(
 ) -> eyre::Result<()> {
     tracing::info!("starting oprf-service with config: {config:#?}");
     let service_config = config.service_config;
-    let cancellation_token = nodes_common::spawn_shutdown_task(shutdown_signal);
+    let (cancellation_token, is_graceful_shutdown) =
+        nodes_common::spawn_shutdown_task(shutdown_signal);
 
     tracing::info!("init oprf request auth service..");
     let oprf_req_auth_service = Arc::new(ExampleOprfRequestAuthenticator);
 
     tracing::info!("init oprf service..");
-    let (oprf_service_router, key_event_watcher) = taceo_oprf_service::init(
+    let (oprf_service_router, key_event_watcher) = OprfServiceBuilder::init(
         service_config,
         secret_manager,
-        oprf_req_auth_service,
         StartedServices::default(),
         cancellation_token.clone(),
     )
-    .await?;
+    .await?
+    .module("/example", oprf_req_auth_service)
+    .build();
 
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
     let axum_cancel_token = cancellation_token.clone();
@@ -132,5 +139,9 @@ pub async fn start_service(
         Ok(_) => tracing::info!("successfully finished shutdown in time"),
         Err(_) => tracing::warn!("could not finish shutdown in time"),
     }
-    Ok(())
+    if is_graceful_shutdown.load(Ordering::Relaxed) {
+        Ok(())
+    } else {
+        eyre::bail!("Unexpected shutdown - check error logs")
+    }
 }
