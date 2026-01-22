@@ -46,6 +46,7 @@ pub use services::secret_manager;
 pub async fn start(
     config: OprfKeyGenConfig,
     secret_manager: SecretManagerService,
+    listener: tokio::net::TcpListener,
     shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> eyre::Result<()> {
     tracing::info!("starting oprf-key-gen with config: {config:#?}");
@@ -142,7 +143,6 @@ pub async fn start(
 
     let key_gen_router = api::routes(address, key_event_watcher_started_signal);
 
-    let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
     let axum_cancel_token = cancellation_token.clone();
     let server = tokio::spawn(async move {
         tracing::info!(

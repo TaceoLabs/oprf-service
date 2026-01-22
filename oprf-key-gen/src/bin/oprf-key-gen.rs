@@ -7,6 +7,7 @@
 use std::{process::ExitCode, sync::Arc};
 
 use clap::Parser;
+use eyre::Context;
 use taceo_oprf_key_gen::{
     config::{Environment, OprfKeyGenConfig},
     secret_manager::aws::AwsSecretManager,
@@ -40,9 +41,15 @@ async fn main() -> eyre::Result<ExitCode> {
         .await,
     );
 
+    tracing::info!("binding to {}", config.bind_addr);
+    let tcp_listener = tokio::net::TcpListener::bind(config.bind_addr)
+        .await
+        .context("while binding tcp-listener")?;
+
     let result = taceo_oprf_key_gen::start(
         config,
         secret_manager,
+        tcp_listener,
         nodes_common::default_shutdown_signal(),
     )
     .await;
