@@ -7,7 +7,10 @@
 //! From there, they can be fetched by the OPRF nodes that handle OPRF requests.
 //!
 //! For details on the OPRF protocol, see the [design document](https://github.com/TaceoLabs/nullifier-oracle-service/blob/491416de204dcad8d46ee1296d59b58b5be54ed9/docs/oprf.pdf).
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use crate::{
     config::OprfKeyGenConfig,
@@ -44,7 +47,8 @@ pub async fn start(
     shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> eyre::Result<()> {
     tracing::info!("starting oprf-key-gen with config: {config:#?}");
-    let cancellation_token = nodes_common::spawn_shutdown_task(shutdown_signal);
+    let (cancellation_token, is_graceful_shutdown) =
+        nodes_common::spawn_shutdown_task(shutdown_signal);
 
     tracing::info!("init oprf key-gen service..");
     tracing::info!("loading private from secret manager..");
@@ -171,5 +175,9 @@ pub async fn start(
         Err(_) => tracing::warn!("could not finish shutdown in time"),
     }
 
-    Ok(())
+    if is_graceful_shutdown.load(Ordering::Relaxed) {
+        Ok(())
+    } else {
+        eyre::bail!("Unexpected shutdown - check error logs")
+    }
 }

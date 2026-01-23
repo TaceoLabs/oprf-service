@@ -419,10 +419,9 @@ pub async fn start_node(
                 cancellation_token_axum.cancelled().await
             })
             .await;
-            if !cancellation_token.is_cancelled() {
-                eprintln!("service stopped unexpectedly: {res:?}");
-            } else {
-                println!("service with {id} stopped gracefully");
+            match res {
+                Ok(_) => println!("service with {id} stopped gracefully"),
+                Err(err) => eprintln!("service stopped unexpectedly: {err:?}"),
             }
         }
     });
@@ -472,10 +471,9 @@ pub async fn start_key_gen(
                 cancellation_token_axum.cancelled().await
             })
             .await;
-            if !cancellation_token.is_cancelled() {
-                eprintln!("key-gen stopped unexpectedly: {res:?}");
-            } else {
-                println!("key-gen with {id} stopped gracefully");
+            match res {
+                Ok(_) => println!("key-gen with {id} stopped gracefully"),
+                Err(err) => eprintln!("key-gen stopped unexpectedly: {err:?}"),
             }
         }
     });

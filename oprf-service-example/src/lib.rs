@@ -1,7 +1,7 @@
 // #![deny(missing_docs)]
 //! # TODO
 //! This example project shall help projects incorporate at TACEO:Oprf. Explain in detail what implementations need to do to build their flavor.
-use std::sync::Arc;
+use std::sync::{Arc, atomic::Ordering};
 
 use crate::{auth::ExampleOprfRequestAuthenticator, config::ExampleOprfNodeConfig};
 use oprf_service::{StartedServices, secret_manager::SecretManagerService};
@@ -16,7 +16,8 @@ pub async fn start(
 ) -> eyre::Result<()> {
     tracing::info!("starting oprf-service with config: {config:#?}");
     let service_config = config.service_config;
-    let cancellation_token = nodes_common::spawn_shutdown_task(shutdown_signal);
+    let (cancellation_token, is_graceful_shutdown) =
+        nodes_common::spawn_shutdown_task(shutdown_signal);
 
     tracing::info!("init oprf request auth service..");
     let oprf_req_auth_service = Arc::new(ExampleOprfRequestAuthenticator);
@@ -68,6 +69,9 @@ pub async fn start(
         Ok(_) => tracing::info!("successfully finished shutdown in time"),
         Err(_) => tracing::warn!("could not finish shutdown in time"),
     }
-
-    Ok(())
+    if is_graceful_shutdown.load(Ordering::Relaxed) {
+        Ok(())
+    } else {
+        eyre::bail!("Unexpected shutdown - check error logs")
+    }
 }
