@@ -212,6 +212,7 @@ async fn deploy_oprf_key_registry(
 
     let init_data = Bytes::from(
         OprfKeyRegistry::initializeCall {
+            _owner: admin,
             _keygenAdmin: admin,
             _keyGenVerifierAddress: key_gen_verifier,
             _threshold: threshold,
