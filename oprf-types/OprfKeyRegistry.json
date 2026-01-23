@@ -438,6 +438,11 @@
     "name": "initialize",
     "inputs": [
       {
+        "name": "_owner",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
         "name": "_keygenAdmin",
         "type": "address",
         "internalType": "address"
