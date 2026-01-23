@@ -794,7 +794,7 @@
       {
         "name": "partyId",
         "type": "uint16",
-        "indexed": false,
+        "indexed": true,
         "internalType": "uint16"
       },
       {

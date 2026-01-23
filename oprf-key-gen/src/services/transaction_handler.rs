@@ -9,10 +9,8 @@ use alloy::{
     contract::{CallBuilder, CallDecoder},
     eips::BlockNumberOrTag,
     network::{Network, ReceiptResponse as _},
-    primitives::Address,
+    primitives::{Address, B256},
     providers::{DynProvider, PendingTransactionError, Provider},
-    rpc::types::Filter,
-    sol_types::SolEvent,
 };
 use eyre::Context as _;
 use futures::StreamExt as _;
@@ -109,16 +107,13 @@ impl TransactionSignal {
 
 /// Service that handles transaction submitting, error handling and RPC failure.
 ///
-/// On startup, spawns a task that listens for the `KeyGenConfirmation` logs. The implementation will receive all confirmation events, also from the other nodes and from clones of the same instance (redundant nodes from same party). The events from other parties are simply ignored, whereas the events from the cloned instances will be recorded. These events are distinguished by a nonce that every instance sends with their transaction. The calling node will know whether a clone's contribution was registered or their own.
-///
-/// If the task records a [`TransactionIdentifier`] that is currently in the store and has the same nonce embedded it sends an `TransactionResult::Success` value to the waiting channel. If the nonce doesn't match, it sends `TransactionResult::NotByUs`.
+/// On startup, spawns a task that listens for the `KeyGenConfirmation` logs with a topic-filter set to the party ID of this node. For every transaction, the implementation creates a `oneshot` channel for the a calling party and stores the sender half. If the task records a [`TransactionIdentifier`] that is currently in the store, it signals through that through the channel.
 ///
 /// On every transaction, it will additionally spawn a dedicated `tokio::task`, that waits `max_wait_time` and then removes the transaction from the store, signaling a waiting task that we could not get the confirmation in time.
 #[derive(Clone)]
 pub(crate) struct TransactionHandler {
     max_wait_time: Duration,
     attempts: usize,
-    party_id: PartyId,
     store: Arc<Mutex<HashMap<TransactionIdentifier, oneshot::Sender<()>>>>,
     wallet_address: Address,
     provider: DynProvider,
@@ -144,17 +139,19 @@ impl TransactionHandler {
         wallet_address: Address,
         cancellation_token: CancellationToken,
     ) -> eyre::Result<(Self, JoinHandle<eyre::Result<()>>)> {
-        let filter = Filter::new()
-            .address(contract_address)
+        let sub = OprfKeyRegistry::new(contract_address, provider.clone())
+            .KeyGenConfirmation_filter()
+            .topic2(vec![B256::left_padding_from(
+                &party_id.into_inner().to_le_bytes(),
+            )])
             .from_block(BlockNumberOrTag::Latest)
-            .event_signature(OprfKeyRegistry::KeyGenConfirmation::SIGNATURE_HASH);
+            .subscribe()
+            .await?;
 
-        let sub = provider.subscribe_logs(&filter).await?;
         let mut stream = sub.into_stream();
         let transaction_handler = Self {
             max_wait_time,
             attempts,
-            party_id,
             store: Arc::new(Mutex::new(HashMap::new())),
             wallet_address,
             provider,
@@ -164,18 +161,15 @@ impl TransactionHandler {
             async move {
                 let _drop_guard = cancellation_token.drop_guard_ref();
                 loop {
-                    let log = tokio::select! {
+                    let confirmation = tokio::select! {
                         log = stream.next() => {
-                            log.ok_or_else(||eyre::eyre!("logs subscribe stream was closed"))?
+                            let (confirmation,_) = log.ok_or_else(||eyre::eyre!("logs subscribe stream was closed"))?.context("while decoding log")?;
+                            confirmation
                         }
                         _ = cancellation_token.cancelled() => {
                             break;
                         }
                     };
-                    let log = log
-                        .log_decode()
-                        .context("while decoding transaction-nonce event")?;
-                    let confirmation: OprfKeyRegistry::KeyGenConfirmation = log.inner.data;
                     tracing::trace!("got transaction nonce confirmation: {confirmation:?}");
                     transaction_handler.signal_recorded_nonce(confirmation.into());
                 }
@@ -184,7 +178,13 @@ impl TransactionHandler {
         });
         Ok((transaction_handler, handle))
     }
-    /// Attempts to send a transaction using the configured provider.
+    /// Attempts to send a transaction with configured provider.
+    ///
+    /// We wait for the receipt we get from our RPC. If we successfully get the receipt we check its status. If everything was successful we return with an `Ok`. If we get a receipt signaling a failure we try to do the same call once more, but without doing a transaction to get the potential revert data. This should only act as debug information and not be taken at face value.
+    ///
+    /// Now, if the RPC responds with a null response (which occurs quite often with e.g., Alchemy) we wait for a dedicated event emitted by the smart-contract that was created by the transaction. Apparently, when getting this null response error, the transaction might still have been successful, therefore we can't rely on the response from the RPC. In most cases, we still get the ordinary receipt with a success, so this is a fail safe. If this runs into a timeout, we try to redo the transaction a configured amount of times.
+    ///
+    /// If we could not send the transaction at all, we return with an error.
     ///
     /// Takes an `Fn` that produces a `CallBuilder`. This can be done e.g., with
     /// ```rust,ignore
@@ -198,36 +198,6 @@ impl TransactionHandler {
     ///     .await?;
     /// ```
     /// This method will then attempt to send the transaction via the provided RPC.
-    ///
-    /// ## Normal flow
-    /// 1. Send the transaction and wait for the transaction receipt from the RPC.
-    /// 2. If a receipt is returned:
-    ///    - If the receipt signals success, return `Ok`.
-    ///    - If the receipt signals failure, continue with failure handling.
-    ///
-    /// ## Failure handling
-    /// If the receipt indicates a failure, we wait for the `KeyGenConfirmation` event:
-    /// - Using the embedded nonce, we determine whether this node’s confirmation
-    ///   was still recorded, or whether the event originated from a redundant clone.
-    /// - If the confirmation shows that the transaction was effectively recorded,
-    ///   we treat the operation as successful.
-    ///
-    /// If this check fails, we retry the same call once more *without* sending a
-    /// transaction, in order to retrieve potential revert data. This result is
-    /// intended for debugging purposes only and must not be taken at face value.
-    ///
-    /// ## RPC null-response handling
-    /// In some cases (e.g., with Alchemy), the RPC may return a null response instead
-    /// of a receipt. Even in this case, the transaction may still have been executed
-    /// successfully.
-    /// - When this happens, we wait for the `KeyGenConfirmation` event emitted by the smart
-    ///   contract to confirm whether the transaction was processed.
-    /// - In most cases, a normal receipt with a success status is still received,
-    ///   so this serves purely as a fail-safe mechanism.
-    ///
-    /// ## Retries
-    /// If waiting for the confirmation event times out, we retry sending the
-    /// transaction up to a configured number of attempts.
     pub(crate) async fn attempt_transaction<P, D, N, F>(
         &self,
         transaction_identifier: TransactionIdentifier,
@@ -294,12 +264,11 @@ impl TransactionHandler {
     /// Tries to signal to a waiting task that we recorded the specified transaction confirmation. Does nothing if the transaction is not in store.
     fn signal_recorded_nonce(&self, confirmation: TransactionIdentifier) {
         // If not in store either nonce belongs to someone else or we ran into timeout
-        if confirmation.party_id == self.party_id
-            && let Some(tx) = self
-                .store
-                .lock()
-                .expect("Not poisoned")
-                .remove(&confirmation)
+        if let Some(tx) = self
+            .store
+            .lock()
+            .expect("Not poisoned")
+            .remove(&confirmation)
         {
             tracing::trace!(
                 "maybe someone waiting for confirmation from {}",
