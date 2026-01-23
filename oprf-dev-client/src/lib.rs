@@ -69,8 +69,7 @@ pub async fn send_init_requests<OprfRequestAuth: Clone + Serialize + Send + 'sta
             let init_start = Instant::now();
             let sessions = oprf_client::init_sessions(&services, threshold, req, connector).await?;
             let init_duration = init_start.elapsed();
-            let finish_request = oprf_client::generate_challenge_request(&sessions);
-            eyre::Ok((id, sessions, init_duration, finish_request))
+            eyre::Ok((id, sessions, init_duration))
         });
         if sequential {
             init_results.join_next().await;
@@ -86,7 +85,8 @@ pub async fn send_init_requests<OprfRequestAuth: Clone + Serialize + Send + 'sta
     let mut durations = Vec::with_capacity(n);
     for result in init_results {
         match result {
-            Ok((id, session, duration, finish_request)) => {
+            Ok((id, session, duration)) => {
+                let finish_request = oprf_client::generate_challenge_request(&session);
                 sessions.insert(id, session);
                 finish_requests.insert(id, finish_request);
                 durations.push(duration);
