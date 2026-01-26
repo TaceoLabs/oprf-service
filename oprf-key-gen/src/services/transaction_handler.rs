@@ -389,28 +389,30 @@ fn handle_success_receipt<R: ReceiptResponse>(
     receipt: R,
 ) {
     let epoch = transaction_identifier.epoch;
-    let gas_used = ParseUnits::from(receipt.gas_used())
+    let gas_used_gwei = ParseUnits::from(receipt.gas_used())
         .format_units(Unit::GWEI)
         .parse::<f64>()
         .expect("Is a float");
-    let cost = alloy::primitives::utils::format_ether(receipt.cost());
-    tracing::debug!("gas used: {gas_used} GWEI");
-    tracing::debug!("transaction cost: {cost} ETH");
+    let cost_eth = alloy::primitives::utils::format_ether(receipt.cost());
+    tracing::debug!("gas used: {gas_used_gwei} GWEI");
+    tracing::debug!("transaction cost: {cost_eth} ETH");
     // we did it!
     tracing::debug!("successfully sent transaction");
     match transaction_identifier.round {
         TransactionType::Round1 if epoch.is_initial_epoch() => {
-            metrics::histogram!(METRICS_ID_KEY_GEN_ROUND1_GAS_COST).record(gas_used)
+            metrics::histogram!(METRICS_ID_KEY_GEN_ROUND1_GAS_COST).record(gas_used_gwei)
         }
         TransactionType::Round1 => {
-            metrics::histogram!(METRICS_ID_RESHARE_ROUND1_GAS_COST).record(gas_used)
+            metrics::histogram!(METRICS_ID_RESHARE_ROUND1_GAS_COST).record(gas_used_gwei)
         }
-        TransactionType::Round2 => metrics::histogram!(METRICS_ID_ROUND2_GAS_COST).record(gas_used),
+        TransactionType::Round2 => {
+            metrics::histogram!(METRICS_ID_ROUND2_GAS_COST).record(gas_used_gwei)
+        }
         TransactionType::Round3 if epoch.is_initial_epoch() => {
-            metrics::histogram!(METRICS_ID_KEY_GEN_ROUND3_GAS_COST).record(gas_used)
+            metrics::histogram!(METRICS_ID_KEY_GEN_ROUND3_GAS_COST).record(gas_used_gwei)
         }
         TransactionType::Round3 => {
-            metrics::histogram!(METRICS_ID_RESHARE_ROUND3_GAS_COST).record(gas_used)
+            metrics::histogram!(METRICS_ID_RESHARE_ROUND3_GAS_COST).record(gas_used_gwei)
         }
     }
 }
