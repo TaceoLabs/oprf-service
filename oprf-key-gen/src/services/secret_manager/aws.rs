@@ -120,6 +120,7 @@ impl AwsSecretManager {
 
 #[async_trait]
 impl SecretManager for AwsSecretManager {
+    #[instrument(level = "info", skip_all)]
     async fn load_or_insert_wallet_private_key(&self) -> eyre::Result<PrivateKeySigner> {
         tracing::debug!(
             "checking if there exists a private key at: {}",
@@ -172,7 +173,7 @@ impl SecretManager for AwsSecretManager {
         Ok(private_key)
     }
 
-    #[instrument(level = "info", skip(self))]
+    #[instrument(level = "info", skip_all, fields(oprf_key_id, generated_epoch))]
     async fn get_previous_share(
         &self,
         oprf_key_id: OprfKeyId,
@@ -219,7 +220,7 @@ impl SecretManager for AwsSecretManager {
     /// Removes an OPRF secret from AWS Secrets Manager.
     ///
     /// Permanently deletes the secret without recovery period.
-    #[instrument(level = "info", skip(self))]
+    #[instrument(level = "info", skip_all, fields(oprf_key_id))]
     async fn remove_oprf_key_material(&self, oprf_key_id: OprfKeyId) -> eyre::Result<()> {
         let secret_id = to_key_secret_id(&self.oprf_secret_id_prefix, oprf_key_id);
         self.client
@@ -238,7 +239,7 @@ impl SecretManager for AwsSecretManager {
     /// If epoch is zero or if the secret-manager does not contain a secret with this [`OprfKeyId`], calls `create_secret`.
     ///
     /// Otherwise, loads the existing secret, moves the current epoch to previous and stores the new share as the current epoch.
-    #[instrument(level = "info", skip(self, share))]
+    #[instrument(level = "info", skip_all, fields(oprf_key_id, epoch))]
     async fn store_dlog_share(
         &self,
         oprf_key_id: OprfKeyId,
