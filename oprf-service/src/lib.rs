@@ -1,7 +1,7 @@
 #![deny(missing_docs)]
-//! This crate provides the core functionality of a node for TACEO:Oprf.
+//! This crate provides the core functionality of a node for TACEO:OPRF.
 //!
-//! When implementing a concrete instantiation of TACEO:Oprf, projects use this composable library to build their flavor of the distributed OPRF protocol. The main entry point for implementations is the [`OprfServiceBuilder`].
+//! When implementing a concrete instantiation of TACEO:OPRF, projects use this composable library to build their flavor of the distributed OPRF protocol. The main entry point for implementations is the [`OprfServiceBuilder`].
 //! It performs the necessary initialization of the OPRF node, including connecting to the Ethereum network, loading cryptographic secrets, and spawning background tasks to monitor key events.
 //! With the [`OprfServiceBuilder::module`] method, implementations can add multiple OPRF modules, each with its own authentication mechanism.
 //! Finally, the [`OprfServiceBuilder::build`] method returns an `axum::Router` that should be incorporated into a larger `axum` server that provides project-based functionality for authentication and a `JoinHandle` for the key event watcher task.
@@ -25,24 +25,22 @@
 //! For details on the OPRF protocol, see the [design document](https://github.com/TaceoLabs/nullifier-oracle-service/blob/491416de204dcad8d46ee1296d59b58b5be54ed9/docs/oprf.pdf).
 //!
 //! Clients will connect via web-sockets to the OPRF node. Axum supports both HTTP/1.1 and HTTP/2.0 web-socket connections, therefore we accept connections with `any`.
+//!
+//! If you want to enable HTTP/2.0, you either have to do it by hand or by calling `axum::serve`, which enabled HTTP/2.0 by default. Have a look at [Axum's HTTP2.0 example](https://github.com/tokio-rs/axum/blob/aeff16e91af6fa76efffdee8f3e5f464b458785b/examples/websockets-http2/src/main.rs#L57).
+
 use crate::metrics::METRICS_ID_NODE_SESSIONS_OPEN;
 use crate::services::key_event_watcher::KeyEventWatcherTaskArgs;
 use crate::services::open_sessions::OpenSessions;
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
-///
-/// If you want to enable HTTP/2.0, you either have to do it by hand or by calling `axum::serve`, which enabled HTTP/2.0 by default. Have a look at [Axum's HTTP2.0 example](https://github.com/tokio-rs/axum/blob/aeff16e91af6fa76efffdee8f3e5f464b458785b/examples/websockets-http2/src/main.rs#L57).
 use crate::{config::OprfNodeConfig, services::secret_manager::SecretManagerService};
 use alloy::providers::{Provider as _, ProviderBuilder, WsConnect};
-use async_trait::async_trait;
 use axum::Router;
-use core::fmt;
 use eyre::Context as _;
-use oprf_types::api::v1::OprfRequest;
+use oprf_types::api::v1::OprfRequestAuthService;
 use oprf_types::chain::OprfKeyRegistry;
 use oprf_types::crypto::PartyId;
 use secrecy::ExposeSecret as _;
 use serde::Deserialize;
-use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use tower_http::trace::TraceLayer;
 
@@ -54,63 +52,6 @@ pub(crate) mod services;
 pub use services::StartedServices;
 pub use services::oprf_key_material_store;
 pub use services::secret_manager;
-
-/// Trait defining the authentication mechanism for OPRF requests.
-///
-/// This trait enables the verification of OPRF requests to ensure they are
-/// properly authenticated before processing. It is designed to be implemented
-/// by authentication services that can validate the authenticity of incoming
-/// OPRF requests.
-#[async_trait]
-pub trait OprfRequestAuthenticator: Send + Sync {
-    /// Represents the authentication data type included in the OPRF request.
-    type RequestAuth;
-    /// The error type that may be returned by the [`OprfRequestAuthenticator`] on [`OprfRequestAuthenticator::verify`].
-    ///
-    /// This method shall implement `fmt::Display` because a human-readable message will be sent back to the user for troubleshooting.
-    ///
-    /// **Note:** it is very important that `fmt::Display` does not print any sensitive information. For debugging information, use `fmt::Debug`.
-    type RequestAuthError: Send + 'static + std::error::Error;
-
-    /// Verifies the authenticity of an OPRF request.
-    async fn verify(
-        &self,
-        req: &OprfRequest<Self::RequestAuth>,
-    ) -> Result<(), Self::RequestAuthError>;
-}
-
-/// An implementation of `OprfRequestAuthenticator` that performs no authentication.
-pub struct WithoutAuthentication;
-
-/// Error type for [`WithoutAuthentication`]. Will never be constructed during ordinary flow.
-#[derive(Debug, Clone, Copy)]
-pub struct WithoutAuthenticationError;
-
-impl fmt::Display for WithoutAuthenticationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("you failed the no-authentication authentication")
-    }
-}
-
-impl std::error::Error for WithoutAuthenticationError {}
-
-#[async_trait]
-impl OprfRequestAuthenticator for WithoutAuthentication {
-    type RequestAuth = ();
-    type RequestAuthError = WithoutAuthenticationError;
-
-    async fn verify(
-        &self,
-        _req: &OprfRequest<Self::RequestAuth>,
-    ) -> Result<(), Self::RequestAuthError> {
-        Ok(())
-    }
-}
-
-/// Dynamic trait object for `OprfRequestAuthenticator` service.
-pub type OprfRequestAuthService<RequestAuth, RequestAuthError> = Arc<
-    dyn OprfRequestAuthenticator<RequestAuth = RequestAuth, RequestAuthError = RequestAuthError>,
->;
 
 /// [`OprfServiceBuilder`] to initialize a `OprfService` with multiple [`OprfRequestAuthService`]s.
 pub struct OprfServiceBuilder {
@@ -277,11 +218,16 @@ impl OprfServiceBuilder {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, HashMap};
+    use std::{
+        collections::{BTreeMap, HashMap},
+        fmt,
+        sync::Arc,
+    };
 
     use alloy::uint;
     use ark_ff::UniformRand as _;
 
+    use async_trait::async_trait;
     use axum_extra::headers::Header as _;
     use axum_test::{TestServer, TestWebSocket};
     use http::StatusCode;
@@ -291,7 +237,7 @@ mod tests {
     };
     use oprf_types::{
         OprfKeyId, ShareEpoch,
-        api::v1::{OprfResponse, ShareIdentifier},
+        api::v1::{OprfRequest, OprfRequestAuthenticator, OprfResponse, ShareIdentifier},
         crypto::{OprfKeyMaterial, OprfPublicKey},
     };
     use semver::VersionReq;
@@ -303,6 +249,34 @@ mod tests {
     };
 
     use super::*;
+
+    /// An implementation of `OprfRequestAuthenticator` that performs no authentication.
+    pub struct WithoutAuthentication;
+
+    /// Error type for [`WithoutAuthentication`]. Will never be constructed during ordinary flow.
+    #[derive(Debug, Clone, Copy)]
+    pub struct WithoutAuthenticationError;
+
+    impl fmt::Display for WithoutAuthenticationError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("you failed the no-authentication authentication")
+        }
+    }
+
+    impl std::error::Error for WithoutAuthenticationError {}
+
+    #[async_trait]
+    impl OprfRequestAuthenticator for WithoutAuthentication {
+        type RequestAuth = ();
+        type RequestAuthError = WithoutAuthenticationError;
+
+        async fn verify(
+            &self,
+            _req: &OprfRequest<Self::RequestAuth>,
+        ) -> Result<(), Self::RequestAuthError> {
+            Ok(())
+        }
+    }
 
     struct TestOprfNode {
         websocket: TestWebSocket,

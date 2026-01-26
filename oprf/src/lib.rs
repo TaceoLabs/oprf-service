@@ -1,36 +1,36 @@
-#[cfg(feature = "oprf-client")]
+#[cfg(feature = "client")]
 pub mod client {
     pub use oprf_client::*;
 }
 
-#[cfg(feature = "nodes-common")]
-pub mod common {
-    pub use nodes_common::*;
-}
-
-#[cfg(feature = "oprf-core")]
 pub mod core {
     pub use oprf_core::*;
 }
 
-#[cfg(feature = "oprf-service")]
+#[cfg(feature = "dev-client")]
+pub mod dev_client {
+    pub use oprf_dev_client::*;
+}
+
+#[cfg(feature = "service")]
 pub mod service {
+    pub use nodes_common::*;
+    pub use nodes_observability;
     pub use oprf_service::*;
 }
 
-#[cfg(feature = "oprf-types")]
 pub mod types {
     pub use oprf_types::*;
 }
 
-#[cfg(feature = "eddsa-babyjubjub")]
-pub use eddsa_babyjubjub;
+pub mod ark_babyjubjub {
+    pub use taceo_ark_babyjubjub::*;
+}
 
-#[cfg(feature = "poseidon2")]
-pub use poseidon2;
+pub mod eddsa_babyjubjub {
+    pub use taceo_eddsa_babyjubjub::*;
+}
 
-#[cfg(feature = "nodes-observability")]
-pub use nodes_observability;
-
-#[cfg(feature = "async-trait")]
-pub use async_trait;
+pub mod poseidon2 {
+    pub use taceo_poseidon2::*;
+}

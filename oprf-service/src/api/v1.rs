@@ -6,7 +6,7 @@ use crate::metrics::{
     METRICS_ID_NODE_SESSIONS_TIMEOUT,
 };
 use crate::services::open_sessions::OpenSessions;
-use crate::{OprfRequestAuthService, services::oprf_key_material_store::OprfKeyMaterialStore};
+use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
 use axum::response::IntoResponse;
 use axum::{
     Router,
@@ -20,6 +20,7 @@ use axum_extra::headers::Header;
 use axum_extra::{TypedHeader, headers};
 use http::{HeaderValue, StatusCode};
 use oprf_core::ddlog_equality::shamir::DLogCommitmentsShamir;
+use oprf_types::api::v1::OprfRequestAuthService;
 use oprf_types::{
     api::v1::{OprfRequest, OprfResponse, oprf_error_codes},
     crypto::PartyId,

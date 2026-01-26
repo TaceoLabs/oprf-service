@@ -7,8 +7,9 @@
 //! identifiers used to reference keys and epochs. Types here wrap
 //! cryptographic proofs and points with Serde (de)serialization so
 //! they can be sent over the wire.
-use std::fmt;
+use std::{fmt, sync::Arc};
 
+use async_trait::async_trait;
 use oprf_core::ddlog_equality::shamir::PartialDLogCommitmentsShamir;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -73,3 +74,32 @@ impl<OprfReqestAuth> fmt::Debug for OprfRequest<OprfReqestAuth> {
             .finish()
     }
 }
+
+/// Trait defining the authentication mechanism for OPRF requests.
+///
+/// This trait enables the verification of OPRF requests to ensure they are
+/// properly authenticated before processing. It is designed to be implemented
+/// by authentication services that can validate the authenticity of incoming
+/// OPRF requests.
+#[async_trait]
+pub trait OprfRequestAuthenticator: Send + Sync {
+    /// Represents the authentication data type included in the OPRF request.
+    type RequestAuth;
+    /// The error type that may be returned by the [`OprfRequestAuthenticator`] on [`OprfRequestAuthenticator::verify`].
+    ///
+    /// This method shall implement `fmt::Display` because a human-readable message will be sent back to the user for troubleshooting.
+    ///
+    /// **Note:** it is very important that `fmt::Display` does not print any sensitive information. For debugging information, use `fmt::Debug`.
+    type RequestAuthError: Send + 'static + std::error::Error;
+
+    /// Verifies the authenticity of an OPRF request.
+    async fn verify(
+        &self,
+        req: &OprfRequest<Self::RequestAuth>,
+    ) -> Result<(), Self::RequestAuthError>;
+}
+
+/// Dynamic trait object for `OprfRequestAuthenticator` service.
+pub type OprfRequestAuthService<RequestAuth, RequestAuthError> = Arc<
+    dyn OprfRequestAuthenticator<RequestAuth = RequestAuth, RequestAuthError = RequestAuthError>,
+>;
