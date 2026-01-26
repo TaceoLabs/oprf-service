@@ -6263,16 +6263,11 @@ dependencies = [
 name = "taceo-oprf"
 version = "0.1.0"
 dependencies = [
- "taceo-ark-babyjubjub",
- "taceo-eddsa-babyjubjub",
- "taceo-nodes-common",
- "taceo-nodes-observability",
  "taceo-oprf-client",
  "taceo-oprf-core",
  "taceo-oprf-dev-client",
  "taceo-oprf-service",
  "taceo-oprf-types",
- "taceo-poseidon2",
 ]
 
 [[package]]

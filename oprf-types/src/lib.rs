@@ -21,7 +21,7 @@ use alloy::primitives::{U160, U256};
 use ark_ff::PrimeField;
 use serde::{Deserialize, Serialize};
 
-/// Re-export async-trait for convenience.
+pub use ark_babyjubjub;
 pub use async_trait;
 
 pub mod api;
