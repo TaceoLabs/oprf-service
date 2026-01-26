@@ -7,8 +7,10 @@ use rand::{CryptoRng, Rng};
 use tracing::instrument;
 
 #[instrument(level = "debug", skip_all)]
+#[expect(clippy::too_many_arguments)]
 pub async fn distributed_oprf<R: Rng + CryptoRng>(
     services: &[String],
+    module: &str,
     threshold: usize,
     oprf_key_id: OprfKeyId,
     share_epoch: ShareEpoch,
@@ -30,6 +32,7 @@ pub async fn distributed_oprf<R: Rng + CryptoRng>(
         oprf_public_key,
     } = oprf_client::distributed_oprf(
         services,
+        module,
         threshold,
         oprf_key_id,
         share_epoch,

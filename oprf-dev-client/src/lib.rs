@@ -48,8 +48,9 @@ fn avg(durations: &[Duration]) -> Duration {
 }
 
 pub async fn send_init_requests<OprfRequestAuth: Clone + Serialize + Send + 'static>(
+    nodes: &[String],
+    module: &str,
     threshold: usize,
-    services: &[String],
     connector: Connector,
     sequential: bool,
     requests: HashMap<Uuid, OprfRequest<OprfRequestAuth>>,
@@ -63,11 +64,13 @@ pub async fn send_init_requests<OprfRequestAuth: Clone + Serialize + Send + 'sta
     let start = Instant::now();
 
     for (id, req) in requests.into_iter() {
-        let services = services.to_vec();
+        let nodes = nodes.to_vec();
+        let module = module.to_owned();
         let connector = connector.clone();
         init_results.spawn(async move {
             let init_start = Instant::now();
-            let sessions = oprf_client::init_sessions(&services, threshold, req, connector).await?;
+            let sessions =
+                oprf_client::init_sessions(&nodes, &module, threshold, req, connector).await?;
             let init_duration = init_start.elapsed();
             eyre::Ok((id, sessions, init_duration))
         });

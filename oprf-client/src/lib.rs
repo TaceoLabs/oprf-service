@@ -100,6 +100,7 @@ pub struct VerifiableOprfOutput {
 #[expect(clippy::too_many_arguments)]
 pub async fn distributed_oprf<OprfRequestAuth>(
     services: &[String],
+    module: &str,
     threshold: usize,
     oprf_key_id: OprfKeyId,
     share_epoch: ShareEpoch,
@@ -142,7 +143,8 @@ where
     };
 
     tracing::debug!("initializing sessions at {} services", services.len());
-    let sessions = sessions::init_sessions(services, threshold, oprf_req, connector).await?;
+    let sessions =
+        sessions::init_sessions(services, module, threshold, oprf_req, connector).await?;
 
     let oprf_public_key = sessions
         .oprf_public_keys

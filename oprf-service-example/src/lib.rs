@@ -4,7 +4,7 @@
 use std::sync::{Arc, atomic::Ordering};
 
 use crate::{auth::ExampleOprfRequestAuthenticator, config::ExampleOprfNodeConfig};
-use oprf_service::{StartedServices, secret_manager::SecretManagerService};
+use oprf_service::{OprfServiceBuilder, StartedServices, secret_manager::SecretManagerService};
 
 pub(crate) mod auth;
 pub mod config;
@@ -19,18 +19,19 @@ pub async fn start(
     let (cancellation_token, is_graceful_shutdown) =
         nodes_common::spawn_shutdown_task(shutdown_signal);
 
-    tracing::info!("init oprf request auth service..");
-    let oprf_req_auth_service = Arc::new(ExampleOprfRequestAuthenticator);
+    tracing::info!("init oprf module..");
+    let oprf_module = Arc::new(ExampleOprfRequestAuthenticator);
 
     tracing::info!("init oprf service..");
-    let (oprf_service_router, key_event_watcher) = oprf_service::init(
+    let (oprf_service_router, key_event_watcher) = OprfServiceBuilder::init(
         service_config,
         secret_manager,
-        oprf_req_auth_service,
         StartedServices::default(),
         cancellation_token.clone(),
     )
-    .await?;
+    .await?
+    .module("/example", oprf_module)
+    .build();
 
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
     let axum_cancel_token = cancellation_token.clone();

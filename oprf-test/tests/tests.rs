@@ -42,6 +42,7 @@ async fn oprf_example_with_reshare_e2e_test_13() -> eyre::Result<()> {
     // The client example verifies the DLogEquality
     let _verifiable_oprf_output = oprf_client_example::distributed_oprf(
         setup.nodes.as_slice(),
+        "example",
         2,
         oprf_key_id,
         start_epoch,
@@ -69,6 +70,7 @@ async fn oprf_example_with_reshare_e2e_test_13() -> eyre::Result<()> {
     let (old_share, new_share) = tokio::join!(
         oprf_client_example::distributed_oprf(
             setup.nodes.as_slice(),
+            "example",
             2,
             oprf_key_id,
             start_epoch,
@@ -78,6 +80,7 @@ async fn oprf_example_with_reshare_e2e_test_13() -> eyre::Result<()> {
         ),
         oprf_client_example::distributed_oprf(
             setup.nodes.as_slice(),
+            "example",
             2,
             oprf_key_id,
             next_epoch,
@@ -118,6 +121,7 @@ async fn oprf_example_e2e_test_25() -> eyre::Result<()> {
 
     let _verifiable_oprf_output = oprf_client_example::distributed_oprf(
         setup.nodes.as_slice(),
+        "example",
         3,
         oprf_key_id,
         ShareEpoch::default(),
@@ -219,6 +223,7 @@ async fn oprf_example_reshare_with_consumer() -> eyre::Result<()> {
     // The client example verifies the DLogEquality
     let _verifiable_oprf_output = oprf_client_example::distributed_oprf(
         setup.nodes.as_slice(),
+        "example",
         2,
         oprf_key_id,
         start_epoch,
@@ -304,6 +309,7 @@ async fn oprf_example_reshare_with_consumer() -> eyre::Result<()> {
     let (old_share, new_share) = tokio::join!(
         oprf_client_example::distributed_oprf(
             setup.nodes.as_slice(),
+            "example",
             2,
             oprf_key_id,
             start_epoch,
@@ -313,6 +319,7 @@ async fn oprf_example_reshare_with_consumer() -> eyre::Result<()> {
         ),
         oprf_client_example::distributed_oprf(
             services_with_new_one.as_slice(),
+            "example",
             2,
             oprf_key_id,
             next_epoch,
