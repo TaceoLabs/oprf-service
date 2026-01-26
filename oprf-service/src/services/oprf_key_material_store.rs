@@ -13,7 +13,7 @@ use oprf_core::{
 };
 use oprf_types::{
     OprfKeyId, ShareEpoch,
-    api::{OprfPublicKeyWithEpoch, v1::ShareIdentifier},
+    api::{OprfPublicKeyWithEpoch, ShareIdentifier},
     crypto::{OprfKeyMaterial, OprfPublicKey, PartyId},
 };
 use parking_lot::RwLock;

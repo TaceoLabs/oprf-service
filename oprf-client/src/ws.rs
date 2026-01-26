@@ -30,13 +30,13 @@ pub(crate) struct WebSocketSession {
 impl WebSocketSession {
     /// Creates a new session at the provided service. Replaces `http` and `https` protocol prefixes with `ws` or `wss` respectively.
     ///
-    /// The service string should only contain how to connect to the host, the implementation will append `/api/v1/oprf`.
+    /// The service string should only contain how to connect to the host, the implementation will append `/api/oprf`.
     pub(crate) async fn new(
         service: String,
         module: String,
         connector: Connector,
     ) -> Result<Self, Error> {
-        let endpoint = format!("{service}/api/v1/{module}/oprf")
+        let endpoint = format!("{service}/api/{module}/oprf")
             .replace("https", "wss")
             .replace("http", "ws")
             .parse()?;

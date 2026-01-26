@@ -20,9 +20,9 @@ use axum_extra::headers::Header;
 use axum_extra::{TypedHeader, headers};
 use http::{HeaderValue, StatusCode};
 use oprf_core::ddlog_equality::shamir::DLogCommitmentsShamir;
-use oprf_types::api::v1::OprfRequestAuthService;
+use oprf_types::api::OprfRequestAuthService;
 use oprf_types::{
-    api::v1::{OprfRequest, OprfResponse, oprf_error_codes},
+    api::{OprfRequest, OprfResponse, oprf_error_codes},
     crypto::PartyId,
 };
 use semver::VersionReq;
@@ -74,7 +74,7 @@ impl Header for ProtocolVersion {
     }
 }
 
-pub(crate) struct V1Args<ReqAuth, ReqAuthError> {
+pub(crate) struct OprfArgs<ReqAuth, ReqAuthError> {
     pub(crate) party_id: PartyId,
     pub(crate) threshold: usize,
     pub(crate) oprf_material_store: OprfKeyMaterialStore,
@@ -359,9 +359,9 @@ pub fn routes<
     ReqAuth: for<'de> Deserialize<'de> + Send + 'static,
     ReqAuthError: Send + 'static + std::error::Error,
 >(
-    v1_args: V1Args<ReqAuth, ReqAuthError>,
+    args: OprfArgs<ReqAuth, ReqAuthError>,
 ) -> Router {
-    let V1Args {
+    let OprfArgs {
         party_id,
         threshold,
         oprf_material_store,
@@ -370,7 +370,7 @@ pub fn routes<
         version_req,
         max_message_size,
         max_connection_lifetime,
-    } = v1_args;
+    } = args;
     Router::new().route(
         "/oprf",
         any(move |websocket_upgrade, version_header| {

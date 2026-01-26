@@ -12,12 +12,12 @@
 //! To ensure a graceful shutdown, the hosting application should await the `JoinHandle` returned by the `OprfServiceBuilder::build` method after cancelling the `CancellationToken`.
 //! This ensures that all background tasks are properly terminated before the application exits.
 //!
-//! For OPRF modules, implementations must provide their project-specific authentication. For that, this library exposes the [`oprf_types::api::v1::OprfRequestAuthenticator`] trait. A call to `[OprfServiceBuilder::module]` expects an [`OprfRequestAuthService`], which is a dyn object of `OprfRequestAuthenticator`.
+//! For OPRF modules, implementations must provide their project-specific authentication. For that, this library exposes the [`oprf_types::api::OprfRequestAuthenticator`] trait. A call to `[OprfServiceBuilder::module]` expects an [`OprfRequestAuthService`], which is a dyn object of `OprfRequestAuthenticator`.
 //!
 //! The general workflow is as follows:
 //! 1) End-users initiate a session at $n$ nodes.
 //!    - the specified OPRF module of the OPRF service receives the request.
-//!    - the module router calls [`OprfRequestAuthenticator::verify`] of the provided authentication implementation. This can be anything from no verification to providing credentials.
+//!    - the module router calls [`oprf_types::api::OprfRequestAuthenticator::verify`] of the provided authentication implementation. This can be anything from no verification to providing credentials.
 //!    - the node creates a session identified by a UUID and sends a commitment back to the user.
 //! 2) As soon as end-users have opened $t$ sessions, they compute challenges for the answering nodes.
 //!    - the router answers the challenge and deletes all information containing the sessions.
@@ -28,6 +28,7 @@
 //!
 //! If you want to enable HTTP/2.0, you either have to do it by hand or by calling `axum::serve`, which enabled HTTP/2.0 by default. Have a look at [Axum's HTTP2.0 example](https://github.com/tokio-rs/axum/blob/aeff16e91af6fa76efffdee8f3e5f464b458785b/examples/websockets-http2/src/main.rs#L57).
 
+use crate::api::oprf::OprfArgs;
 use crate::metrics::METRICS_ID_NODE_SESSIONS_OPEN;
 use crate::services::key_event_watcher::KeyEventWatcherTaskArgs;
 use crate::services::open_sessions::OpenSessions;
@@ -36,7 +37,7 @@ use crate::{config::OprfNodeConfig, services::secret_manager::SecretManagerServi
 use alloy::providers::{Provider as _, ProviderBuilder, WsConnect};
 use axum::Router;
 use eyre::Context as _;
-use oprf_types::api::v1::OprfRequestAuthService;
+use oprf_types::api::OprfRequestAuthService;
 use oprf_types::chain::OprfKeyRegistry;
 use oprf_types::crypto::PartyId;
 use secrecy::ExposeSecret as _;
@@ -57,7 +58,7 @@ pub use services::secret_manager;
 pub struct OprfServiceBuilder {
     config: OprfNodeConfig,
     root: Router,
-    v1: Router,
+    api: Router,
     key_event_watcher: tokio::task::JoinHandle<Result<(), eyre::Error>>,
     open_sessions: OpenSessions,
     oprf_key_material_store: OprfKeyMaterialStore,
@@ -150,7 +151,7 @@ impl OprfServiceBuilder {
             config,
             open_sessions: OpenSessions::default(),
             root,
-            v1: Router::new(),
+            api: Router::new(),
             key_event_watcher,
             oprf_key_material_store,
             party_id,
@@ -165,7 +166,7 @@ impl OprfServiceBuilder {
     ///
     /// # Parameters
     ///
-    /// - `path`: The URL path where the OPRF module will be accessible (`/api/v1/{path}`).
+    /// - `path`: The URL path where the OPRF module will be accessible (`/api/{path}`).
     /// - `service`: An instance of `OprfRequestAuthService` that will handle authentication for this module.
     pub fn module<
         RequestAuth: for<'de> Deserialize<'de> + Send + 'static,
@@ -175,20 +176,20 @@ impl OprfServiceBuilder {
         path: &str,
         service: OprfRequestAuthService<RequestAuth, RequestAuthError>,
     ) -> Self {
-        let v1 = Router::new().merge(self.v1).nest(
+        let args = Router::new().merge(self.api).nest(
             path,
-            api::v1::routes(api::v1::V1Args {
+            api::oprf::routes(OprfArgs {
                 party_id: self.party_id,
                 threshold: self.threshold,
                 oprf_material_store: self.oprf_key_material_store.clone(),
-                open_sessions: self.open_sessions.clone(),
                 req_auth_service: service,
                 version_req: self.config.version_req.clone(),
                 max_message_size: self.config.ws_max_message_size,
                 max_connection_lifetime: self.config.session_lifetime,
+                open_sessions: self.open_sessions.clone(),
             }),
         );
-        self.v1 = v1;
+        self.api = args;
         self
     }
 
@@ -204,12 +205,12 @@ impl OprfServiceBuilder {
     ///
     /// - If no oprf modules were added
     pub fn build(self) -> (axum::Router, tokio::task::JoinHandle<eyre::Result<()>>) {
-        if !self.v1.has_routes() {
+        if !self.api.has_routes() {
             panic!("add at least 1 oprf module");
         }
         (
             self.root
-                .nest("/api/v1", self.v1)
+                .nest("/api", self.api)
                 .layer(TraceLayer::new_for_http()),
             self.key_event_watcher,
         )
@@ -231,20 +232,20 @@ mod tests {
     use axum_extra::headers::Header as _;
     use axum_test::{TestServer, TestWebSocket};
     use http::StatusCode;
-    use oprf_client::BlindingFactor;
-    use oprf_core::ddlog_equality::shamir::{
-        DLogCommitmentsShamir, DLogProofShareShamir, DLogShareShamir,
+    use oprf_core::{
+        ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir, DLogShareShamir},
+        oprf::BlindingFactor,
     };
     use oprf_types::{
         OprfKeyId, ShareEpoch,
-        api::v1::{OprfRequest, OprfRequestAuthenticator, OprfResponse, ShareIdentifier},
+        api::{OprfRequest, OprfRequestAuthenticator, OprfResponse, ShareIdentifier},
         crypto::{OprfKeyMaterial, OprfPublicKey},
     };
     use semver::VersionReq;
     use uuid::Uuid;
 
     use crate::{
-        api::v1::ProtocolVersion, oprf_key_material_store::OprfKeyMaterialStore,
+        api::oprf::ProtocolVersion, oprf_key_material_store::OprfKeyMaterialStore,
         services::open_sessions::OpenSessions,
     };
 
@@ -347,7 +348,7 @@ mod tests {
                 OprfPublicKey::new(ark_babyjubjub::EdwardsAffine::default()),
             ),
         )]));
-        let router = api::v1::routes(api::v1::V1Args {
+        let router = api::oprf::routes(api::oprf::OprfArgs {
             party_id: PartyId(0),
             threshold: 2,
             oprf_material_store,

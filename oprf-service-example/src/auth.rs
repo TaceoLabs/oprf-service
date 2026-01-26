@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use axum::{http::StatusCode, response::IntoResponse};
-use oprf_types::api::v1::{OprfRequest, OprfRequestAuthenticator};
+use oprf_types::api::{OprfRequest, OprfRequestAuthenticator};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

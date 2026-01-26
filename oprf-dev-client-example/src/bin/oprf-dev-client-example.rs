@@ -15,7 +15,7 @@ use oprf_dev_client::{Command, StressTestCommand};
 use oprf_test_utils::health_checks;
 use oprf_types::{
     OprfKeyId, ShareEpoch,
-    api::v1::{OprfRequest, ShareIdentifier},
+    api::{OprfRequest, ShareIdentifier},
     crypto::OprfPublicKey,
 };
 use rand::SeedableRng as _;

@@ -8,8 +8,8 @@ use super::Error;
 use oprf_core::ddlog_equality::shamir::DLogCommitmentsShamir;
 use oprf_core::ddlog_equality::shamir::DLogProofShareShamir;
 use oprf_core::ddlog_equality::shamir::PartialDLogCommitmentsShamir;
-use oprf_types::api::v1::OprfRequest;
-use oprf_types::api::v1::OprfResponse;
+use oprf_types::api::OprfRequest;
+use oprf_types::api::OprfResponse;
 use oprf_types::crypto::OprfPublicKey;
 use oprf_types::crypto::PartyId;
 use serde::Serialize;
@@ -138,7 +138,7 @@ pub async fn finish_sessions(
     .await
 }
 
-/// Initializes new OPRF sessions by opening a web-socket at `/api/v1/{module}/oprf` on a list of nodes, collecting responses until the given `threshold` is met.
+/// Initializes new OPRF sessions by opening a web-socket at `/api/{module}/oprf` on a list of nodes, collecting responses until the given `threshold` is met.
 ///
 /// Nodes are queried concurrently. Errors from some services are logged and ignored, unless they prevent reaching the threshold.
 ///

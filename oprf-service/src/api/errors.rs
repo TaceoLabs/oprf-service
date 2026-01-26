@@ -2,7 +2,7 @@
 
 use crate::services::oprf_key_material_store::OprfKeyMaterialStoreError;
 use axum::extract::ws::{CloseFrame, close_code};
-use oprf_types::api::v1::oprf_error_codes;
+use oprf_types::api::oprf_error_codes;
 use uuid::Uuid;
 
 /// All errors that may occur during an OPRF request.

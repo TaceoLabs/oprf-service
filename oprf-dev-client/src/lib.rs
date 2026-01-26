@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 use oprf_client::{Connector, OprfSessions};
 use oprf_core::ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir};
 use oprf_test_utils::{health_checks, oprf_key_registry};
-use oprf_types::{OprfKeyId, ShareEpoch, api::v1::OprfRequest, crypto::OprfPublicKey};
+use oprf_types::{OprfKeyId, ShareEpoch, api::OprfRequest, crypto::OprfPublicKey};
 use serde::Serialize;
 use tokio::task::JoinSet;
 use uuid::Uuid;
