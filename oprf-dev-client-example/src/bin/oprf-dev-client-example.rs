@@ -9,8 +9,8 @@ use alloy::{
 use ark_ff::UniformRand as _;
 use clap::Parser;
 use eyre::Context as _;
-use oprf_client::{BlindingFactor, Connector};
-use oprf_core::oprf::BlindedOprfRequest;
+use oprf_client::Connector;
+use oprf_core::oprf::{BlindedOprfRequest, BlindingFactor};
 use oprf_dev_client::{Command, StressTestCommand};
 use oprf_test_utils::health_checks;
 use oprf_types::{

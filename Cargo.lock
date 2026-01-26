@@ -6304,6 +6304,7 @@ dependencies = [
  "rand 0.8.5",
  "taceo-ark-babyjubjub",
  "taceo-oprf-client",
+ "taceo-oprf-core",
  "taceo-oprf-types",
  "tracing",
 ]

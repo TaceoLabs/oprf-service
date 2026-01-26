@@ -15,6 +15,7 @@ ark-ec.workspace = true
 ark-ff = { workspace = true }
 eyre.workspace = true
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.3" }
+oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.3" }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.4" }
 rand.workspace = true
 tracing.workspace = true

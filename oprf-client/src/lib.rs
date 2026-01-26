@@ -6,7 +6,7 @@ use ark_ec::AffineRepr as _;
 use oprf_core::{
     ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir},
     dlog_equality::DLogEqualityProof,
-    oprf::{BlindedOprfRequest, BlindedOprfResponse},
+    oprf::{BlindedOprfRequest, BlindedOprfResponse, BlindingFactor},
 };
 use oprf_types::{
     OprfKeyId, ShareEpoch,
@@ -20,7 +20,7 @@ use uuid::Uuid;
 
 mod sessions;
 mod ws;
-pub use oprf_core::oprf::BlindingFactor;
+
 pub use sessions::OprfSessions;
 pub use sessions::finish_sessions;
 pub use sessions::init_sessions;

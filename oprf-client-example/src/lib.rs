@@ -1,7 +1,8 @@
 use ark_ec::AffineRepr as _;
 use ark_ff::PrimeField as _;
 use eyre::Context;
-use oprf_client::{BlindingFactor, Connector, VerifiableOprfOutput};
+use oprf_client::{Connector, VerifiableOprfOutput};
+use oprf_core::oprf::BlindingFactor;
 use oprf_types::{OprfKeyId, ShareEpoch};
 use rand::{CryptoRng, Rng};
 use tracing::instrument;
