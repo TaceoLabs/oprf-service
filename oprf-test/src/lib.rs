@@ -463,6 +463,8 @@ pub async fn start_key_gen(
         start_block: None,
         max_wait_time_transaction_confirmation: Duration::from_secs(30),
         max_transaction_attempts: 3,
+        max_gas_per_transaction: 8_000_000,
+        confirmations_for_transaction: 1,
     };
     tokio::spawn({
         let cancellation_token = cancellation_token.clone();

@@ -8,8 +8,11 @@ use alloy::{
     consensus::constants::ETH_TO_WEI,
     contract::{CallBuilder, CallDecoder},
     eips::BlockNumberOrTag,
-    network::{Network, ReceiptResponse as _},
-    primitives::{Address, B256},
+    network::{Network, ReceiptResponse},
+    primitives::{
+        Address, B256,
+        utils::{ParseUnits, Unit},
+    },
     providers::{DynProvider, PendingTransactionError, Provider},
 };
 use eyre::Context as _;
@@ -23,8 +26,11 @@ use tokio::{sync::oneshot, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
 use crate::metrics::{
-    METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK,
+    METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_KEY_GEN_ROUND1_GAS_COST,
+    METRICS_ID_KEY_GEN_ROUND3_GAS_COST, METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK,
     METRICS_ID_KEY_GEN_RPC_RETRY, METRICS_ID_KEY_GEN_WALLET_BALANCE,
+    METRICS_ID_RESHARE_ROUND1_GAS_COST, METRICS_ID_RESHARE_ROUND3_GAS_COST,
+    METRICS_ID_ROUND2_GAS_COST,
 };
 
 /// Indicates the transaction type. We need this to distinguish between events.
@@ -34,6 +40,19 @@ pub(crate) enum TransactionType {
     Round1 = 1,
     Round2 = 2,
     Round3 = 3,
+}
+
+impl TryFrom<u8> for TransactionType {
+    type Error = eyre::Report;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Self::Round1),
+            2 => Ok(Self::Round2),
+            3 => Ok(Self::Round3),
+            x => eyre::bail!("invalid transaction type: {x}"),
+        }
+    }
 }
 
 impl From<TransactionType> for u8 {
@@ -49,7 +68,7 @@ impl From<TransactionType> for u8 {
 pub(crate) struct TransactionIdentifier {
     oprf_key_id: OprfKeyId,
     party_id: PartyId,
-    round: u8,
+    round: TransactionType,
     epoch: ShareEpoch,
 }
 
@@ -63,7 +82,7 @@ impl TransactionIdentifier {
         Self {
             oprf_key_id,
             party_id,
-            round: round.into(),
+            round,
             epoch: ShareEpoch::default(),
         }
     }
@@ -78,20 +97,21 @@ impl TransactionIdentifier {
         Self {
             oprf_key_id,
             party_id,
-            round: round.into(),
+            round,
             epoch,
         }
     }
 }
 
-impl From<OprfKeyRegistry::KeyGenConfirmation> for TransactionIdentifier {
-    fn from(value: OprfKeyRegistry::KeyGenConfirmation) -> Self {
-        Self {
+impl TryFrom<OprfKeyRegistry::KeyGenConfirmation> for TransactionIdentifier {
+    type Error = eyre::Report;
+    fn try_from(value: OprfKeyRegistry::KeyGenConfirmation) -> eyre::Result<Self> {
+        Ok(Self {
             oprf_key_id: value.oprfKeyId.into(),
             party_id: value.partyId.into(),
-            round: value.round,
+            round: value.round.try_into()?,
             epoch: value.epoch.into(),
-        }
+        })
     }
 }
 
@@ -113,32 +133,45 @@ impl TransactionSignal {
 #[derive(Clone)]
 pub(crate) struct TransactionHandler {
     max_wait_time: Duration,
+    max_gas_per_transaction: u64,
+    confirmations_for_transaction: u64,
     attempts: usize,
     store: Arc<Mutex<HashMap<TransactionIdentifier, oneshot::Sender<()>>>>,
     wallet_address: Address,
     provider: DynProvider,
 }
 
+/// The arguments to start the [`TransactionHandler`].
+pub(crate) struct TransactionHandlerInitArgs {
+    pub(crate) max_wait_time: Duration,
+    pub(crate) max_gas_per_transaction: u64,
+    pub(crate) confirmations_for_transaction: u64,
+    pub(crate) attempts: usize,
+    pub(crate) party_id: PartyId,
+    pub(crate) contract_address: Address,
+    pub(crate) provider: DynProvider,
+    pub(crate) wallet_address: Address,
+    pub(crate) cancellation_token: CancellationToken,
+}
+
 impl TransactionHandler {
     /// Creates a new [`TransactionHandler`].
     ///
     /// Spawns a task that waits for the `KeyGenConfirmation` events emitted by the provided address. If the task encounters an error, will cancel via the cancellation token.
-    /// * `max_wait_time` max wait time for a confirmation event
-    /// * `attempts` max attempts we try to redo the transaction if we get a null response
-    /// * `party_id` the party id of this node
-    /// * `contract_address` the contract address that emits the events
-    /// * `provider` the provider for subscribing
-    /// * `wallet_address` the wallet address of this node
-    /// * `cancellation_token` token to stop the subscribe task and signaling if the subscribe task encountered an error
     pub(crate) async fn new(
-        max_wait_time: Duration,
-        attempts: usize,
-        party_id: PartyId,
-        contract_address: Address,
-        provider: DynProvider,
-        wallet_address: Address,
-        cancellation_token: CancellationToken,
+        args: TransactionHandlerInitArgs,
     ) -> eyre::Result<(Self, JoinHandle<eyre::Result<()>>)> {
+        let TransactionHandlerInitArgs {
+            max_wait_time,
+            max_gas_per_transaction,
+            confirmations_for_transaction,
+            attempts,
+            party_id,
+            contract_address,
+            provider,
+            wallet_address,
+            cancellation_token,
+        } = args;
         let sub = OprfKeyRegistry::new(contract_address, provider.clone())
             .KeyGenConfirmation_filter()
             .topic2(vec![B256::left_padding_from(
@@ -151,6 +184,8 @@ impl TransactionHandler {
         let mut stream = sub.into_stream();
         let transaction_handler = Self {
             max_wait_time,
+            max_gas_per_transaction,
+            confirmations_for_transaction,
             attempts,
             store: Arc::new(Mutex::new(HashMap::new())),
             wallet_address,
@@ -171,7 +206,12 @@ impl TransactionHandler {
                         }
                     };
                     tracing::trace!("got transaction nonce confirmation: {confirmation:?}");
-                    transaction_handler.signal_recorded_nonce(confirmation.into());
+                    match TransactionIdentifier::try_from(confirmation) {
+                        Ok(confirmation) => transaction_handler.signal_recorded_nonce(confirmation),
+                        Err(err) => {
+                            tracing::warn!("Could not parse transaction identifier: {err:?}")
+                        }
+                    }
                 }
                 eyre::Ok(())
             }
@@ -219,10 +259,11 @@ impl TransactionHandler {
             // start the timer for this transaction
             let transaction_nonce = self.register_transaction(transaction_identifier);
             let transaction_result = transaction()
-                .gas(10000000) // FIXME this is only for dummy smart contract
+                .gas(self.max_gas_per_transaction)
                 .send()
                 .await
                 .context("while broadcasting to network")?
+                .with_required_confirmations(self.confirmations_for_transaction)
                 .get_receipt()
                 .await;
             if let Ok(balance) = self.provider.get_balance(self.wallet_address).await {
@@ -236,7 +277,9 @@ impl TransactionHandler {
                 tracing::warn!("could not fetch current wallet balance");
             }
             match transaction_result {
-                Ok(receipt) => return check_receipt(transaction, receipt).await,
+                Ok(receipt) => {
+                    return check_receipt(transaction_identifier, transaction, receipt).await;
+                }
                 Err(PendingTransactionError::TransportError(
                     alloy::transports::RpcError::NullResp,
                 )) => {
@@ -305,7 +348,11 @@ impl TransactionHandler {
 }
 
 /// Helper function to get the revert data in case the transaction failed.
-async fn check_receipt<P, D, N, F>(transaction: F, receipt: N::ReceiptResponse) -> eyre::Result<()>
+async fn check_receipt<P, D, N, F>(
+    transaction_identifier: TransactionIdentifier,
+    transaction: F,
+    receipt: N::ReceiptResponse,
+) -> eyre::Result<()>
 where
     P: Provider<N>,
     D: CallDecoder + Unpin,
@@ -313,8 +360,7 @@ where
     F: Fn() -> CallBuilder<P, D, N>,
 {
     if receipt.status() {
-        // we did it!
-        tracing::debug!("successfully sent transaction");
+        handle_success_receipt(transaction_identifier, receipt);
         Ok(())
     } else {
         tracing::debug!("could not send transaction - do a call to get revert data");
@@ -334,6 +380,37 @@ where
                     );
                 }
             }
+        }
+    }
+}
+
+fn handle_success_receipt<R: ReceiptResponse>(
+    transaction_identifier: TransactionIdentifier,
+    receipt: R,
+) {
+    let epoch = transaction_identifier.epoch;
+    let gas_used = ParseUnits::from(receipt.gas_used())
+        .format_units(Unit::GWEI)
+        .parse::<f64>()
+        .expect("Is a float");
+    let cost = alloy::primitives::utils::format_ether(receipt.cost());
+    tracing::debug!("gas used: {gas_used} GWEI");
+    tracing::debug!("transaction cost: {cost} ETH");
+    // we did it!
+    tracing::debug!("successfully sent transaction");
+    match transaction_identifier.round {
+        TransactionType::Round1 if epoch.is_initial_epoch() => {
+            metrics::histogram!(METRICS_ID_KEY_GEN_ROUND1_GAS_COST).record(gas_used)
+        }
+        TransactionType::Round1 => {
+            metrics::histogram!(METRICS_ID_RESHARE_ROUND1_GAS_COST).record(gas_used)
+        }
+        TransactionType::Round2 => metrics::histogram!(METRICS_ID_ROUND2_GAS_COST).record(gas_used),
+        TransactionType::Round3 if epoch.is_initial_epoch() => {
+            metrics::histogram!(METRICS_ID_KEY_GEN_ROUND3_GAS_COST).record(gas_used)
+        }
+        TransactionType::Round3 => {
+            metrics::histogram!(METRICS_ID_RESHARE_ROUND3_GAS_COST).record(gas_used)
         }
     }
 }

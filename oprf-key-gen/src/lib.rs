@@ -16,8 +16,10 @@ use crate::{
     config::OprfKeyGenConfig,
     metrics::{METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_KEY_GEN_WALLET_BALANCE},
     services::{
-        key_event_watcher::KeyEventWatcherTaskConfig, secret_gen::DLogSecretGenService,
-        secret_manager::SecretManagerService, transaction_handler::TransactionHandler,
+        key_event_watcher::KeyEventWatcherTaskConfig,
+        secret_gen::DLogSecretGenService,
+        secret_manager::SecretManagerService,
+        transaction_handler::{TransactionHandler, TransactionHandlerInitArgs},
     },
 };
 use alloy::{
@@ -103,17 +105,20 @@ pub async fn start(
         .build_from_paths(config.key_gen_zkey_path, config.key_gen_witness_graph_path)?;
     let dlog_secret_gen_service = DLogSecretGenService::init(key_gen_material);
     tracing::info!("spawning transaction handler..");
-    let (transaction_handler, transaction_handler_handle) = TransactionHandler::new(
-        config.max_wait_time_transaction_confirmation,
-        config.max_transaction_attempts,
-        party_id,
-        config.oprf_key_registry_contract,
-        provider.clone(),
-        address,
-        cancellation_token.clone(),
-    )
-    .await
-    .context("while spawning transaction handler")?;
+    let (transaction_handler, transaction_handler_handle) =
+        TransactionHandler::new(TransactionHandlerInitArgs {
+            max_wait_time: config.max_wait_time_transaction_confirmation,
+            max_gas_per_transaction: config.max_gas_per_transaction,
+            confirmations_for_transaction: config.confirmations_for_transaction,
+            attempts: config.max_transaction_attempts,
+            party_id,
+            contract_address: config.oprf_key_registry_contract,
+            provider: provider.clone(),
+            wallet_address: address,
+            cancellation_token: cancellation_token.clone(),
+        })
+        .await
+        .context("while spawning transaction handler")?;
 
     let key_event_watcher_started_signal = Arc::new(AtomicBool::default());
     tracing::info!("spawning key event watcher..");

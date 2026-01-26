@@ -97,4 +97,24 @@ pub struct OprfKeyGenConfig {
     /// If not set, will start from the latest block.
     #[clap(long, env = "OPRF_NODE_START_BLOCK")]
     pub start_block: Option<u64>,
+
+    /// Maximum amount of gas a single transaction is allowed to consume.
+    /// This acts as a safety limit to prevent transactions from exceeding expected execution costs. The default value is set to approximately 2× the average gas used by a round-2 transaction, which is currently the most gas-intensive round.
+    #[clap(
+        long,
+        env = "OPRF_NODE_MAX_GAS_PER_TRANSACTION",
+        default_value = "8000000"
+    )]
+    pub max_gas_per_transaction: u64,
+
+    /// Number of block confirmations required before a transaction is
+    /// considered successful.
+    ///
+    /// Default value derived from (<https://help.coinbase.com/en/coinbase/getting-started/crypto-education/glossary/confirmations>).
+    #[clap(
+        long,
+        env = "OPRF_NODE_TRANSACTION_CONFIRMATIONS",
+        default_value = "14"
+    )]
+    pub confirmations_for_transaction: u64,
 }
