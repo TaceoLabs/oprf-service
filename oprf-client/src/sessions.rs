@@ -92,10 +92,11 @@ impl OprfSessions {
 #[instrument(level = "trace", skip(req, connector))]
 async fn init_session<Auth: Serialize>(
     service: String,
+    module: String,
     req: OprfRequest<Auth>,
     connector: Connector,
 ) -> Result<(WebSocketSession, OprfResponse), super::Error> {
-    let mut session = WebSocketSession::new(service, connector).await?;
+    let mut session = WebSocketSession::new(service, module, connector).await?;
     session.send(req).await?;
     let response = session.read::<OprfResponse>().await?;
     Ok((session, response))
@@ -137,7 +138,7 @@ pub async fn finish_sessions(
     .await
 }
 
-/// Initializes new OPRF sessions by opening a web-socket at `/api/v1/oprf` on a list of nodes, collecting responses until the given `threshold` is met.
+/// Initializes new OPRF sessions by opening a web-socket at `/api/v1/{module}/oprf` on a list of nodes, collecting responses until the given `threshold` is met.
 ///
 /// Nodes are queried concurrently. Errors from some services are logged and ignored, unless they prevent reaching the threshold.
 ///
@@ -145,6 +146,7 @@ pub async fn finish_sessions(
 #[instrument(level = "debug", skip_all)]
 pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
     oprf_services: &[String],
+    module: &str,
     threshold: usize,
     req: OprfRequest<OprfRequestAuth>,
     connector: Connector,
@@ -154,11 +156,14 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
     // We spawn a dedicated task so that the dangling web-socket connections can gracefully close when we have threshold amount of sessions and continue with the normal flow.
     tokio::task::spawn({
         let oprf_services = oprf_services.to_vec();
+        let module = module.to_owned();
         let mut open_sessions = 0;
         async move {
             let mut join_set = oprf_services
                 .into_iter()
-                .map(|service| init_session(service, req.clone(), connector.clone()))
+                .map(|service| {
+                    init_session(service, module.clone(), req.clone(), connector.clone())
+                })
                 .collect::<JoinSet<_>>();
             while let Some(session_handle) = join_set.join_next().await {
                 match session_handle.expect("Can join") {

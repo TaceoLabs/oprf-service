@@ -41,6 +41,10 @@ pub struct OprfDevClientConfig {
     #[clap(long, env = "OPRF_DEV_CLIENT_THRESHOLD", default_value = "2")]
     pub threshold: usize,
 
+    /// The OPRF module of the OPRF service to use
+    #[clap(long, env = "OPRF_DEV_CLIENT_MODULE", default_value = "example")]
+    pub module: String,
+
     /// The Address of the OprfKeyRegistry contract.
     #[clap(long, env = "OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT")]
     pub oprf_key_registry_contract: Address,
@@ -82,6 +86,7 @@ pub struct OprfDevClientConfig {
 
 async fn run_oprf(
     nodes: &[String],
+    module: &str,
     threshold: usize,
     oprf_key_id: OprfKeyId,
     share_epoch: ShareEpoch,
@@ -94,6 +99,7 @@ async fn run_oprf(
     // the client example internally checks the DLog equality
     oprf_client_example::distributed_oprf(
         nodes,
+        module,
         threshold,
         oprf_key_id,
         share_epoch,
@@ -132,6 +138,7 @@ fn prepare_oprf_stress_test_oprf_request(
 async fn stress_test(
     cmd: StressTestCommand,
     nodes: &[String],
+    module: &str,
     threshold: usize,
     oprf_key_id: OprfKeyId,
     oprf_public_key: OprfPublicKey,
@@ -149,8 +156,9 @@ async fn stress_test(
 
     tracing::info!("sending init requests..");
     let (sessions, finish_requests) = oprf_dev_client::send_init_requests(
-        threshold,
         nodes,
+        module,
+        threshold,
         connector,
         cmd.sequential,
         init_requests,
@@ -183,6 +191,7 @@ async fn stress_test(
 #[expect(clippy::too_many_arguments)]
 async fn reshare_test(
     nodes: &[String],
+    module: &str,
     threshold: usize,
     oprf_key_registry: Address,
     oprf_key_id: OprfKeyId,
@@ -195,6 +204,7 @@ async fn reshare_test(
     tracing::info!("running single OPRF");
     run_oprf(
         nodes,
+        module,
         threshold,
         oprf_key_id,
         share_epoch,
@@ -217,6 +227,7 @@ async fn reshare_test(
     tracing::info!("running OPRF with epoch 0 after 1st reshare");
     run_oprf(
         nodes,
+        module,
         threshold,
         oprf_key_id,
         share_epoch,
@@ -228,6 +239,7 @@ async fn reshare_test(
     tracing::info!("running OPRF with epoch 1 after 1st reshare");
     run_oprf(
         nodes,
+        module,
         threshold,
         oprf_key_id,
         share_epoch_1,
@@ -250,6 +262,7 @@ async fn reshare_test(
     tracing::info!("running OPRF with epoch 1 after 2nd reshare");
     run_oprf(
         nodes,
+        module,
         threshold,
         oprf_key_id,
         share_epoch_1,
@@ -261,6 +274,7 @@ async fn reshare_test(
     tracing::info!("running OPRF with epoch 2 after 2nd reshare");
     run_oprf(
         nodes,
+        module,
         threshold,
         oprf_key_id,
         share_epoch_2,
@@ -272,6 +286,7 @@ async fn reshare_test(
     tracing::info!("running OPRF with epoch 0 after 2nd reshare - should fail");
     let _ = run_oprf(
         nodes,
+        module,
         threshold,
         oprf_key_id,
         share_epoch,
@@ -348,6 +363,7 @@ async fn main() -> eyre::Result<()> {
             tracing::info!("running oprf-test");
             run_oprf(
                 &config.nodes,
+                &config.module,
                 config.threshold,
                 oprf_key_id,
                 share_epoch,
@@ -361,6 +377,7 @@ async fn main() -> eyre::Result<()> {
             stress_test(
                 cmd,
                 &config.nodes,
+                &config.module,
                 config.threshold,
                 oprf_key_id,
                 oprf_public_key,
@@ -373,6 +390,7 @@ async fn main() -> eyre::Result<()> {
             tracing::info!("running reshare-test");
             reshare_test(
                 &config.nodes,
+                &config.module,
                 config.threshold,
                 config.oprf_key_registry_contract,
                 oprf_key_id,
