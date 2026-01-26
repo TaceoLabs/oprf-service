@@ -12,7 +12,7 @@
 //! To ensure a graceful shutdown, the hosting application should await the `JoinHandle` returned by the `OprfServiceBuilder::build` method after cancelling the `CancellationToken`.
 //! This ensures that all background tasks are properly terminated before the application exits.
 //!
-//! For OPRF modules, implementations must provide their project-specific authentication. For that, this library exposes the [`OprfRequestAuthenticator`] trait. A call to `[OprfServiceBuilder::module]` expects an [`OprfRequestAuthService`], which is a dyn object of `OprfRequestAuthenticator`.
+//! For OPRF modules, implementations must provide their project-specific authentication. For that, this library exposes the [`oprf_types::api::v1::OprfRequestAuthenticator`] trait. A call to `[OprfServiceBuilder::module]` expects an [`OprfRequestAuthService`], which is a dyn object of `OprfRequestAuthenticator`.
 //!
 //! The general workflow is as follows:
 //! 1) End-users initiate a session at $n$ nodes.
