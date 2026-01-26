@@ -1,5 +1,5 @@
 #![deny(missing_docs)]
-//! This crate provides the core functionality of a node node for TACEO:Oprf.
+//! This crate provides the core functionality of a node for TACEO:Oprf.
 //!
 //! When implementing a concrete instantiation of TACEO:Oprf, projects use this composable library to build their flavor of the distributed OPRF protocol. The main entry point for implementations is the [`init`] method. It returns an `axum::Router` that should be incorporated into a larger `axum` server that provides project-based functionality for authentication.
 //!
@@ -7,7 +7,7 @@
 //!
 //! The general workflow is as follows:
 //! 1) End-users initiate a session at $n$ nodes.
-//!    - the router created by `init` receives the request
+//!    - the router created by `init` receives the request.
 //!    - the router calls [`OprfRequestAuthenticator::verify`] of the provided authentication implementation. This can be anything from no verification to providing credentials.
 //!    - the node creates a session identified by a UUID and sends a commitment back to the user.
 //! 2) As soon as end-users have opened $t$ sessions, they compute challenges for the answering nodes.
