@@ -158,7 +158,7 @@ async fn deploy_oprf_key_registry(
     // Deploy BabyJubJub library (no dependencies)
     let baby_jub_jub_json = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../contracts/out/BabyJubJub.sol/BabyJubJub.json"
+        "/contracts/BabyJubJub.json"
     ));
     let json_value: serde_json::Value = serde_json::from_str(baby_jub_jub_json)?;
     let bytecode_str = json_value["bytecode"]["object"]
@@ -181,7 +181,7 @@ async fn deploy_oprf_key_registry(
     // Link BabyJubJub to OprfKeyRegistry
     let oprf_key_registry_json = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../contracts/out/TestOprfKeyRegistry.sol/TestOprfKeyRegistry.json"
+        "/contracts/TestOprfKeyRegistry.json"
     ));
     let json_value: serde_json::Value = serde_json::from_str(oprf_key_registry_json)?;
     let mut bytecode_str = json_value["bytecode"]["object"]

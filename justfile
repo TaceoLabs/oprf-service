@@ -13,6 +13,7 @@ export-contract-abi:
     forge build --silent && jq '.abi' out/OprfKeyRegistry.sol/OprfKeyRegistry.json > ../oprf-types/OprfKeyRegistry.json
     cp out/VerifierKeyGen13.sol/Verifier.json ../oprf-test-utils/contracts/Verifier.13.json
     cp out/VerifierKeyGen25.sol/Verifier.json ../oprf-test-utils/contracts/Verifier.25.json
+    cp out/BabyJubJub.sol/BabyJubJub.json ../oprf-test-utils/contracts/BabyJubJub.json
     cp out/TestOprfKeyRegistry.sol/TestOprfKeyRegistry.json ../oprf-test-utils/contracts
     cp out/ERC1967Proxy.sol/ERC1967Proxy.json ../oprf-test-utils/contracts
 
