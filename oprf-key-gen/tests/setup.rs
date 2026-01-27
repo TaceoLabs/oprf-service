@@ -1,8 +1,14 @@
+use std::collections::BTreeMap;
 use std::{fmt, sync::Arc, time::Duration};
 
-use oprf_test_utils::{
-    PEER_PRIVATE_KEYS, TEST_TIMEOUT, TestSetup, health_checks,
-    test_secret_manager::TestSecretManager,
+use alloy::signers::local::PrivateKeySigner;
+use async_trait::async_trait;
+use oprf_core::ddlog_equality::shamir::DLogShareShamir;
+use oprf_test_utils::test_secret_manager::TestSecretManager;
+use oprf_test_utils::{PEER_PRIVATE_KEYS, TEST_TIMEOUT, TestSetup, health_checks};
+use oprf_types::{
+    OprfKeyId, ShareEpoch,
+    crypto::{OprfKeyMaterial, OprfPublicKey},
 };
 use rand::Rng;
 use taceo_oprf_key_gen::config::{Environment, OprfKeyGenConfig};
@@ -15,6 +21,9 @@ pub struct TestKeyGen {
     pub close_result: oneshot::Receiver<eyre::Result<()>>,
     pub _cancellation_token: CancellationToken,
 }
+
+// need a new type to implement the trait
+pub struct KeyGenTestSecretManager(pub Arc<TestSecretManager>);
 
 impl fmt::Debug for TestKeyGen {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -55,6 +64,7 @@ impl TestKeyGen {
         let child_token = cancellation_token.child_token();
         let port_range = rand::thread_rng().gen_range(10_000..20_000);
         let secret_manager = Arc::new(TestSecretManager::with_private_key(private_key));
+        let keygen_secret_manager = Arc::new(KeyGenTestSecretManager(Arc::clone(&secret_manager)));
         let mut offset = 0;
         // try 100 ports
         let (listener, bind_addr, url) = loop {
@@ -85,13 +95,14 @@ impl TestKeyGen {
         let (tx, rx) = oneshot::channel();
         tokio::task::spawn({
             let child_token = child_token.clone();
-            let secret_manager = secret_manager.clone();
             async move {
-                let result =
-                    taceo_oprf_key_gen::start(config, secret_manager, listener, async move {
-                        child_token.cancelled().await
-                    })
-                    .await;
+                let result = taceo_oprf_key_gen::start(
+                    config,
+                    keygen_secret_manager,
+                    listener,
+                    async move { child_token.cancelled().await },
+                )
+                .await;
 
                 let _ = tx.send(result);
             }
@@ -164,5 +175,71 @@ pub mod keygen_asserts {
         let oprf_public_key = keys.pop().expect("is there");
         assert!(keys.into_iter().all(|hay| hay == oprf_public_key));
         Ok(oprf_public_key)
+    }
+}
+
+#[async_trait]
+impl taceo_oprf_key_gen::secret_manager::SecretManager for KeyGenTestSecretManager {
+    async fn load_or_insert_wallet_private_key(&self) -> eyre::Result<PrivateKeySigner> {
+        Ok(self
+            .0
+            .wallet_private_key
+            .clone()
+            .expect("Cannot provide private key for this test run"))
+    }
+
+    async fn get_previous_share(
+        &self,
+        oprf_key_id: OprfKeyId,
+        generated_epoch: ShareEpoch,
+    ) -> eyre::Result<Option<DLogShareShamir>> {
+        let store = self.0.store.lock();
+        if let Some(oprf_key_material) = store.get(&oprf_key_id)
+            && let Some((stored_epoch, share)) = oprf_key_material.get_latest_share()
+        {
+            tracing::debug!("my latest epoch is: {stored_epoch}");
+            if stored_epoch.next() == generated_epoch {
+                Ok(Some(share))
+            } else {
+                tracing::debug!("we missed an epoch - returning None");
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn remove_oprf_key_material(&self, rp_id: OprfKeyId) -> eyre::Result<()> {
+        if self.0.store.lock().remove(&rp_id).is_none() {
+            panic!("trying to remove oprf_key_id that does not exist");
+        }
+        Ok(())
+    }
+
+    async fn store_dlog_share(
+        &self,
+        oprf_key_id: OprfKeyId,
+        public_key: OprfPublicKey,
+        epoch: ShareEpoch,
+        share: DLogShareShamir,
+    ) -> eyre::Result<()> {
+        let mut store = self.0.store.lock();
+        if epoch.is_initial_epoch() || !store.contains_key(&oprf_key_id) {
+            assert!(
+                store
+                    .insert(
+                        oprf_key_id,
+                        OprfKeyMaterial::new(BTreeMap::from([(epoch, share)]), public_key,)
+                    )
+                    .is_none(),
+                "On initial epoch, secret-manager must be empty"
+            )
+        } else {
+            store
+                .get_mut(&oprf_key_id)
+                .expect("Checked above")
+                .insert_share(epoch, share);
+        }
+        Ok(())
     }
 }

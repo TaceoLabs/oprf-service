@@ -80,7 +80,7 @@ async fn test_reshare_five_times_works_inner(
     for _ in 0..5 {
         epoch = epoch.next();
         setup.init_reshare(oprf_key_id).await?;
-        let oprf_public_key_reshare_now =
+        let oprf_public_key_reshare =
             keygen_asserts::all_have_key(key_gens, oprf_key_id, epoch).await?;
         assert_eq!(oprf_public_key_reshare, oprf_public_key_key_gen);
     }

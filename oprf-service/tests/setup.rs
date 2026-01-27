@@ -15,13 +15,14 @@ use oprf_types::{
         OprfPublicKeyWithEpoch, OprfRequest, OprfRequestAuthenticator, OprfResponse,
         ShareIdentifier,
     },
-    crypto::OprfPublicKey,
+    crypto::{OprfKeyMaterial, OprfPublicKey},
 };
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use taceo_oprf_service::{
     OprfServiceBuilder, StartedServices,
     config::{Environment, OprfNodeConfig},
+    oprf_key_material_store::OprfKeyMaterialStore,
 };
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -56,6 +57,9 @@ pub struct TestNode {
     pub server: Arc<TestServer>,
     pub _cancellation_token: CancellationToken,
 }
+
+// need a new type to implement the trait
+pub struct NodeTestSecretManager(pub Arc<TestSecretManager>);
 
 impl fmt::Debug for TestNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -98,7 +102,7 @@ impl TestNode {
 
         let (service, _) = OprfServiceBuilder::init(
             config,
-            secret_manager.clone(),
+            Arc::new(NodeTestSecretManager(Arc::clone(&secret_manager))),
             StartedServices::new(),
             child_token.clone(),
         )
@@ -239,5 +243,21 @@ impl TestNode {
             .await;
         websocket.send_json(&oprf_req).await;
         websocket.assert_receive_text(msg).await;
+    }
+}
+
+#[async_trait]
+impl taceo_oprf_service::secret_manager::SecretManager for NodeTestSecretManager {
+    async fn load_secrets(&self) -> eyre::Result<OprfKeyMaterialStore> {
+        Ok(OprfKeyMaterialStore::new(self.0.store.lock().clone()))
+    }
+
+    async fn get_oprf_key_material(&self, oprf_key_id: OprfKeyId) -> eyre::Result<OprfKeyMaterial> {
+        self.0
+            .store
+            .lock()
+            .get(&oprf_key_id)
+            .cloned()
+            .ok_or_else(|| eyre::eyre!("oprf_key_id {oprf_key_id} not found"))
     }
 }
