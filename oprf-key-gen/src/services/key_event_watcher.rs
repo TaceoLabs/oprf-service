@@ -47,6 +47,9 @@ use oprf_types::{
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
+#[cfg(test)]
+mod tests;
+
 type Result<T> = std::result::Result<T, TransactionError>;
 
 #[derive(Debug, thiserror::Error)]

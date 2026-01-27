@@ -17,11 +17,7 @@ use alloy::{
 };
 use eyre::Context as _;
 use futures::StreamExt as _;
-use oprf_types::{
-    OprfKeyId, ShareEpoch,
-    chain::OprfKeyRegistry::{self, OprfKeyRegistryErrors},
-    crypto::PartyId,
-};
+use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry, crypto::PartyId};
 use tokio::{sync::oneshot, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
