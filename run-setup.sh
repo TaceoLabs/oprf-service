@@ -57,8 +57,8 @@ run_deploy() {
     start_nodes "$DEPLOYED_ADDRESS"
 
     # Wait for all nodes to be healthy
-    wait_for_health 20000 3 "key-gen"
-    wait_for_health 10000 3 "oprf-service"
+    wait_for_health 20000 3 "key-gen" 300
+    wait_for_health 10000 3 "oprf-service" 300
 }
 
 # -------------------------

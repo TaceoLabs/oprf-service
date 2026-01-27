@@ -21,7 +21,7 @@ use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 #[cfg(feature = "ci")]
-pub const TEST_TIMEOUT: Duration = Duration::from_secs(60);
+pub const TEST_TIMEOUT: Duration = Duration::from_secs(120);
 #[cfg(not(feature = "ci"))]
 pub const TEST_TIMEOUT: Duration = Duration::from_secs(10);
 

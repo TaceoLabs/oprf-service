@@ -1,0 +1,40 @@
+name: E2E test
+
+on:
+  push:
+    branches:
+      - main
+    tags-ignore:
+      - v*
+  pull_request:
+
+env:
+  # incremental builds are slower and don't make much sense in ci
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: FULL
+  AWS_REGION: us-east-1
+  AWS_ENDPOINT_URL: http://localhost:4566
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  FOUNDRY_PROFILE: ci
+
+jobs:
+  test:
+    name: E2E-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: cd contracts && forge install && forge build
+      - run: sudo apt-get install git-lfs
+      - run: git lfs pull
+      # - uses: Swatinem/rust-cache@v2
+      - name: E2E-Test
+        run: bash run-setup.sh e2e-test

@@ -81,7 +81,7 @@ zeroize = "1"
 [profile.ci-dev]
 inherits = "dev"
 opt-level = 1
-debug = true
+debug = false
 incremental = false
 
 [profile.profiling]
