@@ -233,21 +233,55 @@ async fn handle_log(
 ) -> eyre::Result<()> {
     let result = match log.topic0() {
         Some(&OprfKeyRegistry::SecretGenRound1::SIGNATURE_HASH) => {
-            handle_keygen_round1(party_id, log, contract, secret_gen, transaction_handler).await
+            let log = log
+                .log_decode()
+                .context("while decoding key-gen round2 event")?;
+            handle_keygen_round1(
+                party_id,
+                log.inner.data,
+                contract,
+                secret_gen,
+                transaction_handler,
+            )
+            .await
         }
         Some(&OprfKeyRegistry::SecretGenRound2::SIGNATURE_HASH) => {
-            handle_round2(party_id, log, contract, secret_gen, transaction_handler).await
+            let log = log
+                .log_decode()
+                .context("while decoding key-gen round2 event")?;
+            handle_round2(
+                party_id,
+                log.inner.data,
+                contract,
+                secret_gen,
+                transaction_handler,
+            )
+            .await
         }
         Some(&OprfKeyRegistry::SecretGenRound3::SIGNATURE_HASH) => {
-            handle_keygen_round3(party_id, log, contract, secret_gen, transaction_handler).await
+            let log = log
+                .log_decode()
+                .context("while decoding key-gen round2 event")?;
+            handle_keygen_round3(
+                party_id,
+                log.inner.data,
+                contract,
+                secret_gen,
+                transaction_handler,
+            )
+            .await
         }
         Some(&OprfKeyRegistry::SecretGenFinalize::SIGNATURE_HASH) => {
-            handle_finalize(log, contract, secret_gen, secret_manager).await
+            let log = log.log_decode().context("while decoding finalize event")?;
+            handle_finalize(log.inner.data, contract, secret_gen, secret_manager).await
         }
         Some(&OprfKeyRegistry::ReshareRound1::SIGNATURE_HASH) => {
+            let log = log
+                .log_decode()
+                .context("while decoding reshare round1 event")?;
             handle_reshare_round1(
                 party_id,
-                log,
+                log.inner.data,
                 contract,
                 secret_gen,
                 secret_manager,
@@ -256,11 +290,27 @@ async fn handle_log(
             .await
         }
         Some(&OprfKeyRegistry::ReshareRound3::SIGNATURE_HASH) => {
-            handle_reshare_round3(party_id, log, contract, secret_gen, transaction_handler).await
+            let log = log
+                .log_decode()
+                .context("while decoding reshare round3 event")?;
+            handle_reshare_round3(
+                party_id,
+                log.inner.data,
+                contract,
+                secret_gen,
+                transaction_handler,
+            )
+            .await
         }
-        Some(&OprfKeyRegistry::KeyGenAbort::SIGNATURE_HASH) => handle_abort(log, secret_gen).await,
+        Some(&OprfKeyRegistry::KeyGenAbort::SIGNATURE_HASH) => {
+            let log = log.log_decode().context("while decoding abort event")?;
+            handle_abort(log.inner.data, secret_gen).await
+        }
         Some(&OprfKeyRegistry::KeyDeletion::SIGNATURE_HASH) => {
-            handle_delete(log, secret_gen, secret_manager).await
+            let log = log
+                .log_decode()
+                .context("while decoding key-deletion event")?;
+            handle_delete(log.inner.data, secret_gen, secret_manager).await
         }
         x => {
             tracing::warn!("unknown event: {x:?}");
@@ -281,7 +331,7 @@ async fn handle_log(
 #[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty, epoch=tracing::field::Empty))]
 async fn handle_keygen_round1(
     party_id: PartyId,
-    log: Log<LogData>,
+    event: OprfKeyRegistry::SecretGenRound1,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
     transaction_handler: &TransactionHandler,
@@ -290,13 +340,10 @@ async fn handle_keygen_round1(
     ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_1_START,
         METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_KEY_GEN)
     .increment(1);
-    let log = log
-        .log_decode()
-        .context("while decoding key-gen round1 event")?;
     let OprfKeyRegistry::SecretGenRound1 {
         oprfKeyId,
         threshold,
-    } = log.inner.data;
+    } = event;
     let handle_span = tracing::Span::current();
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
     handle_span.record("epoch", "0");
@@ -326,7 +373,7 @@ async fn handle_keygen_round1(
 #[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty, epoch=tracing::field::Empty))]
 async fn handle_round2(
     party_id: PartyId,
-    log: Log<LogData>,
+    event: OprfKeyRegistry::SecretGenRound2,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
     transaction_handler: &TransactionHandler,
@@ -334,10 +381,7 @@ async fn handle_round2(
     tracing::info!("Received SecretGenRound2 event");
     // we don't know yet whether we are producer or consumer, FINISH holds this information
     ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_2_START).increment(1);
-    let round2 = log
-        .log_decode()
-        .context("while decoding secret-gen round2 event")?;
-    let OprfKeyRegistry::SecretGenRound2 { oprfKeyId, epoch } = round2.inner.data;
+    let OprfKeyRegistry::SecretGenRound2 { oprfKeyId, epoch } = event;
     let handle_span = tracing::Span::current();
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
     handle_span.record("epoch", epoch.to_string());
@@ -361,11 +405,13 @@ async fn handle_round2(
         .map(EphemeralEncryptionPublicKey::try_from)
         .collect::<eyre::Result<Vec<_>>>()?;
     // block_in_place here because we do a lot CPU work
+    println!("doing round2");
     let res = tokio::task::block_in_place(|| {
         secret_gen
             .producer_round2(oprf_key_id, nodes)
             .context("while doing round2")
     })?;
+    println!("============");
     tracing::debug!("finished round 2 - now reporting");
     let contribution = Round2Contribution::from(res.contribution);
     let transaction_identifier =
@@ -384,7 +430,7 @@ async fn handle_round2(
 #[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty, epoch=tracing::field::Empty))]
 async fn handle_keygen_round3(
     party_id: PartyId,
-    log: Log<LogData>,
+    event: OprfKeyRegistry::SecretGenRound3,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
     transaction_handler: &TransactionHandler,
@@ -393,10 +439,7 @@ async fn handle_keygen_round3(
     ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_3_START,
         METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_KEY_GEN)
     .increment(1);
-    let round3 = log
-        .log_decode()
-        .context("while decoding secret-gen round3 event")?;
-    let OprfKeyRegistry::SecretGenRound3 { oprfKeyId } = round3.inner.data;
+    let OprfKeyRegistry::SecretGenRound3 { oprfKeyId } = event;
     let handle_span = tracing::Span::current();
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
     handle_span.record("epoch", "0");
@@ -420,7 +463,7 @@ async fn handle_keygen_round3(
 
 #[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty, epoch=tracing::field::Empty))]
 async fn handle_finalize(
-    log: Log<LogData>,
+    event: OprfKeyRegistry::SecretGenFinalize,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
     secret_manager: &SecretManagerService,
@@ -428,10 +471,7 @@ async fn handle_finalize(
     tracing::info!("Received SecretGenFinalize event");
     // we don't know yet whether we are key_gen or reshare, FINISH holds this information
     ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_4_START).increment(1);
-    let finalize = log
-        .log_decode()
-        .context("while decoding secret-gen finalize event")?;
-    let OprfKeyRegistry::SecretGenFinalize { oprfKeyId, epoch } = finalize.inner.data;
+    let OprfKeyRegistry::SecretGenFinalize { oprfKeyId, epoch } = event;
     let handle_span = tracing::Span::current();
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
     handle_span.record("epoch", epoch.to_string());
@@ -456,7 +496,7 @@ async fn handle_finalize(
 #[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty, epoch=tracing::field::Empty))]
 async fn handle_reshare_round1(
     party_id: PartyId,
-    log: Log<LogData>,
+    event: OprfKeyRegistry::ReshareRound1,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
     secret_manager: &SecretManagerService,
@@ -466,14 +506,11 @@ async fn handle_reshare_round1(
     ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_1_START,
         METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_RESHARE)
     .increment(1);
-    let log = log
-        .log_decode()
-        .context("while decoding reshare round1 event")?;
     let OprfKeyRegistry::ReshareRound1 {
         oprfKeyId,
         threshold,
         epoch,
-    } = log.inner.data;
+    } = event;
     let handle_span = tracing::Span::current();
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
     handle_span.record("epoch", epoch.to_string());
@@ -521,7 +558,7 @@ async fn handle_reshare_round1(
 #[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty, epoch=tracing::field::Empty))]
 async fn handle_reshare_round3(
     party_id: PartyId,
-    log: Log<LogData>,
+    event: OprfKeyRegistry::ReshareRound3,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
     transaction_handler: &TransactionHandler,
@@ -530,14 +567,11 @@ async fn handle_reshare_round3(
     ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_3_START,
         METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_RESHARE)
     .increment(1);
-    let log = log
-        .log_decode()
-        .context("while decoding reshare round3 event")?;
     let OprfKeyRegistry::ReshareRound3 {
         oprfKeyId,
         lagrange,
         epoch,
-    } = log.inner.data;
+    } = event;
     let handle_span = tracing::Span::current();
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
     handle_span.record("epoch", epoch.to_string());
@@ -574,16 +608,13 @@ async fn handle_reshare_round3(
 
 #[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty))]
 async fn handle_delete(
-    log: Log<LogData>,
+    event: OprfKeyRegistry::KeyDeletion,
     secret_gen: &mut DLogSecretGenService,
     secret_manager: &SecretManagerService,
 ) -> Result<()> {
     tracing::info!("Received Delete event");
     ::metrics::counter!(METRICS_ID_KEY_GEN_DELETION).increment(1);
-    let key_delete = log
-        .log_decode()
-        .context("while decoding key deletion event")?;
-    let OprfKeyRegistry::KeyDeletion { oprfKeyId } = key_delete.inner.data;
+    let OprfKeyRegistry::KeyDeletion { oprfKeyId } = event;
     let handle_span = tracing::Span::current();
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
     let oprf_key_id = OprfKeyId::from(oprfKeyId);
@@ -599,13 +630,13 @@ async fn handle_delete(
 }
 
 #[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty))]
-async fn handle_abort(log: Log<LogData>, secret_gen: &mut DLogSecretGenService) -> Result<()> {
+async fn handle_abort(
+    event: OprfKeyRegistry::KeyGenAbort,
+    secret_gen: &mut DLogSecretGenService,
+) -> Result<()> {
     tracing::info!("Received Abort event");
     ::metrics::counter!(METRICS_ID_KEY_GEN_ABORT).increment(1);
-    let key_delete = log
-        .log_decode()
-        .context("while decoding key deletion event")?;
-    let OprfKeyRegistry::KeyGenAbort { oprfKeyId } = key_delete.inner.data;
+    let OprfKeyRegistry::KeyGenAbort { oprfKeyId } = event;
     let handle_span = tracing::Span::current();
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
     let oprf_key_id = OprfKeyId::from(oprfKeyId);
