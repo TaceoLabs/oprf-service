@@ -31,6 +31,15 @@ sol!(
     "./OprfKeyRegistry.json"
 );
 
+sol!(
+    #[allow(missing_docs)]
+    #[derive(Debug, PartialEq, Eq)]
+    contract Verifier {
+        error PublicInputNotInField();
+        error ProofInvalid();
+    }
+);
+
 impl fmt::Debug for KeyGenConfirmation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TransactionConfirmation")

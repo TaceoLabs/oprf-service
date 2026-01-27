@@ -25,12 +25,15 @@ use oprf_types::{
 use tokio::{sync::oneshot, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
-use crate::metrics::{
-    METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_KEY_GEN_ROUND1_GAS_COST,
-    METRICS_ID_KEY_GEN_ROUND3_GAS_COST, METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK,
-    METRICS_ID_KEY_GEN_RPC_RETRY, METRICS_ID_KEY_GEN_WALLET_BALANCE,
-    METRICS_ID_RESHARE_ROUND1_GAS_COST, METRICS_ID_RESHARE_ROUND3_GAS_COST,
-    METRICS_ID_ROUND2_GAS_COST,
+use crate::{
+    metrics::{
+        METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_KEY_GEN_ROUND1_GAS_COST,
+        METRICS_ID_KEY_GEN_ROUND3_GAS_COST, METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK,
+        METRICS_ID_KEY_GEN_RPC_RETRY, METRICS_ID_KEY_GEN_WALLET_BALANCE,
+        METRICS_ID_RESHARE_ROUND1_GAS_COST, METRICS_ID_RESHARE_ROUND3_GAS_COST,
+        METRICS_ID_ROUND2_GAS_COST,
+    },
+    services::key_event_watcher::TransactionError,
 };
 
 /// Indicates the transaction type. We need this to distinguish between events.
@@ -242,7 +245,7 @@ impl TransactionHandler {
         &self,
         transaction_identifier: TransactionIdentifier,
         transaction: F,
-    ) -> eyre::Result<()>
+    ) -> Result<(), TransactionError>
     where
         P: Provider<N>,
         D: CallDecoder + Unpin,
@@ -295,11 +298,15 @@ impl TransactionHandler {
                         ::metrics::counter!(METRICS_ID_KEY_GEN_RPC_RETRY).increment(1);
                     }
                 }
-                Err(err) => eyre::bail!(err),
+                Err(err) => {
+                    return Err(TransactionError::CannotSendTransaction(eyre::eyre!(err)));
+                }
             }
             if attempt >= self.attempts {
-                eyre::bail!("could not finish transaction with configured attempts");
-            }
+                return Err(TransactionError::CannotSendTransaction(eyre::eyre!(
+                    "could not finish transaction with configured attempts"
+                )));
+            };
             attempt += 1;
         }
     }
@@ -352,7 +359,7 @@ async fn check_receipt<P, D, N, F>(
     transaction_identifier: TransactionIdentifier,
     transaction: F,
     receipt: N::ReceiptResponse,
-) -> eyre::Result<()>
+) -> Result<(), TransactionError>
 where
     P: Provider<N>,
     D: CallDecoder + Unpin,
@@ -364,23 +371,11 @@ where
         Ok(())
     } else {
         tracing::debug!("could not send transaction - do a call to get revert data");
-        match transaction().call().await {
-            Ok(_) => {
-                eyre::bail!("cannot finish transaction for unknown reason: {receipt:?}");
-            }
-            Err(err) => {
-                if let Some(error) = err.as_decoded_interface_error::<OprfKeyRegistryErrors>() {
-                    tracing::debug!("call reverted: {error:?}");
-                    eyre::bail!(
-                        "transaction failed - call afterwards reverted with error {error:?}, but take with a grain of salt"
-                    );
-                } else {
-                    eyre::bail!(
-                        "cannot finish transaction and call afterwards failed as well: {err:?}"
-                    );
-                }
-            }
-        }
+        transaction().call().await?;
+        // if we are here the call afterwards succeeded - we don't really know why the receipt failed so just return the wrapped receipt
+        Err(TransactionError::CannotSendTransaction(eyre::eyre!(
+            "cannot finish transaction for unknown reason: {receipt:?}"
+        )))
     }
 }
 

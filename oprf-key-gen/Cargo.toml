@@ -37,6 +37,7 @@ rand.workspace = true
 rustls = { workspace = true }
 secrecy = { workspace = true }
 serde_json.workspace = true
+thiserror.workspace = true
 tokio = { workspace = true, features = [
   "net",
   "rt-multi-thread",

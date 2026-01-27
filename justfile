@@ -141,6 +141,8 @@ run-dev-client *args:
 [working-directory('contracts')]
 show-contract-errors:
     forge inspect src/OprfKeyRegistry.sol:OprfKeyRegistry errors
+    forge inspect src/VerifierKeyGen13.sol:Verifier errors
+    forge inspect src/VerifierKeyGen25.sol:Verifier errors
 
 [working-directory('contracts')]
 show-contract-methods:
