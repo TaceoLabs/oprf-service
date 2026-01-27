@@ -10,14 +10,10 @@ This is a monorepo containing:
 * `docs`: A typst document serving as a writeup of the overall scheme.
 * `noir`: A collection of Noir circuits.
 * `oprf-client`: A crate implementing a client lib for the OPRF service.
-* `oprf-client-example`: A crate implementing example a client.
 * `oprf-core`: A crate implementing a verifiable OPRF based on the TwoHashDH OPRF construction + a threshold variant of it.
 * `oprf-dev-client`: A crate implementing common dev client functionality.
-* `oprf-dev-client-example`: A crate implementing a example dev client binary.
 * `oprf-key-gen`: A crate implementing a OPRF key generation instance.
 * `oprf-service`: A crate implementing a service lib for the OPRF service.
-* `oprf-service-example`: A crate implementing a example OPRF node.
-* `oprf-test`: A crate implementing integration tests.
 * `oprf-test-utils`: A crate implementing test utils.
 * `oprf-types`: A crate implementing types that are shared between client, service, and the blockchain.
 
@@ -39,13 +35,13 @@ cd contracts && forge install
 
 ## Test & Run
 
-For development, the best way to run/test the setup is with the integration tests.
+For development, we provide a `just` command that runs the full test suite for the entire workspace. This includes Circom tests, smart contract tests, and a complete end-to-end test using the example binaries.
 
 ```bash
-just integration-tests
+just all-tests
 ```
 
-To use the dev client, you can start the setup using the following command:
+To run the tests against a local setup, use:
 
 ```bash
 just run-setup

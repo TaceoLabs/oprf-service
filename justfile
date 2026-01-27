@@ -108,11 +108,11 @@ contract-tests:
     cd contracts && forge test
 
 [group('test')]
-e2e-tests:
+e2e-test:
     @bash run-setup.sh e2e-test || { echo -e "\033[1;41m===== TEST FAILED =====\033[0m" ; exit 1; }
 
 [group('test')]
-all-tests: rust-tests circom-tests contract-tests e2e-tests
+all-tests: rust-tests circom-tests contract-tests e2e-test
 
 [group('test')]
 generate-contract-kats:
