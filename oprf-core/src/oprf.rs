@@ -9,7 +9,7 @@
 //! See the `client` module for client-side helpers, and the `server` module (when enabled) for non-threshold server operations.
 
 use ark_ec::{CurveGroup, PrimeGroup};
-use ark_ff::{Field, UniformRand};
+use ark_ff::{Field, UniformRand, Zero};
 use rand::{CryptoRng, Rng};
 
 pub(crate) type Affine = <Curve as CurveGroup>::Affine;
@@ -50,11 +50,37 @@ impl BlindedOprfRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlindingFactor(ScalarField);
 
+/// Error indicating an invalid blinding factor (it may not be zero).
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct InvalidBlindingFactor;
+
+impl std::fmt::Display for InvalidBlindingFactor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Invalid blinding factor, may not be zero")
+    }
+}
+
+impl std::error::Error for InvalidBlindingFactor {}
+
 impl BlindingFactor {
     /// Generate a new random blinding factor using the provided RNG.
     pub fn rand<R: Rng + CryptoRng>(rng: &mut R) -> Self {
         let beta = ScalarField::rand(rng);
         Self(beta)
+    }
+
+    /// Construct a new [`BlindingFactor`] from a scalar value.
+    ///
+    /// Strongly prefer using [`BlindingFactor::rand`] to generate a secure random blinding factor and only use this method
+    /// if you have a specific need for constructing a [`BlindingFactor`] directly.
+    ///
+    /// # Errors
+    /// Returns [`InvalidBlindingFactor`] if the provided value is zero.
+    pub fn from_scalar(value: ScalarField) -> Result<Self, InvalidBlindingFactor> {
+        if value.is_zero() {
+            return Err(InvalidBlindingFactor);
+        }
+        Ok(Self(value))
     }
 
     /// Prepare the blinding factor for unblinding (by inverting the blinding scalar).
