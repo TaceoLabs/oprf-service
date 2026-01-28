@@ -380,8 +380,8 @@
           },
           {
             "name": "epoch",
-            "type": "uint128",
-            "internalType": "uint128"
+            "type": "uint32",
+            "internalType": "uint32"
           }
         ]
       }
@@ -810,9 +810,9 @@
       },
       {
         "name": "epoch",
-        "type": "uint128",
+        "type": "uint32",
         "indexed": false,
-        "internalType": "uint128"
+        "internalType": "uint32"
       }
     ],
     "anonymous": false
@@ -886,9 +886,9 @@
       },
       {
         "name": "epoch",
-        "type": "uint128",
+        "type": "uint32",
         "indexed": true,
-        "internalType": "uint128"
+        "internalType": "uint32"
       }
     ],
     "anonymous": false
@@ -911,9 +911,9 @@
       },
       {
         "name": "epoch",
-        "type": "uint128",
+        "type": "uint32",
         "indexed": true,
-        "internalType": "uint128"
+        "internalType": "uint32"
       }
     ],
     "anonymous": false
@@ -930,9 +930,9 @@
       },
       {
         "name": "epoch",
-        "type": "uint128",
+        "type": "uint32",
         "indexed": true,
-        "internalType": "uint128"
+        "internalType": "uint32"
       }
     ],
     "anonymous": false
@@ -968,9 +968,9 @@
       },
       {
         "name": "epoch",
-        "type": "uint128",
+        "type": "uint32",
         "indexed": true,
-        "internalType": "uint128"
+        "internalType": "uint32"
       }
     ],
     "anonymous": false

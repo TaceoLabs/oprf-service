@@ -33,7 +33,7 @@ pub mod crypto;
     Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default,
 )]
 #[serde(transparent)]
-pub struct ShareEpoch(u128);
+pub struct ShareEpoch(u32);
 
 /// The id of a relying party.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -41,13 +41,13 @@ pub struct ShareEpoch(u128);
 pub struct OprfKeyId(U160);
 
 impl ShareEpoch {
-    /// Converts the key epoch to an u128
-    pub fn into_inner(self) -> u128 {
+    /// Converts the key epoch to an u32
+    pub fn into_inner(self) -> u32 {
         self.0
     }
 
-    /// Creates a new `ShareEpoch` by wrapping a `u128`
-    pub fn new(value: u128) -> Self {
+    /// Creates a new `ShareEpoch` by wrapping a `u32`
+    pub fn new(value: u32) -> Self {
         Self(value)
     }
 
@@ -67,6 +67,7 @@ impl ShareEpoch {
 
     /// Returns the next epoch.
     pub fn next(self) -> ShareEpoch {
+        assert!(self.0 != u32::MAX, "epoch is already max");
         Self(self.0 + 1)
     }
 }
@@ -114,8 +115,8 @@ impl From<OprfKeyId> for ark_babyjubjub::Fq {
     }
 }
 
-impl From<u128> for ShareEpoch {
-    fn from(value: u128) -> Self {
+impl From<u32> for ShareEpoch {
+    fn from(value: u32) -> Self {
         Self(value)
     }
 }
