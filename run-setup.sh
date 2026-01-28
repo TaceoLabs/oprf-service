@@ -50,6 +50,8 @@ run_deploy() {
     OPRF_KEY_REGISTRY_PROXY=$DEPLOYED_ADDRESS \
     forge script RegisterParticipants.s.sol --broadcast --fork-url http://127.0.0.1:8545 -vvvvv --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80)
 
+    cargo clean --workspace 
+    cargo build --workspace --release --examples --bins
     echo "staring keygen"
     start_keygen "$DEPLOYED_ADDRESS"
 
@@ -98,13 +100,12 @@ start_keygen() {
     local oprf_key_registry="$1"
     echo "Starting OPRF key-gen nodes..."
     mkdir -p logs
-    cargo build -p taceo-oprf-key-gen --release
 
     for i in 0 1 2; do
         local port=$((20000 + i))
         local prefix="n$i"
         RUST_LOG="taceo_oprf_key_gen=trace,warn" \
-        cargo run --release --bin oprf-key-gen -- \
+        ./target/release/oprf-key-gen \
             --bind-addr 127.0.0.1:$port \
             --rp-secret-id-prefix oprf/rp/$prefix \
             --environment dev \
@@ -136,7 +137,7 @@ start_nodes() {
             2) wallet=0xa0Ee7A142d267C1f36714E4a8F75612F20a79720 ;;
         esac
         RUST_LOG="taceo_oprf_service=trace,taceo_oprf_service_example=trace,oprf_service_example=trace,warn" \
-        cargo run --release --example oprf-service-example -- \
+        ./target/release/examples/oprf-service-example \
             --bind-addr 127.0.0.1:$port \
             --rp-secret-id-prefix oprf/rp/n$i \
             --environment dev \
@@ -173,9 +174,9 @@ main() {
     if [[ "$RUN_MODE" == "e2e-test" ]]; then
         echo "Running dev-client tests..."
         OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$DEPLOYED_ADDRESS \
-            cargo run --release --example dev-client-example reshare-test
+            ./target/release/examples/dev-client-example reshare-test
         OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$DEPLOYED_ADDRESS \
-            cargo run --release --example dev-client-example stress-test
+            ./target/release/examples/dev-client-example stress-test
         echo "Dev-client tests completed successfully"
     else
         echo "No dev-client tests requested, entering sleep mode. Press Ctrl+C to stop..."
