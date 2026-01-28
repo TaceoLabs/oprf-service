@@ -14,6 +14,8 @@
 use std::{collections::BTreeMap, fmt};
 
 use ark_serde_compat::babyjubjub;
+use ark_serialize::CanonicalDeserialize;
+use ark_serialize::CanonicalSerialize;
 use circom_types::{ark_bn254::Bn254, groth16::Proof};
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use serde::{Deserialize, Serialize};
@@ -38,7 +40,18 @@ pub struct EphemeralEncryptionPublicKey(
 /// The OPRF public-key.
 ///
 /// Constructed by multiplying the BabyJubJub generator with the secret shared among the OPRF nodes.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    Hash,
+    CanonicalSerialize,
+    CanonicalDeserialize,
+)]
 #[serde(transparent)]
 pub struct OprfPublicKey(
     #[serde(serialize_with = "babyjubjub::serialize_affine")]

@@ -25,6 +25,8 @@ use ark_ec::CurveGroup;
 use ark_ec::{AffineRepr, VariableBaseMSM};
 use ark_ff::Zero;
 use ark_serde_compat::babyjubjub;
+use ark_serialize::CanonicalDeserialize;
+use ark_serialize::CanonicalSerialize;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -39,7 +41,9 @@ type Projective = ark_babyjubjub::EdwardsProjective;
 /// Serializable so it can be persisted via a secret manager.
 /// Not `Debug`/`Display` to avoid accidental leaks.
 ///
-#[derive(Clone, Serialize, Deserialize, ZeroizeOnDrop)]
+#[derive(
+    Clone, Serialize, Deserialize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
+)]
 #[serde(transparent)]
 pub struct DLogShareShamir(
     #[serde(serialize_with = "babyjubjub::serialize_fr")]

@@ -16,6 +16,7 @@ alloy = { workspace = true, features = ["contract"] }
 ark-babyjubjub = { workspace = true }
 ark-ff = { workspace = true }
 ark-serde-compat = { workspace = true }
+ark-serialize = { workspace = true, features = ["derive"] }
 async-trait = { workspace = true }
 circom-types = { workspace = true, features = [
   "bn254",

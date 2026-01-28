@@ -21,7 +21,7 @@ ark-babyjubjub = { workspace = true }
 ark-ec = { workspace = true }
 ark-ff = { workspace = true }
 ark-serde-compat = { workspace = true, features = ["babyjubjub"] }
-ark-serialize = { workspace = true }
+ark-serialize = { workspace = true, features = ["derive"] }
 blake3 = { workspace = true }
 itertools = { workspace = true }
 num-bigint.workspace = true
