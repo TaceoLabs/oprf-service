@@ -1,6 +1,6 @@
 //! API module for the OPRF node service.
 //!
-//! This module defines all HTTP endpoints an OPRF node must serve to participate in TACEO:Oprf and organizes them into submodules:
+//! This module defines all HTTP endpoints an OPRF node must serve to participate in TACEO:OPRF and organizes them into submodules:
 //!
 //! - [`errors`] – Defines API error types and conversions from internal service errors.
 //! - [`health`] – Provides health endpoints (`/health`).

@@ -34,7 +34,7 @@ pub struct OprfPublicKeyWithEpoch {
 pub static OPRF_PROTOCOL_VERSION_HEADER: HeaderName =
     http::HeaderName::from_static("x-taceo-oprf-protocol-version");
 
-/// TACEO:Oprf specific websocket error codes.
+/// TACEO:OPRF specific websocket error codes.
 pub mod oprf_error_codes {
     /// An opened session exceeds its life time.
     ///

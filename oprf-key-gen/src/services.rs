@@ -1,4 +1,4 @@
-//! Core services that make up TACEO:Oprf key-gen instance.
+//! Core services that make up TACEO:OPRF key-gen instance.
 //!
 //! This module exposes all internal services used by the node to handle
 //! cryptography, chain interactions and secret generation.

@@ -1,5 +1,5 @@
 #![deny(missing_docs)]
-//! This crate provides the OPRF key generation functionality for TACEO:Oprf.
+//! This crate provides the OPRF key generation functionality for TACEO:OPRF.
 //!
 //! It implements a service that listens for OPRF key generation events of the  `OprfKeyRegistry`
 //! and participates in the distributed key generation protocol to generate and register OPRF keys.

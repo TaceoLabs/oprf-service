@@ -1,4 +1,4 @@
-//! Core services that make up a TACEO:Oprf node.
+//! Core services that make up a TACEO:OPRF node.
 //!
 //! This module exposes all internal services used by the node to handle
 //! cryptography, chain interactions, OPRF sessions, and session storage.

@@ -1,4 +1,4 @@
-//! Configuration types and CLI/environment parsing for a TACEO:Oprf key-gen instance.
+//! Configuration types and CLI/environment parsing for a TACEO:OPRF key-gen instance.
 //!
 //! Additionally this module defines the [`Environment`] to assert dev-only code.
 
@@ -29,7 +29,7 @@ impl Environment {
     }
 }
 
-/// The configuration for TACEO:Oprf core functionality.
+/// The configuration for TACEO:OPRF core functionality.
 ///
 /// It can be configured via environment variables or command line arguments using `clap`.
 #[derive(Parser, Debug)]

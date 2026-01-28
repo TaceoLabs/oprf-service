@@ -1,6 +1,6 @@
 //! API module for the OPRF key gen instance.
 //!
-//! This module defines all HTTP endpoints an OPRF key gen instance must serve to participate in TACEO:Oprf and organizes them into submodules:
+//! This module defines all HTTP endpoints an OPRF key gen instance must serve to participate in TACEO:OPRF and organizes them into submodules:
 //!
 //! - [`health`] – Provides health endpoints (`/health`).
 //! - [`info`] – Info about the service (`/version`, `/wallet`).

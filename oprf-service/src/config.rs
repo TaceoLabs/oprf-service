@@ -1,4 +1,4 @@
-//! Configuration types and CLI/environment parsing for a TACEO:Oprf node.
+//! Configuration types and CLI/environment parsing for a TACEO:OPRF node.
 //!
 //! Concrete implementations may have a more detailed config and can use the exposed [`OprfNodeConfig`] and flatten it with `#[clap(flatten)]`.
 //!
@@ -32,7 +32,7 @@ impl Environment {
     }
 }
 
-/// The configuration for TACEO:Oprf core functionality.
+/// The configuration for TACEO:OPRF core functionality.
 ///
 /// It can be configured via environment variables or command line arguments using `clap`.
 #[derive(Parser, Debug)]
