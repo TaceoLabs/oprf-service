@@ -2,6 +2,44 @@
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.3.0...taceo-oprf-service-v0.4.0)
+
+### ⛰️ Features
+
+
+- Move TestSecretManager trait impls to oprf-test-utils again ([#407](https://github.com/TaceoLabs/oprf-service/pull/407)) - ([76ad208](https://github.com/TaceoLabs/oprf-service/commit/76ad208206bd6594b4361e956e2835740595334c))
+- [**breaking**] Add support for multiple OPRF modules per OPRF service ([#401](https://github.com/TaceoLabs/oprf-service/pull/401)) - ([eea5a1e](https://github.com/TaceoLabs/oprf-service/commit/eea5a1ef330cbe34beb50d6bc16f8526bf5399f7))
+- Add metric for OprfRequestAuth verify time ([#389](https://github.com/TaceoLabs/oprf-service/pull/389)) - ([45c48fa](https://github.com/TaceoLabs/oprf-service/commit/45c48fa80ec842c660421be71ef480535c0c1cf2))
+
+### 🚜 Refactor
+
+
+- Removed example crates - ([23479d8](https://github.com/TaceoLabs/oprf-service/commit/23479d88042d8239381a258d86db441235c3e554))
+- Added example oprf-service/dev-client - ([0398347](https://github.com/TaceoLabs/oprf-service/commit/0398347e0bfefaf67d4d88d169cfe094a78545a8))
+- [**breaking**] Remove v1 concept - ([2fe5324](https://github.com/TaceoLabs/oprf-service/commit/2fe5324a2a85be97873fca0ff5a698b7d31451d4))
+- [**breaking**] Moved Auth trait definition to types-crate - ([d7aa19f](https://github.com/TaceoLabs/oprf-service/commit/d7aa19ffe82b4e175390c8e9afb21bd82878c206))
+- [**breaking**] Split oprf-test into oprf-test-utils and oprf-test, split oprf-dev-client into oprf-dev-client lib and example bin ([#370](https://github.com/TaceoLabs/oprf-service/pull/370)) - ([5ca9019](https://github.com/TaceoLabs/oprf-service/commit/5ca90197fba1f19d0e74f595d383695d111dcbfb))
+
+### 📚 Documentation
+
+
+- Fix capitalization of TACEO:OPRF - ([181f2cd](https://github.com/TaceoLabs/oprf-service/commit/181f2cd7dc14d3d5383a7a2deaf8c57953c4302a))
+- Updated docs after moving the auth service - ([5a071d1](https://github.com/TaceoLabs/oprf-service/commit/5a071d1a16f373333c1eaae27f77cd6ce8fde53e))
+- Fixed two typos ([#402](https://github.com/TaceoLabs/oprf-service/pull/402)) - ([5bcee05](https://github.com/TaceoLabs/oprf-service/commit/5bcee0536320eb92c7e189531c200259b5ad46ec))
+
+### 🧪 Testing
+
+
+- Removed deps from test-utils to key-gen/service - ([4e349c9](https://github.com/TaceoLabs/oprf-service/commit/4e349c9b46e3d405cd4400fe127ba0df154525f0))
+- [**breaking**] Added test setup and integration test-suites for key-gen + service - ([57b10fa](https://github.com/TaceoLabs/oprf-service/commit/57b10fa47eb3dc81cff6b96988fbbe7e99275080))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Prepare crates for publishing - ([3b5a066](https://github.com/TaceoLabs/oprf-service/commit/3b5a066f09041e89a3b8371cddde4c50fad7407a))
+- Updated readme - ([279f20e](https://github.com/TaceoLabs/oprf-service/commit/279f20ef722aecebc8a2a9f58a9688c4d2f88c80))
+
+
 ## [0.3.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.2.0...taceo-oprf-service-v0.3.0)
 
 ### ⛰️ Features

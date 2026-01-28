@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.3.0...taceo-oprf-client-v0.4.0)
+
+### ⛰️ Features
+
+
+- [**breaking**] Add support for multiple OPRF modules per OPRF service ([#401](https://github.com/TaceoLabs/oprf-service/pull/401)) - ([eea5a1e](https://github.com/TaceoLabs/oprf-service/commit/eea5a1ef330cbe34beb50d6bc16f8526bf5399f7))
+
+### 🚜 Refactor
+
+
+- [**breaking**] Remove v1 concept - ([2fe5324](https://github.com/TaceoLabs/oprf-service/commit/2fe5324a2a85be97873fca0ff5a698b7d31451d4))
+- [**breaking**] Split oprf-test into oprf-test-utils and oprf-test, split oprf-dev-client into oprf-dev-client lib and example bin ([#370](https://github.com/TaceoLabs/oprf-service/pull/370)) - ([5ca9019](https://github.com/TaceoLabs/oprf-service/commit/5ca90197fba1f19d0e74f595d383695d111dcbfb))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Prepare crates for publishing - ([3b5a066](https://github.com/TaceoLabs/oprf-service/commit/3b5a066f09041e89a3b8371cddde4c50fad7407a))
+- Updated readme - ([279f20e](https://github.com/TaceoLabs/oprf-service/commit/279f20ef722aecebc8a2a9f58a9688c4d2f88c80))
+- Fixed docs - ([eff3fa3](https://github.com/TaceoLabs/oprf-service/commit/eff3fa39658a3e2f85061270bdfe834f2762d9e4))
+- Removed blinding_factor re-export from client - ([32035b8](https://github.com/TaceoLabs/oprf-service/commit/32035b861caa8da2c9c7fe983ac951a6902cf6b0))
+
+
 ## [0.3.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.2.0...taceo-oprf-client-v0.3.0)
 
 ### ⛰️ Features

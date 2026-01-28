@@ -12,11 +12,11 @@ keywords = ["cryptography", "mpc", "oprf"]
 publish = true
 
 [dependencies]
-oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.3", optional = true }
-oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.3" }
+oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.4", optional = true }
+oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.4" }
 oprf-dev-client = { package = "taceo-oprf-dev-client", path = "../oprf-dev-client", version = "0.1", optional = true }
-oprf-service = { package = "taceo-oprf-service", path = "../oprf-service", version = "0.3", optional = true }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.4" }
+oprf-service = { package = "taceo-oprf-service", path = "../oprf-service", version = "0.4", optional = true }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.5" }
 
 [features]
 default = ["full"]

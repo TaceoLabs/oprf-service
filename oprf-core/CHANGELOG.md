@@ -2,6 +2,35 @@
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-core-v0.3.0...taceo-oprf-core-v0.4.0)
+
+### ⛰️ Features
+
+
+- Add a way to construct a BlindingFactor directly ([#408](https://github.com/TaceoLabs/oprf-service/pull/408)) - ([8d405ca](https://github.com/TaceoLabs/oprf-service/commit/8d405cab265ff21c595c9d8810d878e14144e4e5))
+
+### 🚜 Refactor
+
+
+- [**breaking**] Split oprf-test into oprf-test-utils and oprf-test, split oprf-dev-client into oprf-dev-client lib and example bin ([#370](https://github.com/TaceoLabs/oprf-service/pull/370)) - ([5ca9019](https://github.com/TaceoLabs/oprf-service/commit/5ca90197fba1f19d0e74f595d383695d111dcbfb))
+
+### 📚 Documentation
+
+
+- Fix invalid return value in Rustdoc - ([c179645](https://github.com/TaceoLabs/oprf-service/commit/c1796450837bbd49c36fc9410d32d0ef6c1c7bc6))
+
+### 🧪 Testing
+
+
+- Fix broken benchmark file - ([1e07a8e](https://github.com/TaceoLabs/oprf-service/commit/1e07a8e50c61739bc59ba5f0f5e20426aade9bdc))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Prepare crates for publishing - ([3b5a066](https://github.com/TaceoLabs/oprf-service/commit/3b5a066f09041e89a3b8371cddde4c50fad7407a))
+- Updated readme - ([279f20e](https://github.com/TaceoLabs/oprf-service/commit/279f20ef722aecebc8a2a9f58a9688c4d2f88c80))
+
+
 ## [0.3.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-core-v0.2.0...taceo-oprf-core-v0.3.0)
 
 ### ⛰️ Features
