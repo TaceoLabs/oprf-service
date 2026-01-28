@@ -7,7 +7,9 @@ readme.workspace = true
 homepage.workspace = true
 repository.workspace = true
 license.workspace = true
-publish = false
+description = "A development client to interact with the TACEO:OPRF service."
+keywords = ["oprf", "mpc", "client", "development"]
+publish = true
 
 [dependencies]
 alloy = { workspace = true, features = ["full", "rpc", "rpc-client-ws"] }

@@ -7,7 +7,9 @@ readme.workspace = true
 homepage.workspace = true
 repository.workspace = true
 license.workspace = true
-publish = false
+description = "Utilities for testing TACEO:OPRF based services."
+keywords = ["oprf", "tests"]
+publish = true
 
 [[bin]]
 name = "generate-test-transcript"
