@@ -15,10 +15,10 @@ publish = true
 alloy = { workspace = true, features = ["full", "rpc", "rpc-client-ws"] }
 clap = { workspace = true, features = ["derive", "env"] }
 eyre.workspace = true
-oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.3" }
-oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.3" }
+oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.4" }
+oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.4" }
 oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.1" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.4" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.5" }
 rand.workspace = true
 serde.workspace = true
 tokio = { workspace = true, features = [
