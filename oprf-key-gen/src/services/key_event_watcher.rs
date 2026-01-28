@@ -39,7 +39,7 @@ use oprf_types::{
     chain::{
         OprfKeyGen::{Round1Contribution, Round2Contribution},
         OprfKeyRegistry::{self, OprfKeyRegistryErrors, OprfKeyRegistryInstance},
-        SecretGenRound1Contribution,
+        RevertError, SecretGenRound1Contribution,
         Verifier::VerifierErrors,
     },
     crypto::{EphemeralEncryptionPublicKey, OprfPublicKey, PartyId, SecretGenCiphertext},
@@ -54,37 +54,20 @@ type Result<T> = std::result::Result<T, TransactionError>;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum TransactionError {
-    #[error("Got revert error: {0:?}")]
-    Revert(OprfKeyRegistryErrors),
+    #[error("RevertReason: {0}")]
+    Revert(RevertError),
     #[error(transparent)]
-    CannotSendTransaction(#[from] eyre::Report),
-}
-
-impl From<OprfKeyRegistryErrors> for TransactionError {
-    fn from(value: OprfKeyRegistryErrors) -> Self {
-        match value {
-            OprfKeyRegistryErrors::AlreadySubmitted(_)
-            | OprfKeyRegistryErrors::DeletedId(_)
-            | OprfKeyRegistryErrors::NotAProducer(_)
-            | OprfKeyRegistryErrors::UnknownId(_)
-            | OprfKeyRegistryErrors::WrongRound(_) => Self::Revert(value),
-            unexpected => {
-                Self::CannotSendTransaction(eyre::eyre!("unexpected revert reason: {unexpected:?}"))
-            }
-        }
-    }
+    Rpc(#[from] eyre::Report),
 }
 
 impl From<alloy::contract::Error> for TransactionError {
     fn from(value: alloy::contract::Error) -> Self {
         if let Some(err) = value.as_decoded_interface_error::<OprfKeyRegistryErrors>() {
-            TransactionError::Revert(err)
+            TransactionError::Revert(RevertError::OprfKeyRegistry(err))
         } else if let Some(err) = value.as_decoded_interface_error::<VerifierErrors>() {
-            TransactionError::CannotSendTransaction(eyre::eyre!(
-                "contract rejects ZK proof: {err:?}"
-            ))
+            TransactionError::Revert(RevertError::Verifier(err))
         } else {
-            TransactionError::CannotSendTransaction(eyre::eyre!(
+            TransactionError::Rpc(eyre::eyre!(
                 "cannot finish transaction and call afterwards failed as well: {value:?}"
             ))
         }
@@ -233,8 +216,8 @@ async fn handle_log(
     secret_gen: &mut DLogSecretGenService,
     secret_manager: &SecretManagerService,
     transaction_handler: &TransactionHandler,
-) -> eyre::Result<()> {
-    let result = match log.topic0() {
+) -> Result<()> {
+    match log.topic0() {
         Some(&OprfKeyRegistry::SecretGenRound1::SIGNATURE_HASH) => {
             let log = log
                 .log_decode()
@@ -319,15 +302,6 @@ async fn handle_log(
             tracing::warn!("unknown event: {x:?}");
             return Ok(());
         }
-    };
-
-    match result {
-        Ok(()) => Ok(()),
-        Err(TransactionError::Revert(revert_reason)) => {
-            tracing::debug!("Cannot send transaction due to: {revert_reason:?}");
-            Ok(())
-        }
-        Err(TransactionError::CannotSendTransaction(err)) => eyre::bail!(err),
     }
 }
 
@@ -408,13 +382,11 @@ async fn handle_round2(
         .map(EphemeralEncryptionPublicKey::try_from)
         .collect::<eyre::Result<Vec<_>>>()?;
     // block_in_place here because we do a lot CPU work
-    println!("doing round2");
     let res = tokio::task::block_in_place(|| {
         secret_gen
             .producer_round2(oprf_key_id, nodes)
             .context("while doing round2")
     })?;
-    println!("============");
     tracing::debug!("finished round 2 - now reporting");
     let contribution = Round2Contribution::from(res.contribution);
     let transaction_identifier =

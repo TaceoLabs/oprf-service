@@ -3,7 +3,10 @@ use std::time::Duration;
 use alloy::primitives::U160;
 use groth16_material::circom::{CircomGroth16Material, CircomGroth16MaterialBuilder};
 use oprf_test_utils::{DeploySetup, PEER_ADDRESSES, TestSetup};
-use oprf_types::{chain::OprfKeyRegistry, crypto::PartyId};
+use oprf_types::{
+    chain::{OprfKeyRegistry, RevertError, Verifier::VerifierErrors},
+    crypto::PartyId,
+};
 
 use crate::services::{
     key_event_watcher::TransactionError,
@@ -58,8 +61,9 @@ async fn test_send_invalid_proof() -> eyre::Result<()> {
     )
     .await
     .expect_err("should fail");
-    assert!(
-        matches!(error, TransactionError::CannotSendTransaction(err) if err.to_string() == "contract rejects ZK proof: ProofInvalid(ProofInvalid)")
-    );
+    assert!(matches!(
+        error,
+        TransactionError::Revert(RevertError::Verifier(VerifierErrors::ProofInvalid(_)))
+    ));
     Ok(())
 }

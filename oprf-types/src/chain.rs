@@ -16,7 +16,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     OprfKeyId,
-    chain::OprfKeyRegistry::{KeyGenConfirmation, OprfKeyRegistryErrors},
+    chain::{
+        OprfKeyRegistry::{KeyGenConfirmation, OprfKeyRegistryErrors},
+        Verifier::VerifierErrors,
+    },
     crypto::{
         EphemeralEncryptionPublicKey, SecretGenCiphertext, SecretGenCiphertexts,
         SecretGenCommitment,
@@ -37,17 +40,50 @@ sol!(
     contract Verifier {
         error PublicInputNotInField();
         error ProofInvalid();
+
+        function verifyCompressedProof(uint256[4] calldata compressedProof, uint256[24] calldata input) public view;
+
+        function verifyProof(uint256[8] calldata proof, uint256[24] calldata input) public view;
     }
 );
 
+#[derive(Debug)]
+pub enum RevertError {
+    OprfKeyRegistry(OprfKeyRegistryErrors),
+    Verifier(VerifierErrors),
+}
+
 impl fmt::Debug for KeyGenConfirmation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TransactionConfirmation")
+        f.debug_struct("KeyGenConfirmation")
             .field("oprfKeyId", &self.oprfKeyId)
             .field("party_id", &self.partyId)
             .field("round", &self.round)
             .field("epoch", &self.epoch)
             .finish()
+    }
+}
+
+impl fmt::Display for RevertError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RevertError::OprfKeyRegistry(oprf_key_registry_errors) => {
+                f.write_str(&format!("{oprf_key_registry_errors}"))
+            }
+            RevertError::Verifier(verifier_errors) => f.write_str(&format!("{verifier_errors}")),
+        }
+    }
+}
+
+impl fmt::Display for VerifierErrors {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&format!("{self:?}"))
+    }
+}
+
+impl fmt::Display for OprfKeyRegistryErrors {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&format!("{self:?}"))
     }
 }
 

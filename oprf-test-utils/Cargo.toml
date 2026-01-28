@@ -26,7 +26,7 @@ ark-bn254 = { workspace = true, optional = true }
 ark-ec.workspace = true
 ark-ff.workspace = true
 askama = { version = "0.15", optional = true }
-async-trait = { workspace = true }
+async-trait.workspace = true
 clap = { workspace = true, features = ["derive", "env"], optional = true }
 eyre.workspace = true
 futures = { workspace = true }

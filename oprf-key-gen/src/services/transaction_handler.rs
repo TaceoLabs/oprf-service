@@ -295,12 +295,13 @@ impl TransactionHandler {
                     }
                 }
                 Err(err) => {
-                    return Err(TransactionError::CannotSendTransaction(eyre::eyre!(err)));
+                    return Err(TransactionError::Rpc(eyre::eyre!(err)));
                 }
             }
             if attempt >= self.attempts {
-                return Err(TransactionError::CannotSendTransaction(eyre::eyre!(
-                    "could not finish transaction with configured attempts"
+                return Err(TransactionError::Rpc(eyre::eyre!(
+                    "could not finish transaction within {} attempts",
+                    self.attempts
                 )));
             };
             attempt += 1;
@@ -369,7 +370,7 @@ where
         tracing::debug!("could not send transaction - do a call to get revert data");
         transaction().call().await?;
         // if we are here the call afterwards succeeded - we don't really know why the receipt failed so just return the wrapped receipt
-        Err(TransactionError::CannotSendTransaction(eyre::eyre!(
+        Err(TransactionError::Rpc(eyre::eyre!(
             "cannot finish transaction for unknown reason: {receipt:?}"
         )))
     }
