@@ -14,6 +14,7 @@ use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 
 pub mod aws;
+pub mod postgres;
 
 /// Dynamic trait object for secret manager service.
 ///
