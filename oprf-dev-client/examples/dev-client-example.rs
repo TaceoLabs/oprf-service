@@ -75,7 +75,7 @@ pub struct OprfDevClientConfig {
 
     /// The share epoch. Will be ignored if `oprf_key_id` is `None`.
     #[clap(long, env = "OPRF_DEV_CLIENT_SHARE_EPOCH", default_value = "0")]
-    pub share_epoch: u128,
+    pub share_epoch: u32,
 
     /// max wait time for init key-gen/reshare to succeed.
     #[clap(long, env = "OPRF_DEV_CLIENT_WAIT_TIME", default_value="2min", value_parser=humantime::parse_duration)]
