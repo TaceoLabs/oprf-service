@@ -89,8 +89,6 @@ impl TestNode {
             environment: Environment::Dev,
             oprf_key_registry_contract: *oprf_key_registry,
             chain_ws_rpc_url: anvil.ws_endpoint().into(),
-            rp_secret_id_prefix: format!("oprf/rp/n{party_id}"),
-            secret_id_private_key: "secret-id".to_owned(),
             ws_max_message_size: 1024 * 1024,
             session_lifetime: Duration::from_secs(10),
             get_oprf_key_material_timeout: Duration::from_secs(60),

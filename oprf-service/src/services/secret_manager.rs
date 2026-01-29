@@ -15,7 +15,9 @@ use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfKeyMaterial};
 
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
 
+#[cfg(feature = "aws")]
 pub mod aws;
+#[cfg(feature = "postgres")]
 pub mod postgres;
 
 /// Dynamic trait object for secret manager service.
