@@ -10,7 +10,7 @@ use clap::Parser;
 use eyre::Context;
 use taceo_oprf_key_gen::{
     config::{Environment, OprfKeyGenConfig},
-    secret_manager::aws::AwsSecretManager,
+    secret_manager::postgres::PostgresSecretManager,
 };
 
 #[tokio::main]
@@ -31,14 +31,15 @@ async fn main() -> eyre::Result<ExitCode> {
         Environment::Dev => nodes_common::localstack_aws_config().await,
     };
 
-    // Load the AWS secret manager.
+    // Load the Postgres secret manager.
     let secret_manager = Arc::new(
-        AwsSecretManager::init(
+        PostgresSecretManager::init(
+            &config.db_connection_string,
             aws_config,
-            &config.rp_secret_id_prefix,
             &config.wallet_private_key_secret_id,
         )
-        .await,
+        .await
+        .context("while starting postgres secret-manager")?,
     );
 
     tracing::info!("binding to {}", config.bind_addr);

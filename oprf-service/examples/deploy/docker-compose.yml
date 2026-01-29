@@ -4,16 +4,48 @@ services:
     container_name: localstack
     stop_grace_period: 1s
     ports:
-      - "4566:4566"            
+      - "4566:4566"
     environment:
-      - SERVICES=secretsmanager
-      - DEBUG=1
+      SERVICES: secretsmanager
+      DEBUG: 1
+
   anvil:
     image: ghcr.io/foundry-rs/foundry:latest
     container_name: anvil
     stop_grace_period: 1s
     ports:
-      - "8545:8545"            
+      - "8545:8545"
     command: anvil
     environment:
-        ANVIL_IP_ADDR: 0.0.0.0
+      ANVIL_IP_ADDR: 0.0.0.0
+
+  postgres0:
+    image: postgres:16
+    container_name: postgres0
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+
+  postgres1:
+    image: postgres:16
+    container_name: postgres1
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+
+  postgres2:
+    image: postgres:16
+    container_name: postgres2
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+

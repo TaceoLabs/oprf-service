@@ -6,10 +6,12 @@ use std::{
 };
 
 use clap::Parser;
+use eyre::Context;
+use secrecy::SecretString;
 use taceo_oprf_service::{
     OprfServiceBuilder, StartedServices,
-    config::{Environment, OprfNodeConfig},
-    secret_manager::{SecretManagerService, aws::AwsSecretManager},
+    config::OprfNodeConfig,
+    secret_manager::{SecretManagerService, postgres::PostgresSecretManager},
 };
 
 use crate::simple_authenticator::ExampleOprfRequestAuthenticator;
@@ -35,6 +37,10 @@ pub struct ExampleOprfNodeConfig {
     )]
     pub max_wait_time_shutdown: Duration,
 
+    /// The connection string for the Postgres DB
+    #[clap(long, env = "OPRF_NODE_DB_CONNECTION_STRING")]
+    pub db_connection_string: SecretString,
+
     /// The OPRF service config
     #[clap(flatten)]
     pub service_config: OprfNodeConfig,
@@ -50,19 +56,11 @@ async fn main() -> eyre::Result<ExitCode> {
 
     let config = ExampleOprfNodeConfig::parse();
 
-    let aws_config = match config.service_config.environment {
-        Environment::Prod => aws_config::load_from_env().await,
-        Environment::Dev => nodes_common::localstack_aws_config().await,
-    };
-
     // Load the AWS secret manager.
     let secret_manager = Arc::new(
-        AwsSecretManager::init(
-            aws_config,
-            &config.service_config.rp_secret_id_prefix,
-            &config.service_config.secret_id_private_key,
-        )
-        .await,
+        PostgresSecretManager::init(&config.db_connection_string)
+            .await
+            .context("while starting postgres secret-manager")?,
     );
     let result = start_service(
         config,

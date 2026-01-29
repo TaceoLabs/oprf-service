@@ -53,13 +53,12 @@ run_deploy() {
     cargo clean --workspace 
     cargo build --workspace --release --examples --bins
     echo "staring keygen"
+    # need to start key-gen before nodes because they run DB migrations
     start_keygen "$DEPLOYED_ADDRESS"
+    wait_for_health 20000 3 "key-gen" 300
 
     echo "staring nodes"
     start_nodes "$DEPLOYED_ADDRESS"
-
-    # Wait for all nodes to be healthy
-    wait_for_health 20000 3 "key-gen" 300
     wait_for_health 10000 3 "oprf-service" 300
 }
 
@@ -104,17 +103,19 @@ start_keygen() {
     for i in 0 1 2; do
         local port=$((20000 + i))
         local prefix="n$i"
+        local db_port=$((5432 + i))
+        local db_conn="postgres://postgres:postgres@localhost:$db_port/postgres"
+
         RUST_LOG="taceo_oprf_key_gen=trace,warn" \
         ./target/release/oprf-key-gen \
             --bind-addr 127.0.0.1:$port \
-            --rp-secret-id-prefix oprf/rp/$prefix \
             --environment dev \
             --wallet-private-key-secret-id oprf/eth/$prefix \
             --key-gen-zkey-path ./circom/main/key-gen/OPRFKeyGen.13.arks.zkey \
             --key-gen-witness-graph-path ./circom/main/key-gen/OPRFKeyGenGraph.13.bin \
             --oprf-key-registry-contract $oprf_key_registry \
             --confirmations-for-transaction 1 \
-            --db-connection-string not-used-yet \
+            --db-connection-string $db_conn \
             > logs/key-gen$i.log 2>&1 &
         keygen_pids+=($!)
         echo "started key-gen$i with PID ${keygen_pids[$i]}"
@@ -137,14 +138,16 @@ start_nodes() {
             1) wallet=0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f ;;
             2) wallet=0xa0Ee7A142d267C1f36714E4a8F75612F20a79720 ;;
         esac
+        local db_port=$((5432 + i))
+        local db_conn="postgres://postgres:postgres@localhost:$db_port/postgres"
+
         RUST_LOG="taceo_oprf_service=trace,taceo_oprf_service_example=trace,oprf_service_example=trace,warn" \
         ./target/release/examples/oprf-service-example \
             --bind-addr 127.0.0.1:$port \
-            --rp-secret-id-prefix oprf/rp/n$i \
             --environment dev \
-            --wallet-address $wallet \
             --version-req ">=0.0.0" \
             --oprf-key-registry-contract $oprf_key_registry \
+            --db-connection-string $db_conn \
             > logs/node$i.log 2>&1 &
         nodes_pids+=($!)
         echo "started node$i with PID ${nodes_pids[$i]}"
@@ -156,7 +159,7 @@ start_nodes() {
 # -------------------------
 main() {
     rm -rf logs/*
-    docker compose -f ./oprf-service/examples/deploy/docker-compose.yml up -d localstack anvil
+    docker compose -f ./oprf-service/examples/deploy/docker-compose.yml up -d localstack anvil postgres0 postgres1 postgres2
 
     # centralized teardown
     teardown() {
