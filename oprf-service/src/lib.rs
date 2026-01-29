@@ -95,11 +95,17 @@ impl OprfServiceBuilder {
             .context("while connecting to RPC")?
             .erased();
 
-        tracing::info!("loading party id..");
+        tracing::info!("loading address from secret-manager..");
+        let address = secret_manager
+            .load_address()
+            .await
+            .context("while loading address")?;
+
+        tracing::info!("loading party id with address {address}..");
         let contract = OprfKeyRegistry::new(config.oprf_key_registry_contract, provider.clone());
         let party_id = PartyId(
             contract
-                .getPartyIdForParticipant(config.wallet_address)
+                .getPartyIdForParticipant(address)
                 .call()
                 .await
                 .context("while loading party id")?
@@ -143,7 +149,7 @@ impl OprfServiceBuilder {
             .merge(api::health::routes(started_services.clone()))
             .merge(api::info::routes(
                 oprf_key_material_store.clone(),
-                config.wallet_address,
+                address,
                 config.region.clone(),
             ));
 

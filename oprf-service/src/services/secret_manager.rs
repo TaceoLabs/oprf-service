@@ -9,6 +9,7 @@
 
 use std::sync::Arc;
 
+use alloy::primitives::Address;
 use async_trait::async_trait;
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfKeyMaterial};
 
@@ -27,6 +28,9 @@ pub type SecretManagerService = Arc<dyn SecretManager + Send + Sync>;
 /// Handles persistence of `OprfKeyMaterial`.
 #[async_trait]
 pub trait SecretManager {
+    /// Loads the EVM `Address` of this node.
+    async fn load_address(&self) -> eyre::Result<Address>;
+
     /// Loads the DLog secrets and creates a [`OprfKeyMaterialStore`].
     async fn load_secrets(&self) -> eyre::Result<OprfKeyMaterialStore>;
 

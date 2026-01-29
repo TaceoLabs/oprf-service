@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use oprf_test_utils::{DeploySetup, TestSetup, test_secret_manager::TestSecretManager};
+use oprf_test_utils::{
+    DeploySetup, OPRF_PEER_PRIVATE_KEY_0, TestSetup, test_secret_manager::TestSecretManager,
+};
 use oprf_types::{ShareEpoch, api::ShareIdentifier};
 
 use crate::setup::TestNode;
@@ -10,7 +12,7 @@ mod setup;
 #[tokio::test]
 async fn test_delete_oprf_key() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let secret_manager = Arc::new(TestSecretManager::new());
+    let secret_manager = Arc::new(TestSecretManager::new(OPRF_PEER_PRIVATE_KEY_0));
     let inserted_key = secret_manager.add_random_key_material(&mut rand::thread_rng());
     let node = TestNode::start_with_secret_manager(0, &setup, Arc::clone(&secret_manager)).await?;
     let should_key = node

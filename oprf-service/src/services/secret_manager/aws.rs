@@ -11,14 +11,18 @@
 //! and current/previous epoch secrets.
 
 use std::collections::HashMap;
+use std::str::FromStr as _;
 
-use alloy::primitives::U160;
+use alloy::primitives::{Address, U160};
+use alloy::signers::local::PrivateKeySigner;
 use async_trait::async_trait;
 use aws_sdk_secretsmanager::operation::get_secret_value::GetSecretValueError;
 use aws_sdk_secretsmanager::types::{Filter, FilterNameStringType};
 use eyre::Context;
 use oprf_types::crypto::OprfKeyMaterial;
 use oprf_types::{OprfKeyId, ShareEpoch};
+use secrecy::zeroize::Zeroize as _;
+use secrecy::{ExposeSecret, SecretString};
 use tracing::instrument;
 
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
@@ -29,6 +33,7 @@ use crate::services::secret_manager::SecretManager;
 pub struct AwsSecretManager {
     client: aws_sdk_secretsmanager::Client,
     oprf_secret_id_prefix: String,
+    wallet_private_key_secret_id: String,
 }
 
 impl AwsSecretManager {
@@ -36,18 +41,43 @@ impl AwsSecretManager {
     ///
     /// Loads AWS configuration from the environment and wraps the client
     /// in a `SecretManagerService`.
-    pub async fn init(aws_config: aws_config::SdkConfig, oprf_secret_id_prefix: &str) -> Self {
+    pub async fn init(
+        aws_config: aws_config::SdkConfig,
+        oprf_secret_id_prefix: &str,
+        wallet_private_key_secret_id: &str,
+    ) -> Self {
         // loads the latest defaults for aws
         let client = aws_sdk_secretsmanager::Client::new(&aws_config);
         AwsSecretManager {
             client,
-            oprf_secret_id_prefix: oprf_secret_id_prefix.to_string(),
+            oprf_secret_id_prefix: oprf_secret_id_prefix.to_owned(),
+            wallet_private_key_secret_id: wallet_private_key_secret_id.to_owned(),
         }
     }
 }
 
 #[async_trait]
 impl SecretManager for AwsSecretManager {
+    #[instrument(level = "info", skip_all)]
+    async fn load_address(&self) -> eyre::Result<Address> {
+        tracing::info!("loading address from secret-manager");
+        let mut hex_private_key = SecretString::from(
+            self.client
+                .get_secret_value()
+                .secret_id(self.wallet_private_key_secret_id.clone())
+                .send()
+                .await
+                .context("while loading private-key from secret-manager")?
+                .secret_string()
+                .ok_or_else(|| eyre::eyre!("is not a secret-string"))?
+                .to_owned(),
+        );
+        let private_key = PrivateKeySigner::from_str(hex_private_key.expose_secret())
+            .context("while reading wallet private key")?;
+        // set private key to all zeroes
+        hex_private_key.zeroize();
+        Ok(private_key.address())
+    }
     /// Loads all OPRF secrets from AWS Secrets Manager.
     ///
     /// Iterates through all secrets with the configured prefix and deserializes

@@ -63,7 +63,7 @@ impl TestKeyGen {
         let private_key = PEER_PRIVATE_KEYS[party_id];
         let child_token = cancellation_token.child_token();
         let port_range = rand::thread_rng().gen_range(10_000..20_000);
-        let secret_manager = Arc::new(TestSecretManager::with_private_key(private_key));
+        let secret_manager = Arc::new(TestSecretManager::new(private_key));
         let keygen_secret_manager = Arc::new(KeyGenTestSecretManager(Arc::clone(&secret_manager)));
         let mut offset = 0;
         // try 100 ports
@@ -182,11 +182,7 @@ pub mod keygen_asserts {
 #[async_trait]
 impl taceo_oprf_key_gen::secret_manager::SecretManager for KeyGenTestSecretManager {
     async fn load_or_insert_wallet_private_key(&self) -> eyre::Result<PrivateKeySigner> {
-        Ok(self
-            .0
-            .wallet_private_key
-            .clone()
-            .expect("Cannot provide private key for this test run"))
+        Ok(self.0.wallet_private_key.clone())
     }
 
     async fn get_previous_share(

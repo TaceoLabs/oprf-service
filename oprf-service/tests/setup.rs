@@ -1,13 +1,14 @@
 use core::fmt;
 use std::{sync::Arc, time::Duration};
 
+use alloy::primitives::Address;
 use ark_ff::UniformRand as _;
 use async_trait::async_trait;
 use axum_test::TestServer;
 use http::StatusCode;
 use oprf_core::oprf::BlindingFactor;
 use oprf_test_utils::{
-    PEER_ADDRESSES, TEST_TIMEOUT, TestSetup, test_secret_manager::TestSecretManager,
+    PEER_PRIVATE_KEYS, TEST_TIMEOUT, TestSetup, test_secret_manager::TestSecretManager,
 };
 use oprf_types::{
     OprfKeyId, ShareEpoch,
@@ -89,9 +90,9 @@ impl TestNode {
             oprf_key_registry_contract: *oprf_key_registry,
             chain_ws_rpc_url: anvil.ws_endpoint().into(),
             rp_secret_id_prefix: format!("oprf/rp/n{party_id}"),
+            secret_id_private_key: "secret-id".to_owned(),
             ws_max_message_size: 1024 * 1024,
             session_lifetime: Duration::from_secs(10),
-            wallet_address: PEER_ADDRESSES[party_id],
             get_oprf_key_material_timeout: Duration::from_secs(60),
             start_block: None,
             version_req: "1.0.0".parse().unwrap(),
@@ -122,8 +123,12 @@ impl TestNode {
     }
 
     pub async fn start(party_id: usize, setup: &TestSetup) -> eyre::Result<Self> {
-        Self::start_with_secret_manager(party_id, setup, Arc::new(TestSecretManager::default()))
-            .await
+        Self::start_with_secret_manager(
+            party_id,
+            setup,
+            Arc::new(TestSecretManager::new(PEER_PRIVATE_KEYS[party_id])),
+        )
+        .await
     }
 
     pub async fn _start_three(test_setup: &TestSetup) -> eyre::Result<[Self; 3]> {
@@ -248,6 +253,9 @@ impl TestNode {
 
 #[async_trait]
 impl taceo_oprf_service::secret_manager::SecretManager for NodeTestSecretManager {
+    async fn load_address(&self) -> eyre::Result<Address> {
+        Ok(self.0.wallet_private_key.address())
+    }
     async fn load_secrets(&self) -> eyre::Result<OprfKeyMaterialStore> {
         Ok(OprfKeyMaterialStore::new(self.0.store.lock().clone()))
     }

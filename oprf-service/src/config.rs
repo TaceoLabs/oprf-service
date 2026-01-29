@@ -76,8 +76,8 @@ pub struct OprfNodeConfig {
     pub rp_secret_id_prefix: String,
 
     /// The wallet address
-    #[clap(long, env = "OPRF_NODE_WALLET_ADDRESS")]
-    pub wallet_address: Address,
+    #[clap(long, env = "OPRF_NODE_SECRET_STRING_ADDRESS")]
+    pub secret_id_private_key: String,
 
     /// Max time to wait for oprf key material secret retrieval from secret manager during key-event processing.
     #[clap(

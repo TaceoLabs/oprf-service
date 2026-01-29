@@ -4,6 +4,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use alloy::primitives::Address;
 use ark_serialize::CanonicalDeserialize;
 use async_trait::async_trait;
 use eyre::Context as _;
@@ -73,6 +74,19 @@ impl PostgresSecretManager {
 
 #[async_trait]
 impl SecretManager for PostgresSecretManager {
+    #[instrument(level = "info", skip_all)]
+    async fn load_address(&self) -> eyre::Result<Address> {
+        tracing::info!("loading address from secret-manager");
+        let stored_address: String =
+            sqlx::query_scalar("SELECT address FROM evm_address WHERE id = TRUE")
+                .fetch_optional(&self.0)
+                .await?
+                .ok_or_else(|| {
+                    eyre::eyre!("Cannot get address from DB, maybe key-gen needs to start")
+                })?;
+        Address::parse_checksummed(stored_address, None).context("invalid address stored in DB")
+    }
+
     #[instrument(level = "info", skip_all)]
     async fn load_secrets(&self) -> eyre::Result<OprfKeyMaterialStore> {
         tracing::info!("fetching all OPRF keys from DB..");

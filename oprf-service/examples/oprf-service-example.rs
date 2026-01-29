@@ -57,7 +57,12 @@ async fn main() -> eyre::Result<ExitCode> {
 
     // Load the AWS secret manager.
     let secret_manager = Arc::new(
-        AwsSecretManager::init(aws_config, &config.service_config.rp_secret_id_prefix).await,
+        AwsSecretManager::init(
+            aws_config,
+            &config.service_config.rp_secret_id_prefix,
+            &config.service_config.secret_id_private_key,
+        )
+        .await,
     );
     let result = start_service(
         config,
