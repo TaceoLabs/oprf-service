@@ -12,7 +12,7 @@ keywords = ["oprf", "mpc", "client", "development"]
 publish = true
 
 [dependencies]
-alloy = { workspace = true, features = ["full", "rpc", "rpc-client-ws", "rand"] }
+alloy = { workspace = true, features = ["full", "rpc", "rpc-client-ws"] }
 clap = { workspace = true, features = ["derive", "env"] }
 eyre.workspace = true
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.4" }

@@ -3,7 +3,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use alloy::{primitives::Address, providers::DynProvider};
+use alloy::{
+    primitives::{Address, U160},
+    providers::DynProvider,
+};
 use clap::{Parser, Subcommand};
 use oprf_client::{Connector, OprfSessions};
 use oprf_core::ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir};
@@ -164,7 +167,8 @@ pub async fn init_key_gen(
     provider: DynProvider,
     max_wait_time: Duration,
 ) -> eyre::Result<(OprfKeyId, OprfPublicKey)> {
-    let oprf_key_id = OprfKeyId::new(rand::random());
+    let oprf_key_id_u32: u32 = rand::random();
+    let oprf_key_id = OprfKeyId::new(U160::from(oprf_key_id_u32));
     tracing::info!("init OPRF key gen with: {oprf_key_id}");
     oprf_key_registry::init_key_gen(provider, oprf_key_registry, oprf_key_id).await?;
     tracing::info!("waiting for key-gen to finish..");
