@@ -118,6 +118,7 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
                 &oprf_key_material_store,
                 &secret_manager,
                 get_oprf_key_material_timeout,
+                &cancellation_token,
             )
             .await
             .context("while handling past log")?;
@@ -151,6 +152,7 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
             &oprf_key_material_store,
             &secret_manager,
             get_oprf_key_material_timeout,
+            &cancellation_token,
         )
         .await
         .context("while handling log")?;
@@ -164,6 +166,7 @@ async fn handle_log(
     oprf_key_material_store: &OprfKeyMaterialStore,
     secret_manager: &SecretManagerService,
     get_oprf_key_material_timeout: Duration,
+    cancellation_token: &CancellationToken,
 ) -> eyre::Result<()> {
     match log.topic0() {
         Some(&OprfKeyRegistry::SecretGenFinalize::SIGNATURE_HASH) => handle_finalize(
@@ -171,6 +174,7 @@ async fn handle_log(
             oprf_key_material_store,
             secret_manager,
             get_oprf_key_material_timeout,
+            cancellation_token,
         )
         .await
         .context("while handling finalize")?,
@@ -191,6 +195,7 @@ async fn handle_finalize(
     oprf_key_material_store: &OprfKeyMaterialStore,
     secret_manager: &SecretManagerService,
     get_oprf_key_material_timeout: Duration,
+    cancellation_token: &CancellationToken,
 ) -> eyre::Result<()> {
     tracing::info!("Received Finalize event");
     let finalize = log.log_decode().context("while decoding finalize event")?;
@@ -205,6 +210,7 @@ async fn handle_finalize(
         secret_manager.clone(),
         get_oprf_key_material_timeout,
         epoch.into(),
+        cancellation_token.clone(),
     ));
     Ok(())
 }
@@ -216,20 +222,32 @@ async fn fetch_oprf_key_material_from_secret_manager(
     secret_manager: SecretManagerService,
     get_oprf_key_material_timeout: Duration,
     epoch: ShareEpoch,
+    cancellation_token: CancellationToken,
 ) {
     tracing::info!("trying to fetch {oprf_key_id} for epoch {epoch}");
     let mut interval = tokio::time::interval(Duration::from_secs(5));
+    let cancellation_token_timeout = cancellation_token.clone();
     if tokio::time::timeout(get_oprf_key_material_timeout, async {
         loop {
             interval.tick().await;
-            if let Ok(key_material) = secret_manager.get_oprf_key_material(oprf_key_id).await
-                && key_material.has_epoch(epoch)
+            match secret_manager
+                .get_oprf_key_material(oprf_key_id, epoch)
+                .await
             {
-                tracing::info!("got key from secret manager for {oprf_key_id} and epoch {epoch}");
-                oprf_key_material_store.insert(oprf_key_id, key_material);
-                break;
-            } else {
-                tracing::debug!("{epoch} for {oprf_key_id} not yet in secret-manager");
+                Ok(Some(key_material)) => {
+                    tracing::info!(
+                        "got key from secret manager for {oprf_key_id} and epoch {epoch}"
+                    );
+                    oprf_key_material_store.insert(oprf_key_id, key_material);
+                }
+                Ok(None) => {
+                    tracing::debug!("{epoch} for {oprf_key_id} not yet in secret-manager");
+                }
+                Err(err) => {
+                    tracing::error!("Cannot fetch from secret-manager: {err:?}");
+                    cancellation_token.cancel();
+                    break;
+                }
             }
         }
     })
@@ -237,6 +255,7 @@ async fn fetch_oprf_key_material_from_secret_manager(
     .is_err()
     {
         tracing::error!("timed out waiting for secret manager to provide key for {oprf_key_id}");
+        cancellation_token_timeout.cancel();
     }
 }
 

@@ -14,10 +14,11 @@ use std::collections::HashMap;
 
 use alloy::primitives::U160;
 use async_trait::async_trait;
+use aws_sdk_secretsmanager::operation::get_secret_value::GetSecretValueError;
 use aws_sdk_secretsmanager::types::{Filter, FilterNameStringType};
 use eyre::Context;
-use oprf_types::OprfKeyId;
 use oprf_types::crypto::OprfKeyMaterial;
+use oprf_types::{OprfKeyId, ShareEpoch};
 use tracing::instrument;
 
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
@@ -108,22 +109,47 @@ impl SecretManager for AwsSecretManager {
     }
 
     #[instrument(level = "info", skip(self))]
-    async fn get_oprf_key_material(&self, oprf_key_id: OprfKeyId) -> eyre::Result<OprfKeyMaterial> {
+    async fn get_oprf_key_material(
+        &self,
+        oprf_key_id: OprfKeyId,
+        epoch: ShareEpoch,
+    ) -> eyre::Result<Option<OprfKeyMaterial>> {
         let secret_id = to_key_secret_id(&self.oprf_secret_id_prefix, oprf_key_id);
         tracing::debug!("loading secret at {secret_id}");
-        let secret_value = self
+        match self
             .client
             .get_secret_value()
             .secret_id(secret_id.clone())
             .send()
             .await
-            .context("while loading old secret")?
-            .secret_string()
-            .expect("is string and not binary")
-            .to_owned();
-        let oprf_secret: OprfKeyMaterial =
-            serde_json::from_str(&secret_value).context("Cannot deserialize AWS Secret")?;
-        Ok(oprf_secret)
+        {
+            Ok(secret) => {
+                tracing::debug!("found {secret_id:?} - checking if correct epoch");
+                let secret_value = secret
+                    .secret_string()
+                    .expect("Is string not binary")
+                    .to_owned();
+                let key_material: OprfKeyMaterial =
+                    serde_json::from_str(&secret_value).context("Cannot deserialize AWS Secret")?;
+                if key_material.has_epoch(epoch) {
+                    tracing::debug!("Found! Returning");
+                    Ok(Some(key_material))
+                } else {
+                    tracing::debug!(
+                        "Cannot find requested epoch in secret-manager, latest epoch is: {:?}",
+                        key_material.get_latest_epoch()
+                    );
+                    Ok(None)
+                }
+            }
+            Err(x) => match x.into_service_error() {
+                GetSecretValueError::ResourceNotFoundException(_) => {
+                    tracing::debug!("{secret_id} not yet in secret-manager");
+                    Ok(None)
+                }
+                x => Err(x)?,
+            },
+        }
     }
 }
 

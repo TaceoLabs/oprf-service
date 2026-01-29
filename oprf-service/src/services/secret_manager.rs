@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use oprf_types::{OprfKeyId, crypto::OprfKeyMaterial};
+use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfKeyMaterial};
 
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
 
@@ -28,6 +28,12 @@ pub trait SecretManager {
     /// Loads the DLog secrets and creates a [`OprfKeyMaterialStore`].
     async fn load_secrets(&self) -> eyre::Result<OprfKeyMaterialStore>;
 
-    /// Retrieves the [`OprfKeyMaterial`] for the given [`OprfKeyId`].
-    async fn get_oprf_key_material(&self, oprf_key_id: OprfKeyId) -> eyre::Result<OprfKeyMaterial>;
+    /// Returns the [`OprfKeyMaterial`] for the given [`OprfKeyId`] and [`ShareEpoch`] if it exists.
+    ///
+    /// Returns `None` if it doesn't exist or the key-material exists, but is not in the correct epoch.
+    async fn get_oprf_key_material(
+        &self,
+        oprf_key_id: OprfKeyId,
+        epoch: ShareEpoch,
+    ) -> eyre::Result<Option<OprfKeyMaterial>>;
 }
