@@ -2,7 +2,7 @@
 //!
 //! Additionally, fetches the node-provider's Ethereum address from the DB.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use alloy::primitives::Address;
 use ark_serialize::CanonicalDeserialize;
@@ -25,8 +25,7 @@ pub struct PostgresSecretManager(PgPool);
 #[derive(Debug, sqlx::FromRow, ZeroizeOnDrop)]
 struct ShareRow {
     id: Vec<u8>,
-    current: Vec<u8>,
-    prev: Option<Vec<u8>>,
+    share: Vec<u8>,
     epoch: i64,
     public_key: Vec<u8>,
 }
@@ -76,8 +75,7 @@ impl SecretManager for PostgresSecretManager {
             r#"
                 SELECT
                     id,
-                    current,
-                    prev,
+                    share,
                     epoch,
                     public_key
                 FROM shares
@@ -105,8 +103,7 @@ impl SecretManager for PostgresSecretManager {
             r#"
                 SELECT
                     id,
-                    current,
-                    prev,
+                    share,
                     epoch,
                     public_key
                 FROM shares
@@ -137,27 +134,14 @@ fn from_db_ark_deserialize_uncompressed<T: CanonicalDeserialize>(b: impl AsRef<[
 /// Converts a row from the DB to an entry in the [`OprfKeyMaterialStore`]. This method will panic if the DB is not sane (i.e., has corrupted data stored).
 fn db_row_into_key_material(row: ShareRow) -> (OprfKeyId, OprfKeyMaterial) {
     let id = OprfKeyId::from_le_slice(&row.id);
-    let current = from_db_ark_deserialize_uncompressed::<DLogShareShamir>(&row.current);
-    let prev = row
-        .prev
-        .as_ref()
-        .map(from_db_ark_deserialize_uncompressed::<DLogShareShamir>);
+    let share = from_db_ark_deserialize_uncompressed::<DLogShareShamir>(&row.share);
     let epoch = ShareEpoch::new(
         row.epoch
             .try_into()
             .expect("DB epoch value out of valid u32 range"),
     );
-
     let oprf_public_key = from_db_ark_deserialize_uncompressed::<OprfPublicKey>(&row.public_key);
-
-    let mut shares = BTreeMap::new();
-    shares.insert(epoch, current);
-
-    if let Some(prev) = prev {
-        shares.insert(epoch.prev(), prev);
-    }
-
-    (id, OprfKeyMaterial::new(shares, oprf_public_key))
+    (id, OprfKeyMaterial::new(share, oprf_public_key, epoch))
 }
 
 #[cfg(test)]

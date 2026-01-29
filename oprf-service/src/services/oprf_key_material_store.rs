@@ -12,9 +12,9 @@ use oprf_core::{
     shamir,
 };
 use oprf_types::{
-    OprfKeyId, ShareEpoch,
-    api::{OprfPublicKeyWithEpoch, ShareIdentifier},
-    crypto::{OprfKeyMaterial, OprfPublicKey, PartyId},
+    OprfKeyId,
+    api::OprfPublicKeyWithEpoch,
+    crypto::{OprfKeyMaterial, PartyId},
 };
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc};
@@ -23,7 +23,7 @@ use uuid::Uuid;
 
 use crate::metrics::METRICS_ID_NODE_OPRF_SECRETS;
 
-type OprfKeyMaterialStoreResult<T> = std::result::Result<T, OprfKeyMaterialStoreError>;
+type Result<T> = std::result::Result<T, OprfKeyMaterialStoreError>;
 
 /// Errors returned by the [`OprfKeyMaterial`].
 ///
@@ -36,14 +36,24 @@ pub enum OprfKeyMaterialStoreError {
     /// Cannot find the OPRF key id.
     #[error("Cannot find key id: {0}")]
     UnknownOprfKeyId(OprfKeyId),
-    /// Cannot find a secret share for the epoch.
-    #[error("Cannot find share with epoch: {0}")]
-    UnknownShareEpoch(ShareEpoch),
 }
 
 /// Storage for [`OprfKeyMaterial`]s.
 #[derive(Default, Clone)]
 pub struct OprfKeyMaterialStore(Arc<RwLock<HashMap<OprfKeyId, OprfKeyMaterial>>>);
+
+/// The session obtained after calling `partial_commit`. Doesn't implement `Debug/Clone` to not accidentally leak private data and prevent reusing the same session.
+pub(crate) struct OprfSession {
+    dlog_session: DLogSessionShamir,
+    key_material: OprfKeyMaterial,
+}
+
+impl OprfSession {
+    /// Returns the public part of the [`OprfSession`], the [`OprfPublicKeyWithEpoch`].
+    pub fn public_key_with_epoch(&self) -> OprfPublicKeyWithEpoch {
+        self.key_material.public_key_with_epoch()
+    }
+}
 
 impl OprfKeyMaterialStore {
     /// Creates a new storage instance with the provided initial shares.
@@ -66,72 +76,72 @@ impl OprfKeyMaterialStore {
         self.0.read().is_empty()
     }
 
-    /// Computes C = B * x_share and commitments to a random value k_share.
+    /// Returns the `true` iff the store contains key-material associated with the [`OprfKeyId`].
     ///
-    /// This generates the node's partial contribution used in the DLogEqualityProof.
-    /// The provided [`ShareIdentifier`] identifies the used OPRF key and the epoch of the share.
+    /// _Note_ that this acquires a lock internally and returns the result from that point in time.
+    pub fn contains(&self, oprf_key_id: OprfKeyId) -> bool {
+        self.0.read().contains_key(&oprf_key_id)
+    }
+
+    /// Computes C = B * x_share and commitments to a random value k_share, where x_share is identified by [`OprfKeyId`].
     ///
-    /// Returns an error if the OPRF key is unknown or the share for the epoch is not registered.
+    /// This generates the node's partial contribution used in the DLogEqualityProof and returns an [`OprfSession`] and a [`PartialDLogCommitmentsShamir`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the OPRF key is unknown.
     #[instrument(level = "debug", skip_all)]
     pub(crate) fn partial_commit(
         &self,
         point_b: ark_babyjubjub::EdwardsAffine,
-        share_identifier: ShareIdentifier,
-    ) -> OprfKeyMaterialStoreResult<(DLogSessionShamir, PartialDLogCommitmentsShamir)> {
+        oprf_key_id: OprfKeyId,
+    ) -> Result<(OprfSession, PartialDLogCommitmentsShamir)> {
         tracing::debug!("computing partial commitment");
-        let share = self
-            .get(share_identifier.oprf_key_id)
-            .ok_or(OprfKeyMaterialStoreError::UnknownOprfKeyId(
-                share_identifier.oprf_key_id,
-            ))?
-            .get_share(share_identifier.share_epoch)
-            .ok_or(OprfKeyMaterialStoreError::UnknownShareEpoch(
-                share_identifier.share_epoch,
-            ))?;
-        Ok(DLogSessionShamir::partial_commitments(
+        // we still need to check here, because even if we call contains, we might have removed this share in the meantime
+        let key_material = self
+            .get(oprf_key_id)
+            .ok_or(OprfKeyMaterialStoreError::UnknownOprfKeyId(oprf_key_id))?;
+        let (dlog_session, commitment) = DLogSessionShamir::partial_commitments(
             point_b,
-            share,
+            key_material.share(),
             &mut rand::thread_rng(),
-        ))
+        );
+        tracing::debug!("created session with epoch {}", key_material.epoch());
+        let session = OprfSession {
+            dlog_session,
+            key_material,
+        };
+        Ok((session, commitment))
     }
 
-    /// Finalizes a proof share for a given challenge hash and session.
+    /// Finalizes a proof share for a [`DLogCommitmentsShamir`] and an [`OprfSession`].
     ///
     /// Consumes the session to prevent reuse of the randomness.
-    /// The provided [`ShareIdentifier`] identifies the used OPRF key and the epoch of the share.
+    /// The provided [`OprfKeyId`] identifies the used OPRF key.
     ///
-    /// Returns an error if the OPRF key is unknown or the share for the epoch is not registered.
+    /// # Errors
+    ///
+    /// Returns an error if the OPRF key is unknown.
     pub(crate) fn challenge(
         &self,
         session_id: Uuid,
         my_party_id: PartyId,
-        session: DLogSessionShamir,
+        session: OprfSession,
         challenge: DLogCommitmentsShamir,
-        share_identifier: ShareIdentifier,
-    ) -> OprfKeyMaterialStoreResult<DLogProofShareShamir> {
+    ) -> Result<DLogProofShareShamir> {
         tracing::debug!("finalizing proof share");
-        let oprf_public_key = self
-            .get_oprf_public_key(share_identifier.oprf_key_id)
-            .ok_or(OprfKeyMaterialStoreError::UnknownOprfKeyId(
-                share_identifier.oprf_key_id,
-            ))?;
-        let share = self
-            .get(share_identifier.oprf_key_id)
-            .ok_or(OprfKeyMaterialStoreError::UnknownOprfKeyId(
-                share_identifier.oprf_key_id,
-            ))?
-            .get_share(share_identifier.share_epoch)
-            .ok_or(OprfKeyMaterialStoreError::UnknownShareEpoch(
-                share_identifier.share_epoch,
-            ))?;
+        let OprfSession {
+            dlog_session,
+            key_material,
+        } = session;
         let lagrange_coefficient = shamir::single_lagrange_from_coeff(
             my_party_id.into_inner() + 1,
             challenge.get_contributing_parties(),
         );
-        Ok(session.challenge(
+        Ok(dlog_session.challenge(
             session_id,
-            share,
-            oprf_public_key.inner(),
+            key_material.share(),
+            key_material.public_key().inner(),
             challenge,
             lagrange_coefficient,
         ))
@@ -144,20 +154,12 @@ impl OprfKeyMaterialStore {
         self.0.read().get(&oprf_key_id).cloned()
     }
 
-    /// Returns the [`OprfPublicKey`], if registered.
-    pub fn get_oprf_public_key(&self, oprf_key_id: OprfKeyId) -> Option<OprfPublicKey> {
-        Some(self.0.read().get(&oprf_key_id)?.get_oprf_public_key())
-    }
-
-    /// Returns the [`OprfPublicKey`], if registered.
-    pub(crate) fn get_oprf_public_key_with_epoch(
+    /// Returns the [`OprfPublicKeyWithEpoch`], if registered.
+    pub(crate) fn oprf_public_key_with_epoch(
         &self,
         oprf_key_id: OprfKeyId,
     ) -> Option<OprfPublicKeyWithEpoch> {
-        self.0
-            .read()
-            .get(&oprf_key_id)?
-            .get_oprf_public_key_with_epoch()
+        Some(self.0.read().get(&oprf_key_id)?.public_key_with_epoch())
     }
 
     /// Adds OPRF key-material and overwrites any existing entry.

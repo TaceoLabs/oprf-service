@@ -70,6 +70,6 @@ oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-util
 rustls = { workspace = true }
 
 [features]
-default = ["postgres"]
+default = ["aws", "postgres"]
 aws = ["dep:aws-config", "dep:aws-sdk-secretsmanager"]
 postgres = ["dep:sqlx"]

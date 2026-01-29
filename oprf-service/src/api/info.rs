@@ -63,7 +63,7 @@ async fn oprf_key_available(
     oprf_material_store: OprfKeyMaterialStore,
     Path(id): Path<OprfKeyId>,
 ) -> impl IntoResponse {
-    if let Some(public_material) = oprf_material_store.get_oprf_public_key_with_epoch(id) {
+    if let Some(public_material) = oprf_material_store.oprf_public_key_with_epoch(id) {
         (StatusCode::OK, Json(public_material)).into_response()
     } else {
         StatusCode::NOT_FOUND.into_response()

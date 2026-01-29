@@ -11,7 +11,7 @@ use alloy::{hex, signers::local::PrivateKeySigner};
 use aws_sdk_secretsmanager::operation::get_secret_value::GetSecretValueError;
 use k256::ecdsa::SigningKey;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use std::{collections::BTreeMap, str::FromStr as _};
+use std::str::FromStr as _;
 use zeroize::Zeroize as _;
 
 use async_trait::async_trait;
@@ -82,8 +82,7 @@ impl AwsSecretManager {
         epoch: ShareEpoch,
         share: DLogShareShamir,
     ) -> eyre::Result<()> {
-        let oprf_key_material =
-            OprfKeyMaterial::new(BTreeMap::from([(epoch, share)]), oprf_public_key);
+        let oprf_key_material = OprfKeyMaterial::new(share, oprf_public_key, epoch);
         self.client
             .create_secret()
             .name(secret_id)
@@ -129,6 +128,10 @@ impl SecretManager for AwsSecretManager {
         generated_epoch: ShareEpoch,
     ) -> eyre::Result<Option<DLogShareShamir>> {
         tracing::debug!("loading latest share for {oprf_key_id}");
+        if generated_epoch.is_initial_epoch() {
+            tracing::debug!("there is no previous share for initial epoch");
+            return Ok(None);
+        }
         let secret_id = to_key_secret_id(&self.oprf_secret_id_prefix, oprf_key_id);
         let secret_value_res = self
             .client
@@ -152,16 +155,10 @@ impl SecretManager for AwsSecretManager {
 
         let oprf_key_material: OprfKeyMaterial =
             serde_json::from_str(&secret_value).context("Cannot deserialize AWS Secret")?;
-        if let Some((stored_epoch, share)) = oprf_key_material.get_latest_share() {
-            tracing::debug!("my latest epoch is: {stored_epoch}");
-            if stored_epoch.next() == generated_epoch {
-                Ok(Some(share))
-            } else {
-                tracing::debug!("we missed an epoch - returning None");
-                Ok(None)
-            }
+        tracing::debug!("my stored share is: {}", oprf_key_material.epoch());
+        if oprf_key_material.is_epoch(generated_epoch.prev()) {
+            Ok(Some(oprf_key_material.share()))
         } else {
-            tracing::warn!("does not contain any shares..");
             Ok(None)
         }
     }
@@ -211,13 +208,16 @@ impl SecretManager for AwsSecretManager {
             {
                 Some(secret_value) => {
                     // already stored - need update
-                    tracing::debug!("updating secret");
-                    let mut oprf_key_material: OprfKeyMaterial =
+                    let old_oprf_key_material: OprfKeyMaterial =
                         serde_json::from_str(&secret_value)
                             .context("Cannot deserialize AWS Secret")?;
-                    oprf_key_material.insert_share(epoch, share);
+                    tracing::info!(
+                        "already stored for epoch: {}. Overwriting...",
+                        old_oprf_key_material.epoch()
+                    );
 
-                    self.update_secret(&secret_id, oprf_key_material, oprf_key_id, epoch)
+                    let new_oprf_key_material = OprfKeyMaterial::new(share, public_key, epoch);
+                    self.update_secret(&secret_id, new_oprf_key_material, oprf_key_id, epoch)
                         .await
                         .context("while updating secret")
                 }
