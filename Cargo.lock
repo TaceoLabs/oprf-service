@@ -6374,8 +6374,6 @@ dependencies = [
  "taceo-groth16-sol",
  "taceo-nodes-observability",
  "taceo-oprf-core",
- "taceo-oprf-key-gen",
- "taceo-oprf-service",
  "taceo-oprf-types",
  "tokio",
  "tokio-util",
