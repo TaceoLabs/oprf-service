@@ -2,6 +2,37 @@
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.4.0...taceo-oprf-types-v0.5.0)
+
+### ⛰️ Features
+
+
+- Handle revert errors from contract gracefully - ([e41fdf3](https://github.com/TaceoLabs/oprf-service/commit/e41fdf398d9a23f67c1e63fa0d4ddf7294246da7))
+
+### 🚜 Refactor
+
+
+- [**breaking**] ShareEpoch is a u32 now ([#410](https://github.com/TaceoLabs/oprf-service/pull/410)) - ([2ba29f5](https://github.com/TaceoLabs/oprf-service/commit/2ba29f5b9119e4632dfd1cb195955ace77ebf632))
+- Distinguish between revert and rpc errors and always fail again - ([543a472](https://github.com/TaceoLabs/oprf-service/commit/543a4728d670b3aec36c535b2e72f78d9fe46e85))
+- [**breaking**] Remove v1 concept - ([2fe5324](https://github.com/TaceoLabs/oprf-service/commit/2fe5324a2a85be97873fca0ff5a698b7d31451d4))
+- Cleanup for umbrella crate - ([4f66f3a](https://github.com/TaceoLabs/oprf-service/commit/4f66f3afb0bbef6226cec4fcaece743cc1107db3))
+- [**breaking**] Moved Auth trait definition to types-crate - ([d7aa19f](https://github.com/TaceoLabs/oprf-service/commit/d7aa19ffe82b4e175390c8e9afb21bd82878c206))
+- [**breaking**] Update contracts to newest version - ([4065bf4](https://github.com/TaceoLabs/oprf-service/commit/4065bf4760ca17c2419603a394aaee33f7851ad2))
+- Add filter for KeyGenConfirmation for party ID ([#390](https://github.com/TaceoLabs/oprf-service/pull/390)) - ([773d8b5](https://github.com/TaceoLabs/oprf-service/commit/773d8b5b5ae74333de334cadc07ad31508033928))
+- [**breaking**] Split oprf-test into oprf-test-utils and oprf-test, split oprf-dev-client into oprf-dev-client lib and example bin ([#370](https://github.com/TaceoLabs/oprf-service/pull/370)) - ([5ca9019](https://github.com/TaceoLabs/oprf-service/commit/5ca90197fba1f19d0e74f595d383695d111dcbfb))
+
+### 📚 Documentation
+
+
+- Fix capitalization of TACEO:OPRF - ([181f2cd](https://github.com/TaceoLabs/oprf-service/commit/181f2cd7dc14d3d5383a7a2deaf8c57953c4302a))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Prepare crates for publishing - ([3b5a066](https://github.com/TaceoLabs/oprf-service/commit/3b5a066f09041e89a3b8371cddde4c50fad7407a))
+- Updated readme - ([279f20e](https://github.com/TaceoLabs/oprf-service/commit/279f20ef722aecebc8a2a9f58a9688c4d2f88c80))
+
+
 ## [0.4.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.3.0...taceo-oprf-types-v0.4.0)
 
 ### ⛰️ Features
