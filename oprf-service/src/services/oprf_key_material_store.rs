@@ -52,6 +52,20 @@ impl OprfKeyMaterialStore {
         Self(Arc::new(RwLock::new(inner)))
     }
 
+    /// Returns the amount of stored [`OprfKeyMaterial`]s.
+    ///
+    /// _Note_ that this acquires a lock internally and returns the length at that point in time.
+    pub fn len(&self) -> usize {
+        self.0.read().len()
+    }
+
+    /// Returns the `true` iff the store has no [`OprfKeyMaterial`] stored.
+    ///
+    /// _Note_ that this acquires a lock internally and returns the result from that point in time.
+    pub fn is_empty(&self) -> bool {
+        self.0.read().is_empty()
+    }
+
     /// Computes C = B * x_share and commitments to a random value k_share.
     ///
     /// This generates the node's partial contribution used in the DLogEqualityProof.
@@ -59,7 +73,7 @@ impl OprfKeyMaterialStore {
     ///
     /// Returns an error if the OPRF key is unknown or the share for the epoch is not registered.
     #[instrument(level = "debug", skip_all)]
-    pub(crate) fn partial_commit(
+    pub fn partial_commit(
         &self,
         point_b: ark_babyjubjub::EdwardsAffine,
         share_identifier: ShareIdentifier,
@@ -87,7 +101,7 @@ impl OprfKeyMaterialStore {
     /// The provided [`ShareIdentifier`] identifies the used OPRF key and the epoch of the share.
     ///
     /// Returns an error if the OPRF key is unknown or the share for the epoch is not registered.
-    pub(crate) fn challenge(
+    pub fn challenge(
         &self,
         session_id: Uuid,
         my_party_id: PartyId,
@@ -123,7 +137,7 @@ impl OprfKeyMaterialStore {
         ))
     }
 
-    /// Retrieves the secret share for the given [`ShareIdentifier`].
+    /// Retrieves the [`OprfKeyMaterial`] for the given [`OprfKeyId`].
     ///
     /// Returns `None` if the OPRF key or share epoch is not found.
     fn get(&self, oprf_key_id: OprfKeyId) -> Option<OprfKeyMaterial> {
@@ -131,7 +145,7 @@ impl OprfKeyMaterialStore {
     }
 
     /// Returns the [`OprfPublicKey`], if registered.
-    pub(crate) fn get_oprf_public_key(&self, oprf_key_id: OprfKeyId) -> Option<OprfPublicKey> {
+    pub fn get_oprf_public_key(&self, oprf_key_id: OprfKeyId) -> Option<OprfPublicKey> {
         Some(self.0.read().get(&oprf_key_id)?.get_oprf_public_key())
     }
 
