@@ -3,11 +3,11 @@ name = "taceo-oprf-test-utils"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
+description = "Utilities for testing TACEO:OPRF based services."
 readme.workspace = true
 homepage.workspace = true
 repository.workspace = true
 license.workspace = true
-description = "Utilities for testing TACEO:OPRF based services."
 keywords = ["oprf", "tests"]
 publish = true
 
@@ -29,6 +29,8 @@ ark-ec.workspace = true
 ark-ff.workspace = true
 askama = { version = "0.15", optional = true }
 async-trait.workspace = true
+aws-config = { workspace = true, features = ["behavior-version-latest"], optional = true }
+aws-sdk-secretsmanager = { workspace = true, optional = true }
 clap = { workspace = true, features = ["derive", "env"], optional = true }
 eyre.workspace = true
 futures = { workspace = true }
@@ -42,7 +44,16 @@ parking_lot = { workspace = true }
 rand.workspace = true
 rand_chacha.workspace = true
 reqwest = { workspace = true }
+secrecy = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+sqlx = { workspace = true, features = [
+  "postgres",
+  "runtime-tokio",
+], optional = true }
+testcontainers-modules = { workspace = true, features = [
+  "localstack",
+  "postgres"
+], optional = true }
 tokio = { workspace = true, features = [
   "net",
   "rt-multi-thread",
@@ -55,7 +66,12 @@ tokio-util = { workspace = true, optional = true }
 tracing.workspace = true
 
 [features]
-default = ["deploy-anvil"]
+default = ["aws-test-container", "deploy-anvil", "postgres-test-container"]
+aws-test-container = [
+  "dep:aws-config",
+  "dep:aws-sdk-secretsmanager",
+  "dep:testcontainers-modules"
+]
 ci = []
 deploy-anvil = ["dep:serde_json", "dep:tokio-util"]
 generate-test-transcript = [
@@ -65,4 +81,9 @@ generate-test-transcript = [
   "dep:groth16-material",
   "dep:groth16-sol",
   "dep:nodes-observability"
+]
+postgres-test-container = [
+  "dep:secrecy",
+  "dep:sqlx",
+  "dep:testcontainers-modules"
 ]

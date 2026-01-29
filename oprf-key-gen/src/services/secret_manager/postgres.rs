@@ -27,7 +27,7 @@ impl PostgresSecretManager {
     /// Initializes a `PostgresSecretManager` and potentially runs migrations if necessary.
     #[instrument(level = "info")]
     pub async fn init(
-        db_url: SecretString,
+        db_url: &SecretString,
         aws_config: aws_config::SdkConfig,
         wallet_private_key_secret_id: &str,
     ) -> eyre::Result<Self> {
@@ -98,7 +98,7 @@ impl SecretManager for PostgresSecretManager {
             "#,
         )
         .bind(oprf_key_id_to_bytes(oprf_key_id))
-        .bind(previous_epoch as i64)
+        .bind(i64::from(previous_epoch))
         .fetch_optional(&self.pool)
         .await
         .context("while fetching previous share")?;
@@ -165,7 +165,7 @@ impl SecretManager for PostgresSecretManager {
         )
         .bind(oprf_key_id_to_bytes(oprf_key_id))
         .bind(to_db_ark_serialize_uncompressed(share))
-        .bind(epoch.into_inner() as i64) // convert to larger i64 to preserve sign of epoch, we compare share.epoch and if we flip the sign this might break something
+        .bind(i64::from(epoch.into_inner())) // convert to larger i64 to preserve sign of epoch, we compare share.epoch and if we flip the sign this might break something
         .bind(to_db_ark_serialize_uncompressed(public_key))
         .execute(&self.pool)
         .await
@@ -185,6 +185,3 @@ fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: T) -> Vec<u8> {
     t.serialize_uncompressed(&mut bytes).expect("Can serialize");
     bytes
 }
-
-#[cfg(test)]
-mod tests;

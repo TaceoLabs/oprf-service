@@ -114,6 +114,7 @@ start_keygen() {
             --key-gen-witness-graph-path ./circom/main/key-gen/OPRFKeyGenGraph.13.bin \
             --oprf-key-registry-contract $oprf_key_registry \
             --confirmations-for-transaction 1 \
+            --db-connection-string not-used-yet \
             > logs/key-gen$i.log 2>&1 &
         keygen_pids+=($!)
         echo "started key-gen$i with PID ${keygen_pids[$i]}"

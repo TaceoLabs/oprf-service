@@ -4,69 +4,42 @@ use alloy::{primitives::U160, signers::local::PrivateKeySigner};
 use ark_serialize::CanonicalDeserialize;
 use eyre::Context;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
+use oprf_test_utils::{ETH_ADDRESS, ETH_PRIVATE_KEY, TEST_WALLET_PRIVATE_KEY_SECRET_ID};
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
+use secrecy::SecretString;
 use sqlx::Row;
-use sqlx::{Connection, PgConnection, postgres::PgRow};
-use testcontainers_modules::{
-    postgres::Postgres,
-    testcontainers::{ContainerAsync, runners::AsyncRunner as _},
-};
-
-use crate::secret_manager::{
-    SecretManager,
-    aws::test::{localstack_config, localstack_testcontainer},
-    postgres::PostgresSecretManager,
-};
-
-const TEST_WALLET_PRIVATE_KEY_SECRET_ID: &str = "wallet_private_key_secret_id";
-
-pub const ETH_PRIVATE_KEY: &str =
-    "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba";
-
-pub const ETH_ADDRESS: &str = "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc";
+use sqlx::{PgConnection, postgres::PgRow};
+use taceo_oprf_key_gen::secret_manager::SecretManager as _;
+use taceo_oprf_key_gen::secret_manager::postgres::PostgresSecretManager;
 
 async fn postgres_secret_manager_with_localstack(
     aws_config: &aws_config::SdkConfig,
-) -> eyre::Result<(ContainerAsync<Postgres>, String, PostgresSecretManager)> {
-    let postgres_container = testcontainers_modules::postgres::Postgres::default()
-        .start()
-        .await?;
-    let connection_string = format!(
-        "postgres://postgres:postgres@{}:{}/postgres",
-        postgres_container.get_host().await.unwrap(),
-        postgres_container.get_host_port_ipv4(5432).await.unwrap()
-    );
-    let secret_manager = PostgresSecretManager::init(
-        connection_string.clone().into(),
+    connection_string: &str,
+) -> eyre::Result<PostgresSecretManager> {
+    PostgresSecretManager::init(
+        &SecretString::from(connection_string.to_owned()),
         aws_config.to_owned(),
         TEST_WALLET_PRIVATE_KEY_SECRET_ID,
     )
-    .await?;
-    Ok((postgres_container, connection_string, secret_manager))
+    .await
 }
 
-async fn postgres_secret_manager()
--> eyre::Result<(ContainerAsync<Postgres>, String, PostgresSecretManager)> {
-    postgres_secret_manager_with_localstack(&dummy_localstack_config().await).await
+async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<PostgresSecretManager> {
+    PostgresSecretManager::init(
+        &SecretString::from(connection_string.to_owned()),
+        oprf_test_utils::dummy_localstack_config().await,
+        TEST_WALLET_PRIVATE_KEY_SECRET_ID,
+    )
+    .await
 }
-
-async fn open_pg_connection(connection_string: &str) -> eyre::Result<PgConnection> {
-    PgConnection::connect(connection_string)
-        .await
-        .context("while opening PgConnection")
-}
-
-async fn dummy_localstack_config() -> aws_config::SdkConfig {
-    localstack_config("dummy").await
-}
-
 #[tokio::test]
 async fn load_or_insert_private_key_on_empty_db() -> eyre::Result<()> {
     // for this test we need localstack as well
-    let (_localstack, localstack_url) = localstack_testcontainer().await?;
-    let aws_config = localstack_config(&localstack_url).await;
-    let (_postgres, connection_string, secret_manager) =
-        postgres_secret_manager_with_localstack(&aws_config).await?;
+    let (_localstack, localstack_url) = oprf_test_utils::localstack_testcontainer().await?;
+    let aws_config = oprf_test_utils::localstack_config(&localstack_url).await;
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager =
+        postgres_secret_manager_with_localstack(&aws_config, &connection_string).await?;
     let computed_private_key = secret_manager.load_or_insert_wallet_private_key().await?;
 
     let localstack_client = aws_sdk_secretsmanager::Client::new(&aws_config);
@@ -85,7 +58,7 @@ async fn load_or_insert_private_key_on_empty_db() -> eyre::Result<()> {
     );
 
     // check that the address is correct
-    let mut pg_connection = open_pg_connection(&connection_string).await?;
+    let mut pg_connection = oprf_test_utils::open_pg_connection(&connection_string).await?;
     let stored_address: String =
         sqlx::query_scalar("SELECT address FROM evm_address WHERE id = TRUE")
             .fetch_one(&mut pg_connection)
@@ -97,11 +70,11 @@ async fn load_or_insert_private_key_on_empty_db() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn load_or_insert_private_key_on_existing_key() -> eyre::Result<()> {
-    // for this test we need localstack as well
-    let (_localstack, localstack_url) = localstack_testcontainer().await?;
-    let aws_config = localstack_config(&localstack_url).await;
-    let (_postgres, connection_string, secret_manager) =
-        postgres_secret_manager_with_localstack(&aws_config).await?;
+    let (_localstack, localstack_url) = oprf_test_utils::localstack_testcontainer().await?;
+    let aws_config = oprf_test_utils::localstack_config(&localstack_url).await;
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager =
+        postgres_secret_manager_with_localstack(&aws_config, &connection_string).await?;
 
     let localstack_client = aws_sdk_secretsmanager::Client::new(&aws_config);
     localstack_client
@@ -116,7 +89,7 @@ async fn load_or_insert_private_key_on_existing_key() -> eyre::Result<()> {
     assert_eq!(PrivateKeySigner::from_str(ETH_PRIVATE_KEY)?, is_private_key);
 
     // check that the address is correct
-    let mut pg_connection = open_pg_connection(&connection_string).await?;
+    let mut pg_connection = oprf_test_utils::open_pg_connection(&connection_string).await?;
     let stored_address: String =
         sqlx::query_scalar("SELECT address FROM evm_address WHERE id = TRUE")
             .fetch_one(&mut pg_connection)
@@ -128,11 +101,11 @@ async fn load_or_insert_private_key_on_existing_key() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn load_or_insert_private_key_on_existing_key_overwrite_db() -> eyre::Result<()> {
-    // for this test we need localstack as well
-    let (_localstack, localstack_url) = localstack_testcontainer().await?;
-    let aws_config = localstack_config(&localstack_url).await;
-    let (_postgres, connection_string, secret_manager) =
-        postgres_secret_manager_with_localstack(&aws_config).await?;
+    let (_localstack, localstack_url) = oprf_test_utils::localstack_testcontainer().await?;
+    let aws_config = oprf_test_utils::localstack_config(&localstack_url).await;
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager =
+        postgres_secret_manager_with_localstack(&aws_config, &connection_string).await?;
 
     let localstack_client = aws_sdk_secretsmanager::Client::new(&aws_config);
     localstack_client
@@ -142,7 +115,7 @@ async fn load_or_insert_private_key_on_existing_key_overwrite_db() -> eyre::Resu
         .send()
         .await?;
 
-    let mut pg_connection = open_pg_connection(&connection_string).await?;
+    let mut pg_connection = oprf_test_utils::open_pg_connection(&connection_string).await?;
     sqlx::query(
         r#"
                 INSERT INTO evm_address (id, address)
@@ -208,15 +181,16 @@ fn assert_row_matches(
     assert_eq!(should_epoch.into_inner() as i64, is_epoch);
     assert_eq!(
         should_public_key,
-        OprfPublicKey::deserialize_compressed_unchecked(is_public_key.as_slice())
+        OprfPublicKey::deserialize_uncompressed_unchecked(is_public_key.as_slice())
             .expect("Can deserialize"),
     );
 }
 
 #[tokio::test]
 async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
-    let (_postgres, connection_string, secret_manager) = postgres_secret_manager().await?;
-    let mut pg_connection = open_pg_connection(&connection_string).await?;
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager = postgres_secret_manager(&connection_string).await?;
+    let mut pg_connection = oprf_test_utils::open_pg_connection(&connection_string).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
@@ -328,8 +302,9 @@ async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn store_dlog_share_as_consumer() -> eyre::Result<()> {
-    let (_postgres, connection_string, secret_manager) = postgres_secret_manager().await?;
-    let mut pg_connection = open_pg_connection(&connection_string).await?;
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager = postgres_secret_manager(&connection_string).await?;
+    let mut pg_connection = oprf_test_utils::open_pg_connection(&connection_string).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
@@ -384,7 +359,8 @@ async fn store_dlog_share_as_consumer() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn try_retrieve_random_empty_epochs() -> eyre::Result<()> {
-    let (_postgres, _, secret_manager) = postgres_secret_manager().await?;
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager = postgres_secret_manager(&connection_string).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
@@ -430,8 +406,9 @@ async fn try_retrieve_random_empty_epochs() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_insert_same_epoch_twice() -> eyre::Result<()> {
-    let (_postgres, connection_string, secret_manager) = postgres_secret_manager().await?;
-    let mut pg_connection = open_pg_connection(&connection_string).await?;
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager = postgres_secret_manager(&connection_string).await?;
+    let mut pg_connection = oprf_test_utils::open_pg_connection(&connection_string).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
@@ -484,8 +461,9 @@ async fn test_insert_same_epoch_twice() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_delete() -> eyre::Result<()> {
-    let (_postgres, connection_string, secret_manager) = postgres_secret_manager().await?;
-    let mut pg_connection = open_pg_connection(&connection_string).await?;
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager = postgres_secret_manager(&connection_string).await?;
+    let mut pg_connection = oprf_test_utils::open_pg_connection(&connection_string).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());

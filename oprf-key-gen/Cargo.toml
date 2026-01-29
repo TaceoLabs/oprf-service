@@ -61,7 +61,3 @@ zeroize = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.1" }
-testcontainers-modules = { workspace = true, features = [
-  "localstack",
-  "postgres"
-] }

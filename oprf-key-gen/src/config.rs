@@ -63,6 +63,10 @@ pub struct OprfKeyGenConfig {
     #[clap(long, env = "OPRF_NODE_WALLET_PRIVATE_KEY_SECRET_ID")]
     pub wallet_private_key_secret_id: String,
 
+    /// The connection string for the Postgres DB
+    #[clap(long, env = "OPRF_NODE_DB_CONNECTION_STRING")]
+    pub db_connection_string: SecretString,
+
     /// The location of the zkey for the key-gen proof in round 2 of KeyGen
     #[clap(long, env = "OPRF_NODE_KEY_GEN_ZKEY")]
     pub key_gen_zkey_path: PathBuf,

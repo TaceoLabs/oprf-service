@@ -81,7 +81,6 @@ impl TestKeyGen {
             bind_addr: bind_addr.parse().expect("Can parse"),
             oprf_key_registry_contract: *oprf_key_registry,
             chain_ws_rpc_url: anvil.ws_endpoint().into(),
-            rp_secret_id_prefix: format!("oprf/rp/n{party_id}"),
             wallet_private_key_secret_id: "wallet/privatekey".to_owned(),
             key_gen_zkey_path: setup.key_gen_path(),
             key_gen_witness_graph_path: setup.witness_path(),
@@ -91,6 +90,8 @@ impl TestKeyGen {
             max_transaction_attempts: 3,
             max_gas_per_transaction: 10_000_000,
             confirmations_for_transaction: 1,
+            db_connection_string: "not used".into(),
+            rp_secret_id_prefix: format!("some-secret-id-{party_id}"),
         };
         let (tx, rx) = oneshot::channel();
         tokio::task::spawn({
