@@ -159,8 +159,11 @@ fn db_row_into_key_material(row: ShareRow) -> (OprfKeyId, OprfKeyMaterial) {
     let prev = row
         .prev
         .map(from_db_ark_deserialize_uncompressed::<DLogShareShamir>);
-    // We store as i64, so this always fits into u32
-    let epoch = ShareEpoch::new(row.epoch as u32);
+    let epoch = ShareEpoch::new(
+        row.epoch
+            .try_into()
+            .expect("DB epoch value out of valid u32 range"),
+    );
 
     let oprf_public_key = from_db_ark_deserialize_uncompressed::<OprfPublicKey>(row.public_key);
 

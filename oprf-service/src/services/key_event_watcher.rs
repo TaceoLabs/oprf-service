@@ -239,6 +239,7 @@ async fn fetch_oprf_key_material_from_secret_manager(
                         "got key from secret manager for {oprf_key_id} and epoch {epoch}"
                     );
                     oprf_key_material_store.insert(oprf_key_id, key_material);
+                    break;
                 }
                 Ok(None) => {
                     tracing::debug!("{epoch} for {oprf_key_id} not yet in secret-manager");
