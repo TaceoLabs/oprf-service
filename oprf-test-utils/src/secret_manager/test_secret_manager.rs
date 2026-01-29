@@ -18,22 +18,17 @@ use rand::{CryptoRng, Rng};
 
 use crate::TEST_TIMEOUT;
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct TestSecretManager {
-    pub wallet_private_key: Option<PrivateKeySigner>,
+    pub wallet_private_key: PrivateKeySigner,
     pub store: Arc<Mutex<HashMap<OprfKeyId, OprfKeyMaterial>>>,
 }
 
 impl TestSecretManager {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn with_private_key(wallet_private_key: &str) -> Self {
+    pub fn new(wallet_private_key: &str) -> Self {
         Self {
-            wallet_private_key: Some(
-                PrivateKeySigner::from_str(wallet_private_key).expect("valid private key"),
-            ),
+            wallet_private_key: PrivateKeySigner::from_str(wallet_private_key)
+                .expect("valid private key"),
             store: Arc::new(Mutex::new(HashMap::new())),
         }
     }
