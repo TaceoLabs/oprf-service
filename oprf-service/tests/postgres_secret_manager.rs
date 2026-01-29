@@ -1,6 +1,7 @@
 use alloy::primitives::U160;
 use ark_serialize::CanonicalSerialize;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
+use oprf_test_utils::OPRF_PEER_ADDRESS_0;
 use oprf_types::{OprfKeyId, ShareEpoch, api::ShareIdentifier, crypto::OprfPublicKey};
 use secrecy::SecretString;
 use sqlx::PgConnection;
@@ -45,12 +46,70 @@ async fn insert_row(
     Ok(())
 }
 
+async fn insert_address(address: &str, connection: &mut PgConnection) -> eyre::Result<()> {
+    sqlx::query(
+        r#"
+            INSERT INTO evm_address (id, address)
+            VALUES (TRUE, $1)
+        "#,
+    )
+    .bind(address)
+    .execute(connection)
+    .await?;
+    Ok(())
+}
+
 #[tokio::test]
 async fn test_load_all_secret_empty() -> eyre::Result<()> {
     let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
     let secret_manager = postgres_secret_manager(&connection_string).await?;
     let key_material_store = secret_manager.load_secrets().await?;
     assert!(key_material_store.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn load_address_empty() -> eyre::Result<()> {
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager = postgres_secret_manager(&connection_string).await?;
+    let report = secret_manager
+        .load_address()
+        .await
+        .expect_err("should be an error");
+    assert_eq!(
+        report.to_string(),
+        "Cannot get address from DB, maybe key-gen needs to start"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn load_address_corrupt() -> eyre::Result<()> {
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager = postgres_secret_manager(&connection_string).await?;
+
+    let mut conn = oprf_test_utils::open_pg_connection(&connection_string).await?;
+    insert_address("SomethingThatIsNotAnAddress", &mut conn).await?;
+
+    let report = secret_manager
+        .load_address()
+        .await
+        .expect_err("should be an error");
+    assert_eq!(report.to_string(), "invalid address stored in DB");
+    Ok(())
+}
+
+#[tokio::test]
+async fn load_address_success() -> eyre::Result<()> {
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager = postgres_secret_manager(&connection_string).await?;
+
+    let should_address = OPRF_PEER_ADDRESS_0;
+    let mut conn = oprf_test_utils::open_pg_connection(&connection_string).await?;
+    insert_address(&should_address.to_string(), &mut conn).await?;
+
+    let is_address = secret_manager.load_address().await.expect("Should work");
+    assert_eq!(is_address, should_address);
     Ok(())
 }
 
