@@ -80,7 +80,6 @@ pub mod postgres {
             .context("while opening PgConnection")
     }
 
-    #[cfg(feature = "aws-test-container")]
     pub async fn postgres_testcontainer() -> eyre::Result<(ContainerAsync<Postgres>, String)> {
         use testcontainers_modules::testcontainers::runners::AsyncRunner as _;
 

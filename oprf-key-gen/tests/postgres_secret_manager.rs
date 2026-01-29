@@ -32,6 +32,7 @@ async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<Postgr
     )
     .await
 }
+
 #[tokio::test]
 async fn load_or_insert_private_key_on_empty_db() -> eyre::Result<()> {
     // for this test we need localstack as well

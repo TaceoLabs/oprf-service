@@ -36,7 +36,12 @@ secrecy = { workspace = true }
 semver.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-sqlx = { workspace = true }
+sqlx = { workspace = true, features = [
+  "migrate",
+  "postgres",
+  "runtime-tokio",
+  "tls-rustls-ring-webpki"
+] }
 thiserror.workspace = true
 tokio = { workspace = true, features = [
   "net",
@@ -57,5 +62,8 @@ axum-test = { workspace = true, features = ["ws"] }
 itertools = { workspace = true }
 nodes-observability = { workspace = true }
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.4" }
-oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.1" }
+oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.1", default-features = false, features = [
+  "deploy-anvil",
+  "postgres-test-container"
+] }
 rustls = { workspace = true }

@@ -1,0 +1,292 @@
+use alloy::primitives::U160;
+use ark_serialize::CanonicalSerialize;
+use oprf_core::ddlog_equality::shamir::DLogShareShamir;
+use oprf_types::{OprfKeyId, ShareEpoch, api::ShareIdentifier, crypto::OprfPublicKey};
+use secrecy::SecretString;
+use sqlx::PgConnection;
+use taceo_oprf_service::secret_manager::{SecretManager, postgres::PostgresSecretManager};
+
+#[inline(always)]
+fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: T) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(t.uncompressed_size());
+    t.serialize_uncompressed(&mut bytes).expect("Can serialize");
+    bytes
+}
+
+async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<PostgresSecretManager> {
+    let mut pg_connection = oprf_test_utils::open_pg_connection(connection_string).await?;
+    sqlx::migrate!("../migrations")
+        .run(&mut pg_connection)
+        .await?;
+    PostgresSecretManager::init(&SecretString::from(connection_string.to_owned())).await
+}
+
+async fn insert_row(
+    oprf_key_id: OprfKeyId,
+    current: DLogShareShamir,
+    prev: Option<DLogShareShamir>,
+    epoch: ShareEpoch,
+    public_key: OprfPublicKey,
+    connection: &mut PgConnection,
+) -> eyre::Result<()> {
+    sqlx::query(
+        r#"
+            INSERT INTO shares (id, current, prev, epoch, public_key)
+            VALUES ($1, $2, $3, $4, $5)
+        "#,
+    )
+    .bind(oprf_key_id.to_le_bytes())
+    .bind(to_db_ark_serialize_uncompressed(current))
+    .bind(prev.map(to_db_ark_serialize_uncompressed))
+    .bind(i64::from(epoch.into_inner()))
+    .bind(to_db_ark_serialize_uncompressed(public_key))
+    .execute(connection)
+    .await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_load_all_secret_empty() -> eyre::Result<()> {
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager = postgres_secret_manager(&connection_string).await?;
+    let key_material_store = secret_manager.load_secrets().await?;
+    assert!(key_material_store.is_empty());
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_load_all_secret_three_shares() -> eyre::Result<()> {
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    // runs migrations
+    let secret_manager = postgres_secret_manager(&connection_string).await?;
+
+    let mut conn = oprf_test_utils::open_pg_connection(&connection_string).await?;
+
+    let oprf_key_id0 = OprfKeyId::new(U160::from(42));
+    let oprf_key_id1 = OprfKeyId::new(U160::from(128));
+    let oprf_key_id2 = OprfKeyId::new(U160::from(6891));
+    let public_key0 = OprfPublicKey::new(rand::random());
+    let public_key1 = OprfPublicKey::new(rand::random());
+    let public_key2 = OprfPublicKey::new(rand::random());
+    let epoch0 = ShareEpoch::new(42);
+    let epoch1 = ShareEpoch::new(32819);
+    let epoch2 = ShareEpoch::new(3242);
+    let share0 = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
+    let share1 = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
+    let share2 = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
+
+    insert_row(oprf_key_id0, share0, None, epoch0, public_key0, &mut conn).await?;
+    insert_row(
+        oprf_key_id1,
+        share1.clone(),
+        Some(share2.clone()),
+        epoch1,
+        public_key1,
+        &mut conn,
+    )
+    .await?;
+    insert_row(
+        oprf_key_id2,
+        share2.clone(),
+        Some(share1.clone()),
+        epoch2,
+        public_key2,
+        &mut conn,
+    )
+    .await?;
+
+    let share_identifier0 = ShareIdentifier {
+        oprf_key_id: oprf_key_id0,
+        share_epoch: epoch0,
+    };
+
+    let share_identifier1 = ShareIdentifier {
+        oprf_key_id: oprf_key_id1,
+        share_epoch: epoch1,
+    };
+
+    let share_identifier2 = ShareIdentifier {
+        oprf_key_id: oprf_key_id2,
+        share_epoch: epoch2,
+    };
+
+    let share_identifier3 = ShareIdentifier {
+        oprf_key_id: oprf_key_id1,
+        share_epoch: epoch1.prev(),
+    };
+
+    let share_identifier4 = ShareIdentifier {
+        oprf_key_id: oprf_key_id2,
+        share_epoch: epoch2.prev(),
+    };
+
+    let unknown_share_identifier0 = ShareIdentifier {
+        oprf_key_id: oprf_key_id1,
+        share_epoch: epoch2,
+    };
+
+    let unknown_share_identifier1 = ShareIdentifier {
+        oprf_key_id: oprf_key_id2,
+        share_epoch: epoch1,
+    };
+
+    let unknown_share_identifier2 = ShareIdentifier {
+        oprf_key_id: oprf_key_id0,
+        share_epoch: epoch0.prev(),
+    };
+
+    let key_material_store = secret_manager.load_secrets().await?;
+    assert_eq!(key_material_store.len(), 3);
+    key_material_store
+        .partial_commit(rand::random(), share_identifier0)
+        .expect("works");
+
+    key_material_store
+        .partial_commit(rand::random(), share_identifier1)
+        .expect("works");
+
+    key_material_store
+        .partial_commit(rand::random(), share_identifier2)
+        .expect("works");
+
+    key_material_store
+        .partial_commit(rand::random(), share_identifier2)
+        .expect("works");
+
+    key_material_store
+        .partial_commit(rand::random(), share_identifier3)
+        .expect("works");
+
+    key_material_store
+        .partial_commit(rand::random(), share_identifier4)
+        .expect("works");
+
+    assert!(
+        key_material_store
+            .partial_commit(rand::random(), unknown_share_identifier0)
+            .is_err()
+    );
+
+    assert!(
+        key_material_store
+            .partial_commit(rand::random(), unknown_share_identifier1)
+            .is_err()
+    );
+
+    assert!(
+        key_material_store
+            .partial_commit(rand::random(), unknown_share_identifier2)
+            .is_err()
+    );
+
+    assert_eq!(
+        key_material_store.get_oprf_public_key(oprf_key_id0),
+        Some(public_key0)
+    );
+
+    assert_eq!(
+        key_material_store.get_oprf_public_key(oprf_key_id1),
+        Some(public_key1)
+    );
+
+    assert_eq!(
+        key_material_store.get_oprf_public_key(oprf_key_id2),
+        Some(public_key2)
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_get_oprf_key_material() -> eyre::Result<()> {
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    // runs migrations
+    let secret_manager = postgres_secret_manager(&connection_string).await?;
+
+    let mut conn = oprf_test_utils::open_pg_connection(&connection_string).await?;
+
+    let oprf_key_id0 = OprfKeyId::new(U160::from(42));
+    let oprf_key_id1 = OprfKeyId::new(U160::from(128));
+    let oprf_key_id_unknown = OprfKeyId::new(U160::from(6891));
+    let public_key0 = OprfPublicKey::new(rand::random());
+    let public_key1 = OprfPublicKey::new(rand::random());
+    let epoch0 = ShareEpoch::new(42);
+    let epoch1 = ShareEpoch::new(32819);
+    let share0 = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
+    let share1 = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
+    let share2 = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
+
+    insert_row(
+        oprf_key_id0,
+        share0.clone(),
+        None,
+        epoch0,
+        public_key0,
+        &mut conn,
+    )
+    .await?;
+    insert_row(
+        oprf_key_id1,
+        share1.clone(),
+        Some(share2.clone()),
+        epoch1,
+        public_key1,
+        &mut conn,
+    )
+    .await?;
+
+    let key_material0 = secret_manager
+        .get_oprf_key_material(oprf_key_id0, epoch0)
+        .await?
+        .expect("Should be some");
+    assert_eq!(
+        ark_babyjubjub::Fr::from(key_material0.get_share(epoch0).expect("Should be some")),
+        ark_babyjubjub::Fr::from(share0)
+    );
+    assert!(key_material0.get_share(epoch0.prev()).is_none());
+    assert_eq!(key_material0.get_oprf_public_key(), public_key0);
+
+    // should be None
+    assert!(
+        secret_manager
+            .get_oprf_key_material(oprf_key_id0, epoch1)
+            .await?
+            .is_none()
+    );
+
+    // should be None
+    assert!(
+        secret_manager
+            .get_oprf_key_material(oprf_key_id_unknown, epoch1)
+            .await?
+            .is_none()
+    );
+
+    let key_material1 = secret_manager
+        .get_oprf_key_material(oprf_key_id1, epoch1)
+        .await?
+        .expect("Should be some");
+    assert_eq!(
+        ark_babyjubjub::Fr::from(key_material1.get_share(epoch1).expect("Should be some")),
+        ark_babyjubjub::Fr::from(share1)
+    );
+
+    assert_eq!(
+        ark_babyjubjub::Fr::from(
+            key_material1
+                .get_share(epoch1.prev())
+                .expect("Should be some")
+        ),
+        ark_babyjubjub::Fr::from(share2)
+    );
+    assert_eq!(key_material1.get_oprf_public_key(), public_key1);
+
+    // should be None
+    assert!(
+        secret_manager
+            .get_oprf_key_material(oprf_key_id1, epoch1.prev())
+            .await?
+            .is_none()
+    );
+
+    Ok(())
+}
