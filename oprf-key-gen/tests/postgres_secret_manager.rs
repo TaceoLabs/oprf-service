@@ -4,7 +4,7 @@ use alloy::{primitives::U160, signers::local::PrivateKeySigner};
 use ark_serialize::CanonicalDeserialize;
 use eyre::Context;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_test_utils::{ETH_ADDRESS, ETH_PRIVATE_KEY, TEST_WALLET_PRIVATE_KEY_SECRET_ID};
+use oprf_test_utils::{TEST_ETH_ADDRESS, TEST_ETH_PRIVATE_KEY, TEST_WALLET_PRIVATE_KEY_SECRET_ID};
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 use secrecy::SecretString;
 use sqlx::Row;
@@ -80,13 +80,16 @@ async fn load_or_insert_private_key_on_existing_key() -> eyre::Result<()> {
     localstack_client
         .create_secret()
         .name(TEST_WALLET_PRIVATE_KEY_SECRET_ID)
-        .secret_string(ETH_PRIVATE_KEY)
+        .secret_string(TEST_ETH_PRIVATE_KEY)
         .send()
         .await?;
 
     let is_private_key = secret_manager.load_or_insert_wallet_private_key().await?;
 
-    assert_eq!(PrivateKeySigner::from_str(ETH_PRIVATE_KEY)?, is_private_key);
+    assert_eq!(
+        PrivateKeySigner::from_str(TEST_ETH_PRIVATE_KEY)?,
+        is_private_key
+    );
 
     // check that the address is correct
     let mut pg_connection = oprf_test_utils::open_pg_connection(&connection_string).await?;
@@ -95,7 +98,7 @@ async fn load_or_insert_private_key_on_existing_key() -> eyre::Result<()> {
             .fetch_one(&mut pg_connection)
             .await?;
 
-    assert_eq!(stored_address, ETH_ADDRESS);
+    assert_eq!(stored_address, TEST_ETH_ADDRESS);
     Ok(())
 }
 
@@ -111,7 +114,7 @@ async fn load_or_insert_private_key_on_existing_key_overwrite_db() -> eyre::Resu
     localstack_client
         .create_secret()
         .name(TEST_WALLET_PRIVATE_KEY_SECRET_ID)
-        .secret_string(ETH_PRIVATE_KEY)
+        .secret_string(TEST_ETH_PRIVATE_KEY)
         .send()
         .await?;
 
@@ -130,7 +133,10 @@ async fn load_or_insert_private_key_on_existing_key_overwrite_db() -> eyre::Resu
 
     let is_private_key = secret_manager.load_or_insert_wallet_private_key().await?;
 
-    assert_eq!(PrivateKeySigner::from_str(ETH_PRIVATE_KEY)?, is_private_key);
+    assert_eq!(
+        PrivateKeySigner::from_str(TEST_ETH_PRIVATE_KEY)?,
+        is_private_key
+    );
 
     // check that the address is correct
     let stored_address: String =
@@ -138,7 +144,7 @@ async fn load_or_insert_private_key_on_existing_key_overwrite_db() -> eyre::Resu
             .fetch_one(&mut pg_connection)
             .await?;
 
-    assert_eq!(stored_address, ETH_ADDRESS);
+    assert_eq!(stored_address, TEST_ETH_ADDRESS);
     Ok(())
 }
 

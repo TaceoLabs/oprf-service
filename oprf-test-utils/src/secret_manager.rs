@@ -70,11 +70,9 @@ pub mod postgres {
     use testcontainers_modules::testcontainers::ContainerAsync;
 
     pub const TEST_WALLET_PRIVATE_KEY_SECRET_ID: &str = "some-secret-id";
-
-    pub const ETH_PRIVATE_KEY: &str =
+    pub const TEST_ETH_PRIVATE_KEY: &str =
         "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba";
-
-    pub const ETH_ADDRESS: &str = "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc";
+    pub const TEST_ETH_ADDRESS: &str = "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc";
 
     pub async fn open_pg_connection(connection_string: &str) -> eyre::Result<PgConnection> {
         PgConnection::connect(connection_string)
