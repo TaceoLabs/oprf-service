@@ -208,19 +208,23 @@ async fn partial_oprf<
     let request_id = init_request.request_id;
 
     tracing::debug!("starting with request id: {request_id}");
-    let oprf_public_key = oprf_material_store
-        .get_oprf_public_key(init_request.share_identifier.oprf_key_id)
-        .ok_or_else(|| {
-            Error::BadRequest(format!(
-                "unknown OPRF key id: {}",
-                init_request.share_identifier.oprf_key_id
-            ))
-        })?;
-
-    let _session_guard = open_sessions.insert_new_session(init_request.request_id)?;
-
     let oprf_span = tracing::Span::current();
     oprf_span.record("request_id", request_id.to_string());
+    if !oprf_material_store.contains(init_request.oprf_key_id) {
+        return Err(Error::BadRequest(format!(
+            "unknown OPRF key id: {}",
+            init_request.oprf_key_id
+        )));
+    }
+
+    // check that blinded query (B) is not the identity element
+    if init_request.blinded_query.is_zero() {
+        return Err(Error::BadRequest(
+            "blinded query must not be identity".to_owned(),
+        ));
+    }
+
+    let _session_guard = open_sessions.insert_new_session(init_request.request_id)?;
 
     tracing::debug!("verifying request with auth service...");
     let start_verify = Instant::now();
@@ -235,24 +239,17 @@ async fn partial_oprf<
     ::metrics::histogram!(METRICS_ID_NODE_REQUEST_VERIFY_DURATION)
         .record(duration_verify.as_secs_f64());
 
-    // check that blinded query (B) is not the identity element
-    if init_request.blinded_query.is_zero() {
-        return Err(Error::BadRequest(
-            "blinded query must not be identity".to_owned(),
-        ));
-    }
-
     tracing::debug!(
         "initiating session with share epoch {:?}...",
-        init_request.share_identifier
+        init_request.oprf_key_id
     );
-    let (session, commitments) = oprf_material_store
-        .partial_commit(init_request.blinded_query, init_request.share_identifier)?;
+    let (session, commitments) =
+        oprf_material_store.partial_commit(init_request.blinded_query, init_request.oprf_key_id)?;
 
     let response = OprfResponse {
         commitments,
         party_id,
-        oprf_public_key,
+        oprf_pub_key_with_epoch: session.public_key_with_epoch(),
     };
 
     tracing::debug!("sending response...");
@@ -293,13 +290,7 @@ async fn partial_oprf<
     }
 
     tracing::debug!("finalizing session...");
-    let proof_share = oprf_material_store.challenge(
-        request_id,
-        party_id,
-        session,
-        challenge,
-        init_request.share_identifier,
-    )?;
+    let proof_share = oprf_material_store.challenge(request_id, party_id, session, challenge)?;
 
     let duration_part_two = start_part_two.elapsed();
     ::metrics::histogram!(METRICS_ID_NODE_PART_2_DURATION).record(duration_part_two.as_secs_f64());

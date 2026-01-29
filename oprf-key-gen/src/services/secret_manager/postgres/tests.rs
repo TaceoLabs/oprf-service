@@ -159,29 +159,21 @@ async fn all_rows(conn: &mut PgConnection) -> eyre::Result<Vec<PgRow>> {
 fn assert_row_matches(
     row: &PgRow,
     should_oprf_key_id: OprfKeyId,
-    should_current: DLogShareShamir,
-    should_prev: Option<DLogShareShamir>,
+    should_share: DLogShareShamir,
     should_epoch: ShareEpoch,
     should_public_key: OprfPublicKey,
 ) {
     let is_id: Vec<u8> = row.get(0);
-    let is_current: Vec<u8> = row.get(1);
-    let is_prev: Option<Vec<u8>> = row.get(2);
-    let is_epoch: i64 = row.get(3);
-    let is_public_key: Vec<u8> = row.get(4);
+    let is_share: Vec<u8> = row.get(1);
+    let is_epoch: i64 = row.get(2);
+    let is_public_key: Vec<u8> = row.get(3);
 
     assert_eq!(should_oprf_key_id, OprfKeyId::from_le_slice(&is_id));
 
     assert_eq!(
-        ark_babyjubjub::Fr::from(should_current),
-        ark_babyjubjub::Fr::deserialize_uncompressed(is_current.as_slice())
-            .expect("Can deserialize")
+        ark_babyjubjub::Fr::from(should_share),
+        ark_babyjubjub::Fr::deserialize_uncompressed(is_share.as_slice()).expect("Can deserialize")
     );
-    let should_prev = should_prev.map(ark_babyjubjub::Fr::from);
-    let is_prev = is_prev.map(|prev| {
-        ark_babyjubjub::Fr::deserialize_uncompressed(prev.as_slice()).expect("Can deserialize")
-    });
-    assert_eq!(should_prev, is_prev);
     assert_eq!(should_epoch.into_inner() as i64, is_epoch);
     assert_eq!(
         should_public_key,
@@ -221,7 +213,6 @@ async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
         &epoch_0_dump[0],
         oprf_key_id,
         should_epoch_0_share.clone(),
-        None,
         epoch0,
         public_key,
     );
@@ -259,7 +250,6 @@ async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
         &epoch_1_dump[0],
         oprf_key_id,
         should_epoch_1_share.clone(),
-        Some(should_epoch_0_share.clone()),
         epoch1,
         public_key,
     );
@@ -297,7 +287,6 @@ async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
         &epoch_2_dump[0],
         oprf_key_id,
         should_epoch_2_share.clone(),
-        Some(should_epoch_1_share.clone()),
         epoch2,
         public_key,
     );
@@ -333,7 +322,6 @@ async fn store_dlog_share_as_consumer() -> eyre::Result<()> {
         &epoch_42_dump[0],
         oprf_key_id,
         should_epoch_42_share.clone(),
-        None,
         epoch42,
         public_key,
     );
@@ -353,7 +341,6 @@ async fn store_dlog_share_as_consumer() -> eyre::Result<()> {
         &epoch_128_dump[0],
         oprf_key_id,
         should_epoch_128_share.clone(),
-        None,
         epoch128,
         public_key,
     );
@@ -435,7 +422,6 @@ async fn test_insert_same_epoch_twice() -> eyre::Result<()> {
         &epoch_42_dump[0],
         oprf_key_id,
         should_epoch_42_share.clone(),
-        None,
         epoch42,
         public_key,
     );
@@ -455,7 +441,6 @@ async fn test_insert_same_epoch_twice() -> eyre::Result<()> {
         &epoch_42_dump_new[0],
         oprf_key_id,
         should_epoch_42_share.clone(),
-        None,
         epoch42,
         public_key,
     );
@@ -492,7 +477,6 @@ async fn test_delete() -> eyre::Result<()> {
         &epoch_42_dump[0],
         oprf_key_id,
         should_epoch_42_share.clone(),
-        None,
         epoch42,
         public_key,
     );

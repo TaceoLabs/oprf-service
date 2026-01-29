@@ -74,9 +74,6 @@ impl From<OprfKeyMaterialStoreError> for Error {
             OprfKeyMaterialStoreError::UnknownOprfKeyId(oprf_key_id) => {
                 Self::BadRequest(format!("unknown OPRF key id: {oprf_key_id}"))
             }
-            OprfKeyMaterialStoreError::UnknownShareEpoch(epoch) => {
-                Self::BadRequest(format!("unknown share epoch: {epoch}"))
-            }
         }
     }
 }

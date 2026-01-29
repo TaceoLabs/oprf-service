@@ -13,11 +13,7 @@ use eyre::Context as _;
 use oprf_client::{Connector, VerifiableOprfOutput};
 use oprf_core::oprf::{BlindedOprfRequest, BlindingFactor};
 use oprf_test_utils::health_checks;
-use oprf_types::{
-    OprfKeyId, ShareEpoch,
-    api::{OprfRequest, ShareIdentifier},
-    crypto::OprfPublicKey,
-};
+use oprf_types::{OprfKeyId, ShareEpoch, api::OprfRequest, crypto::OprfPublicKey};
 use rand::{CryptoRng, Rng, SeedableRng as _};
 use rustls::{ClientConfig, RootCertStore};
 use secrecy::{ExposeSecret as _, SecretString};
@@ -87,13 +83,11 @@ pub struct OprfDevClientConfig {
 }
 
 #[instrument(level = "debug", skip_all)]
-#[expect(clippy::too_many_arguments)]
 pub async fn distributed_oprf<R: Rng + CryptoRng>(
     services: &[String],
     module: &str,
     threshold: usize,
     oprf_key_id: OprfKeyId,
-    share_epoch: ShareEpoch,
     action: ark_babyjubjub::Fq,
     connector: Connector,
     rng: &mut R,
@@ -115,7 +109,6 @@ pub async fn distributed_oprf<R: Rng + CryptoRng>(
         module,
         threshold,
         oprf_key_id,
-        share_epoch,
         query,
         blinding_factor,
         domain_separator,
@@ -140,7 +133,6 @@ async fn run_oprf(
     module: &str,
     threshold: usize,
     oprf_key_id: OprfKeyId,
-    share_epoch: ShareEpoch,
     connector: Connector,
 ) -> eyre::Result<()> {
     let mut rng = rand_chacha::ChaCha12Rng::from_entropy();
@@ -153,7 +145,6 @@ async fn run_oprf(
         module,
         threshold,
         oprf_key_id,
-        share_epoch,
         action,
         connector,
         &mut rng,
@@ -176,10 +167,7 @@ fn prepare_oprf_stress_test_oprf_request(
     let oprf_req = OprfRequest {
         request_id,
         blinded_query: blinded_request.blinded_query(),
-        share_identifier: ShareIdentifier {
-            oprf_key_id,
-            share_epoch: ShareEpoch::default(),
-        },
+        oprf_key_id,
         auth: (),
     };
 
@@ -256,15 +244,7 @@ async fn reshare_test(
     max_wait_time: Duration,
 ) -> eyre::Result<()> {
     tracing::info!("running single OPRF");
-    run_oprf(
-        nodes,
-        module,
-        threshold,
-        oprf_key_id,
-        share_epoch,
-        connector.clone(),
-    )
-    .await?;
+    run_oprf(nodes, module, threshold, oprf_key_id, connector.clone()).await?;
     tracing::info!("OPRF successful");
 
     let (share_epoch_1, oprf_public_key_1) = taceo_oprf_dev_client::reshare(
@@ -279,30 +259,14 @@ async fn reshare_test(
     assert_eq!(oprf_public_key, oprf_public_key_1);
 
     tracing::info!("running OPRF with epoch 0 after 1st reshare");
-    run_oprf(
-        nodes,
-        module,
-        threshold,
-        oprf_key_id,
-        share_epoch,
-        connector.clone(),
-    )
-    .await?;
+    run_oprf(nodes, module, threshold, oprf_key_id, connector.clone()).await?;
     tracing::info!("OPRF successful");
 
     tracing::info!("running OPRF with epoch 1 after 1st reshare");
-    run_oprf(
-        nodes,
-        module,
-        threshold,
-        oprf_key_id,
-        share_epoch_1,
-        connector.clone(),
-    )
-    .await?;
+    run_oprf(nodes, module, threshold, oprf_key_id, connector.clone()).await?;
     tracing::info!("OPRF successful");
 
-    let (share_epoch_2, oprf_public_key_2) = taceo_oprf_dev_client::reshare(
+    let (_share_epoch_2, oprf_public_key_2) = taceo_oprf_dev_client::reshare(
         nodes,
         oprf_key_registry,
         provider,
@@ -314,40 +278,17 @@ async fn reshare_test(
     assert_eq!(oprf_public_key, oprf_public_key_2);
 
     tracing::info!("running OPRF with epoch 1 after 2nd reshare");
-    run_oprf(
-        nodes,
-        module,
-        threshold,
-        oprf_key_id,
-        share_epoch_1,
-        connector.clone(),
-    )
-    .await?;
+    run_oprf(nodes, module, threshold, oprf_key_id, connector.clone()).await?;
     tracing::info!("OPRF successful");
 
     tracing::info!("running OPRF with epoch 2 after 2nd reshare");
-    run_oprf(
-        nodes,
-        module,
-        threshold,
-        oprf_key_id,
-        share_epoch_2,
-        connector.clone(),
-    )
-    .await?;
+    run_oprf(nodes, module, threshold, oprf_key_id, connector.clone()).await?;
     tracing::info!("OPRF successful");
 
     tracing::info!("running OPRF with epoch 0 after 2nd reshare - should fail");
-    let _ = run_oprf(
-        nodes,
-        module,
-        threshold,
-        oprf_key_id,
-        share_epoch,
-        connector.clone(),
-    )
-    .await
-    .expect_err("should fail");
+    let _ = run_oprf(nodes, module, threshold, oprf_key_id, connector.clone())
+        .await
+        .expect_err("should fail");
     tracing::info!("OPRF failed as expected");
 
     Ok(())
@@ -420,7 +361,6 @@ async fn main() -> eyre::Result<()> {
                 &config.module,
                 config.threshold,
                 oprf_key_id,
-                share_epoch,
                 connector,
             )
             .await?;

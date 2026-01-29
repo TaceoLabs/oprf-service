@@ -161,13 +161,13 @@ impl SecretManager for AwsSecretManager {
                     .to_owned();
                 let key_material: OprfKeyMaterial =
                     serde_json::from_str(&secret_value).context("Cannot deserialize AWS Secret")?;
-                if key_material.has_epoch(epoch) {
+                if key_material.is_epoch(epoch) {
                     tracing::debug!("Found! Returning");
                     Ok(Some(key_material))
                 } else {
                     tracing::debug!(
                         "Cannot find requested epoch in secret-manager, latest epoch is: {:?}",
-                        key_material.get_latest_epoch()
+                        key_material.epoch()
                     );
                     Ok(None)
                 }

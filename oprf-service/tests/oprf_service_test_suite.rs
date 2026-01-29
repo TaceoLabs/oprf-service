@@ -3,7 +3,7 @@ use std::sync::Arc;
 use oprf_test_utils::{
     DeploySetup, OPRF_PEER_PRIVATE_KEY_0, TestSetup, test_secret_manager::TestSecretManager,
 };
-use oprf_types::{ShareEpoch, api::ShareIdentifier};
+use oprf_types::ShareEpoch;
 
 use crate::setup::TestNode;
 
@@ -19,16 +19,13 @@ async fn test_delete_oprf_key() -> eyre::Result<()> {
         .secret_manager
         .get_key_material(inserted_key)
         .expect("Is there")
-        .get_oprf_public_key();
+        .public_key();
 
-    let share_identifier = ShareIdentifier {
-        oprf_key_id: inserted_key,
-        share_epoch: ShareEpoch::default(),
-    };
-    node.has_key(share_identifier, should_key).await?;
+    node.has_key(inserted_key, ShareEpoch::default(), should_key)
+        .await?;
     // should just work
     let _response = node
-        .init_request(share_identifier, &mut rand::thread_rng())
+        .init_request(inserted_key, &mut rand::thread_rng())
         .await;
 
     //delete the key
@@ -36,7 +33,7 @@ async fn test_delete_oprf_key() -> eyre::Result<()> {
 
     node.doesnt_have_key(inserted_key).await?;
     node.oprf_expect_error(
-        share_identifier,
+        inserted_key,
         format!("unknown OPRF key id: {inserted_key}"),
         &mut rand::thread_rng(),
     )

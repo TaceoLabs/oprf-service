@@ -43,7 +43,7 @@ impl OprfSessions {
         let OprfResponse {
             commitments,
             party_id,
-            oprf_public_key,
+            oprf_pub_key_with_epoch,
         } = response;
         if let Some(position) = self
             .party_ids
@@ -55,7 +55,7 @@ impl OprfSessions {
         self.ws.push(ws);
         self.party_ids.push(party_id);
         self.commitments.push(commitments);
-        self.oprf_public_keys.push(oprf_public_key);
+        self.oprf_public_keys.push(oprf_pub_key_with_epoch.key);
         Ok(())
     }
 

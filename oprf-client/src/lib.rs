@@ -8,11 +8,7 @@ use oprf_core::{
     dlog_equality::DLogEqualityProof,
     oprf::{BlindedOprfRequest, BlindedOprfResponse, BlindingFactor},
 };
-use oprf_types::{
-    OprfKeyId, ShareEpoch,
-    api::{OprfRequest, ShareIdentifier},
-    crypto::OprfPublicKey,
-};
+use oprf_types::{OprfKeyId, api::OprfRequest, crypto::OprfPublicKey};
 use serde::Serialize;
 use tokio_tungstenite::tungstenite::{self, http::uri::InvalidUri};
 use tracing::instrument;
@@ -103,7 +99,6 @@ pub async fn distributed_oprf<OprfRequestAuth>(
     module: &str,
     threshold: usize,
     oprf_key_id: OprfKeyId,
-    share_epoch: ShareEpoch,
     query: ark_babyjubjub::Fq,
     blinding_factor: BlindingFactor,
     domain_separator: ark_babyjubjub::Fq,
@@ -129,17 +124,12 @@ where
     distributed_oprf_span.record("request_id", request_id.to_string());
     tracing::debug!("starting with request id: {request_id}");
 
-    let share_identifier = ShareIdentifier {
-        oprf_key_id,
-        share_epoch,
-    };
-
     let blinded_request = oprf_core::oprf::client::blind_query(query, blinding_factor.clone());
     let oprf_req = OprfRequest {
         request_id,
         blinded_query: blinded_request.blinded_query(),
-        share_identifier,
         auth,
+        oprf_key_id,
     };
 
     tracing::debug!("initializing sessions at {} services", services.len());
