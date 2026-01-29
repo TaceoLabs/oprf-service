@@ -39,6 +39,8 @@ pub const METRICS_ID_KEY_GEN_ROUND_4_START: &str = "taceo.oprf.key_gen.round_4.s
 pub const METRICS_ID_KEY_GEN_ROUND_4_FINISH: &str = "taceo.oprf.key_gen.round_4.finish";
 /// Observed event for start of a deletion
 pub const METRICS_ID_KEY_GEN_DELETION: &str = "taceo.oprf.key_gen.deletion";
+/// Observed not enough producers event
+pub const METRICS_ID_KEY_GEN_NOT_ENOUGH_PRODUCERS: &str = "taceo.oprf.key_gen.not_enough_producers";
 
 /// Observed event for keygen abort
 pub const METRICS_ID_KEY_GEN_ABORT: &str = "taceo.oprf.key_gen.abort";
@@ -118,6 +120,11 @@ pub fn describe_metrics() {
         METRICS_ID_KEY_GEN_DELETION,
         metrics::Unit::Count,
         "Number of observed deletion events"
+    );
+    metrics::describe_counter!(
+        METRICS_ID_KEY_GEN_NOT_ENOUGH_PRODUCERS,
+        metrics::Unit::Count,
+        "Number of observed not enough producers event"
     );
     metrics::describe_counter!(
         METRICS_ID_KEY_GEN_ABORT,

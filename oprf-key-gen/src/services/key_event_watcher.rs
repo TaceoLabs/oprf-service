@@ -14,10 +14,11 @@ use crate::{
         METRICS_ATTRID_PROTOCOL, METRICS_ATTRID_ROLE, METRICS_ATTRVAL_PROTOCOL_KEY_GEN,
         METRICS_ATTRVAL_PROTOCOL_RESHARE, METRICS_ATTRVAL_ROLE_CONSUMER,
         METRICS_ATTRVAL_ROLE_PRODUCER, METRICS_ID_KEY_GEN_ABORT, METRICS_ID_KEY_GEN_DELETION,
-        METRICS_ID_KEY_GEN_ROUND_1_FINISH, METRICS_ID_KEY_GEN_ROUND_1_START,
-        METRICS_ID_KEY_GEN_ROUND_2_FINISH, METRICS_ID_KEY_GEN_ROUND_2_START,
-        METRICS_ID_KEY_GEN_ROUND_3_FINISH, METRICS_ID_KEY_GEN_ROUND_3_START,
-        METRICS_ID_KEY_GEN_ROUND_4_FINISH, METRICS_ID_KEY_GEN_ROUND_4_START,
+        METRICS_ID_KEY_GEN_NOT_ENOUGH_PRODUCERS, METRICS_ID_KEY_GEN_ROUND_1_FINISH,
+        METRICS_ID_KEY_GEN_ROUND_1_START, METRICS_ID_KEY_GEN_ROUND_2_FINISH,
+        METRICS_ID_KEY_GEN_ROUND_2_START, METRICS_ID_KEY_GEN_ROUND_3_FINISH,
+        METRICS_ID_KEY_GEN_ROUND_3_START, METRICS_ID_KEY_GEN_ROUND_4_FINISH,
+        METRICS_ID_KEY_GEN_ROUND_4_START,
     },
     services::{
         secret_gen::{Contributions, DLogSecretGenService},
@@ -135,6 +136,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
         OprfKeyRegistry::ReshareRound3::SIGNATURE_HASH,
         OprfKeyRegistry::KeyDeletion::SIGNATURE_HASH,
         OprfKeyRegistry::KeyGenAbort::SIGNATURE_HASH,
+        OprfKeyRegistry::NotEnoughProducers::SIGNATURE_HASH,
     ];
     let filter = Filter::new()
         .address(contract_address)
@@ -290,13 +292,21 @@ async fn handle_log(
         }
         Some(&OprfKeyRegistry::KeyGenAbort::SIGNATURE_HASH) => {
             let log = log.log_decode().context("while decoding abort event")?;
-            handle_abort(log.inner.data, secret_gen).await
+            handle_abort(log.inner.data, secret_gen).await;
+            Ok(())
         }
         Some(&OprfKeyRegistry::KeyDeletion::SIGNATURE_HASH) => {
             let log = log
                 .log_decode()
                 .context("while decoding key-deletion event")?;
             handle_delete(log.inner.data, secret_gen, secret_manager).await
+        }
+        Some(&OprfKeyRegistry::NotEnoughProducers::SIGNATURE_HASH) => {
+            let log = log
+                .log_decode()
+                .context("while decoding not-enough-producers event")?;
+            handle_not_enough_producers(log.inner.data, secret_gen).await;
+            Ok(())
         }
         x => {
             tracing::warn!("unknown event: {x:?}");
@@ -605,10 +615,7 @@ async fn handle_delete(
 }
 
 #[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty))]
-async fn handle_abort(
-    event: OprfKeyRegistry::KeyGenAbort,
-    secret_gen: &mut DLogSecretGenService,
-) -> Result<()> {
+async fn handle_abort(event: OprfKeyRegistry::KeyGenAbort, secret_gen: &mut DLogSecretGenService) {
     tracing::info!("Received Abort event");
     ::metrics::counter!(METRICS_ID_KEY_GEN_ABORT).increment(1);
     let OprfKeyRegistry::KeyGenAbort { oprfKeyId } = event;
@@ -619,7 +626,22 @@ async fn handle_abort(
     // we need to delete all the toxic waste associated with the oprf key-id
     secret_gen.delete_oprf_key_material(oprf_key_id);
     // in contrast to delete we only remove the intermediate values and NOT the shares from the secret-manager
-    Ok(())
+}
+
+#[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty))]
+async fn handle_not_enough_producers(
+    event: OprfKeyRegistry::NotEnoughProducers,
+    secret_gen: &mut DLogSecretGenService,
+) {
+    ::metrics::counter!(METRICS_ID_KEY_GEN_NOT_ENOUGH_PRODUCERS).increment(1);
+    let OprfKeyRegistry::NotEnoughProducers { oprfKeyId } = event;
+    let handle_span = tracing::Span::current();
+    handle_span.record("oprf_key_id", oprfKeyId.to_string());
+    let oprf_key_id = OprfKeyId::from(oprfKeyId);
+    tracing::warn!("Received not-enough-producers for {oprfKeyId}");
+    // we need to delete all the toxic waste associated with the oprf key-id
+    secret_gen.delete_oprf_key_material(oprf_key_id);
+    // Don't clean the secret-manager as we still need the old share!
 }
 
 async fn handle_round3_inner(
