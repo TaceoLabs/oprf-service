@@ -14,6 +14,7 @@ publish = true
 [dependencies]
 alloy = { workspace = true, features = ["full", "rpc", "rpc-client-ws"] }
 ark-babyjubjub = { workspace = true }
+ark-serialize.workspace = true
 async-trait = { workspace = true }
 aws-config = { workspace = true, features = ["behavior-version-latest"] }
 aws-sdk-secretsmanager = { workspace = true }
@@ -35,6 +36,7 @@ secrecy = { workspace = true }
 semver.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+sqlx = { workspace = true }
 thiserror.workspace = true
 tokio = { workspace = true, features = [
   "net",

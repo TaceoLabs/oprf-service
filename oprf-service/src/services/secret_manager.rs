@@ -5,6 +5,7 @@
 //!
 //! Current `SecretManager` implementations:
 //! - AWS (cloud storage)
+//! - Postgres
 
 use std::sync::Arc;
 
@@ -14,6 +15,7 @@ use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfKeyMaterial};
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
 
 pub mod aws;
+pub mod postgres;
 
 /// Dynamic trait object for secret manager service.
 ///

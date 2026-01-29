@@ -10,7 +10,7 @@ use oprf_test_utils::{
     PEER_ADDRESSES, TEST_TIMEOUT, TestSetup, test_secret_manager::TestSecretManager,
 };
 use oprf_types::{
-    OprfKeyId,
+    OprfKeyId, ShareEpoch,
     api::{
         OprfPublicKeyWithEpoch, OprfRequest, OprfRequestAuthenticator, OprfResponse,
         ShareIdentifier,
@@ -252,12 +252,22 @@ impl taceo_oprf_service::secret_manager::SecretManager for NodeTestSecretManager
         Ok(OprfKeyMaterialStore::new(self.0.store.lock().clone()))
     }
 
-    async fn get_oprf_key_material(&self, oprf_key_id: OprfKeyId) -> eyre::Result<OprfKeyMaterial> {
-        self.0
+    async fn get_oprf_key_material(
+        &self,
+        oprf_key_id: OprfKeyId,
+        epoch: ShareEpoch,
+    ) -> eyre::Result<Option<OprfKeyMaterial>> {
+        let key_material = self
+            .0
             .store
             .lock()
             .get(&oprf_key_id)
             .cloned()
-            .ok_or_else(|| eyre::eyre!("oprf_key_id {oprf_key_id} not found"))
+            .ok_or_else(|| eyre::eyre!("oprf_key_id {oprf_key_id} not found"))?;
+        if key_material.has_epoch(epoch) {
+            Ok(Some(key_material))
+        } else {
+            Ok(None)
+        }
     }
 }

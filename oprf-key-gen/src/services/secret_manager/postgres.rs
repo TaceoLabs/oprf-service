@@ -25,9 +25,9 @@ pub struct PostgresSecretManager {
 
 impl PostgresSecretManager {
     /// Initializes a `PostgresSecretManager` and potentially runs migrations if necessary.
-    #[instrument(level = "info")]
+    #[instrument(level = "info", skip_all)]
     pub async fn init(
-        db_url: &SecretString,
+        connection_string: &SecretString,
         aws_config: aws_config::SdkConfig,
         wallet_private_key_secret_id: &str,
     ) -> eyre::Result<Self> {
@@ -35,7 +35,7 @@ impl PostgresSecretManager {
         tracing::info!("connecting to DB...");
         let pool = PgPoolOptions::new()
             .max_connections(1)
-            .connect(db_url.expose_secret())
+            .connect(connection_string.expose_secret())
             .await
             .context("while connecting to postgres DB")?;
         tracing::info!("running migrations...");
@@ -97,7 +97,7 @@ impl SecretManager for PostgresSecretManager {
                 WHERE id = $1 AND epoch = $2
             "#,
         )
-        .bind(oprf_key_id_to_bytes(oprf_key_id))
+        .bind(oprf_key_id.to_le_bytes())
         .bind(i64::from(previous_epoch))
         .fetch_optional(&self.pool)
         .await
@@ -122,7 +122,7 @@ impl SecretManager for PostgresSecretManager {
                 WHERE id = $1
             "#,
         )
-        .bind(oprf_key_id_to_bytes(oprf_key_id))
+        .bind(oprf_key_id.to_le_bytes())
         .execute(&self.pool)
         .await
         .context("while removing OPRF key-material")?
@@ -163,7 +163,7 @@ impl SecretManager for PostgresSecretManager {
                 public_key = EXCLUDED.public_key;
             "#,
         )
-        .bind(oprf_key_id_to_bytes(oprf_key_id))
+        .bind(oprf_key_id.to_le_bytes())
         .bind(to_db_ark_serialize_uncompressed(share))
         .bind(i64::from(epoch.into_inner())) // convert to larger i64 to preserve sign of epoch, we compare share.epoch and if we flip the sign this might break something
         .bind(to_db_ark_serialize_uncompressed(public_key))
@@ -172,11 +172,6 @@ impl SecretManager for PostgresSecretManager {
         .context("while storing new DLogShare")?;
         Ok(())
     }
-}
-
-#[inline(always)]
-fn oprf_key_id_to_bytes(oprf_key_id: OprfKeyId) -> Vec<u8> {
-    oprf_key_id.into_inner().to_be_bytes_vec()
 }
 
 #[inline(always)]

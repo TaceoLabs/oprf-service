@@ -169,10 +169,7 @@ fn assert_row_matches(
     let is_epoch: i64 = row.get(3);
     let is_public_key: Vec<u8> = row.get(4);
 
-    assert_eq!(
-        should_oprf_key_id,
-        OprfKeyId::from(U160::from_be_slice(&is_id))
-    );
+    assert_eq!(should_oprf_key_id, OprfKeyId::from_le_slice(&is_id));
 
     assert_eq!(
         ark_babyjubjub::Fr::from(should_current),
