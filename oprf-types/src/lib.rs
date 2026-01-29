@@ -82,6 +82,21 @@ impl OprfKeyId {
     pub fn new(value: U160) -> Self {
         Self(value)
     }
+
+    /// Converts the `OprfKeyId` to bytes in little-endian form
+    #[inline(always)]
+    pub fn to_le_bytes(&self) -> Vec<u8> {
+        self.into_inner().to_le_bytes_vec()
+    }
+
+    /// Creates a new `OprfKeyId` from a slice of bytes in little-endian form.
+    ///
+    /// # Panics
+    /// Panics if the value is larger than the underlying [`U160`].
+    #[inline(always)]
+    pub fn from_le_slice(b: &[u8]) -> Self {
+        OprfKeyId(U160::from_le_slice(b))
+    }
 }
 
 impl From<U160> for OprfKeyId {
