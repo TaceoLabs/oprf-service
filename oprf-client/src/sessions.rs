@@ -2,35 +2,42 @@
 //!
 //! See [`init_sessions`] and [`finish_sessions`] for more information.
 
+use std::collections::HashMap;
+
 use crate::ws::WebSocketSession;
 
 use super::Error;
 use oprf_core::ddlog_equality::shamir::DLogCommitmentsShamir;
 use oprf_core::ddlog_equality::shamir::DLogProofShareShamir;
 use oprf_core::ddlog_equality::shamir::PartialDLogCommitmentsShamir;
+use oprf_types::ShareEpoch;
 use oprf_types::api::OprfRequest;
 use oprf_types::api::OprfResponse;
 use oprf_types::crypto::OprfPublicKey;
 use oprf_types::crypto::PartyId;
 use serde::Serialize;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::SendError;
 use tokio::task::JoinSet;
 use tokio_tungstenite::Connector;
 use tracing::instrument;
 
 /// Holds the active OPRF sessions with multiple nodes.
+#[derive(Default)]
 pub struct OprfSessions {
     pub(super) ws: Vec<WebSocketSession>,
     pub(super) party_ids: Vec<PartyId>,
     pub(super) commitments: Vec<PartialDLogCommitmentsShamir>,
     pub(super) oprf_public_keys: Vec<OprfPublicKey>,
+    pub(super) epoch: ShareEpoch,
 }
 
 impl OprfSessions {
     /// Creates an empty [`OprfSessions`] with preallocated capacity.
     ///
-    fn with_capacity(capacity: usize) -> Self {
+    fn with_capacity(epoch: ShareEpoch, capacity: usize) -> Self {
         Self {
+            epoch,
             ws: Vec::with_capacity(capacity),
             party_ids: Vec::with_capacity(capacity),
             commitments: Vec::with_capacity(capacity),
@@ -82,6 +89,12 @@ impl OprfSessions {
             self.party_ids.push(party_id);
             self.commitments.push(commitments);
             self.oprf_public_keys.push(oprf_public_key);
+        }
+    }
+
+    async fn graceful_close(self) {
+        for ws in self.ws {
+            ws.graceful_close().await;
         }
     }
 }
@@ -157,7 +170,6 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
     tokio::task::spawn({
         let oprf_services = oprf_services.to_vec();
         let module = module.to_owned();
-        let mut open_sessions = 0;
         async move {
             let mut join_set = oprf_services
                 .into_iter()
@@ -165,18 +177,35 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
                     init_session(service, module.clone(), req.clone(), connector.clone())
                 })
                 .collect::<JoinSet<_>>();
+            let mut already_finished = false;
+            let mut epoch_session_map = HashMap::new();
             while let Some(session_handle) = join_set.join_next().await {
                 match session_handle.expect("Can join") {
                     Ok((session, resp)) => {
-                        if open_sessions == threshold {
+                        if already_finished {
                             // The caller is most likely gone already - just close the connection
                             session.graceful_close().await;
                         } else {
-                            open_sessions += 1;
-                            if let Err(session) = tx.send((session, resp)).await {
-                                tracing::debug!("No one listening anymore?");
-                                let (session, _) = session.0;
-                                session.graceful_close().await;
+                            let epoch = resp.oprf_pub_key_with_epoch.epoch;
+                            let epoch_session = epoch_session_map
+                                .entry(epoch)
+                                .or_insert_with(|| OprfSessions::with_capacity(epoch, threshold));
+                            tracing::debug!("received session for epoch: {epoch}");
+                            let service = session.service.clone();
+                            if let Err(duplicate_service) = epoch_session.push(session, resp) {
+                                tracing::warn!(
+                                    "{duplicate_service} and {service} send same Party ID!"
+                                );
+                                continue;
+                            }
+                            if epoch_session.len() == threshold {
+                                let mut chosen_sessions = std::mem::take(epoch_session);
+                                chosen_sessions.sort_by_party_id();
+                                already_finished = true;
+                                if let Err(SendError(sessions)) = tx.send(chosen_sessions).await {
+                                    tracing::debug!("No one listening anymore?");
+                                    sessions.graceful_close().await;
+                                }
                             }
                         }
                     }
@@ -188,27 +217,17 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
             }
         }
     });
-    let mut sessions = OprfSessions::with_capacity(threshold);
 
-    while let Some((ws, resp)) = rx.recv().await {
-        let service = ws.service.clone();
-        tracing::debug!("adding commitment from {service}");
-        if let Err(duplicate_service) = sessions.push(ws, resp) {
-            tracing::warn!("{duplicate_service} and {service} send same Party ID!");
-            continue;
-        }
-        tracing::debug!("received session {}", sessions.len());
-        if sessions.len() == threshold {
-            break;
-        }
-    }
-    if sessions.len() == threshold {
-        sessions.sort_by_party_id();
+    if let Some(sessions) = rx.recv().await
+        && sessions.len() == threshold
+    {
+        tracing::debug!(
+            "Initiated sessions {} with epoch {}",
+            sessions.len(),
+            sessions.epoch
+        );
         Ok(sessions)
     } else {
-        Err(super::Error::NotEnoughOprfResponses {
-            n: sessions.len(),
-            threshold,
-        })
+        Err(super::Error::NotEnoughOprfResponses(threshold))
     }
 }
