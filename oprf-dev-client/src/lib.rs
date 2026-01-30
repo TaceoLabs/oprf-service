@@ -189,22 +189,3 @@ pub async fn init_key_gen(
     tracing::info!("key-gen successful");
     Ok((oprf_key_id, oprf_public_key))
 }
-
-pub async fn reshare(
-    nodes: &[String],
-    oprf_key_registry: Address,
-    provider: DynProvider,
-    max_wait_time: Duration,
-    oprf_key_id: OprfKeyId,
-    share_epoch: ShareEpoch,
-) -> eyre::Result<(ShareEpoch, OprfPublicKey)> {
-    tracing::info!("init reshare for: {oprf_key_id}");
-    oprf_test_utils::init_reshare(provider, oprf_key_registry, oprf_key_id).await?;
-    tracing::info!("waiting for reshare to finish..");
-    let next_epoch = share_epoch.next();
-    let oprf_public_key =
-        health_checks::oprf_public_key_from_services(oprf_key_id, next_epoch, nodes, max_wait_time)
-            .await?;
-    tracing::info!("reshare successful");
-    Ok((next_epoch, oprf_public_key))
-}

@@ -16,8 +16,6 @@ use oprf_types::api::OprfResponse;
 use oprf_types::crypto::OprfPublicKey;
 use oprf_types::crypto::PartyId;
 use serde::Serialize;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::SendError;
 use tokio::task::JoinSet;
 use tokio_tungstenite::Connector;
 use tracing::instrument;
@@ -91,12 +89,6 @@ impl OprfSessions {
             self.oprf_public_keys.push(oprf_public_key);
         }
     }
-
-    async fn graceful_close(self) {
-        for ws in self.ws {
-            ws.graceful_close().await;
-        }
-    }
 }
 
 /// Tries to establish a web-socket connection to the given service. On success sends the provided `req` to the service and reads the [`OprfResponse`].
@@ -164,70 +156,53 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
     req: OprfRequest<OprfRequestAuth>,
     connector: Connector,
 ) -> Result<OprfSessions, super::Error> {
-    // only has one producer
-    let (tx, mut rx) = mpsc::channel(1);
-    // We spawn a dedicated task so that the dangling web-socket connections can gracefully close when we have threshold amount of sessions and continue with the normal flow.
-    tokio::task::spawn({
-        let oprf_services = oprf_services.to_vec();
-        let module = module.to_owned();
-        async move {
-            let mut join_set = oprf_services
-                .into_iter()
-                .map(|service| {
-                    init_session(service, module.clone(), req.clone(), connector.clone())
-                })
-                .collect::<JoinSet<_>>();
-            let mut already_finished = false;
-            let mut epoch_session_map = HashMap::new();
-            while let Some(session_handle) = join_set.join_next().await {
-                match session_handle.expect("Can join") {
-                    Ok((session, resp)) => {
-                        if already_finished {
-                            // The caller is most likely gone already - just close the connection
-                            session.graceful_close().await;
-                        } else {
-                            let epoch = resp.oprf_pub_key_with_epoch.epoch;
-                            let epoch_session = epoch_session_map
-                                .entry(epoch)
-                                .or_insert_with(|| OprfSessions::with_capacity(epoch, threshold));
-                            tracing::debug!("received session for epoch: {epoch}");
-                            let service = session.service.clone();
-                            if let Err(duplicate_service) = epoch_session.push(session, resp) {
-                                tracing::warn!(
-                                    "{duplicate_service} and {service} send same Party ID!"
-                                );
-                                continue;
-                            }
-                            if epoch_session.len() == threshold {
-                                let mut chosen_sessions = std::mem::take(epoch_session);
-                                chosen_sessions.sort_by_party_id();
-                                already_finished = true;
-                                if let Err(SendError(sessions)) = tx.send(chosen_sessions).await {
-                                    tracing::debug!("No one listening anymore?");
-                                    sessions.graceful_close().await;
-                                }
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        // we very much expect certain services to return an error therefore we do not log at warn/error level.
-                        tracing::debug!("Got error response: {err:?}");
-                    }
+    let mut join_set = oprf_services
+        .iter()
+        .cloned()
+        .map(|service| init_session(service, module.to_owned(), req.clone(), connector.clone()))
+        .collect::<JoinSet<_>>();
+    let mut epoch_session_map = HashMap::new();
+    while let Some(session_handle) = join_set.join_next().await {
+        match session_handle {
+            Ok(Ok((session, resp))) => {
+                let epoch = resp.oprf_pub_key_with_epoch.epoch;
+                let epoch_session = epoch_session_map
+                    .entry(epoch)
+                    .or_insert_with(|| OprfSessions::with_capacity(epoch, threshold));
+                tracing::debug!("received session for epoch: {epoch}");
+                let service = session.service.clone();
+                if let Err(duplicate_service) = epoch_session.push(session, resp) {
+                    tracing::warn!("{duplicate_service} and {service} send same Party ID!");
+                    continue;
+                }
+                if epoch_session.len() == threshold {
+                    let mut chosen_sessions = std::mem::take(epoch_session);
+                    chosen_sessions.sort_by_party_id();
+                    tracing::debug!(
+                        "Initiated sessions {} with epoch {}",
+                        chosen_sessions.len(),
+                        chosen_sessions.epoch
+                    );
+                    return Ok(chosen_sessions);
                 }
             }
+            Ok(Err(err)) => {
+                // we very much expect certain services to return an error therefore we do not log at warn/error level.
+                tracing::debug!("Got error response: {err:?}");
+            }
+            Err(_) => {
+                tracing::warn!("Could not join init_session task")
+            }
         }
-    });
-
-    if let Some(sessions) = rx.recv().await
-        && sessions.len() == threshold
-    {
-        tracing::debug!(
-            "Initiated sessions {} with epoch {}",
-            sessions.len(),
-            sessions.epoch
-        );
-        Ok(sessions)
-    } else {
-        Err(super::Error::NotEnoughOprfResponses(threshold))
     }
+
+    if epoch_session_map.is_empty() {
+        tracing::warn!("could not get a single session!");
+    } else {
+        tracing::warn!("could not get enough session. I got the following sessions:");
+        for (epoch, sessions) in epoch_session_map {
+            tracing::warn!("got for epoch {epoch} {} sessions", sessions.len())
+        }
+    }
+    Err(super::Error::NotEnoughOprfResponses(threshold))
 }
