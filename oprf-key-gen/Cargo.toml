@@ -42,7 +42,7 @@ sqlx = { workspace = true, features = [
   "migrate",
   "postgres",
   "runtime-tokio",
-  "tls-rustls-ring-webpki"
+  "tls-rustls-aws-lc-rs"
 ] }
 thiserror.workspace = true
 tokio = { workspace = true, features = [
