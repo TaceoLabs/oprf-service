@@ -154,7 +154,6 @@ async fn ws<
                         })
                     }
                     Ok(Err(err)) => err.into_close_frame(),
-
                     Err(_) => {
                         ::metrics::counter!(METRICS_ID_NODE_SESSIONS_TIMEOUT).increment(1);
                         Some(CloseFrame {
@@ -210,6 +209,7 @@ async fn partial_oprf<
     tracing::debug!("starting with request id: {request_id}");
     let oprf_span = tracing::Span::current();
     oprf_span.record("request_id", request_id.to_string());
+    // this is just to fail fast if the key-id doesn't exist. We check in partial_commit again if the key actually exists
     if !oprf_material_store.contains(init_request.oprf_key_id) {
         return Err(Error::BadRequest(format!(
             "unknown OPRF key id: {}",

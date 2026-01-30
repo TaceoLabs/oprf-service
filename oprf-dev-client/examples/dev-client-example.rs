@@ -1,12 +1,4 @@
-use std::{
-    collections::HashMap,
-    str::FromStr as _,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
-};
+use std::{collections::HashMap, str::FromStr as _, sync::Arc, time::Duration};
 
 use alloy::{
     network::EthereumWallet,
@@ -258,28 +250,22 @@ async fn reshare_test(
 
     tracing::info!("start OPRF client task");
     let (tx, mut rx) = mpsc::channel(32);
-    let shutdown_signal = Arc::new(AtomicBool::new(false));
-    let client_task = tokio::task::spawn({
+    tokio::task::spawn({
         let nodes = nodes.to_vec();
         let module = module.to_owned();
         let connector = connector.clone();
-        let shutdown_signal = Arc::clone(&shutdown_signal);
         async move {
             let nodes = nodes.to_vec();
             let module = module.clone();
             let mut counter = 0;
             loop {
-                if !shutdown_signal.load(Ordering::Relaxed) {
-                    let result =
-                        run_oprf(&nodes, &module, threshold, oprf_key_id, connector.clone()).await;
-                    counter += 1;
-                    if counter % 50 == 0 {
-                        tracing::debug!("send OPRF: {}", counter);
-                    }
-                    if tx.send(result).await.is_err() {
-                        break;
-                    }
-                } else {
+                let result =
+                    run_oprf(&nodes, &module, threshold, oprf_key_id, connector.clone()).await;
+                counter += 1;
+                if counter % 50 == 0 {
+                    tracing::debug!("send OPRF: {}", counter);
+                }
+                if tx.send(result).await.is_err() {
                     break;
                 }
             }
@@ -290,12 +276,7 @@ async fn reshare_test(
     oprf_test_utils::init_reshare(provider.clone(), oprf_key_registry, oprf_key_id).await?;
     tokio::time::timeout(
         max_wait_time,
-        wait_for_epoch(
-            &mut rx,
-            confirmations,
-            &shutdown_signal,
-            current_epoch.next(),
-        ),
+        wait_for_epoch(&mut rx, confirmations, current_epoch.next()),
     )
     .await??;
 
@@ -303,24 +284,16 @@ async fn reshare_test(
     oprf_test_utils::init_reshare(provider.clone(), oprf_key_registry, oprf_key_id).await?;
     tokio::time::timeout(
         max_wait_time,
-        wait_for_epoch(
-            &mut rx,
-            confirmations,
-            &shutdown_signal,
-            current_epoch.next().next(),
-        ),
+        wait_for_epoch(&mut rx, confirmations, current_epoch.next().next()),
     )
     .await??;
 
-    shutdown_signal.store(true, Ordering::Relaxed);
-    let _ = client_task.await;
     Ok(())
 }
 
 async fn wait_for_epoch(
     rx: &mut mpsc::Receiver<Result<ShareEpoch, eyre::Report>>,
     confirmations: usize,
-    shutdown_signal: &Arc<AtomicBool>,
     target_epoch: ShareEpoch,
 ) -> eyre::Result<()> {
     let mut new_epoch_found = 0;
@@ -338,7 +311,6 @@ async fn wait_for_epoch(
             }
             Ok(_) => continue,
             Err(err) => {
-                shutdown_signal.store(true, Ordering::Relaxed);
                 return Err(err);
             }
         }
