@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.1.0...taceo-oprf-dev-client-v0.1.1)
+
+### 📚 Documentation
+
+
+- Add Secret Management section to README - ([04dd050](https://github.com/TaceoLabs/oprf-service/commit/04dd050c65b69d31e61c12a3e07a18011844c076))
+
+### 🧪 Testing
+
+
+- Restructure for the and moved testcontainer to test-utils - ([e5fb5b9](https://github.com/TaceoLabs/oprf-service/commit/e5fb5b901bb1b832878a47f010ab0abfa3486496))
+
+
 ## [0.1.0]
 
 ### ⛰️ Features

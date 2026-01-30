@@ -2,6 +2,50 @@
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.4.0...taceo-oprf-service-v0.5.0)
+
+### ⛰️ Features
+
+
+- Add postgres secret-manager in service - ([3f920bd](https://github.com/TaceoLabs/oprf-service/commit/3f920bd890aea3b0307587d7851cdeaa5d82b4b7))
+
+### 🐛 Bug Fixes
+
+
+- Fixes an endless loop bug in an async task - ([5092e31](https://github.com/TaceoLabs/oprf-service/commit/5092e317a0de9a65dfa1d86a40d0adc12394117d))
+
+### 🚜 Refactor
+
+
+- Add zeroise on drop for ShareRow - ([c4b4588](https://github.com/TaceoLabs/oprf-service/commit/c4b45880f97f468d55c6c9c1170b72cdb497603b))
+- [**breaking**] Switched secret-manager impl in key-gen/example-service - ([7706dfb](https://github.com/TaceoLabs/oprf-service/commit/7706dfb14278839b1f4c677711e9bf761c88f056))
+- [**breaking**] Load address from secret-manager over config - ([7838777](https://github.com/TaceoLabs/oprf-service/commit/78387771c268c5f18b7331f825cb2fc1a16438fc))
+- Added some public methods for key-material store - ([f768dbf](https://github.com/TaceoLabs/oprf-service/commit/f768dbf004fd66af43d933b34d40b6f26a309703))
+- [**breaking**] Updated secret-manager trait for service - ([c134442](https://github.com/TaceoLabs/oprf-service/commit/c1344427327b0bd5176491839ec4c7c42d2b547d))
+
+### 📚 Documentation
+
+
+- Add Secret Management section to README - ([04dd050](https://github.com/TaceoLabs/oprf-service/commit/04dd050c65b69d31e61c12a3e07a18011844c076))
+
+### 🧪 Testing
+
+
+- Moved secret-manager to unit tests again - ([873bc72](https://github.com/TaceoLabs/oprf-service/commit/873bc725db46e29c3dfc5a7131bac535229ea06f))
+- Add test for load_address for postgres secret-manager - ([c39a316](https://github.com/TaceoLabs/oprf-service/commit/c39a3164cbc507cd50fc70a850df1dd4a79da67f))
+- Add tests for postgres secret-manager in service - ([15c47f5](https://github.com/TaceoLabs/oprf-service/commit/15c47f591a5fefc05a9b72becb90d4140d1587f4))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Update docs and typos - ([7031b3c](https://github.com/TaceoLabs/oprf-service/commit/7031b3cb846a6799aa5fe0aea07719b21d7c85d1))
+
+### Build
+
+
+- *(deps)* Use tls-rustls-aws-lc-rs feature for sqlx - ([3723c12](https://github.com/TaceoLabs/oprf-service/commit/3723c12cf9853a35d35b971ed2aa4e50e6f60f36))
+
+
 ## [0.4.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.3.0...taceo-oprf-service-v0.4.0)
 
 ### ⛰️ Features

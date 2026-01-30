@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.5.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.5.0...taceo-oprf-types-v0.5.1)
+
+### ⛰️ Features
+
+
+- Add postgres secret-manager in service - ([3f920bd](https://github.com/TaceoLabs/oprf-service/commit/3f920bd890aea3b0307587d7851cdeaa5d82b4b7))
+- Added CanonicalSerialize/Deserialize for DB storage - ([efcde52](https://github.com/TaceoLabs/oprf-service/commit/efcde524532fe4575ded5f87f3eb3777feec66fd))
+
+### 📚 Documentation
+
+
+- Add Secret Management section to README - ([04dd050](https://github.com/TaceoLabs/oprf-service/commit/04dd050c65b69d31e61c12a3e07a18011844c076))
+
+
 ## [0.5.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.4.0...taceo-oprf-types-v0.5.0)
 
 ### ⛰️ Features
