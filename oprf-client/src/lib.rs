@@ -8,7 +8,7 @@ use oprf_core::{
     dlog_equality::DLogEqualityProof,
     oprf::{BlindedOprfRequest, BlindedOprfResponse, BlindingFactor},
 };
-use oprf_types::{OprfKeyId, api::OprfRequest, crypto::OprfPublicKey};
+use oprf_types::{OprfKeyId, ShareEpoch, api::OprfRequest, crypto::OprfPublicKey};
 use serde::Serialize;
 use tokio_tungstenite::tungstenite::{self, http::uri::InvalidUri};
 use tracing::instrument;
@@ -38,13 +38,8 @@ pub enum Error {
     #[error("Endpoint closed connection")]
     Eof,
     /// Not enough OPRF responses received to satisfy the required threshold.
-    #[error("expected degree {threshold} responses, got {n}")]
-    NotEnoughOprfResponses {
-        /// actual amount responses
-        n: usize,
-        /// expected threshold
-        threshold: usize,
-    },
+    #[error("Could not reach {0} responses")]
+    NotEnoughOprfResponses(usize),
     /// The DLog equality proof failed verification.
     #[error("DLog proof could not be verified")]
     InvalidDLogProof,
@@ -74,6 +69,8 @@ pub struct VerifiableOprfOutput {
     pub unblinded_response: ark_babyjubjub::EdwardsAffine,
     /// The `OprfPublicKey` for the used `OprfKeyId`.
     pub oprf_public_key: OprfPublicKey,
+    /// The `ShareEpoch` which was used.
+    pub epoch: ShareEpoch,
 }
 
 /// Executes the distributed OPRF protocol.
@@ -152,6 +149,8 @@ where
         return Err(Error::InconsistentOprfPublicKeys);
     }
 
+    let epoch = sessions.epoch;
+    tracing::debug!("Will use epoch: {epoch}");
     tracing::debug!("compute the challenges for the services..");
     let challenge = generate_challenge_request(&sessions);
 
@@ -187,6 +186,7 @@ where
         dlog_proof,
         unblinded_response,
         oprf_public_key,
+        epoch,
     })
 }
 
