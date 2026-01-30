@@ -54,23 +54,28 @@ pub const METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK: &str = "taceo.oprf.key_gen.rpc_nul
 pub const METRICS_ID_KEY_GEN_WALLET_BALANCE: &str = "taceo.oprf.key_gen.wallet_balance";
 
 /// Gas used by a single transaction in key-gen round 1
-pub const METRICS_ID_KEY_GEN_ROUND1_GAS_COST: &str =
+pub const METRICS_ID_KEY_GEN_ROUND1_GAS: &str =
     "taceo.oprf.key_gen.transaction.cost.round1.key_gen";
 
 /// Gas used by a single transaction in reshare round 1
-pub const METRICS_ID_RESHARE_ROUND1_GAS_COST: &str =
+pub const METRICS_ID_RESHARE_ROUND1_GAS: &str =
     "taceo.oprf.key_gen.transaction.cost.round1.reshare";
 
 /// Gas used by a single transaction in key-gen/reshare round 2
-pub const METRICS_ID_ROUND2_GAS_COST: &str = "taceo.oprf.key_gen.transaction.cost.round2";
+pub const METRICS_ID_ROUND2_GAS: &str = "taceo.oprf.key_gen.transaction.cost.round2";
 
 /// Gas used by a single transaction in key-gen round 3
-pub const METRICS_ID_KEY_GEN_ROUND3_GAS_COST: &str =
+pub const METRICS_ID_KEY_GEN_ROUND3_GAS: &str =
     "taceo.oprf.key_gen.transaction.cost.round3.key_gen";
 
 /// Gas used by a single transaction in reshare round 3
-pub const METRICS_ID_RESHARE_ROUND3_GAS_COST: &str =
+pub const METRICS_ID_RESHARE_ROUND3_GAS: &str =
     "taceo.oprf.key_gen.transaction.cost.round3.reshare";
+
+/// Gas price from the transactions
+pub const METRICS_ID_GAS_PRICE: &str = "taceo.oprf.key_gen.transaction.cost.price";
+/// Blob gas price from the transactions
+pub const METRICS_ID_BLOB_GAS_PRICE: &str = "taceo.oprf.key_gen.transaction.cost.blob.price";
 
 /// Describe all metrics used by the service.
 ///
@@ -147,28 +152,38 @@ pub fn describe_metrics() {
         "Balance of the wallet used for key generation in GWEI"
     );
     metrics::describe_histogram!(
-        METRICS_ID_KEY_GEN_ROUND1_GAS_COST,
+        METRICS_ID_KEY_GEN_ROUND1_GAS,
         metrics::Unit::Count,
         "Gas used by a single transaction in key-gen round 1 in GWEI"
     );
     metrics::describe_histogram!(
-        METRICS_ID_RESHARE_ROUND1_GAS_COST,
+        METRICS_ID_RESHARE_ROUND1_GAS,
         metrics::Unit::Count,
         "Gas used by a single transaction in reshare round 1 in GWEI"
     );
     metrics::describe_histogram!(
-        METRICS_ID_ROUND2_GAS_COST,
+        METRICS_ID_ROUND2_GAS,
         metrics::Unit::Count,
         "Gas used by a single transaction in key-gen/reshare round 2 in GWEI"
     );
     metrics::describe_histogram!(
-        METRICS_ID_KEY_GEN_ROUND3_GAS_COST,
+        METRICS_ID_KEY_GEN_ROUND3_GAS,
         metrics::Unit::Count,
         "Gas used by a single transaction in key-gen round 3 in GWEI"
     );
     metrics::describe_histogram!(
-        METRICS_ID_RESHARE_ROUND3_GAS_COST,
+        METRICS_ID_RESHARE_ROUND3_GAS,
         metrics::Unit::Count,
         "Gas used by a single transaction in reshare round 3 in GWEI"
+    );
+    metrics::describe_histogram!(
+        METRICS_ID_GAS_PRICE,
+        metrics::Unit::Count,
+        "Gas price of the transactions"
+    );
+    metrics::describe_histogram!(
+        METRICS_ID_BLOB_GAS_PRICE,
+        metrics::Unit::Count,
+        "Blog gas price of the transactions"
     );
 }

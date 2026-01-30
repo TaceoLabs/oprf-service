@@ -23,11 +23,11 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     metrics::{
-        METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_KEY_GEN_ROUND1_GAS_COST,
-        METRICS_ID_KEY_GEN_ROUND3_GAS_COST, METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK,
-        METRICS_ID_KEY_GEN_RPC_RETRY, METRICS_ID_KEY_GEN_WALLET_BALANCE,
-        METRICS_ID_RESHARE_ROUND1_GAS_COST, METRICS_ID_RESHARE_ROUND3_GAS_COST,
-        METRICS_ID_ROUND2_GAS_COST,
+        METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_BLOB_GAS_PRICE, METRICS_ID_GAS_PRICE,
+        METRICS_ID_KEY_GEN_ROUND1_GAS, METRICS_ID_KEY_GEN_ROUND3_GAS,
+        METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK, METRICS_ID_KEY_GEN_RPC_RETRY,
+        METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ID_RESHARE_ROUND1_GAS,
+        METRICS_ID_RESHARE_ROUND3_GAS, METRICS_ID_ROUND2_GAS,
     },
     services::key_event_watcher::TransactionError,
 };
@@ -386,25 +386,33 @@ fn handle_success_receipt<R: ReceiptResponse>(
         .parse::<f64>()
         .expect("Is a float");
     let cost_eth = alloy::primitives::utils::format_ether(receipt.cost());
+    let gas_price_eth = alloy::primitives::utils::format_ether(receipt.effective_gas_price());
+    // we did it!
     tracing::debug!("gas used: {gas_used_gwei} GWEI");
     tracing::debug!("transaction cost: {cost_eth} ETH");
-    // we did it!
+    tracing::debug!("transaction gas price: {gas_price_eth} ETH");
+    if let Some(blob_price) = receipt.blob_gas_price() {
+        let blob_price_eth = alloy::primitives::utils::format_ether(blob_price);
+        tracing::debug!("transaction blob gas price: {blob_price_eth} ETH");
+        metrics::histogram!(METRICS_ID_BLOB_GAS_PRICE)
+            .record(blob_price_eth.parse::<f64>().expect("Is a float"))
+    }
     tracing::debug!("successfully sent transaction");
+    metrics::histogram!(METRICS_ID_GAS_PRICE)
+        .record(gas_price_eth.parse::<f64>().expect("Is a float"));
     match transaction_identifier.round {
         TransactionType::Round1 if epoch.is_initial_epoch() => {
-            metrics::histogram!(METRICS_ID_KEY_GEN_ROUND1_GAS_COST).record(gas_used_gwei)
+            metrics::histogram!(METRICS_ID_KEY_GEN_ROUND1_GAS).record(gas_used_gwei)
         }
         TransactionType::Round1 => {
-            metrics::histogram!(METRICS_ID_RESHARE_ROUND1_GAS_COST).record(gas_used_gwei)
+            metrics::histogram!(METRICS_ID_RESHARE_ROUND1_GAS).record(gas_used_gwei)
         }
-        TransactionType::Round2 => {
-            metrics::histogram!(METRICS_ID_ROUND2_GAS_COST).record(gas_used_gwei)
-        }
+        TransactionType::Round2 => metrics::histogram!(METRICS_ID_ROUND2_GAS).record(gas_used_gwei),
         TransactionType::Round3 if epoch.is_initial_epoch() => {
-            metrics::histogram!(METRICS_ID_KEY_GEN_ROUND3_GAS_COST).record(gas_used_gwei)
+            metrics::histogram!(METRICS_ID_KEY_GEN_ROUND3_GAS).record(gas_used_gwei)
         }
         TransactionType::Round3 => {
-            metrics::histogram!(METRICS_ID_RESHARE_ROUND3_GAS_COST).record(gas_used_gwei)
+            metrics::histogram!(METRICS_ID_RESHARE_ROUND3_GAS).record(gas_used_gwei)
         }
     }
 }

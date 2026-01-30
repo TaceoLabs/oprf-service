@@ -5,7 +5,7 @@ default:
 [private]
 [working-directory('logs')]
 load-key-registry:
-    grep -oP 'OprfKeyRegistry deployed to: \K0x[a-fA-F0-9]+' deploy_oprf_key_registry.log
+    grep -oP 'OprfKeyRegistry proxy deployed to: \K0x[a-fA-F0-9]+' deploy_oprf_key_registry.log
 
 [group('build')]
 [working-directory('contracts')]
