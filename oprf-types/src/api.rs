@@ -53,19 +53,10 @@ pub struct OprfRequest<OprfRequestAuth> {
     #[serde(serialize_with = "babyjubjub::serialize_affine")]
     #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
     pub blinded_query: ark_babyjubjub::EdwardsAffine,
-    /// Identifies the OPRF public-key and the epoch of the used share
-    pub share_identifier: ShareIdentifier,
+    /// Identifies the OPRF key
+    pub oprf_key_id: OprfKeyId,
     /// The additional authentication info for this request
     pub auth: OprfRequestAuth,
-}
-
-/// Identifies the nullifier share to use for the OPRF computation by relying party ([`OprfKeyId`]) and [`ShareEpoch`].
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct ShareIdentifier {
-    /// ID of OPRF public-key
-    pub oprf_key_id: OprfKeyId,
-    /// Epoch of the key.
-    pub share_epoch: ShareEpoch,
 }
 
 /// Server response to an [`OprfRequest`].
@@ -75,8 +66,8 @@ pub struct OprfResponse {
     pub commitments: PartialDLogCommitmentsShamir,
     /// The party ID of the node
     pub party_id: PartyId,
-    /// The `OprfPublicKey` for the requested `OprfKeyId`.
-    pub oprf_public_key: OprfPublicKey,
+    /// The [`OprfPublicKeyWithEpoch`].
+    pub oprf_pub_key_with_epoch: OprfPublicKeyWithEpoch,
 }
 
 impl<OprfReqestAuth> fmt::Debug for OprfRequest<OprfReqestAuth> {
@@ -84,7 +75,7 @@ impl<OprfReqestAuth> fmt::Debug for OprfRequest<OprfReqestAuth> {
         f.debug_struct("OprfRequest")
             .field("req_id", &self.request_id)
             .field("blinded_query", &self.blinded_query.to_string())
-            .field("share_identifier", &self.share_identifier)
+            .field("key_id", &self.oprf_key_id)
             .finish()
     }
 }

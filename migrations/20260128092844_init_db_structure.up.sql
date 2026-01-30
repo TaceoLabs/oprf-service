@@ -14,8 +14,7 @@ CREATE TABLE evm_address (
 -- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CREATE TABLE shares (
     id BYTEA PRIMARY KEY NOT NULL,
-    current BYTEA NOT NULL,
-    prev BYTEA,
+    share BYTEA NOT NULL,
     epoch BIGINT NOT NULL, -- we use BigInt to securly convert from u32 to i64
     public_key BYTEA NOT NULL,
 

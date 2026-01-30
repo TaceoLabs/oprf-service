@@ -6750,6 +6750,7 @@ dependencies = [
  "tokio-util",
  "tower-http",
  "tracing",
+ "tungstenite 0.28.0",
  "uuid",
  "zeroize",
 ]

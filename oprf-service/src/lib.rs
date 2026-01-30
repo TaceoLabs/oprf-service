@@ -225,11 +225,7 @@ impl OprfServiceBuilder {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        collections::{BTreeMap, HashMap},
-        fmt,
-        sync::Arc,
-    };
+    use std::{collections::HashMap, fmt, sync::Arc};
 
     use alloy::uint;
     use ark_ff::UniformRand as _;
@@ -244,7 +240,7 @@ mod tests {
     };
     use oprf_types::{
         OprfKeyId, ShareEpoch,
-        api::{OprfRequest, OprfRequestAuthenticator, OprfResponse, ShareIdentifier},
+        api::{OprfRequest, OprfRequestAuthenticator, OprfResponse},
         crypto::{OprfKeyMaterial, OprfPublicKey},
     };
     use semver::VersionReq;
@@ -324,16 +320,11 @@ mod tests {
         let blinding_factor = BlindingFactor::rand(&mut rng);
         let query = ark_babyjubjub::Fq::rand(&mut rng);
 
-        let share_identifier = ShareIdentifier {
-            oprf_key_id,
-            share_epoch: ShareEpoch::default(),
-        };
-
         let blinded_request = oprf_core::oprf::client::blind_query(query, blinding_factor.clone());
         let oprf_req = OprfRequest {
             request_id,
             blinded_query: blinded_request.blinded_query(),
-            share_identifier,
+            oprf_key_id,
             auth: (),
         };
         let challenge_req = DLogCommitmentsShamir::new(
@@ -347,11 +338,9 @@ mod tests {
         let oprf_material_store = OprfKeyMaterialStore::new(HashMap::from([(
             oprf_key_id,
             OprfKeyMaterial::new(
-                BTreeMap::from([(
-                    ShareEpoch::default(),
-                    DLogShareShamir::from(ark_babyjubjub::Fr::rand(&mut rng)),
-                )]),
+                DLogShareShamir::from(ark_babyjubjub::Fr::rand(&mut rng)),
                 OprfPublicKey::new(ark_babyjubjub::EdwardsAffine::default()),
+                ShareEpoch::default(),
             ),
         )]));
         let router = api::oprf::routes(api::oprf::OprfArgs {
@@ -426,21 +415,10 @@ mod tests {
     #[tokio::test]
     async fn init_unknown_oprf_key_id() -> eyre::Result<()> {
         let (mut node, mut oprf_req, _, _) = test_setup().await;
-        oprf_req.share_identifier.oprf_key_id = OprfKeyId::new(uint!(1_U160));
+        oprf_req.oprf_key_id = OprfKeyId::new(uint!(1_U160));
         node.send_oprf_request(&oprf_req).await;
         node.websocket
             .assert_receive_text("unknown OPRF key id: 1")
-            .await;
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn init_unknown_share_epoch() -> eyre::Result<()> {
-        let (mut node, mut oprf_req, _, _) = test_setup().await;
-        oprf_req.share_identifier.share_epoch = ShareEpoch::new(1);
-        node.send_oprf_request(&oprf_req).await;
-        node.websocket
-            .assert_receive_text("unknown share epoch: 1")
             .await;
         Ok(())
     }

@@ -12,10 +12,7 @@ use oprf_test_utils::{
 };
 use oprf_types::{
     OprfKeyId, ShareEpoch,
-    api::{
-        OprfPublicKeyWithEpoch, OprfRequest, OprfRequestAuthenticator, OprfResponse,
-        ShareIdentifier,
-    },
+    api::{OprfPublicKeyWithEpoch, OprfRequest, OprfRequestAuthenticator, OprfResponse},
     crypto::{OprfKeyMaterial, OprfPublicKey},
 };
 use rand::{CryptoRng, Rng};
@@ -151,20 +148,17 @@ impl TestNode {
 
     pub async fn has_key(
         &self,
-        share_identifier: ShareIdentifier,
+        oprf_key_id: OprfKeyId,
+        epoch: ShareEpoch,
         should_key: OprfPublicKey,
     ) -> eyre::Result<()> {
-        let ShareIdentifier {
-            oprf_key_id,
-            share_epoch,
-        } = share_identifier;
         let server = Arc::clone(&self.server);
         let is_key = tokio::time::timeout(TEST_TIMEOUT, async move {
             let url = format!("/oprf_pub/{oprf_key_id}");
             loop {
                 let response = server.get(&url).await.text();
                 if let Ok(response) = serde_json::from_str::<OprfPublicKeyWithEpoch>(&response)
-                    && response.epoch == share_epoch
+                    && response.epoch == epoch
                 {
                     break response.key;
                 }
@@ -193,7 +187,7 @@ impl TestNode {
 
     pub async fn init_request<R: Rng + CryptoRng>(
         &self,
-        share_identifier: ShareIdentifier,
+        oprf_key_id: OprfKeyId,
         rng: &mut R,
     ) -> OprfResponse {
         let blinding_factor = BlindingFactor::rand(rng);
@@ -202,7 +196,7 @@ impl TestNode {
         let oprf_req = OprfRequest {
             request_id: Uuid::new_v4(),
             blinded_query: blinded_request.blinded_query(),
-            share_identifier,
+            oprf_key_id,
             auth: (),
         };
         let mut websocket = self
@@ -221,7 +215,7 @@ impl TestNode {
 
     pub async fn oprf_expect_error<R: Rng + CryptoRng>(
         &self,
-        share_identifier: ShareIdentifier,
+        oprf_key_id: OprfKeyId,
         msg: String,
         rng: &mut R,
     ) {
@@ -231,7 +225,7 @@ impl TestNode {
         let oprf_req = OprfRequest {
             request_id: Uuid::new_v4(),
             blinded_query: blinded_request.blinded_query(),
-            share_identifier,
+            oprf_key_id,
             auth: (),
         };
         let mut websocket = self
@@ -265,7 +259,7 @@ impl taceo_oprf_service::secret_manager::SecretManager for NodeTestSecretManager
     ) -> eyre::Result<Option<OprfKeyMaterial>> {
         let key_material_epoch = self.0.store.lock().get(&oprf_key_id).cloned();
         if let Some(key_material) = key_material_epoch
-            && key_material.has_epoch(epoch)
+            && key_material.is_epoch(epoch)
         {
             Ok(Some(key_material))
         } else {

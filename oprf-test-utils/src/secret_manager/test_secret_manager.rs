@@ -1,9 +1,4 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    str::FromStr,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 
 use alloy::{primitives::U160, signers::local::PrivateKeySigner};
 use ark_ff::UniformRand;
@@ -51,10 +46,9 @@ impl TestSecretManager {
     pub fn add_random_key_material<R: Rng + CryptoRng>(&self, rng: &mut R) -> OprfKeyId {
         // need to generate usize because rust-analyzer is unhappy with generating U160
         let oprf_key_id = OprfKeyId::new(U160::from(rng.r#gen::<usize>()));
-        let mut shares = BTreeMap::new();
         let epoch = ShareEpoch::default();
-        shares.insert(epoch, DLogShareShamir::from(ark_babyjubjub::Fr::rand(rng)));
-        let key_material = OprfKeyMaterial::new(shares, OprfPublicKey::new(rng.r#gen()));
+        let share = DLogShareShamir::from(ark_babyjubjub::Fr::rand(rng));
+        let key_material = OprfKeyMaterial::new(share, OprfPublicKey::new(rng.r#gen()), epoch);
         self.store.lock().insert(oprf_key_id, key_material);
         oprf_key_id
     }
@@ -71,9 +65,9 @@ impl TestSecretManager {
         let public_key = tokio::time::timeout(TEST_TIMEOUT, async move {
             loop {
                 if let Some(key_material) = self.get_key_material(oprf_key_id)
-                    && key_material.get_latest_epoch().unwrap() == epoch
+                    && key_material.is_epoch(epoch)
                 {
-                    break key_material.get_oprf_public_key();
+                    break key_material.public_key();
                 } else {
                     tokio::time::sleep(Duration::from_millis(500)).await;
                 }

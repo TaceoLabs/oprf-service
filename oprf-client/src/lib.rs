@@ -8,11 +8,7 @@ use oprf_core::{
     dlog_equality::DLogEqualityProof,
     oprf::{BlindedOprfRequest, BlindedOprfResponse, BlindingFactor},
 };
-use oprf_types::{
-    OprfKeyId, ShareEpoch,
-    api::{OprfRequest, ShareIdentifier},
-    crypto::OprfPublicKey,
-};
+use oprf_types::{OprfKeyId, ShareEpoch, api::OprfRequest, crypto::OprfPublicKey};
 use serde::Serialize;
 use tokio_tungstenite::tungstenite::{self, http::uri::InvalidUri};
 use tracing::instrument;
@@ -42,13 +38,8 @@ pub enum Error {
     #[error("Endpoint closed connection")]
     Eof,
     /// Not enough OPRF responses received to satisfy the required threshold.
-    #[error("expected degree {threshold} responses, got {n}")]
-    NotEnoughOprfResponses {
-        /// actual amount responses
-        n: usize,
-        /// expected threshold
-        threshold: usize,
-    },
+    #[error("Could not reach {0} responses")]
+    NotEnoughOprfResponses(usize),
     /// The DLog equality proof failed verification.
     #[error("DLog proof could not be verified")]
     InvalidDLogProof,
@@ -78,6 +69,8 @@ pub struct VerifiableOprfOutput {
     pub unblinded_response: ark_babyjubjub::EdwardsAffine,
     /// The `OprfPublicKey` for the used `OprfKeyId`.
     pub oprf_public_key: OprfPublicKey,
+    /// The `ShareEpoch` which was used.
+    pub epoch: ShareEpoch,
 }
 
 /// Executes the distributed OPRF protocol.
@@ -103,7 +96,6 @@ pub async fn distributed_oprf<OprfRequestAuth>(
     module: &str,
     threshold: usize,
     oprf_key_id: OprfKeyId,
-    share_epoch: ShareEpoch,
     query: ark_babyjubjub::Fq,
     blinding_factor: BlindingFactor,
     domain_separator: ark_babyjubjub::Fq,
@@ -129,17 +121,12 @@ where
     distributed_oprf_span.record("request_id", request_id.to_string());
     tracing::debug!("starting with request id: {request_id}");
 
-    let share_identifier = ShareIdentifier {
-        oprf_key_id,
-        share_epoch,
-    };
-
     let blinded_request = oprf_core::oprf::client::blind_query(query, blinding_factor.clone());
     let oprf_req = OprfRequest {
         request_id,
         blinded_query: blinded_request.blinded_query(),
-        share_identifier,
         auth,
+        oprf_key_id,
     };
 
     tracing::debug!("initializing sessions at {} services", services.len());
@@ -162,6 +149,8 @@ where
         return Err(Error::InconsistentOprfPublicKeys);
     }
 
+    let epoch = sessions.epoch;
+    tracing::debug!("Will use epoch: {epoch}");
     tracing::debug!("compute the challenges for the services..");
     let challenge = generate_challenge_request(&sessions);
 
@@ -197,6 +186,7 @@ where
         dlog_proof,
         unblinded_response,
         oprf_public_key,
+        epoch,
     })
 }
 

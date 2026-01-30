@@ -11,7 +11,7 @@
 //! * [`SecretGenCommitment`]
 //! * [`SecretGenCiphertexts`] / [`SecretGenCiphertext`]
 
-use std::{collections::BTreeMap, fmt};
+use std::fmt;
 
 use ark_serde_compat::babyjubjub;
 use ark_serialize::CanonicalDeserialize;
@@ -233,78 +233,51 @@ impl From<PartyId> for u16 {
 /// The cryptographic material for one OPRF key.
 ///
 /// Stores:
-/// * A mapping of [`ShareEpoch`] → [`DLogShareShamir`]
-/// * The [`OprfPublicKey`] associated with the share.
+/// * The [`DLogShareShamir`].
+/// * The [`OprfPublicKey`].
+/// * The [`ShareEpoch`].
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OprfKeyMaterial {
-    shares: BTreeMap<ShareEpoch, DLogShareShamir>,
+    share: DLogShareShamir,
     oprf_public_key: OprfPublicKey,
+    epoch: ShareEpoch,
 }
 
 impl OprfKeyMaterial {
-    /// The maximum number of shares to store in the material.
-    const MAX_NUM_SHARES: usize = 2;
-
-    /// Creates a new [`OprfKeyMaterial`] from the provided shares and [`OprfPublicKey`].
-    pub fn new(
-        shares: BTreeMap<ShareEpoch, DLogShareShamir>,
-        oprf_public_key: OprfPublicKey,
-    ) -> Self {
+    /// Creates a new [`OprfKeyMaterial`] from the provided [`DLogShareShamir`], [`OprfPublicKey`], and [`ShareEpoch`].
+    pub fn new(share: DLogShareShamir, oprf_public_key: OprfPublicKey, epoch: ShareEpoch) -> Self {
         Self {
-            shares,
+            share,
             oprf_public_key,
+            epoch,
         }
     }
 
-    /// Returns the latest [`DLogShareShamir`] currently contained in the material with its associated [`ShareEpoch`]. Returns `None` if empty.
-    pub fn get_latest_share(&self) -> Option<(ShareEpoch, DLogShareShamir)> {
-        let (k, v) = self.shares.last_key_value()?;
-        Some((*k, v.clone()))
-    }
-
-    /// Returns the latest [`ShareEpoch`] currently contained in the material. Returns `None` if empty.
-    pub fn get_latest_epoch(&self) -> Option<ShareEpoch> {
-        self.shares.keys().last().cloned()
+    /// Returns the latest [`ShareEpoch`].
+    pub fn epoch(&self) -> ShareEpoch {
+        self.epoch
     }
 
     /// Returns the [`DLogShareShamir`] for the given epoch, or `None` if not found.
-    pub fn get_share(&self, epoch: ShareEpoch) -> Option<DLogShareShamir> {
-        self.shares.get(&epoch).cloned()
+    pub fn share(&self) -> DLogShareShamir {
+        self.share.clone()
     }
 
     /// Returns `true` iff the the material contains the requested epoch.
-    pub fn has_epoch(&self, epoch: ShareEpoch) -> bool {
-        self.shares.contains_key(&epoch)
-    }
-
-    /// Inserts a new [`DLogShareShamir`] for the given epoch.
-    ///
-    /// Drops the oldest shares w.r.t. epoch that exceed `max_cache`.
-    pub fn insert_share(&mut self, epoch: ShareEpoch, share: DLogShareShamir) {
-        if self.shares.insert(epoch, share).is_some() {
-            tracing::warn!("overwriting share for epoch {epoch}");
-        }
-        tracing::info!(
-            "stored share with epoch {epoch} - now have {} epochs stored",
-            self.shares.len()
-        );
-        while self.shares.len() > Self::MAX_NUM_SHARES {
-            // epochs are strictly increasing
-            let (dropped_epoch, _) = self.shares.pop_first().expect("Is there we just checked");
-            tracing::info!("removing share epoch {dropped_epoch}");
-        }
+    pub fn is_epoch(&self, epoch: ShareEpoch) -> bool {
+        self.epoch == epoch
     }
 
     /// Returns the [`OprfPublicKey`].
-    pub fn get_oprf_public_key(&self) -> OprfPublicKey {
+    pub fn public_key(&self) -> OprfPublicKey {
         self.oprf_public_key
     }
 
     /// Returns the [`OprfPublicKeyWithEpoch`].
-    pub fn get_oprf_public_key_with_epoch(&self) -> Option<OprfPublicKeyWithEpoch> {
-        Some(OprfPublicKeyWithEpoch {
+    pub fn public_key_with_epoch(&self) -> OprfPublicKeyWithEpoch {
+        OprfPublicKeyWithEpoch {
             key: self.oprf_public_key,
-            epoch: self.get_latest_epoch()?,
-        })
+            epoch: self.epoch,
+        }
     }
 }

@@ -13,15 +13,12 @@ use eyre::Context as _;
 use oprf_client::{Connector, VerifiableOprfOutput};
 use oprf_core::oprf::{BlindedOprfRequest, BlindingFactor};
 use oprf_test_utils::health_checks;
-use oprf_types::{
-    OprfKeyId, ShareEpoch,
-    api::{OprfRequest, ShareIdentifier},
-    crypto::OprfPublicKey,
-};
+use oprf_types::{OprfKeyId, ShareEpoch, api::OprfRequest, crypto::OprfPublicKey};
 use rand::{CryptoRng, Rng, SeedableRng as _};
 use rustls::{ClientConfig, RootCertStore};
 use secrecy::{ExposeSecret as _, SecretString};
-use taceo_oprf_dev_client::{Command, StressTestCommand};
+use taceo_oprf_dev_client::{Command, ReshareTest, StressTestCommand};
+use tokio::sync::mpsc;
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -87,17 +84,15 @@ pub struct OprfDevClientConfig {
 }
 
 #[instrument(level = "debug", skip_all)]
-#[expect(clippy::too_many_arguments)]
 pub async fn distributed_oprf<R: Rng + CryptoRng>(
     services: &[String],
     module: &str,
     threshold: usize,
     oprf_key_id: OprfKeyId,
-    share_epoch: ShareEpoch,
     action: ark_babyjubjub::Fq,
     connector: Connector,
     rng: &mut R,
-) -> eyre::Result<ark_babyjubjub::Fq> {
+) -> eyre::Result<(ark_babyjubjub::Fq, ShareEpoch)> {
     let query = action;
     let blinding_factor = BlindingFactor::rand(rng);
     let domain_separator = ark_babyjubjub::Fq::from_be_bytes_mod_order(b"OPRF");
@@ -110,12 +105,12 @@ pub async fn distributed_oprf<R: Rng + CryptoRng>(
         unblinded_response: _,
         blinded_request,
         oprf_public_key,
+        epoch,
     } = oprf_client::distributed_oprf(
         services,
         module,
         threshold,
         oprf_key_id,
-        share_epoch,
         query,
         blinding_factor,
         domain_separator,
@@ -132,7 +127,7 @@ pub async fn distributed_oprf<R: Rng + CryptoRng>(
         )
         .context("cannot verify dlog proof")?;
 
-    Ok(output)
+    Ok((output, epoch))
 }
 
 async fn run_oprf(
@@ -140,27 +135,25 @@ async fn run_oprf(
     module: &str,
     threshold: usize,
     oprf_key_id: OprfKeyId,
-    share_epoch: ShareEpoch,
     connector: Connector,
-) -> eyre::Result<()> {
+) -> eyre::Result<ShareEpoch> {
     let mut rng = rand_chacha::ChaCha12Rng::from_entropy();
 
     let action = ark_babyjubjub::Fq::rand(&mut rng);
 
     // the client example internally checks the DLog equality
-    distributed_oprf(
+    let (_, epoch) = distributed_oprf(
         nodes,
         module,
         threshold,
         oprf_key_id,
-        share_epoch,
         action,
         connector,
         &mut rng,
     )
     .await?;
 
-    Ok(())
+    Ok(epoch)
 }
 
 fn prepare_oprf_stress_test_oprf_request(
@@ -176,10 +169,7 @@ fn prepare_oprf_stress_test_oprf_request(
     let oprf_req = OprfRequest {
         request_id,
         blinded_query: blinded_request.blinded_query(),
-        share_identifier: ShareIdentifier {
-            oprf_key_id,
-            share_epoch: ShareEpoch::default(),
-        },
+        oprf_key_id,
         auth: (),
     };
 
@@ -249,107 +239,82 @@ async fn reshare_test(
     threshold: usize,
     oprf_key_registry: Address,
     oprf_key_id: OprfKeyId,
-    share_epoch: ShareEpoch,
-    oprf_public_key: OprfPublicKey,
     connector: Connector,
     provider: DynProvider,
+    confirmations: usize,
     max_wait_time: Duration,
 ) -> eyre::Result<()> {
-    tracing::info!("running single OPRF");
-    run_oprf(
-        nodes,
-        module,
-        threshold,
-        oprf_key_id,
-        share_epoch,
-        connector.clone(),
-    )
-    .await?;
-    tracing::info!("OPRF successful");
+    tracing::info!("running OPRF to get current epoch..");
+    let current_epoch = run_oprf(nodes, module, threshold, oprf_key_id, connector.clone()).await?;
+    tracing::info!("current epoch: {current_epoch}");
 
-    let (share_epoch_1, oprf_public_key_1) = taceo_oprf_dev_client::reshare(
-        nodes,
-        oprf_key_registry,
-        provider.clone(),
+    tracing::info!("start OPRF client task");
+    let (tx, mut rx) = mpsc::channel(32);
+    tokio::task::spawn({
+        let nodes = nodes.to_vec();
+        let module = module.to_owned();
+        let connector = connector.clone();
+        async move {
+            let nodes = nodes.to_vec();
+            let module = module.clone();
+            let mut counter = 0;
+            loop {
+                let result =
+                    run_oprf(&nodes, &module, threshold, oprf_key_id, connector.clone()).await;
+                counter += 1;
+                if counter % 50 == 0 {
+                    tracing::debug!("send OPRF: {}", counter);
+                }
+                if tx.send(result).await.is_err() {
+                    break;
+                }
+            }
+        }
+    });
+
+    tracing::info!("Doing reshare!");
+    oprf_test_utils::init_reshare(provider.clone(), oprf_key_registry, oprf_key_id).await?;
+    tokio::time::timeout(
         max_wait_time,
-        oprf_key_id,
-        share_epoch,
+        wait_for_epoch(&mut rx, confirmations, current_epoch.next()),
     )
-    .await?;
-    assert_eq!(oprf_public_key, oprf_public_key_1);
+    .await??;
 
-    tracing::info!("running OPRF with epoch 0 after 1st reshare");
-    run_oprf(
-        nodes,
-        module,
-        threshold,
-        oprf_key_id,
-        share_epoch,
-        connector.clone(),
-    )
-    .await?;
-    tracing::info!("OPRF successful");
-
-    tracing::info!("running OPRF with epoch 1 after 1st reshare");
-    run_oprf(
-        nodes,
-        module,
-        threshold,
-        oprf_key_id,
-        share_epoch_1,
-        connector.clone(),
-    )
-    .await?;
-    tracing::info!("OPRF successful");
-
-    let (share_epoch_2, oprf_public_key_2) = taceo_oprf_dev_client::reshare(
-        nodes,
-        oprf_key_registry,
-        provider,
+    tracing::info!("Doing reshare!");
+    oprf_test_utils::init_reshare(provider.clone(), oprf_key_registry, oprf_key_id).await?;
+    tokio::time::timeout(
         max_wait_time,
-        oprf_key_id,
-        share_epoch_1,
+        wait_for_epoch(&mut rx, confirmations, current_epoch.next().next()),
     )
-    .await?;
-    assert_eq!(oprf_public_key, oprf_public_key_2);
+    .await??;
 
-    tracing::info!("running OPRF with epoch 1 after 2nd reshare");
-    run_oprf(
-        nodes,
-        module,
-        threshold,
-        oprf_key_id,
-        share_epoch_1,
-        connector.clone(),
-    )
-    .await?;
-    tracing::info!("OPRF successful");
+    Ok(())
+}
 
-    tracing::info!("running OPRF with epoch 2 after 2nd reshare");
-    run_oprf(
-        nodes,
-        module,
-        threshold,
-        oprf_key_id,
-        share_epoch_2,
-        connector.clone(),
-    )
-    .await?;
-    tracing::info!("OPRF successful");
-
-    tracing::info!("running OPRF with epoch 0 after 2nd reshare - should fail");
-    let _ = run_oprf(
-        nodes,
-        module,
-        threshold,
-        oprf_key_id,
-        share_epoch,
-        connector.clone(),
-    )
-    .await
-    .expect_err("should fail");
-    tracing::info!("OPRF failed as expected");
-
+async fn wait_for_epoch(
+    rx: &mut mpsc::Receiver<Result<ShareEpoch, eyre::Report>>,
+    confirmations: usize,
+    target_epoch: ShareEpoch,
+) -> eyre::Result<()> {
+    let mut new_epoch_found = 0;
+    while let Some(result) = rx.recv().await {
+        match result {
+            Ok(epoch) if epoch == target_epoch => {
+                new_epoch_found += 1;
+                if new_epoch_found == confirmations {
+                    tracing::info!(
+                        "successfully used new epoch {} {confirmations} times!",
+                        target_epoch
+                    );
+                    break;
+                }
+            }
+            Ok(_) => continue,
+            Err(err) => {
+                return Err(err);
+            }
+        }
+    }
     Ok(())
 }
 
@@ -381,8 +346,7 @@ async fn main() -> eyre::Result<()> {
         .context("while connecting to RPC")?
         .erased();
 
-    let (oprf_key_id, share_epoch, oprf_public_key) = if let Some(oprf_key_id) = config.oprf_key_id
-    {
+    let (oprf_key_id, oprf_public_key) = if let Some(oprf_key_id) = config.oprf_key_id {
         let oprf_key_id = OprfKeyId::new(oprf_key_id);
         let share_epoch = ShareEpoch::from(config.share_epoch);
         let oprf_public_key = health_checks::oprf_public_key_from_services(
@@ -392,7 +356,7 @@ async fn main() -> eyre::Result<()> {
             config.max_wait_time,
         )
         .await?;
-        (oprf_key_id, share_epoch, oprf_public_key)
+        (oprf_key_id, oprf_public_key)
     } else {
         let (oprf_key_id, oprf_public_key) = taceo_oprf_dev_client::init_key_gen(
             &config.nodes,
@@ -401,7 +365,7 @@ async fn main() -> eyre::Result<()> {
             config.max_wait_time,
         )
         .await?;
-        (oprf_key_id, ShareEpoch::default(), oprf_public_key)
+        (oprf_key_id, oprf_public_key)
     };
 
     // setup TLS config - even if we are http
@@ -420,7 +384,6 @@ async fn main() -> eyre::Result<()> {
                 &config.module,
                 config.threshold,
                 oprf_key_id,
-                share_epoch,
                 connector,
             )
             .await?;
@@ -440,7 +403,7 @@ async fn main() -> eyre::Result<()> {
             .await?;
             tracing::info!("stress-test successful");
         }
-        Command::ReshareTest => {
+        Command::ReshareTest(ReshareTest { confirmations }) => {
             tracing::info!("running reshare-test");
             reshare_test(
                 &config.nodes,
@@ -448,10 +411,9 @@ async fn main() -> eyre::Result<()> {
                 config.threshold,
                 config.oprf_key_registry_contract,
                 oprf_key_id,
-                share_epoch,
-                oprf_public_key,
                 connector,
                 provider,
+                confirmations,
                 config.max_wait_time,
             )
             .await?;

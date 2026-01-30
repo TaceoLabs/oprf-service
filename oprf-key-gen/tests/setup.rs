@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::{fmt, sync::Arc, time::Duration};
 
 use alloy::signers::local::PrivateKeySigner;
@@ -190,17 +189,14 @@ impl taceo_oprf_key_gen::secret_manager::SecretManager for KeyGenTestSecretManag
         oprf_key_id: OprfKeyId,
         generated_epoch: ShareEpoch,
     ) -> eyre::Result<Option<DLogShareShamir>> {
+        if generated_epoch.is_initial_epoch() {
+            return Ok(None);
+        }
         let store = self.0.store.lock();
         if let Some(oprf_key_material) = store.get(&oprf_key_id)
-            && let Some((stored_epoch, share)) = oprf_key_material.get_latest_share()
+            && oprf_key_material.is_epoch(generated_epoch.prev())
         {
-            tracing::debug!("my latest epoch is: {stored_epoch}");
-            if stored_epoch.next() == generated_epoch {
-                Ok(Some(share))
-            } else {
-                tracing::debug!("we missed an epoch - returning None");
-                Ok(None)
-            }
+            Ok(Some(oprf_key_material.share()))
         } else {
             Ok(None)
         }
@@ -224,18 +220,12 @@ impl taceo_oprf_key_gen::secret_manager::SecretManager for KeyGenTestSecretManag
         if epoch.is_initial_epoch() || !store.contains_key(&oprf_key_id) {
             assert!(
                 store
-                    .insert(
-                        oprf_key_id,
-                        OprfKeyMaterial::new(BTreeMap::from([(epoch, share)]), public_key,)
-                    )
+                    .insert(oprf_key_id, OprfKeyMaterial::new(share, public_key, epoch))
                     .is_none(),
                 "On initial epoch, secret-manager must be empty"
             )
         } else {
-            store
-                .get_mut(&oprf_key_id)
-                .expect("Checked above")
-                .insert_share(epoch, share);
+            store.insert(oprf_key_id, OprfKeyMaterial::new(share, public_key, epoch));
         }
         Ok(())
     }

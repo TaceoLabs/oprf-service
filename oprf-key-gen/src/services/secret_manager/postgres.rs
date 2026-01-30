@@ -92,7 +92,7 @@ impl SecretManager for PostgresSecretManager {
         let previous_epoch = generated_epoch.prev().into_inner();
         let maybe_share_bytes: Option<Vec<u8>> = sqlx::query_scalar(
             r#"
-                SELECT current
+                SELECT share
                 FROM shares
                 WHERE id = $1 AND epoch = $2
             "#,
@@ -143,24 +143,13 @@ impl SecretManager for PostgresSecretManager {
         tracing::info!("storing share...");
         sqlx::query(
             r#"
-            INSERT INTO shares (id, current, prev, epoch, public_key)
-            VALUES (
-                $1,
-                $2,
-                NULL,
-                $3,
-                $4
-            )
-            ON CONFLICT (id)
-            DO UPDATE SET
-                prev = CASE
-                    WHEN EXCLUDED.epoch = shares.epoch + 1
-                        THEN shares.current
-                    ELSE NULL
-                END,
-                current = EXCLUDED.current,
-                epoch = EXCLUDED.epoch,
-                public_key = EXCLUDED.public_key;
+                INSERT INTO shares (id, share, epoch, public_key)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (id)
+                DO UPDATE SET
+                    share = EXCLUDED.share,
+                    epoch = EXCLUDED.epoch,
+                    public_key = EXCLUDED.public_key;
             "#,
         )
         .bind(oprf_key_id.to_le_bytes())
