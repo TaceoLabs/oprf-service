@@ -184,6 +184,6 @@ pub fn describe_metrics() {
     metrics::describe_histogram!(
         METRICS_ID_BLOB_GAS_PRICE,
         metrics::Unit::Count,
-        "Blog gas price of the transactions"
+        "Blob gas price of the transactions"
     );
 }
