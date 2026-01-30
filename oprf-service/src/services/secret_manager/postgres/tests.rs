@@ -1,3 +1,4 @@
+use crate::secret_manager::{SecretManager, postgres::PostgresSecretManager};
 use alloy::primitives::U160;
 use ark_serialize::CanonicalSerialize;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
@@ -5,7 +6,6 @@ use oprf_test_utils::OPRF_PEER_ADDRESS_0;
 use oprf_types::{OprfKeyId, ShareEpoch, api::ShareIdentifier, crypto::OprfPublicKey};
 use secrecy::SecretString;
 use sqlx::PgConnection;
-use taceo_oprf_service::secret_manager::{SecretManager, postgres::PostgresSecretManager};
 
 #[inline(always)]
 fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: T) -> Vec<u8> {

@@ -1,8 +1,8 @@
 use std::str::FromStr as _;
 
+use crate::secret_manager::{SecretManager as _, aws::AwsSecretManager};
 use alloy::signers::local::PrivateKeySigner;
 use oprf_test_utils::{OPRF_SECRET_ID_PREFIX, WALLET_SECRET_ID};
-use taceo_oprf_key_gen::secret_manager::{SecretManager as _, aws::AwsSecretManager};
 
 #[tokio::test]
 async fn load_eth_wallet_empty() -> eyre::Result<()> {

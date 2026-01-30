@@ -263,14 +263,10 @@ impl taceo_oprf_service::secret_manager::SecretManager for NodeTestSecretManager
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
     ) -> eyre::Result<Option<OprfKeyMaterial>> {
-        let key_material = self
-            .0
-            .store
-            .lock()
-            .get(&oprf_key_id)
-            .cloned()
-            .ok_or_else(|| eyre::eyre!("oprf_key_id {oprf_key_id} not found"))?;
-        if key_material.has_epoch(epoch) {
+        let key_material_epoch = self.0.store.lock().get(&oprf_key_id).cloned();
+        if let Some(key_material) = key_material_epoch
+            && key_material.has_epoch(epoch)
+        {
             Ok(Some(key_material))
         } else {
             Ok(None)

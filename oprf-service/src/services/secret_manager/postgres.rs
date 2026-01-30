@@ -159,3 +159,6 @@ fn db_row_into_key_material(row: ShareRow) -> (OprfKeyId, OprfKeyMaterial) {
 
     (id, OprfKeyMaterial::new(shares, oprf_public_key))
 }
+
+#[cfg(test)]
+mod tests;

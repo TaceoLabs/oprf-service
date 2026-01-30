@@ -180,3 +180,6 @@ fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: T) -> Vec<u8> {
     t.serialize_uncompressed(&mut bytes).expect("Can serialize");
     bytes
 }
+
+#[cfg(test)]
+mod tests;

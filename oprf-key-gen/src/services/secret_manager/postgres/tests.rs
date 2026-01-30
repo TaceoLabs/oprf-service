@@ -1,5 +1,7 @@
 use std::str::FromStr;
 
+use crate::secret_manager::SecretManager as _;
+use crate::secret_manager::postgres::PostgresSecretManager;
 use alloy::{primitives::U160, signers::local::PrivateKeySigner};
 use ark_serialize::CanonicalDeserialize;
 use eyre::Context;
@@ -9,8 +11,6 @@ use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 use secrecy::SecretString;
 use sqlx::Row;
 use sqlx::{PgConnection, postgres::PgRow};
-use taceo_oprf_key_gen::secret_manager::SecretManager as _;
-use taceo_oprf_key_gen::secret_manager::postgres::PostgresSecretManager;
 
 async fn postgres_secret_manager_with_localstack(
     aws_config: &aws_config::SdkConfig,

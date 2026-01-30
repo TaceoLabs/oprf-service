@@ -289,3 +289,6 @@ pub(crate) async fn load_or_insert_ethereum_private_key(
     hex_private_key.zeroize();
     Ok(private_key)
 }
+
+#[cfg(test)]
+mod tests;

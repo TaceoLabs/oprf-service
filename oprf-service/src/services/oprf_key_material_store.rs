@@ -73,7 +73,7 @@ impl OprfKeyMaterialStore {
     ///
     /// Returns an error if the OPRF key is unknown or the share for the epoch is not registered.
     #[instrument(level = "debug", skip_all)]
-    pub fn partial_commit(
+    pub(crate) fn partial_commit(
         &self,
         point_b: ark_babyjubjub::EdwardsAffine,
         share_identifier: ShareIdentifier,
@@ -101,7 +101,7 @@ impl OprfKeyMaterialStore {
     /// The provided [`ShareIdentifier`] identifies the used OPRF key and the epoch of the share.
     ///
     /// Returns an error if the OPRF key is unknown or the share for the epoch is not registered.
-    pub fn challenge(
+    pub(crate) fn challenge(
         &self,
         session_id: Uuid,
         my_party_id: PartyId,
