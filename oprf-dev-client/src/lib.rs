@@ -33,11 +33,18 @@ pub struct StressTestCommand {
     pub skip_checks: bool,
 }
 
+#[derive(Clone, Parser, Debug)]
+pub struct ReshareTest {
+    /// The amount of OPRF runs
+    #[clap(long, env = "OPRF_DEV_CLIENT_CONFIRMATIONS", default_value = "50")]
+    pub confirmations: usize,
+}
+
 #[derive(Clone, Debug, Subcommand)]
 pub enum Command {
     Test,
     StressTest(StressTestCommand),
-    ReshareTest,
+    ReshareTest(ReshareTest),
 }
 
 fn avg(durations: &[Duration]) -> Duration {
