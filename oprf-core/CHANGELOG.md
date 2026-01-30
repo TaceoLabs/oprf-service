@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-core-v0.4.0...taceo-oprf-core-v0.4.1)
+
+### ⛰️ Features
+
+
+- Added CanonicalSerialize/Deserialize for DB storage - ([efcde52](https://github.com/TaceoLabs/oprf-service/commit/efcde524532fe4575ded5f87f3eb3777feec66fd))
+
+### 📚 Documentation
+
+
+- Add Secret Management section to README - ([04dd050](https://github.com/TaceoLabs/oprf-service/commit/04dd050c65b69d31e61c12a3e07a18011844c076))
+
+
 ## [0.4.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-core-v0.3.0...taceo-oprf-core-v0.4.0)
 
 ### ⛰️ Features

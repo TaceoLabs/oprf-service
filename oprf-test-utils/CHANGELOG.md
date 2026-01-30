@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.1.0...taceo-oprf-test-utils-v0.2.0)
+
+### 🚜 Refactor
+
+
+- [**breaking**] Load address from secret-manager over config - ([7838777](https://github.com/TaceoLabs/oprf-service/commit/78387771c268c5f18b7331f825cb2fc1a16438fc))
+
+### 📚 Documentation
+
+
+- Add Secret Management section to README - ([04dd050](https://github.com/TaceoLabs/oprf-service/commit/04dd050c65b69d31e61c12a3e07a18011844c076))
+
+### 🧪 Testing
+
+
+- Add tests for postgres secret-manager in service - ([15c47f5](https://github.com/TaceoLabs/oprf-service/commit/15c47f591a5fefc05a9b72becb90d4140d1587f4))
+- Restructure for the and moved testcontainer to test-utils - ([e5fb5b9](https://github.com/TaceoLabs/oprf-service/commit/e5fb5b901bb1b832878a47f010ab0abfa3486496))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(test)* Renamed eth_private_key/eth_address to TEST_* to highlight that those are test keys - ([b3b95bf](https://github.com/TaceoLabs/oprf-service/commit/b3b95bfbc3bec66181ee0ea251f99364c41c52a6))
+
+
 ## [0.1.0]
 
 ### ⛰️ Features

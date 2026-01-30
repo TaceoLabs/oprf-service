@@ -2,6 +2,47 @@
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.1.0...taceo-oprf-key-gen-v0.2.0)
+
+### ⛰️ Features
+
+
+- Add postgres secret-manager in service - ([3f920bd](https://github.com/TaceoLabs/oprf-service/commit/3f920bd890aea3b0307587d7851cdeaa5d82b4b7))
+- Handle not-enough-producers event - ([6194270](https://github.com/TaceoLabs/oprf-service/commit/6194270f93f4eace48c31bf6be559d59b5ae3746))
+- Add postgres/aws combination for secret-manager - ([e02f690](https://github.com/TaceoLabs/oprf-service/commit/e02f6906c7c17f62fee4b0eb5386053588520bde))
+
+### 🚜 Refactor
+
+
+- [**breaking**] Switched secret-manager impl in key-gen/example-service - ([7706dfb](https://github.com/TaceoLabs/oprf-service/commit/7706dfb14278839b1f4c677711e9bf761c88f056))
+- [**breaking**] Load address from secret-manager over config - ([7838777](https://github.com/TaceoLabs/oprf-service/commit/78387771c268c5f18b7331f825cb2fc1a16438fc))
+
+### 📚 Documentation
+
+
+- Add Secret Management section to README - ([04dd050](https://github.com/TaceoLabs/oprf-service/commit/04dd050c65b69d31e61c12a3e07a18011844c076))
+
+### 🧪 Testing
+
+
+- Moved secret-manager to unit tests again - ([873bc72](https://github.com/TaceoLabs/oprf-service/commit/873bc725db46e29c3dfc5a7131bac535229ea06f))
+- Add tests for postgres secret-manager in service - ([15c47f5](https://github.com/TaceoLabs/oprf-service/commit/15c47f591a5fefc05a9b72becb90d4140d1587f4))
+- Restructure for the and moved testcontainer to test-utils - ([e5fb5b9](https://github.com/TaceoLabs/oprf-service/commit/e5fb5b901bb1b832878a47f010ab0abfa3486496))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(test)* Renamed eth_private_key/eth_address to TEST_* to highlight that those are test keys - ([b3b95bf](https://github.com/TaceoLabs/oprf-service/commit/b3b95bfbc3bec66181ee0ea251f99364c41c52a6))
+- Fixed typo - ([a7863f4](https://github.com/TaceoLabs/oprf-service/commit/a7863f4dee9d04d9b6489ed4cc026f8743a55ad0))
+- Added some more metrics for (blob) gas price - ([229d14d](https://github.com/TaceoLabs/oprf-service/commit/229d14dc9edab8e40ea52a9679a470cf8f4f91cc))
+- Added default-value for postgres connection string - ([4804625](https://github.com/TaceoLabs/oprf-service/commit/480462576c696dcb9c7193982e690415a0149b88))
+
+### Build
+
+
+- *(deps)* Use tls-rustls-aws-lc-rs feature for sqlx - ([3723c12](https://github.com/TaceoLabs/oprf-service/commit/3723c12cf9853a35d35b971ed2aa4e50e6f60f36))
+
+
 ## [0.1.0]
 
 ### ⛰️ Features

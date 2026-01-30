@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.1.0...taceo-oprf-v0.1.1)
+
+### 📚 Documentation
+
+
+- Add Secret Management section to README - ([04dd050](https://github.com/TaceoLabs/oprf-service/commit/04dd050c65b69d31e61c12a3e07a18011844c076))
+
+
 ## [0.1.0]
 
 ### ⛰️ Features
