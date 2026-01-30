@@ -38,8 +38,12 @@ impl From<ShareRow> for (OprfKeyId, OprfKeyMaterial) {
         let prev = value
             .prev
             .map(from_db_ark_deserialize_uncompressed::<DLogShareShamir>);
-        // We store as i64, so this always fits into u32
-        let epoch = ShareEpoch::new(value.epoch as u32);
+        // We store as i64 in the database, but it must always be a non-negative value that fits into u32.
+        let epoch_u32: u32 = value
+            .epoch
+            .try_into()
+            .expect("epoch value from database must be non-negative and fit into u32");
+        let epoch = ShareEpoch::new(epoch_u32);
 
         let oprf_public_key =
             from_db_ark_deserialize_uncompressed::<OprfPublicKey>(value.public_key);

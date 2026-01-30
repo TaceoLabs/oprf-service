@@ -52,12 +52,12 @@ run_deploy() {
 
     cargo clean --workspace 
     cargo build --workspace --release --examples --bins
-    echo "staring keygen"
+    echo "starting keygen"
     # need to start key-gen before nodes because they run DB migrations
     start_keygen "$DEPLOYED_ADDRESS"
     wait_for_health 20000 3 "key-gen" 300
 
-    echo "staring nodes"
+    echo "starting nodes"
     start_nodes "$DEPLOYED_ADDRESS"
     wait_for_health 10000 3 "oprf-service" 300
 }

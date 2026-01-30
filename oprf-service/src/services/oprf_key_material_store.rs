@@ -59,7 +59,7 @@ impl OprfKeyMaterialStore {
         self.0.read().len()
     }
 
-    /// Returns the `true` iff the store has no [`OprfKeyMaterial`] stored.
+    /// Returns `true` iff the store has no [`OprfKeyMaterial`] stored.
     ///
     /// _Note_ that this acquires a lock internally and returns the result from that point in time.
     pub fn is_empty(&self) -> bool {
