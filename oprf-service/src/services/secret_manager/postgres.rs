@@ -13,7 +13,7 @@ use oprf_types::{
     OprfKeyId, ShareEpoch,
     crypto::{OprfKeyMaterial, OprfPublicKey},
 };
-use secrecy::{ExposeSecret as _, SecretString};
+use secrecy::{ExposeSecret as _, SecretString, zeroize::ZeroizeOnDrop};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tracing::instrument;
 
@@ -22,7 +22,7 @@ use crate::{oprf_key_material_store::OprfKeyMaterialStore, secret_manager::Secre
 /// The postgres secret manager wrapping a `PgPool`. As we don't want to have multiple connections, we set the `max_pool_size` to 1.
 pub struct PostgresSecretManager(PgPool);
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, sqlx::FromRow, ZeroizeOnDrop)]
 struct ShareRow {
     id: Vec<u8>,
     current: Vec<u8>,
@@ -33,29 +33,7 @@ struct ShareRow {
 
 impl From<ShareRow> for (OprfKeyId, OprfKeyMaterial) {
     fn from(value: ShareRow) -> Self {
-        let id = OprfKeyId::from_le_slice(&value.id);
-        let current = from_db_ark_deserialize_uncompressed::<DLogShareShamir>(value.current);
-        let prev = value
-            .prev
-            .map(from_db_ark_deserialize_uncompressed::<DLogShareShamir>);
-        // We store as i64 in the database, but it must always be a non-negative value that fits into u32.
-        let epoch_u32: u32 = value
-            .epoch
-            .try_into()
-            .expect("epoch value from database must be non-negative and fit into u32");
-        let epoch = ShareEpoch::new(epoch_u32);
-
-        let oprf_public_key =
-            from_db_ark_deserialize_uncompressed::<OprfPublicKey>(value.public_key);
-
-        let mut shares = BTreeMap::new();
-        shares.insert(epoch, current);
-
-        if let Some(prev) = prev {
-            shares.insert(epoch.prev(), prev);
-        }
-
-        (id, OprfKeyMaterial::new(shares, oprf_public_key))
+        db_row_into_key_material(value)
     }
 }
 
@@ -152,16 +130,17 @@ impl SecretManager for PostgresSecretManager {
 }
 
 #[inline(always)]
-fn from_db_ark_deserialize_uncompressed<T: CanonicalDeserialize>(b: Vec<u8>) -> T {
-    T::deserialize_uncompressed_unchecked(b.as_slice()).expect("DB is sane")
+fn from_db_ark_deserialize_uncompressed<T: CanonicalDeserialize>(b: impl AsRef<[u8]>) -> T {
+    T::deserialize_uncompressed_unchecked(b.as_ref()).expect("DB is sane")
 }
 
 /// Converts a row from the DB to an entry in the [`OprfKeyMaterialStore`]. This method will panic if the DB is not sane (i.e., has corrupted data stored).
 fn db_row_into_key_material(row: ShareRow) -> (OprfKeyId, OprfKeyMaterial) {
     let id = OprfKeyId::from_le_slice(&row.id);
-    let current = from_db_ark_deserialize_uncompressed::<DLogShareShamir>(row.current);
+    let current = from_db_ark_deserialize_uncompressed::<DLogShareShamir>(&row.current);
     let prev = row
         .prev
+        .as_ref()
         .map(from_db_ark_deserialize_uncompressed::<DLogShareShamir>);
     let epoch = ShareEpoch::new(
         row.epoch
@@ -169,7 +148,7 @@ fn db_row_into_key_material(row: ShareRow) -> (OprfKeyId, OprfKeyMaterial) {
             .expect("DB epoch value out of valid u32 range"),
     );
 
-    let oprf_public_key = from_db_ark_deserialize_uncompressed::<OprfPublicKey>(row.public_key);
+    let oprf_public_key = from_db_ark_deserialize_uncompressed::<OprfPublicKey>(&row.public_key);
 
     let mut shares = BTreeMap::new();
     shares.insert(epoch, current);
