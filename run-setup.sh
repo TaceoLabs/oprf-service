@@ -116,6 +116,7 @@ start_keygen() {
             --oprf-key-registry-contract $oprf_key_registry \
             --confirmations-for-transaction 1 \
             --db-connection-string $db_conn \
+            --db-schema oprf \
             > logs/key-gen$i.log 2>&1 &
         keygen_pids+=($!)
         echo "started key-gen$i with PID ${keygen_pids[$i]}"
@@ -148,6 +149,7 @@ start_nodes() {
             --version-req ">=0.0.0" \
             --oprf-key-registry-contract $oprf_key_registry \
             --db-connection-string $db_conn \
+            --db-schema oprf \
             > logs/node$i.log 2>&1 &
         nodes_pids+=($!)
         echo "started node$i with PID ${nodes_pids[$i]}"

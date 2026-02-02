@@ -18,6 +18,7 @@ async fn postgres_secret_manager_with_localstack(
 ) -> eyre::Result<PostgresSecretManager> {
     PostgresSecretManager::init(
         &SecretString::from(connection_string.to_owned()),
+        "test",
         aws_config.to_owned(),
         TEST_WALLET_PRIVATE_KEY_SECRET_ID,
     )
@@ -27,6 +28,7 @@ async fn postgres_secret_manager_with_localstack(
 async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<PostgresSecretManager> {
     PostgresSecretManager::init(
         &SecretString::from(connection_string.to_owned()),
+        "test",
         oprf_test_utils::dummy_localstack_config().await,
         TEST_WALLET_PRIVATE_KEY_SECRET_ID,
     )

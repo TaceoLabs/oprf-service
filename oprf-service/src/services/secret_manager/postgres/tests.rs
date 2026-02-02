@@ -19,7 +19,12 @@ async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<Postgr
     sqlx::migrate!("../migrations")
         .run(&mut pg_connection)
         .await?;
-    PostgresSecretManager::init(&SecretString::from(connection_string.to_owned())).await
+    PostgresSecretManager::init(
+        &SecretString::from(connection_string.to_owned()),
+        "test",
+        1.try_into().unwrap(),
+    )
+    .await
 }
 
 async fn insert_row(

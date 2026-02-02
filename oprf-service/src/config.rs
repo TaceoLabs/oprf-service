@@ -4,7 +4,7 @@
 //!
 //! Additionally this module defines the [`Environment`] to assert dev-only code.
 
-use std::time::Duration;
+use std::{num::NonZeroU32, time::Duration};
 
 use alloy::primitives::Address;
 use clap::{Parser, ValueEnum};
@@ -91,4 +91,16 @@ pub struct OprfNodeConfig {
     /// The Region this node is deployed in.
     #[clap(long, env = "OPRF_NODE_REGION", default_value = "unknown")]
     pub region: String,
+
+    /// The connection string for the Postgres DB
+    #[clap(long, env = "OPRF_NODE_DB_CONNECTION_STRING")]
+    pub db_connection_string: SecretString,
+
+    /// The schema we use for the DB
+    #[clap(long, env = "OPRF_NODE_DB_SCHEMA")]
+    pub db_schema: String,
+
+    /// The connection string for the Postgres DB
+    #[clap(long, env = "OPRF_NODE_DB_MAX_CONNECTIONS", default_value = "3")]
+    pub db_max_connections: NonZeroU32,
 }

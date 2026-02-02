@@ -67,6 +67,10 @@ pub struct OprfKeyGenConfig {
     #[clap(long, env = "OPRF_NODE_DB_CONNECTION_STRING")]
     pub db_connection_string: SecretString,
 
+    /// The schema we use for the DB
+    #[clap(long, env = "OPRF_NODE_DB_SCHEMA")]
+    pub db_schema: String,
+
     /// The location of the zkey for the key-gen proof in round 2 of KeyGen
     #[clap(long, env = "OPRF_NODE_KEY_GEN_ZKEY")]
     pub key_gen_zkey_path: PathBuf,

@@ -58,9 +58,13 @@ async fn main() -> eyre::Result<ExitCode> {
 
     // Load the AWS secret manager.
     let secret_manager = Arc::new(
-        PostgresSecretManager::init(&config.db_connection_string)
-            .await
-            .context("while starting postgres secret-manager")?,
+        PostgresSecretManager::init(
+            &config.service_config.db_connection_string,
+            &config.service_config.db_schema,
+            config.service_config.db_max_connections,
+        )
+        .await
+        .context("while starting postgres secret-manager")?,
     );
     let result = start_service(
         config,

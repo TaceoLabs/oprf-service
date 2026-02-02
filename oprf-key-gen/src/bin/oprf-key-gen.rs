@@ -35,6 +35,7 @@ async fn main() -> eyre::Result<ExitCode> {
     let secret_manager = Arc::new(
         PostgresSecretManager::init(
             &config.db_connection_string,
+            &config.db_schema,
             aws_config,
             &config.wallet_private_key_secret_id,
         )

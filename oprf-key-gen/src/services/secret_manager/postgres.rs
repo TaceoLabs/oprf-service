@@ -10,7 +10,7 @@ use eyre::Context;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 use secrecy::{ExposeSecret, SecretString};
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::{Executor as _, PgPool, postgres::PgPoolOptions};
 use tracing::instrument;
 
 use crate::secret_manager::{self, SecretManager};
@@ -23,18 +23,52 @@ pub struct PostgresSecretManager {
     wallet_private_key_secret_id: String,
 }
 
+fn sanitize_identifier(input: &str) -> eyre::Result<()> {
+    if input
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+    {
+        Ok(())
+    } else {
+        Err(eyre::eyre!("Invalid SQL identifier"))
+    }
+}
+
+fn schema_connect(schema: &str) -> eyre::Result<String> {
+    sanitize_identifier(schema)?;
+    Ok(format!(
+        r#"
+            CREATE SCHEMA IF NOT EXISTS \"{schema}\";
+            SET search_path TO \"{schema}\";
+        "#
+    ))
+}
+
 impl PostgresSecretManager {
     /// Initializes a `PostgresSecretManager` and potentially runs migrations if necessary.
     #[instrument(level = "info", skip_all)]
     pub async fn init(
         connection_string: &SecretString,
+        schema: &str,
         aws_config: aws_config::SdkConfig,
         wallet_private_key_secret_id: &str,
     ) -> eyre::Result<Self> {
+        tracing::debug!("building pool");
         // we only need one connection but as this will be used behind an Arc, we can't use PgConnection, as this needs a mutable reference to execute queries.
-        tracing::info!("connecting to DB...");
+        tracing::info!("using schema: {schema}");
+        let schema_connect = schema_connect(schema).context("while building schema string")?;
         let pool = PgPoolOptions::new()
             .max_connections(1)
+            .after_connect(move |conn, _| {
+                let schema_connect = schema_connect.clone();
+                Box::pin(async move {
+                    if let Err(e) = conn.execute(schema_connect.as_ref()).await {
+                        tracing::error!("error in after_connect: {:?}", e);
+                        return Err(e);
+                    }
+                    Ok(())
+                })
+            })
             .connect(connection_string.expose_secret())
             .await
             .context("while connecting to postgres DB")?;

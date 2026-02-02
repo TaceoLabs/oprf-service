@@ -16,6 +16,7 @@ use oprf_types::{
     crypto::{OprfKeyMaterial, OprfPublicKey},
 };
 use rand::{CryptoRng, Rng};
+use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use taceo_oprf_service::{
     OprfServiceBuilder, StartedServices,
@@ -92,6 +93,9 @@ impl TestNode {
             start_block: None,
             version_req: "1.0.0".parse().unwrap(),
             region: "EU".to_owned(),
+            db_connection_string: SecretString::from("connection-string"),
+            db_max_connections: 1.try_into().unwrap(),
+            db_schema: "schema".to_owned(),
         };
 
         let child_token = cancellation_token.child_token();

@@ -2,7 +2,7 @@
 //!
 //! Additionally, fetches the node-provider's Ethereum address from the DB.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, num::NonZeroU32};
 
 use alloy::primitives::Address;
 use ark_serialize::CanonicalDeserialize;
@@ -14,10 +14,26 @@ use oprf_types::{
     crypto::{OprfKeyMaterial, OprfPublicKey},
 };
 use secrecy::{ExposeSecret as _, SecretString, zeroize::ZeroizeOnDrop};
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::{Executor, PgPool, postgres::PgPoolOptions};
 use tracing::instrument;
 
 use crate::{oprf_key_material_store::OprfKeyMaterialStore, secret_manager::SecretManager};
+
+fn sanitize_identifier(input: &str) -> eyre::Result<()> {
+    if input
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+    {
+        Ok(())
+    } else {
+        Err(eyre::eyre!("Invalid SQL identifier"))
+    }
+}
+
+fn schema_connect(schema: &str) -> eyre::Result<String> {
+    sanitize_identifier(schema)?;
+    Ok(format!("SET search_path TO \"{schema}\";",))
+}
 
 /// The postgres secret manager wrapping a `PgPool`. As we don't want to have multiple connections, we set the `max_pool_size` to 1.
 pub struct PostgresSecretManager(PgPool);
@@ -37,13 +53,29 @@ impl From<ShareRow> for (OprfKeyId, OprfKeyMaterial) {
 }
 
 impl PostgresSecretManager {
-    /// Initializes a `PostgresSecretManager` by connecting to the provided `connection_string`. Will open only a single connection to the DB.
+    /// Initializes a `PostgresSecretManager` by connecting to the provided `connection_string`.
     #[instrument(level = "info", skip_all)]
-    pub async fn init(connection_string: &SecretString) -> eyre::Result<Self> {
+    pub async fn init(
+        connection_string: &SecretString,
+        schema: &str,
+        max_connections: NonZeroU32,
+    ) -> eyre::Result<Self> {
         // we only need one connection but as this will be used behind an Arc, we can't use PgConnection, as this needs a mutable reference to execute queries.
         tracing::info!("connecting to DB...");
+        let schema_connect = schema_connect(schema).context("while building schema string")?;
+        tracing::debug!("{schema_connect}");
         let pool = PgPoolOptions::new()
-            .max_connections(1)
+            .max_connections(max_connections.get())
+            .after_connect(move |conn, _| {
+                let schema_connect = schema_connect.clone();
+                Box::pin(async move {
+                    if let Err(e) = conn.execute(schema_connect.as_ref()).await {
+                        tracing::error!("error in after_connect: {:?}", e);
+                        return Err(e);
+                    }
+                    Ok(())
+                })
+            })
             .connect(connection_string.expose_secret())
             .await
             .context("while connecting to postgres DB")?;
