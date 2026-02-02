@@ -258,7 +258,7 @@ impl OprfKeyMaterial {
         self.epoch
     }
 
-    /// Returns the [`DLogShareShamir`] for the given epoch, or `None` if not found.
+    /// Returns the [`DLogShareShamir`].
     pub fn share(&self) -> DLogShareShamir {
         self.share.clone()
     }
