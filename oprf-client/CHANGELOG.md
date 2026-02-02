@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.4.0...taceo-oprf-client-v0.5.0)
+
+### ⛰️ Features
+
+
+- [**breaking**] Client filters retrieved sessions and continues with threshold many from same - ([0f3e783](https://github.com/TaceoLabs/oprf-service/commit/0f3e7831b6c077378ce43db1ea13f277d7fb549e))
+
+### 🚜 Refactor
+
+
+- Client now doesn't gracefully close the ws connections anymore - ([cc11858](https://github.com/TaceoLabs/oprf-service/commit/cc11858c071fc6cd2b4eda162570f888be209112))
+- [**breaking**] Only store a single share in DB and in RAM - ([6af8d9c](https://github.com/TaceoLabs/oprf-service/commit/6af8d9c3cd34e455dda44ab42f02ce80af081a4a))
+
+### 📚 Documentation
+
+
+- Add Secret Management section to README - ([04dd050](https://github.com/TaceoLabs/oprf-service/commit/04dd050c65b69d31e61c12a3e07a18011844c076))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Typo in log message - ([0d7902f](https://github.com/TaceoLabs/oprf-service/commit/0d7902f245dd65cc4364360209436575acc111c7))
+
+
 ## [0.4.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.3.0...taceo-oprf-client-v0.4.0)
 
 ### ⛰️ Features
