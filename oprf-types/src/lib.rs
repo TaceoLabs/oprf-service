@@ -135,3 +135,9 @@ impl From<u32> for ShareEpoch {
         Self(value)
     }
 }
+
+impl From<ShareEpoch> for i64 {
+    fn from(value: ShareEpoch) -> Self {
+        i64::from(value.0)
+    }
+}

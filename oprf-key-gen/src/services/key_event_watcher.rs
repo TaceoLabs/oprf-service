@@ -503,12 +503,12 @@ async fn handle_reshare_round1(
 
     let oprf_key_id = OprfKeyId::from(oprfKeyId);
     let threshold = u16::try_from(threshold).context("while parsing threshold")?;
-    let epoch = ShareEpoch::from(epoch);
+    let generated_epoch = ShareEpoch::from(epoch);
 
     tracing::debug!("need to load latest share for reshare");
     // load old share needed for reshare
     let contribution = if let Some(latest_share) = secret_manager
-        .get_previous_share(oprf_key_id, epoch)
+        .get_share_by_epoch(oprf_key_id, generated_epoch.prev())
         .await
         .context("while loading latest share for reshare")?
     {
@@ -526,8 +526,12 @@ async fn handle_reshare_round1(
         tracing::debug!("finished consumer round1 - now reporting to chain..");
         Round1Contribution::from(contribution)
     };
-    let transaction_identifier =
-        TransactionIdentifier::reshare(oprf_key_id, party_id, TransactionType::Round1, epoch);
+    let transaction_identifier = TransactionIdentifier::reshare(
+        oprf_key_id,
+        party_id,
+        TransactionType::Round1,
+        generated_epoch,
+    );
     transaction_handler
         .attempt_transaction(transaction_identifier, || {
             contract.addRound1ReshareContribution(oprf_key_id.into_inner(), contribution.clone())

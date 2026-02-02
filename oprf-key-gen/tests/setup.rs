@@ -184,7 +184,7 @@ impl taceo_oprf_key_gen::secret_manager::SecretManager for KeyGenTestSecretManag
         Ok(self.0.wallet_private_key.clone())
     }
 
-    async fn get_previous_share(
+    async fn get_share_by_epoch(
         &self,
         oprf_key_id: OprfKeyId,
         generated_epoch: ShareEpoch,

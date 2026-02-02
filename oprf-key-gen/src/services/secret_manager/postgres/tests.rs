@@ -217,15 +217,15 @@ async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
         public_key,
     );
 
-    // should return None when fetching previous share from epoch 0
+    // should return None when fetching next share from epoch 0
     let should_no_share = secret_manager
-        .get_previous_share(oprf_key_id, epoch0)
+        .get_share_by_epoch(oprf_key_id, epoch0.next())
         .await?;
     assert!(should_no_share.is_none());
 
-    // should return epoch zero when fetching previous share from epoch 1
+    // should return epoch zero
     let is_epoch_0_share = secret_manager
-        .get_previous_share(oprf_key_id, epoch1)
+        .get_share_by_epoch(oprf_key_id, epoch0)
         .await?
         .expect("should be some");
     assert_eq!(
@@ -253,15 +253,25 @@ async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
         epoch1,
         public_key,
     );
-    // should return epoch one when fetching previous share from epoch 2
+    // should return epoch one
     let is_epoch_1_share = secret_manager
-        .get_previous_share(oprf_key_id, epoch2)
+        .get_share_by_epoch(oprf_key_id, epoch1)
         .await?
         .expect("should be some");
     assert_eq!(
         ark_babyjubjub::Fr::from(is_epoch_1_share),
         ark_babyjubjub::Fr::from(should_epoch_1_share.clone())
     );
+    // now should return none when fetching epoch 0
+    let should_no_share = secret_manager
+        .get_share_by_epoch(oprf_key_id, epoch1.prev())
+        .await?;
+    assert!(should_no_share.is_none());
+    // now should return none when fetching epoch 2
+    let should_no_share = secret_manager
+        .get_share_by_epoch(oprf_key_id, epoch1.next())
+        .await?;
+    assert!(should_no_share.is_none());
     // EPOCH 2
     // store at epoch 2 -> epoch 0 should be gone now
     secret_manager
@@ -273,7 +283,7 @@ async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
         )
         .await?;
     let is_epoch_2_share = secret_manager
-        .get_previous_share(oprf_key_id, epoch2.next())
+        .get_share_by_epoch(oprf_key_id, epoch2)
         .await?
         .expect("should be some");
     assert_eq!(
@@ -370,25 +380,31 @@ async fn try_retrieve_random_empty_epochs() -> eyre::Result<()> {
 
     assert!(
         secret_manager
-            .get_previous_share(oprf_key_id, ShareEpoch::default())
+            .get_share_by_epoch(oprf_key_id, ShareEpoch::default())
             .await?
             .is_none()
     );
     assert!(
         secret_manager
-            .get_previous_share(oprf_key_id, ShareEpoch::new(12))
+            .get_share_by_epoch(oprf_key_id, ShareEpoch::new(12))
             .await?
             .is_none()
     );
     assert!(
         secret_manager
-            .get_previous_share(oprf_key_id, ShareEpoch::new(42))
+            .get_share_by_epoch(oprf_key_id, epoch42.prev())
             .await?
             .is_none()
     );
     assert!(
         secret_manager
-            .get_previous_share(oprf_key_id, ShareEpoch::new(1289))
+            .get_share_by_epoch(oprf_key_id, epoch42.next())
+            .await?
+            .is_none()
+    );
+    assert!(
+        secret_manager
+            .get_share_by_epoch(oprf_key_id, ShareEpoch::new(1289))
             .await?
             .is_none()
     );

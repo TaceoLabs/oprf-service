@@ -80,16 +80,11 @@ impl SecretManager for PostgresSecretManager {
     }
 
     #[instrument(level = "info", skip_all, fields(oprf_key_id, generated_epoch))]
-    async fn get_previous_share(
+    async fn get_share_by_epoch(
         &self,
         oprf_key_id: OprfKeyId,
-        generated_epoch: ShareEpoch,
+        epoch: ShareEpoch,
     ) -> eyre::Result<Option<DLogShareShamir>> {
-        if generated_epoch.is_initial_epoch() {
-            tracing::debug!("previous share from epoch 0 does not exist");
-            return Ok(None);
-        }
-        let previous_epoch = generated_epoch.prev().into_inner();
         let maybe_share_bytes: Option<Vec<u8>> = sqlx::query_scalar(
             r#"
                 SELECT share
@@ -98,7 +93,7 @@ impl SecretManager for PostgresSecretManager {
             "#,
         )
         .bind(oprf_key_id.to_le_bytes())
-        .bind(i64::from(previous_epoch))
+        .bind(i64::from(epoch))
         .fetch_optional(&self.pool)
         .await
         .context("while fetching previous share")?;

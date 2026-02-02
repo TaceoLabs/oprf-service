@@ -122,16 +122,12 @@ impl SecretManager for AwsSecretManager {
     }
 
     #[instrument(level = "info", skip_all, fields(oprf_key_id, generated_epoch))]
-    async fn get_previous_share(
+    async fn get_share_by_epoch(
         &self,
         oprf_key_id: OprfKeyId,
-        generated_epoch: ShareEpoch,
+        epoch: ShareEpoch,
     ) -> eyre::Result<Option<DLogShareShamir>> {
         tracing::debug!("loading latest share for {oprf_key_id}");
-        if generated_epoch.is_initial_epoch() {
-            tracing::debug!("there is no previous share for initial epoch");
-            return Ok(None);
-        }
         let secret_id = to_key_secret_id(&self.oprf_secret_id_prefix, oprf_key_id);
         let secret_value_res = self
             .client
@@ -156,7 +152,7 @@ impl SecretManager for AwsSecretManager {
         let oprf_key_material: OprfKeyMaterial =
             serde_json::from_str(&secret_value).context("Cannot deserialize AWS Secret")?;
         tracing::debug!("my stored share is: {}", oprf_key_material.epoch());
-        if oprf_key_material.is_epoch(generated_epoch.prev()) {
+        if oprf_key_material.is_epoch(epoch) {
             Ok(Some(oprf_key_material.share()))
         } else {
             Ok(None)
