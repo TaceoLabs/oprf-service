@@ -73,7 +73,7 @@ impl PostgresSecretManager {
             .await
             .context("while connecting to postgres DB")?;
         tracing::info!("running migrations...");
-        sqlx::migrate!("../migrations")
+        sqlx::migrate!("./migrations")
             .run(&pool)
             .await
             .context("while running migrations")?;

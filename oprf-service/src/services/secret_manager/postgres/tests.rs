@@ -16,7 +16,7 @@ fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: T) -> Vec<u8> {
 
 async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<PostgresSecretManager> {
     let mut pg_connection = oprf_test_utils::open_pg_connection(connection_string).await?;
-    sqlx::migrate!("../migrations")
+    sqlx::migrate!("../oprf-key-gen/migrations")
         .run(&mut pg_connection)
         .await?;
     PostgresSecretManager::init(
