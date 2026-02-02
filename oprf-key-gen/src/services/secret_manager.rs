@@ -32,7 +32,7 @@ pub trait SecretManager {
     async fn load_or_insert_wallet_private_key(&self) -> eyre::Result<PrivateKeySigner>;
 
     /// Returns the share of a given [`OprfKeyId`] and a given [`ShareEpoch`].
-    /// Returns `Ok(None)` if the secret-manager does not contain a share associated with the key-id or if the share does not match.
+    /// Returns `Ok(None)` if the secret-manager does not contain a share associated with the key-id or if the epoch does not match.
     async fn get_share_by_epoch(
         &self,
         oprf_key_id: OprfKeyId,
