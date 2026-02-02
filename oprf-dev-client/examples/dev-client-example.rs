@@ -306,7 +306,7 @@ async fn wait_for_epoch(
                         "successfully used new epoch {} {confirmations} times!",
                         target_epoch
                     );
-                    break;
+                    return Ok(());
                 }
             }
             Ok(_) => continue,
@@ -315,7 +315,7 @@ async fn wait_for_epoch(
             }
         }
     }
-    Ok(())
+    eyre::bail!("Channel closed without getting {confirmations}");
 }
 
 #[tokio::main]
