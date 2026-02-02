@@ -38,8 +38,8 @@ fn schema_connect(schema: &str) -> eyre::Result<String> {
     sanitize_identifier(schema)?;
     Ok(format!(
         r#"
-            CREATE SCHEMA IF NOT EXISTS \"{schema}\";
-            SET search_path TO \"{schema}\";
+            CREATE SCHEMA IF NOT EXISTS "{schema}";
+            SET search_path TO "{schema}";
         "#
     ))
 }

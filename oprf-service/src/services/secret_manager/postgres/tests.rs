@@ -2,7 +2,7 @@ use crate::secret_manager::{SecretManager, postgres::PostgresSecretManager};
 use alloy::primitives::U160;
 use ark_serialize::CanonicalSerialize;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_test_utils::OPRF_PEER_ADDRESS_0;
+use oprf_test_utils::{OPRF_PEER_ADDRESS_0, TEST_SCHEMA};
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 use secrecy::SecretString;
 use sqlx::PgConnection;
@@ -15,13 +15,14 @@ fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: T) -> Vec<u8> {
 }
 
 async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<PostgresSecretManager> {
-    let mut pg_connection = oprf_test_utils::open_pg_connection(connection_string).await?;
+    let mut pg_connection =
+        oprf_test_utils::open_pg_connection(connection_string, TEST_SCHEMA).await?;
     sqlx::migrate!("../oprf-key-gen/migrations")
         .run(&mut pg_connection)
         .await?;
     PostgresSecretManager::init(
         &SecretString::from(connection_string.to_owned()),
-        "test",
+        TEST_SCHEMA,
         1.try_into().unwrap(),
     )
     .await
@@ -91,7 +92,7 @@ async fn load_address_corrupt() -> eyre::Result<()> {
     let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
     let secret_manager = postgres_secret_manager(&connection_string).await?;
 
-    let mut conn = oprf_test_utils::open_pg_connection(&connection_string).await?;
+    let mut conn = oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
     insert_address("SomethingThatIsNotAnAddress", &mut conn).await?;
 
     let report = secret_manager
@@ -108,7 +109,7 @@ async fn load_address_success() -> eyre::Result<()> {
     let secret_manager = postgres_secret_manager(&connection_string).await?;
 
     let should_address = OPRF_PEER_ADDRESS_0;
-    let mut conn = oprf_test_utils::open_pg_connection(&connection_string).await?;
+    let mut conn = oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
     insert_address(&should_address.to_string(), &mut conn).await?;
 
     let is_address = secret_manager.load_address().await.expect("Should work");
@@ -122,7 +123,7 @@ async fn test_load_all_secret_three_shares() -> eyre::Result<()> {
     // runs migrations
     let secret_manager = postgres_secret_manager(&connection_string).await?;
 
-    let mut conn = oprf_test_utils::open_pg_connection(&connection_string).await?;
+    let mut conn = oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
 
     let oprf_key_id0 = OprfKeyId::new(U160::from(42));
     let oprf_key_id1 = OprfKeyId::new(U160::from(128));
@@ -177,7 +178,7 @@ async fn test_get_oprf_key_material() -> eyre::Result<()> {
     // runs migrations
     let secret_manager = postgres_secret_manager(&connection_string).await?;
 
-    let mut conn = oprf_test_utils::open_pg_connection(&connection_string).await?;
+    let mut conn = oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
 
     let oprf_key_id0 = OprfKeyId::new(U160::from(42));
     let oprf_key_id1 = OprfKeyId::new(U160::from(128));

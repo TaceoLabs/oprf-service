@@ -32,7 +32,7 @@ fn sanitize_identifier(input: &str) -> eyre::Result<()> {
 
 fn schema_connect(schema: &str) -> eyre::Result<String> {
     sanitize_identifier(schema)?;
-    Ok(format!("SET search_path TO \"{schema}\";",))
+    Ok(format!("SET search_path TO \"{schema}\";"))
 }
 
 /// The postgres secret manager wrapping a `PgPool`. As we don't want to have multiple connections, we set the `max_pool_size` to 1.

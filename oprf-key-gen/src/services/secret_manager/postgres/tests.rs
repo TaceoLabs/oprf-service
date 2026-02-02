@@ -6,7 +6,9 @@ use alloy::{primitives::U160, signers::local::PrivateKeySigner};
 use ark_serialize::CanonicalDeserialize;
 use eyre::Context;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_test_utils::{TEST_ETH_ADDRESS, TEST_ETH_PRIVATE_KEY, TEST_WALLET_PRIVATE_KEY_SECRET_ID};
+use oprf_test_utils::{
+    TEST_ETH_ADDRESS, TEST_ETH_PRIVATE_KEY, TEST_SCHEMA, TEST_WALLET_PRIVATE_KEY_SECRET_ID,
+};
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 use secrecy::SecretString;
 use sqlx::Row;
@@ -18,7 +20,7 @@ async fn postgres_secret_manager_with_localstack(
 ) -> eyre::Result<PostgresSecretManager> {
     PostgresSecretManager::init(
         &SecretString::from(connection_string.to_owned()),
-        "test",
+        TEST_SCHEMA,
         aws_config.to_owned(),
         TEST_WALLET_PRIVATE_KEY_SECRET_ID,
     )
@@ -28,7 +30,7 @@ async fn postgres_secret_manager_with_localstack(
 async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<PostgresSecretManager> {
     PostgresSecretManager::init(
         &SecretString::from(connection_string.to_owned()),
-        "test",
+        TEST_SCHEMA,
         oprf_test_utils::dummy_localstack_config().await,
         TEST_WALLET_PRIVATE_KEY_SECRET_ID,
     )
@@ -61,7 +63,8 @@ async fn load_or_insert_private_key_on_empty_db() -> eyre::Result<()> {
     );
 
     // check that the address is correct
-    let mut pg_connection = oprf_test_utils::open_pg_connection(&connection_string).await?;
+    let mut pg_connection =
+        oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
     let stored_address: String =
         sqlx::query_scalar("SELECT address FROM evm_address WHERE id = TRUE")
             .fetch_one(&mut pg_connection)
@@ -95,7 +98,8 @@ async fn load_or_insert_private_key_on_existing_key() -> eyre::Result<()> {
     );
 
     // check that the address is correct
-    let mut pg_connection = oprf_test_utils::open_pg_connection(&connection_string).await?;
+    let mut pg_connection =
+        oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
     let stored_address: String =
         sqlx::query_scalar("SELECT address FROM evm_address WHERE id = TRUE")
             .fetch_one(&mut pg_connection)
@@ -121,7 +125,8 @@ async fn load_or_insert_private_key_on_existing_key_overwrite_db() -> eyre::Resu
         .send()
         .await?;
 
-    let mut pg_connection = oprf_test_utils::open_pg_connection(&connection_string).await?;
+    let mut pg_connection =
+        oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
     sqlx::query(
         r#"
                 INSERT INTO evm_address (id, address)
@@ -188,7 +193,8 @@ fn assert_row_matches(
 async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
     let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
     let secret_manager = postgres_secret_manager(&connection_string).await?;
-    let mut pg_connection = oprf_test_utils::open_pg_connection(&connection_string).await?;
+    let mut pg_connection =
+        oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
@@ -309,7 +315,8 @@ async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
 async fn store_dlog_share_as_consumer() -> eyre::Result<()> {
     let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
     let secret_manager = postgres_secret_manager(&connection_string).await?;
-    let mut pg_connection = oprf_test_utils::open_pg_connection(&connection_string).await?;
+    let mut pg_connection =
+        oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
@@ -417,7 +424,8 @@ async fn try_retrieve_random_empty_epochs() -> eyre::Result<()> {
 async fn test_insert_same_epoch_twice() -> eyre::Result<()> {
     let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
     let secret_manager = postgres_secret_manager(&connection_string).await?;
-    let mut pg_connection = oprf_test_utils::open_pg_connection(&connection_string).await?;
+    let mut pg_connection =
+        oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
@@ -470,7 +478,8 @@ async fn test_insert_same_epoch_twice() -> eyre::Result<()> {
 async fn test_delete() -> eyre::Result<()> {
     let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
     let secret_manager = postgres_secret_manager(&connection_string).await?;
-    let mut pg_connection = oprf_test_utils::open_pg_connection(&connection_string).await?;
+    let mut pg_connection =
+        oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
