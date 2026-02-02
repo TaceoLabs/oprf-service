@@ -1,4 +1,12 @@
-use std::{collections::HashMap, str::FromStr as _, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    str::FromStr as _,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use alloy::{
     network::EthereumWallet,
@@ -250,15 +258,21 @@ async fn reshare_test(
 
     tracing::info!("start OPRF client task");
     let (tx, mut rx) = mpsc::channel(32);
-    tokio::task::spawn({
+    // we need this so that we don't get random warnings when we kill the task abruptly
+    let shutdown_signal = Arc::new(AtomicBool::new(false));
+    let oprf_client_task = tokio::task::spawn({
         let nodes = nodes.to_vec();
         let module = module.to_owned();
         let connector = connector.clone();
+        let shutdown_signal = Arc::clone(&shutdown_signal);
         async move {
             let nodes = nodes.to_vec();
             let module = module.clone();
             let mut counter = 0;
             loop {
+                if shutdown_signal.load(Ordering::Relaxed) {
+                    break;
+                }
                 let result =
                     run_oprf(&nodes, &module, threshold, oprf_key_id, connector.clone()).await;
                 counter += 1;
@@ -287,7 +301,14 @@ async fn reshare_test(
         wait_for_epoch(&mut rx, confirmations, current_epoch.next().next()),
     )
     .await??;
+    shutdown_signal.store(true, Ordering::Relaxed);
 
+    if tokio::time::timeout(Duration::from_secs(5), oprf_client_task)
+        .await
+        .is_err()
+    {
+        tracing::warn!("test succeeded but could not finish client tasks in 5 seconds?")
+    };
     Ok(())
 }
 

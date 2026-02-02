@@ -189,12 +189,9 @@ impl taceo_oprf_key_gen::secret_manager::SecretManager for KeyGenTestSecretManag
         oprf_key_id: OprfKeyId,
         generated_epoch: ShareEpoch,
     ) -> eyre::Result<Option<DLogShareShamir>> {
-        if generated_epoch.is_initial_epoch() {
-            return Ok(None);
-        }
         let store = self.0.store.lock();
         if let Some(oprf_key_material) = store.get(&oprf_key_id)
-            && oprf_key_material.is_epoch(generated_epoch.prev())
+            && oprf_key_material.is_epoch(generated_epoch)
         {
             Ok(Some(oprf_key_material.share()))
         } else {
