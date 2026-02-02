@@ -249,7 +249,7 @@ async fn reshare_test(
     oprf_key_id: OprfKeyId,
     connector: Connector,
     provider: DynProvider,
-    confirmations: usize,
+    acceptance_num: usize,
     max_wait_time: Duration,
 ) -> eyre::Result<()> {
     tracing::info!("running OPRF to get current epoch..");
@@ -290,7 +290,7 @@ async fn reshare_test(
     oprf_test_utils::init_reshare(provider.clone(), oprf_key_registry, oprf_key_id).await?;
     tokio::time::timeout(
         max_wait_time,
-        wait_for_epoch(&mut rx, confirmations, current_epoch.next()),
+        wait_for_epoch(&mut rx, acceptance_num, current_epoch.next()),
     )
     .await??;
 
@@ -298,7 +298,7 @@ async fn reshare_test(
     oprf_test_utils::init_reshare(provider.clone(), oprf_key_registry, oprf_key_id).await?;
     tokio::time::timeout(
         max_wait_time,
-        wait_for_epoch(&mut rx, confirmations, current_epoch.next().next()),
+        wait_for_epoch(&mut rx, acceptance_num, current_epoch.next().next()),
     )
     .await??;
     shutdown_signal.store(true, Ordering::Relaxed);
@@ -314,7 +314,7 @@ async fn reshare_test(
 
 async fn wait_for_epoch(
     rx: &mut mpsc::Receiver<Result<ShareEpoch, eyre::Report>>,
-    confirmations: usize,
+    acceptance_num: usize,
     target_epoch: ShareEpoch,
 ) -> eyre::Result<()> {
     let mut new_epoch_found = 0;
@@ -322,9 +322,9 @@ async fn wait_for_epoch(
         match result {
             Ok(epoch) if epoch == target_epoch => {
                 new_epoch_found += 1;
-                if new_epoch_found == confirmations {
+                if new_epoch_found == acceptance_num {
                     tracing::info!(
-                        "successfully used new epoch {} {confirmations} times!",
+                        "successfully used new epoch {} {acceptance_num} times!",
                         target_epoch
                     );
                     return Ok(());
@@ -336,7 +336,7 @@ async fn wait_for_epoch(
             }
         }
     }
-    eyre::bail!("Channel closed without getting {confirmations}");
+    eyre::bail!("Channel closed without getting {acceptance_num}");
 }
 
 #[tokio::main]
@@ -424,7 +424,7 @@ async fn main() -> eyre::Result<()> {
             .await?;
             tracing::info!("stress-test successful");
         }
-        Command::ReshareTest(ReshareTest { confirmations }) => {
+        Command::ReshareTest(ReshareTest { acceptance_num }) => {
             tracing::info!("running reshare-test");
             reshare_test(
                 &config.nodes,
@@ -434,7 +434,7 @@ async fn main() -> eyre::Result<()> {
                 oprf_key_id,
                 connector,
                 provider,
-                confirmations,
+                acceptance_num,
                 config.max_wait_time,
             )
             .await?;

@@ -35,9 +35,9 @@ pub struct StressTestCommand {
 
 #[derive(Clone, Parser, Debug)]
 pub struct ReshareTest {
-    /// The amount of OPRF runs
-    #[clap(long, env = "OPRF_DEV_CLIENT_CONFIRMATIONS", default_value = "50")]
-    pub confirmations: usize,
+    /// The amount of requests we need to observe to accept the new epoch
+    #[clap(long, env = "OPRF_DEV_CLIENT_ACCEPTANCE_NUM", default_value = "50")]
+    pub acceptance_num: usize,
 }
 
 #[derive(Clone, Debug, Subcommand)]
