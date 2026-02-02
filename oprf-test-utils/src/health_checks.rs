@@ -47,15 +47,14 @@ pub async fn services_health_check(
     Ok(())
 }
 
-pub async fn load_oprf_public_key(oprf_key_url: String, epoch: ShareEpoch) -> OprfPublicKey {
+pub async fn load_oprf_public_key(oprf_key_url: String) -> (OprfPublicKey, ShareEpoch) {
     loop {
         if let Ok(response) = reqwest::get(&oprf_key_url)
             .await
             .and_then(|response| response.error_for_status())
             && let Ok(material) = response.json::<OprfPublicKeyWithEpoch>().await
-            && material.epoch == epoch
         {
-            return material.key;
+            return (material.key, material.epoch);
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
@@ -63,13 +62,12 @@ pub async fn load_oprf_public_key(oprf_key_url: String, epoch: ShareEpoch) -> Op
 
 pub async fn oprf_public_key_from_services(
     oprf_key_id: OprfKeyId,
-    epoch: ShareEpoch,
     services: &[String],
     max_wait_time: Duration,
-) -> eyre::Result<OprfPublicKey> {
+) -> eyre::Result<(OprfPublicKey, ShareEpoch)> {
     let oprf_public_key_checks = services
         .iter()
-        .map(|service| load_oprf_public_key(format!("{service}/oprf_pub/{oprf_key_id}"), epoch))
+        .map(|service| load_oprf_public_key(format!("{service}/oprf_pub/{oprf_key_id}")))
         .collect::<JoinSet<_>>();
     match tokio::time::timeout(max_wait_time, oprf_public_key_checks.join_all())
         .await
@@ -87,6 +85,7 @@ pub async fn oprf_public_key_from_services(
         Err(_) => eyre::bail!("couldn't load OPRF material within time"),
     }
 }
+
 pub async fn oprf_public_key_not_known_check(health_url: String) {
     loop {
         if let Err(err) = reqwest::get(&health_url)

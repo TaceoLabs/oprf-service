@@ -70,10 +70,6 @@ pub struct OprfDevClientConfig {
     #[clap(long, env = "OPRF_DEV_CLIENT_OPRF_KEY_ID")]
     pub oprf_key_id: Option<U160>,
 
-    /// The share epoch. Will be ignored if `oprf_key_id` is `None`.
-    #[clap(long, env = "OPRF_DEV_CLIENT_SHARE_EPOCH", default_value = "0")]
-    pub share_epoch: u32,
-
     /// max wait time for init key-gen/reshare to succeed.
     #[clap(long, env = "OPRF_DEV_CLIENT_WAIT_TIME", default_value="2min", value_parser=humantime::parse_duration)]
     pub max_wait_time: Duration,
@@ -348,10 +344,8 @@ async fn main() -> eyre::Result<()> {
 
     let (oprf_key_id, oprf_public_key) = if let Some(oprf_key_id) = config.oprf_key_id {
         let oprf_key_id = OprfKeyId::new(oprf_key_id);
-        let share_epoch = ShareEpoch::from(config.share_epoch);
-        let oprf_public_key = health_checks::oprf_public_key_from_services(
+        let (oprf_public_key, _) = health_checks::oprf_public_key_from_services(
             oprf_key_id,
-            share_epoch,
             &config.nodes,
             config.max_wait_time,
         )

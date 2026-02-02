@@ -11,7 +11,7 @@ use clap::{Parser, Subcommand};
 use oprf_client::{Connector, OprfSessions};
 use oprf_core::ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir};
 use oprf_test_utils::health_checks;
-use oprf_types::{OprfKeyId, ShareEpoch, api::OprfRequest, crypto::OprfPublicKey};
+use oprf_types::{OprfKeyId, api::OprfRequest, crypto::OprfPublicKey};
 use serde::Serialize;
 use tokio::task::JoinSet;
 use uuid::Uuid;
@@ -179,13 +179,8 @@ pub async fn init_key_gen(
     tracing::info!("init OPRF key gen with: {oprf_key_id}");
     oprf_test_utils::init_key_gen(provider, oprf_key_registry, oprf_key_id).await?;
     tracing::info!("waiting for key-gen to finish..");
-    let oprf_public_key = health_checks::oprf_public_key_from_services(
-        oprf_key_id,
-        ShareEpoch::default(),
-        nodes,
-        max_wait_time,
-    )
-    .await?;
+    let (oprf_public_key, _) =
+        health_checks::oprf_public_key_from_services(oprf_key_id, nodes, max_wait_time).await?;
     tracing::info!("key-gen successful");
     Ok((oprf_key_id, oprf_public_key))
 }
