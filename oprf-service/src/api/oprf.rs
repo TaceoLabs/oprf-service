@@ -240,7 +240,7 @@ async fn partial_oprf<
         .record(duration_verify.as_secs_f64());
 
     tracing::debug!(
-        "initiating session with share epoch {:?}...",
+        "initiating session with key id {:?}...",
         init_request.oprf_key_id
     );
     let (session, commitments) =
