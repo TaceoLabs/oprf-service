@@ -54,11 +54,6 @@ pub struct OprfKeyGenConfig {
     )]
     pub chain_ws_rpc_url: SecretString,
 
-    /// Prefix for secret name to store rp secrets in secret-manager.
-    /// The implementation will call `format!("{rp_secret_id_prefix}/{rp_id}")`
-    #[clap(long, env = "OPRF_NODE_RP_SECRET_ID_PREFIX", default_value = "oprf/rp")]
-    pub rp_secret_id_prefix: String,
-
     /// Secret Id of the wallet private key.
     #[clap(long, env = "OPRF_NODE_WALLET_PRIVATE_KEY_SECRET_ID")]
     pub wallet_private_key_secret_id: String,

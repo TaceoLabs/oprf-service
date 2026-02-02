@@ -90,7 +90,6 @@ impl TestKeyGen {
             max_gas_per_transaction: 10_000_000,
             confirmations_for_transaction: 1,
             db_connection_string: "not used".into(),
-            rp_secret_id_prefix: format!("some-secret-id-{party_id}"),
             db_schema: "test".to_owned(),
         };
         let (tx, rx) = oneshot::channel();

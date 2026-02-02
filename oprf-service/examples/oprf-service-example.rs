@@ -7,7 +7,6 @@ use std::{
 
 use clap::Parser;
 use eyre::Context;
-use secrecy::SecretString;
 use taceo_oprf_service::{
     OprfServiceBuilder, StartedServices,
     config::OprfNodeConfig,
@@ -36,10 +35,6 @@ pub struct ExampleOprfNodeConfig {
 
     )]
     pub max_wait_time_shutdown: Duration,
-
-    /// The connection string for the Postgres DB
-    #[clap(long, env = "OPRF_NODE_DB_CONNECTION_STRING")]
-    pub db_connection_string: SecretString,
 
     /// The OPRF service config
     #[clap(flatten)]
