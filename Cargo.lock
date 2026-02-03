@@ -6684,6 +6684,7 @@ dependencies = [
  "aws-config",
  "aws-sdk-secretsmanager",
  "axum",
+ "axum-test",
  "clap",
  "eyre",
  "futures",

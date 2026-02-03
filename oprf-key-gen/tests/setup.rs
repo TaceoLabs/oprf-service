@@ -2,23 +2,20 @@ use std::{fmt, sync::Arc, time::Duration};
 
 use alloy::signers::local::PrivateKeySigner;
 use async_trait::async_trait;
+use axum_test::TestServer;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_test_utils::test_secret_manager::TestSecretManager;
-use oprf_test_utils::{PEER_PRIVATE_KEYS, TEST_TIMEOUT, TestSetup, health_checks};
+use oprf_test_utils::{PEER_PRIVATE_KEYS, TestSetup};
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     crypto::{OprfKeyMaterial, OprfPublicKey},
 };
-use rand::Rng;
 use taceo_oprf_key_gen::config::{Environment, OprfKeyGenConfig};
-use tokio::sync::oneshot;
-use tokio_util::sync::CancellationToken;
 
 pub struct TestKeyGen {
     pub party_id: usize,
     pub secret_manager: Arc<TestSecretManager>,
-    pub close_result: oneshot::Receiver<eyre::Result<()>>,
-    pub _cancellation_token: CancellationToken,
+    pub server: TestServer,
 }
 
 // need a new type to implement the trait
@@ -33,23 +30,7 @@ impl fmt::Debug for TestKeyGen {
 }
 
 impl TestKeyGen {
-    pub async fn has_err(self, should_error_msg: &str) {
-        let is_error_msg = tokio::time::timeout(TEST_TIMEOUT, self.close_result)
-            .await
-            .expect("Did not get error in timeout")
-            .expect("TestKeyGen closed without sending Result")
-            .expect_err("Should be an error in has_error")
-            .to_string();
-        assert_eq!(is_error_msg, should_error_msg)
-    }
-}
-
-impl TestKeyGen {
-    async fn start_inner(
-        party_id: usize,
-        test_setup: &TestSetup,
-        skip_health_check: bool,
-    ) -> eyre::Result<Self> {
+    pub async fn start(party_id: usize, test_setup: &TestSetup) -> eyre::Result<Self> {
         let TestSetup {
             anvil,
             provider: _,
@@ -61,23 +42,13 @@ impl TestKeyGen {
         assert!(party_id < 5, "can only spawn 5 key-gens");
         let private_key = PEER_PRIVATE_KEYS[party_id];
         let child_token = cancellation_token.child_token();
-        let port_range = rand::thread_rng().gen_range(10_000..20_000);
         let secret_manager = Arc::new(TestSecretManager::new(private_key));
         let keygen_secret_manager = Arc::new(KeyGenTestSecretManager(Arc::clone(&secret_manager)));
-        let mut offset = 0;
-        // try 100 ports
-        let (listener, bind_addr, url) = loop {
-            assert!(offset < 100, "cannot find free port in range");
-            let port = port_range + offset;
-            let bind_addr = format!("0.0.0.0:{port}");
-            match tokio::net::TcpListener::bind(bind_addr.clone()).await {
-                Ok(listener) => break (listener, bind_addr, format!("http://localhost:{port}")),
-                Err(_) => offset += 1,
-            }
-        };
+
         let config = OprfKeyGenConfig {
             environment: Environment::Dev,
-            bind_addr: bind_addr.parse().expect("Can parse"),
+            // not used
+            bind_addr: "0.0.0.0:10000".parse().unwrap(),
             oprf_key_registry_contract: *oprf_key_registry,
             chain_ws_rpc_url: anvil.ws_endpoint().into(),
             wallet_private_key_secret_id: "wallet/privatekey".to_owned(),
@@ -92,38 +63,18 @@ impl TestKeyGen {
             db_connection_string: "not used".into(),
             db_schema: "test".to_owned(),
         };
-        let (tx, rx) = oneshot::channel();
-        tokio::task::spawn({
-            let child_token = child_token.clone();
-            async move {
-                let result = taceo_oprf_key_gen::start(
-                    config,
-                    keygen_secret_manager,
-                    listener,
-                    async move { child_token.cancelled().await },
-                )
-                .await;
 
-                let _ = tx.send(result);
-            }
-        });
-
-        if !skip_health_check {
-            health_checks::services_health_check(std::slice::from_ref(&url), TEST_TIMEOUT).await?;
-        }
+        let (router, _key_gen_tasks) =
+            taceo_oprf_key_gen::start(config, keygen_secret_manager, child_token).await?;
+        let server = TestServer::builder()
+            .http_transport()
+            .build(router)
+            .expect("can build test-server");
         Ok(TestKeyGen {
             secret_manager,
-            _cancellation_token: child_token,
             party_id,
-            close_result: rx,
+            server,
         })
-    }
-    pub async fn start(party_id: usize, test_setup: &TestSetup) -> eyre::Result<Self> {
-        Self::start_inner(party_id, test_setup, false).await
-    }
-
-    pub async fn start_with_error(party_id: usize, test_setup: &TestSetup) -> eyre::Result<Self> {
-        Self::start_inner(party_id, test_setup, true).await
     }
 
     pub async fn start_three(test_setup: &TestSetup) -> eyre::Result<[Self; 3]> {

@@ -1,5 +1,5 @@
 use alloy::{primitives::U160, sol_types::SolEvent};
-use oprf_test_utils::{DeploySetup, TestSetup};
+use oprf_test_utils::{DeploySetup, OPRF_PEER_ADDRESS_0, TestSetup};
 use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
 
 mod setup;
@@ -11,7 +11,9 @@ use crate::setup::keygen_asserts;
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_delete_oprf_key() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    println!("starting key-gen!");
     let key_gen = TestKeyGen::start(0, &setup).await?;
+    println!("started key-gen!");
 
     let inserted_key = key_gen
         .secret_manager
@@ -166,9 +168,40 @@ async fn test_reshare_emits_stuck_if_two_consumer() -> eyre::Result<()> {
 async fn test_not_a_participant() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     // for this setup this node is not registered
-    TestKeyGen::start_with_error(4, &setup)
-        .await?
-        .has_err("while loading party id")
-        .await;
+    let is_error = TestKeyGen::start(4, &setup).await.expect_err("Should fail");
+    assert_eq!(is_error.to_string(), "while loading party id");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_health_route() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    // for this setup this node is not registered
+    let key_gen = TestKeyGen::start(0, &setup).await?;
+    let result = key_gen.server.get("/health").expect_success().await;
+    result.assert_status_ok();
+    result.assert_text("healthy");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_wallet() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    // for this setup this node is not registered
+    let key_gen = TestKeyGen::start(0, &setup).await?;
+    let result = key_gen.server.get("/wallet").expect_success().await;
+    result.assert_status_ok();
+    result.assert_text(OPRF_PEER_ADDRESS_0.to_string());
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_version() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    // for this setup this node is not registered
+    let key_gen = TestKeyGen::start(0, &setup).await?;
+    let result = key_gen.server.get("/version").expect_success().await;
+    result.assert_status_ok();
+    result.assert_text(nodes_common::version_info!());
     Ok(())
 }
