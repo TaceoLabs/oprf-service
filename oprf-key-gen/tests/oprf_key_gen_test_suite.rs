@@ -1,5 +1,5 @@
 use alloy::{primitives::U160, sol_types::SolEvent};
-use oprf_test_utils::{DeploySetup, OPRF_PEER_ADDRESS_0, TestSetup};
+use oprf_test_utils::{DeploySetup, OPRF_PEER_ADDRESS_0, TEST_TIMEOUT, TestSetup};
 use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
 
 mod setup;
@@ -176,7 +176,6 @@ async fn test_not_a_participant() -> eyre::Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_health_route() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    // for this setup this node is not registered
     let key_gen = TestKeyGen::start(0, &setup).await?;
     let result = key_gen.server.get("/health").expect_success().await;
     result.assert_status_ok();
@@ -187,7 +186,6 @@ async fn test_health_route() -> eyre::Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_wallet() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    // for this setup this node is not registered
     let key_gen = TestKeyGen::start(0, &setup).await?;
     let result = key_gen.server.get("/wallet").expect_success().await;
     result.assert_status_ok();
@@ -198,10 +196,20 @@ async fn test_wallet() -> eyre::Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_version() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    // for this setup this node is not registered
     let key_gen = TestKeyGen::start(0, &setup).await?;
     let result = key_gen.server.get("/version").expect_success().await;
     result.assert_status_ok();
     result.assert_text(nodes_common::version_info!());
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn key_gen_dies_on_cancellation() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let key_gen = TestKeyGen::start(0, &setup).await?;
+    key_gen.cancellation_token.cancel();
+    tokio::time::timeout(TEST_TIMEOUT, key_gen.key_gen_task.join())
+        .await
+        .expect("Can shutdown in time");
     Ok(())
 }

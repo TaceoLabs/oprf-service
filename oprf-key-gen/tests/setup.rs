@@ -10,12 +10,16 @@ use oprf_types::{
     OprfKeyId, ShareEpoch,
     crypto::{OprfKeyMaterial, OprfPublicKey},
 };
+use taceo_oprf_key_gen::KeyGenTask;
 use taceo_oprf_key_gen::config::{Environment, OprfKeyGenConfig};
+use tokio_util::sync::CancellationToken;
 
 pub struct TestKeyGen {
     pub party_id: usize,
     pub secret_manager: Arc<TestSecretManager>,
     pub server: TestServer,
+    pub key_gen_task: KeyGenTask,
+    pub cancellation_token: CancellationToken,
 }
 
 // need a new type to implement the trait
@@ -64,8 +68,8 @@ impl TestKeyGen {
             db_schema: "test".to_owned(),
         };
 
-        let (router, _key_gen_tasks) =
-            taceo_oprf_key_gen::start(config, keygen_secret_manager, child_token).await?;
+        let (router, key_gen_task) =
+            taceo_oprf_key_gen::start(config, keygen_secret_manager, child_token.clone()).await?;
         let server = TestServer::builder()
             .http_transport()
             .build(router)
@@ -74,6 +78,8 @@ impl TestKeyGen {
             secret_manager,
             party_id,
             server,
+            key_gen_task,
+            cancellation_token: child_token,
         })
     }
 
