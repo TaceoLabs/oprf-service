@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.1.0...taceo-oprf-v0.2.0)
+
+### 📚 Documentation
+
+
+- Add Secret Management section to README - ([04dd050](https://github.com/TaceoLabs/oprf-service/commit/04dd050c65b69d31e61c12a3e07a18011844c076))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Update child crates to most recent versions.
+
 ## [0.1.0]
 
 ### ⛰️ Features

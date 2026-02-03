@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.5.0...taceo-oprf-types-v0.6.0)
+
+### ⛰️ Features
+
+
+- Add postgres secret-manager in service - ([3f920bd](https://github.com/TaceoLabs/oprf-service/commit/3f920bd890aea3b0307587d7851cdeaa5d82b4b7))
+- Added CanonicalSerialize/Deserialize for DB storage - ([efcde52](https://github.com/TaceoLabs/oprf-service/commit/efcde524532fe4575ded5f87f3eb3777feec66fd))
+
+### 🚜 Refactor
+
+
+- [**breaking**] Reworked get_previous_share to get_share_by_epoch and updated callsite - ([8a2c100](https://github.com/TaceoLabs/oprf-service/commit/8a2c10005eaef9a37e4a0243981a77e75eda0d03))
+- [**breaking**] Only store a single share in DB and in RAM - ([6af8d9c](https://github.com/TaceoLabs/oprf-service/commit/6af8d9c3cd34e455dda44ab42f02ce80af081a4a))
+
+### 📚 Documentation
+
+
+- Add Secret Management section to README - ([04dd050](https://github.com/TaceoLabs/oprf-service/commit/04dd050c65b69d31e61c12a3e07a18011844c076))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Fixed stale docs - ([9807da1](https://github.com/TaceoLabs/oprf-service/commit/9807da1e14e7bfff6e9766eb75ab31151d497bdc))
+
+
 ## [0.5.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.4.0...taceo-oprf-types-v0.5.0)
 
 ### ⛰️ Features

@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.1.0...taceo-oprf-dev-client-v0.2.0)
+
+### 🚜 Refactor
+
+
+- Client now doesn't gracefully close the ws connections anymore - ([cc11858](https://github.com/TaceoLabs/oprf-service/commit/cc11858c071fc6cd2b4eda162570f888be209112))
+- [**breaking**] Updated dev-client to test new resharing - ([2fed873](https://github.com/TaceoLabs/oprf-service/commit/2fed873364f5fa1d27e8336b529f893579d6053e))
+- [**breaking**] Only store a single share in DB and in RAM - ([6af8d9c](https://github.com/TaceoLabs/oprf-service/commit/6af8d9c3cd34e455dda44ab42f02ce80af081a4a))
+
+### 📚 Documentation
+
+
+- Add Secret Management section to README - ([04dd050](https://github.com/TaceoLabs/oprf-service/commit/04dd050c65b69d31e61c12a3e07a18011844c076))
+
+### 🧪 Testing
+
+
+- Fixed tests again - ([a2fbc6b](https://github.com/TaceoLabs/oprf-service/commit/a2fbc6b81e191e28abbc7d128cf60c7031bcee8a))
+- Fixes a bug where we got an Ok(()) value when we did not expect that - ([0908518](https://github.com/TaceoLabs/oprf-service/commit/09085184eee1cb6ea01327e2346a7cc39d97e10a))
+- Restructure for the and moved testcontainer to test-utils - ([e5fb5b9](https://github.com/TaceoLabs/oprf-service/commit/e5fb5b901bb1b832878a47f010ab0abfa3486496))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Moved from confirmations to acceptance_num - ([18912df](https://github.com/TaceoLabs/oprf-service/commit/18912df54b27be6c568bf8070d94f58c85ac2657))
+
+
 ## [0.1.0]
 
 ### ⛰️ Features
