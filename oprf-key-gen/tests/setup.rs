@@ -10,7 +10,7 @@ use oprf_types::{
     OprfKeyId, ShareEpoch,
     crypto::{OprfKeyMaterial, OprfPublicKey},
 };
-use taceo_oprf_key_gen::KeyGenTask;
+use taceo_oprf_key_gen::KeyGenTasks;
 use taceo_oprf_key_gen::config::{Environment, OprfKeyGenConfig};
 use tokio_util::sync::CancellationToken;
 
@@ -18,7 +18,7 @@ pub struct TestKeyGen {
     pub party_id: usize,
     pub secret_manager: Arc<TestSecretManager>,
     pub server: TestServer,
-    pub key_gen_task: KeyGenTask,
+    pub key_gen_task: KeyGenTasks,
     pub cancellation_token: CancellationToken,
 }
 

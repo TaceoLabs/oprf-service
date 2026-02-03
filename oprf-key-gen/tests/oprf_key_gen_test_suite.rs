@@ -210,6 +210,7 @@ async fn key_gen_dies_on_cancellation() -> eyre::Result<()> {
     key_gen.cancellation_token.cancel();
     tokio::time::timeout(TEST_TIMEOUT, key_gen.key_gen_task.join())
         .await
-        .expect("Can shutdown in time");
+        .expect("Can shutdown in time")
+        .expect("Was a graceful shutdown");
     Ok(())
 }

@@ -41,15 +41,19 @@ pub use services::secret_manager;
 use tokio_util::sync::CancellationToken;
 
 /// The tasks spawned by the key-gen library. Should call [`KeyGenTask::join`] when shutting down for graceful shutdown.
-pub struct KeyGenTask {
+pub struct KeyGenTasks {
     transaction_handler: tokio::task::JoinHandle<eyre::Result<()>>,
     key_event_watcher: tokio::task::JoinHandle<eyre::Result<()>>,
 }
 
-impl KeyGenTask {
+impl KeyGenTasks {
     /// Consumes the task by joining every registered `JoinHandle`.
-    pub async fn join(self) {
-        let _ = tokio::join!(self.transaction_handler, self.key_event_watcher);
+    pub async fn join(self) -> eyre::Result<()> {
+        let (transaction_handler_result, key_event_watcher_result) =
+            tokio::join!(self.transaction_handler, self.key_event_watcher);
+        transaction_handler_result??;
+        key_event_watcher_result??;
+        Ok(())
     }
 }
 
@@ -64,7 +68,7 @@ pub async fn start(
     config: OprfKeyGenConfig,
     secret_manager: SecretManagerService,
     cancellation_token: CancellationToken,
-) -> eyre::Result<(axum::Router, KeyGenTask)> {
+) -> eyre::Result<(axum::Router, KeyGenTasks)> {
     tracing::info!("init oprf key-gen service..");
     tracing::info!("loading ETH private key from secret manager..");
     let private_key = secret_manager
@@ -156,7 +160,7 @@ pub async fn start(
     let key_gen_router = api::routes(address, key_event_watcher_started_signal);
     Ok((
         key_gen_router,
-        KeyGenTask {
+        KeyGenTasks {
             transaction_handler: transaction_handler_handle,
             key_event_watcher,
         },

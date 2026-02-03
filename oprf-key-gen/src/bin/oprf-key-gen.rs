@@ -4,10 +4,7 @@
 //! It initializes tracing, metrics, and starts the service with configuration
 //! from command-line arguments or environment variables.
 
-use std::{
-    process::ExitCode,
-    sync::{Arc, atomic::Ordering},
-};
+use std::{process::ExitCode, sync::Arc};
 
 use clap::Parser;
 use eyre::Context;
@@ -48,7 +45,7 @@ async fn main() -> eyre::Result<ExitCode> {
         .context("while starting postgres secret-manager")?,
     );
 
-    let (cancellation_token, is_graceful_shutdown) =
+    let (cancellation_token, _) =
         nodes_common::spawn_shutdown_task(nodes_common::default_shutdown_signal());
 
     // Clone the values we need afterwards as well
@@ -67,6 +64,8 @@ async fn main() -> eyre::Result<ExitCode> {
 
     let axum_cancel_token = cancellation_token.clone();
     let server = tokio::spawn(async move {
+        // we cancel the token if this task closes for some reason
+        let _drop_guard = axum_cancel_token.drop_guard_ref();
         tracing::info!(
             "starting axum server on {}",
             tcp_listener
@@ -79,11 +78,7 @@ async fn main() -> eyre::Result<ExitCode> {
             .with_graceful_shutdown(async move { axum_shutdown_signal.cancelled().await })
             .await;
         tracing::info!("axum server shutdown");
-        if let Err(err) = axum_result {
-            tracing::error!("got error from axum: {err:?}");
-        }
-        // we cancel the token in case axum encountered an error to shutdown the service
-        axum_cancel_token.cancel();
+        axum_result
     });
 
     tracing::info!("everything started successfully - now waiting for shutdown...");
@@ -91,22 +86,27 @@ async fn main() -> eyre::Result<ExitCode> {
 
     tracing::info!("waiting for shutdown of services (max wait time {max_wait_time_shutdown:?})..");
 
-    match tokio::time::timeout(max_wait_time_shutdown, async move {
-        tokio::join!(server, key_gen_task.join())
+    let result = match tokio::time::timeout(max_wait_time_shutdown, async move {
+        let (axum_result, key_gen_result) = tokio::join!(server, key_gen_task.join());
+        axum_result??;
+        key_gen_result?;
+        eyre::Ok(())
     })
     .await
     {
-        Ok(_) => tracing::info!("successfully finished shutdown in time"),
-        Err(_) => {
-            is_graceful_shutdown.store(false, Ordering::Relaxed);
-            tracing::warn!("could not finish shutdown in time")
+        Ok(Ok(_)) => {
+            tracing::info!("successfully finished shutdown in time");
+            Ok(ExitCode::SUCCESS)
         }
-    }
-
+        Ok(Err(err)) => {
+            tracing::error!("{err:?}");
+            Ok(ExitCode::FAILURE)
+        }
+        Err(_) => {
+            tracing::warn!("could not finish shutdown in time");
+            Ok(ExitCode::FAILURE)
+        }
+    };
     tracing::info!("good night!");
-    if is_graceful_shutdown.load(Ordering::Relaxed) {
-        Ok(ExitCode::SUCCESS)
-    } else {
-        Ok(ExitCode::FAILURE)
-    }
+    result
 }

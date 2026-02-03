@@ -96,11 +96,7 @@ pub(crate) async fn key_event_watcher_task(args: KeyEventWatcherTaskConfig) -> e
     let cancellation_token = args.cancellation_token.clone();
     let _drop_guard = cancellation_token.drop_guard_ref();
     tracing::info!("start handling events");
-    match handle_events(args).await {
-        Ok(_) => tracing::info!("stopped key event watcher"),
-        Err(err) => tracing::error!("key event watcher encountered an error: {err:?}"),
-    }
-    Ok(())
+    handle_events(args).await
 }
 
 /// Filters for various key generation event signatures and handles them
