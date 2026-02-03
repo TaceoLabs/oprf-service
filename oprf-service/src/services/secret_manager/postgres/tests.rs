@@ -73,6 +73,20 @@ async fn test_load_all_secret_empty() -> eyre::Result<()> {
 }
 
 #[tokio::test]
+async fn test_empty_schema_name() -> eyre::Result<()> {
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let should_error = PostgresSecretManager::init(
+        &SecretString::from(connection_string.to_owned()),
+        "",
+        1.try_into().unwrap(),
+    )
+    .await
+    .expect_err("Should fail");
+    assert_eq!("while building schema string", should_error.to_string());
+    Ok(())
+}
+
+#[tokio::test]
 async fn load_address_empty() -> eyre::Result<()> {
     let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
     let secret_manager = postgres_secret_manager(&connection_string).await?;

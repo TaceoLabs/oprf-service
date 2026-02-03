@@ -90,7 +90,7 @@ pub mod postgres {
         );
         conn.execute(schema_connect.as_ref())
             .await
-            .context("while creating schema and setting search path")?;
+            .context("TestUtils: cannot pg_connection")?;
         Ok(conn)
     }
 

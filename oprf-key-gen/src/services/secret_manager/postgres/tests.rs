@@ -28,6 +28,11 @@ async fn postgres_secret_manager_with_localstack(
 }
 
 async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<PostgresSecretManager> {
+    let mut pg_connection =
+        oprf_test_utils::open_pg_connection(connection_string, TEST_SCHEMA).await?;
+    sqlx::migrate!("./migrations")
+        .run(&mut pg_connection)
+        .await?;
     PostgresSecretManager::init(
         &SecretString::from(connection_string.to_owned()),
         TEST_SCHEMA,
@@ -187,6 +192,22 @@ fn assert_row_matches(
         OprfPublicKey::deserialize_uncompressed_unchecked(is_public_key.as_slice())
             .expect("Can deserialize"),
     );
+}
+
+#[tokio::test]
+async fn test_empty_schema_name() -> eyre::Result<()> {
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+
+    let should_error = PostgresSecretManager::init(
+        &SecretString::from(connection_string.to_owned()),
+        "",
+        oprf_test_utils::dummy_localstack_config().await,
+        TEST_WALLET_PRIVATE_KEY_SECRET_ID,
+    )
+    .await
+    .expect_err("Should fail");
+    assert_eq!("while building schema string", should_error.to_string());
+    Ok(())
 }
 
 #[tokio::test]
