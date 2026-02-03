@@ -7,10 +7,7 @@
 //! From there, they can be fetched by the OPRF nodes that handle OPRF requests.
 //!
 //! For details on the OPRF protocol, see the [design document](https://github.com/TaceoLabs/nullifier-oracle-service/blob/491416de204dcad8d46ee1296d59b58b5be54ed9/docs/oprf.pdf).
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::{Arc, atomic::AtomicBool};
 
 use crate::{
     config::OprfKeyGenConfig,
@@ -41,20 +38,35 @@ pub mod metrics;
 pub(crate) mod services;
 
 pub use services::secret_manager;
+use tokio_util::sync::CancellationToken;
 
-/// Starts the OPRF key generation service and waits for shutdown signal.
+/// The tasks spawned by the key-gen library. Should call [`KeyGenTask::join`] when shutting down for graceful shutdown.
+pub struct KeyGenTask {
+    transaction_handler: tokio::task::JoinHandle<eyre::Result<()>>,
+    key_event_watcher: tokio::task::JoinHandle<eyre::Result<()>>,
+}
+
+impl KeyGenTask {
+    /// Consumes the task by joining every registered `JoinHandle`.
+    pub async fn join(self) {
+        let _ = tokio::join!(self.transaction_handler, self.key_event_watcher);
+    }
+}
+
+/// Starts the OPRF key generation service by spawning all necessary sub-tasks. Additionally, creates an `axum::Router` that serves two routes:
+/// - The health and readiness endpoints from [`health`].
+/// - General info about the deployment from [`info`].
+///
+/// The spawned tasks are:
+/// - `key_event_watcher`: subscribes to configured chain and executes the key-gen/reshare protocol
+/// - `transaction_handler`: task that subscribes to same contract as `key_event_watcher` and waits for `KeyGenConfirmation` events from chain in case of errors with the RPC provider.
 pub async fn start(
     config: OprfKeyGenConfig,
     secret_manager: SecretManagerService,
-    listener: tokio::net::TcpListener,
-    shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
-) -> eyre::Result<()> {
-    tracing::info!("starting oprf-key-gen with config: {config:#?}");
-    let (cancellation_token, is_graceful_shutdown) =
-        nodes_common::spawn_shutdown_task(shutdown_signal);
-
+    cancellation_token: CancellationToken,
+) -> eyre::Result<(axum::Router, KeyGenTask)> {
     tracing::info!("init oprf key-gen service..");
-    tracing::info!("loading private from secret manager..");
+    tracing::info!("loading ETH private key from secret manager..");
     let private_key = secret_manager
         .load_or_insert_wallet_private_key()
         .await
@@ -142,47 +154,11 @@ pub async fn start(
     });
 
     let key_gen_router = api::routes(address, key_event_watcher_started_signal);
-
-    let axum_cancel_token = cancellation_token.clone();
-    let server = tokio::spawn(async move {
-        tracing::info!(
-            "starting axum server on {}",
-            listener
-                .local_addr()
-                .map(|x| x.to_string())
-                .unwrap_or(String::from("invalid addr"))
-        );
-        let axum_shutdown_signal = axum_cancel_token.clone();
-        let axum_result = axum::serve(listener, key_gen_router)
-            .with_graceful_shutdown(async move { axum_shutdown_signal.cancelled().await })
-            .await;
-        tracing::info!("axum server shutdown");
-        if let Err(err) = axum_result {
-            tracing::error!("got error from axum: {err:?}");
-        }
-        // we cancel the token in case axum encountered an error to shutdown the service
-        axum_cancel_token.cancel();
-    });
-
-    tracing::info!("everything started successfully - now waiting for shutdown...");
-    cancellation_token.cancelled().await;
-
-    tracing::info!(
-        "waiting for shutdown of services (max wait time {:?})..",
-        config.max_wait_time_shutdown
-    );
-    match tokio::time::timeout(config.max_wait_time_shutdown, async move {
-        tokio::join!(server, key_event_watcher, transaction_handler_handle)
-    })
-    .await
-    {
-        Ok(_) => tracing::info!("successfully finished shutdown in time"),
-        Err(_) => tracing::warn!("could not finish shutdown in time"),
-    }
-
-    if is_graceful_shutdown.load(Ordering::Relaxed) {
-        Ok(())
-    } else {
-        eyre::bail!("Unexpected shutdown - check error logs")
-    }
+    Ok((
+        key_gen_router,
+        KeyGenTask {
+            transaction_handler: transaction_handler_handle,
+            key_event_watcher,
+        },
+    ))
 }
