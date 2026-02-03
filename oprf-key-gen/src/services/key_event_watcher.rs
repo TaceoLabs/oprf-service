@@ -95,16 +95,6 @@ pub(crate) async fn key_event_watcher_task(args: KeyEventWatcherTaskConfig) -> e
     // shutdown service if event watcher encounters an error and drops this guard
     let cancellation_token = args.cancellation_token.clone();
     let _drop_guard = cancellation_token.drop_guard_ref();
-    tracing::info!(
-        "checking OprfKeyRegistry ready state at address {}..",
-        args.contract_address
-    );
-    let contract = OprfKeyRegistry::new(args.contract_address, args.provider.clone());
-    if !contract.isContractReady().call().await? {
-        eyre::bail!("OprfKeyRegistry contract not ready");
-    }
-    tracing::info!("ready!");
-
     tracing::info!("start handling events");
     match handle_events(args).await {
         Ok(_) => tracing::info!("stopped key event watcher"),
