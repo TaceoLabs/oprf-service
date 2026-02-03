@@ -24,6 +24,7 @@ pub struct PostgresSecretManager {
 }
 
 fn sanitize_identifier(input: &str) -> eyre::Result<()> {
+    eyre::ensure!(!input.is_empty(), "Empty schema is not allowed");
     if input
         .chars()
         .all(|c| c.is_alphanumeric() || c == '_' || c == '-')

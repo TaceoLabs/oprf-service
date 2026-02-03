@@ -20,6 +20,7 @@ use tracing::instrument;
 use crate::{oprf_key_material_store::OprfKeyMaterialStore, secret_manager::SecretManager};
 
 fn sanitize_identifier(input: &str) -> eyre::Result<()> {
+    eyre::ensure!(!input.is_empty(), "Empty schema is not allowed");
     if input
         .chars()
         .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
@@ -35,7 +36,8 @@ fn schema_connect(schema: &str) -> eyre::Result<String> {
     Ok(format!("SET search_path TO \"{schema}\";"))
 }
 
-/// The postgres secret manager wrapping a `PgPool`. As we don't want to have multiple connections, we set the `max_pool_size` to 1.
+/// The postgres secret manager wrapping a `PgPool`.
+#[derive(Debug)]
 pub struct PostgresSecretManager(PgPool);
 
 #[derive(Debug, sqlx::FromRow, ZeroizeOnDrop)]
