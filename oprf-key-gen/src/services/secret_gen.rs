@@ -171,6 +171,26 @@ impl DLogSecretGenService {
         }
     }
 
+    /// Returns `true` iff contains round1 toxic waste associated with the [`OprfKeyId`].
+    #[cfg(test)]
+    pub(crate) fn has_round1(&self, oprf_key_id: OprfKeyId) -> bool {
+        self.toxic_waste_round1.contains_key(&oprf_key_id)
+    }
+
+    /// Returns `true` iff contains round2 toxic waste associated with the [`OprfKeyId`].
+    #[cfg(test)]
+    #[expect(unused)]
+    pub(crate) fn has_round2(&self, oprf_key_id: OprfKeyId) -> bool {
+        self.toxic_waste_round2.contains_key(&oprf_key_id)
+    }
+
+    /// Returns `true` iff contains a finished share associated with the [`OprfKeyId`].
+    #[cfg(test)]
+    #[expect(unused)]
+    pub(crate) fn has_finished_share(&self, oprf_key_id: OprfKeyId) -> bool {
+        self.finished_shares.contains_key(&oprf_key_id)
+    }
+
     /// Deletes all material associated with the [`OprfKeyId`].
     /// This includes:
     /// * [`ToxicWasteRound1`]

@@ -1,15 +1,8 @@
 use std::{fmt, sync::Arc, time::Duration};
 
-use alloy::signers::local::PrivateKeySigner;
-use async_trait::async_trait;
 use axum_test::TestServer;
-use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_test_utils::test_secret_manager::TestSecretManager;
-use oprf_test_utils::{PEER_PRIVATE_KEYS, TestSetup};
-use oprf_types::{
-    OprfKeyId, ShareEpoch,
-    crypto::{OprfKeyMaterial, OprfPublicKey},
-};
+use oprf_test_utils::{PEER_PRIVATE_KEYS, TestSetup, key_gen_test_secret_manager};
 use taceo_oprf_key_gen::KeyGenTasks;
 use taceo_oprf_key_gen::config::{Environment, OprfKeyGenConfig};
 use tokio_util::sync::CancellationToken;
@@ -22,8 +15,10 @@ pub struct TestKeyGen {
     pub cancellation_token: CancellationToken,
 }
 
-// need a new type to implement the trait
-pub struct KeyGenTestSecretManager(pub Arc<TestSecretManager>);
+key_gen_test_secret_manager!(
+    taceo_oprf_key_gen::secret_manager::SecretManager,
+    KeyGenTestSecretManager
+);
 
 impl fmt::Debug for TestKeyGen {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -132,55 +127,5 @@ pub mod keygen_asserts {
         let oprf_public_key = keys.pop().expect("is there");
         assert!(keys.into_iter().all(|hay| hay == oprf_public_key));
         Ok(oprf_public_key)
-    }
-}
-
-#[async_trait]
-impl taceo_oprf_key_gen::secret_manager::SecretManager for KeyGenTestSecretManager {
-    async fn load_or_insert_wallet_private_key(&self) -> eyre::Result<PrivateKeySigner> {
-        Ok(self.0.wallet_private_key.clone())
-    }
-
-    async fn get_share_by_epoch(
-        &self,
-        oprf_key_id: OprfKeyId,
-        generated_epoch: ShareEpoch,
-    ) -> eyre::Result<Option<DLogShareShamir>> {
-        let store = self.0.store.lock();
-        if let Some(oprf_key_material) = store.get(&oprf_key_id)
-            && oprf_key_material.is_epoch(generated_epoch)
-        {
-            Ok(Some(oprf_key_material.share()))
-        } else {
-            Ok(None)
-        }
-    }
-
-    async fn remove_oprf_key_material(&self, rp_id: OprfKeyId) -> eyre::Result<()> {
-        if self.0.store.lock().remove(&rp_id).is_none() {
-            panic!("trying to remove oprf_key_id that does not exist");
-        }
-        Ok(())
-    }
-
-    async fn store_dlog_share(
-        &self,
-        oprf_key_id: OprfKeyId,
-        public_key: OprfPublicKey,
-        epoch: ShareEpoch,
-        share: DLogShareShamir,
-    ) -> eyre::Result<()> {
-        let mut store = self.0.store.lock();
-        if epoch.is_initial_epoch() || !store.contains_key(&oprf_key_id) {
-            assert!(
-                store
-                    .insert(oprf_key_id, OprfKeyMaterial::new(share, public_key, epoch))
-                    .is_none(),
-                "On initial epoch, secret-manager must be empty"
-            )
-        } else {
-            store.insert(oprf_key_id, OprfKeyMaterial::new(share, public_key, epoch));
-        }
-        Ok(())
     }
 }

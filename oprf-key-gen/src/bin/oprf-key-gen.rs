@@ -99,7 +99,7 @@ async fn main() -> eyre::Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
         Ok(Err(err)) => {
-            tracing::error!("{err:?}");
+            tracing::error!("key-gen encountered an error: {err:?}");
             Ok(ExitCode::FAILURE)
         }
         Err(_) => {

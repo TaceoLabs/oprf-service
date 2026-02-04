@@ -1,19 +1,19 @@
 use core::fmt;
 use std::{sync::Arc, time::Duration};
 
-use alloy::primitives::Address;
 use ark_ff::UniformRand as _;
 use async_trait::async_trait;
 use axum_test::TestServer;
 use http::StatusCode;
 use oprf_core::oprf::BlindingFactor;
 use oprf_test_utils::{
-    PEER_PRIVATE_KEYS, TEST_TIMEOUT, TestSetup, test_secret_manager::TestSecretManager,
+    PEER_PRIVATE_KEYS, TEST_TIMEOUT, TestSetup, oprf_node_test_secret_manager,
+    test_secret_manager::TestSecretManager,
 };
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     api::{OprfPublicKeyWithEpoch, OprfRequest, OprfRequestAuthenticator, OprfResponse},
-    crypto::{OprfKeyMaterial, OprfPublicKey},
+    crypto::OprfPublicKey,
 };
 use rand::{CryptoRng, Rng};
 use secrecy::SecretString;
@@ -21,10 +21,14 @@ use serde::{Deserialize, Serialize};
 use taceo_oprf_service::{
     OprfServiceBuilder, StartedServices,
     config::{Environment, OprfNodeConfig},
-    oprf_key_material_store::OprfKeyMaterialStore,
 };
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
+
+oprf_node_test_secret_manager!(
+    taceo_oprf_service::secret_manager::SecretManager,
+    NodeTestSecretManager
+);
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct ConfigurableTestRequestAuth;
@@ -56,9 +60,6 @@ pub struct TestNode {
     pub server: Arc<TestServer>,
     pub _cancellation_token: CancellationToken,
 }
-
-// need a new type to implement the trait
-pub struct NodeTestSecretManager(pub Arc<TestSecretManager>);
 
 impl fmt::Debug for TestNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -244,30 +245,5 @@ impl TestNode {
             .await;
         websocket.send_json(&oprf_req).await;
         websocket.assert_receive_text(msg).await;
-    }
-}
-
-#[async_trait]
-impl taceo_oprf_service::secret_manager::SecretManager for NodeTestSecretManager {
-    async fn load_address(&self) -> eyre::Result<Address> {
-        Ok(self.0.wallet_private_key.address())
-    }
-    async fn load_secrets(&self) -> eyre::Result<OprfKeyMaterialStore> {
-        Ok(OprfKeyMaterialStore::new(self.0.store.lock().clone()))
-    }
-
-    async fn get_oprf_key_material(
-        &self,
-        oprf_key_id: OprfKeyId,
-        epoch: ShareEpoch,
-    ) -> eyre::Result<Option<OprfKeyMaterial>> {
-        let key_material_epoch = self.0.store.lock().get(&oprf_key_id).cloned();
-        if let Some(key_material) = key_material_epoch
-            && key_material.is_epoch(epoch)
-        {
-            Ok(Some(key_material))
-        } else {
-            Ok(None)
-        }
     }
 }
