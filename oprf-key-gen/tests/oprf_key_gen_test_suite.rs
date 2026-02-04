@@ -11,9 +11,7 @@ use crate::setup::keygen_asserts;
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_delete_oprf_key() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    println!("starting key-gen!");
     let key_gen = TestKeyGen::start(0, &setup).await?;
-    println!("started key-gen!");
 
     let inserted_key = key_gen
         .secret_manager
