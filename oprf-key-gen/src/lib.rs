@@ -40,7 +40,7 @@ pub(crate) mod services;
 pub use services::secret_manager;
 use tokio_util::sync::CancellationToken;
 
-/// The tasks spawned by the key-gen library. Should call [`KeyGenTask::join`] when shutting down for graceful shutdown.
+/// The tasks spawned by the key-gen library. Should call [`KeyGenTasks::join`] when shutting down for graceful shutdown.
 pub struct KeyGenTasks {
     transaction_handler: tokio::task::JoinHandle<eyre::Result<()>>,
     key_event_watcher: tokio::task::JoinHandle<eyre::Result<()>>,
@@ -57,9 +57,10 @@ impl KeyGenTasks {
     }
 }
 
-/// Starts the OPRF key generation service by spawning all necessary sub-tasks. Additionally, creates an `axum::Router` that serves two routes:
-/// - The health and readiness endpoints from [`health`].
-/// - General info about the deployment from [`info`].
+/// Starts the OPRF key generation service by spawning all necessary sub-tasks. Additionally, creates an `axum::Router` that serves three routes:
+/// - The health and readiness endpoint `/health`.
+/// - The used version `/version`.
+/// - The public wallet of this node `/wallet`.
 ///
 /// The spawned tasks are:
 /// - `key_event_watcher`: subscribes to configured chain and executes the key-gen/reshare protocol
