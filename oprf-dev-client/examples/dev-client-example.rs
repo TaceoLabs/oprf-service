@@ -25,8 +25,8 @@ use oprf_types::{OprfKeyId, ShareEpoch, api::OprfRequest, crypto::OprfPublicKey}
 use rand::{CryptoRng, Rng, SeedableRng as _};
 use rustls::{ClientConfig, RootCertStore};
 use secrecy::{ExposeSecret as _, SecretString};
-use taceo_oprf_dev_client::{Command, ReshareTest, StressTestCommand};
-use tokio::sync::mpsc;
+use taceo_oprf_dev_client::{Command, ReshareTest, StressTestKeyGenCommand, StressTestOprfCommand};
+use tokio::{sync::mpsc, task::JoinSet};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -184,8 +184,72 @@ fn prepare_oprf_stress_test_oprf_request(
     Ok((request_id, blinded_request, oprf_req))
 }
 
-async fn stress_test(
-    cmd: StressTestCommand,
+async fn stress_test_key_gen(
+    cmd: StressTestKeyGenCommand,
+    nodes: &[String],
+    oprf_key_registry: Address,
+    provider: DynProvider,
+    max_wait_time: Duration,
+) -> eyre::Result<()> {
+    // initiate key-gens and reshares
+    let mut key_gens = JoinSet::new();
+    for _ in 0..cmd.runs {
+        let oprf_key_id_u32: u32 = rand::random();
+        let oprf_key_id = OprfKeyId::new(U160::from(oprf_key_id_u32));
+        tracing::debug!("init OPRF key gen with: {oprf_key_id}");
+        oprf_test_utils::init_key_gen(provider.clone(), oprf_key_registry, oprf_key_id).await?;
+        key_gens.spawn({
+            let nodes = nodes.to_vec();
+            async move {
+                health_checks::oprf_public_key_from_services(
+                    oprf_key_id,
+                    ShareEpoch::default(),
+                    &nodes,
+                    max_wait_time,
+                )
+                .await?;
+                eyre::Ok(oprf_key_id)
+            }
+        });
+    }
+    tracing::info!("finished init key-gens, now starting reshares");
+    let mut reshares = JoinSet::new();
+    while let Some(key_gen_result) = key_gens.join_next().await {
+        let key_id = key_gen_result
+            .expect("Can join")
+            .context("Could not fetch oprf-key-gen")?;
+        tracing::debug!("init OPRF reshare for {key_id}");
+        oprf_test_utils::init_reshare(provider.clone(), oprf_key_registry, key_id).await?;
+        // do an oprf to check if correct
+        reshares.spawn({
+            let nodes = nodes.to_vec();
+            async move {
+                health_checks::oprf_public_key_from_services(
+                    key_id,
+                    ShareEpoch::default().next(),
+                    &nodes,
+                    max_wait_time,
+                )
+                .await?;
+                eyre::Ok(())
+            }
+        });
+    }
+    tracing::info!(
+        "started {} key-gens + reshare - waiting to finish",
+        cmd.runs
+    );
+    reshares
+        .join_all()
+        .await
+        .into_iter()
+        .collect::<eyre::Result<Vec<_>>>()
+        .context("cannot finish reshares")?;
+    Ok(())
+}
+
+async fn stress_test_oprf(
+    cmd: StressTestOprfCommand,
     nodes: &[String],
     module: &str,
     threshold: usize,
@@ -339,6 +403,42 @@ async fn wait_for_epoch(
     eyre::bail!("Channel closed without getting {acceptance_num}");
 }
 
+async fn setup_oprf_test(
+    config: &OprfDevClientConfig,
+    provider: DynProvider,
+) -> eyre::Result<(Connector, OprfKeyId, OprfPublicKey)> {
+    let (oprf_key_id, oprf_public_key) = if let Some(oprf_key_id) = config.oprf_key_id {
+        let oprf_key_id = OprfKeyId::new(oprf_key_id);
+        let share_epoch = ShareEpoch::from(config.share_epoch);
+        let oprf_public_key = health_checks::oprf_public_key_from_services(
+            oprf_key_id,
+            share_epoch,
+            &config.nodes,
+            config.max_wait_time,
+        )
+        .await?;
+        (oprf_key_id, oprf_public_key)
+    } else {
+        let (oprf_key_id, oprf_public_key) = taceo_oprf_dev_client::init_key_gen(
+            &config.nodes,
+            config.oprf_key_registry_contract,
+            provider,
+            config.max_wait_time,
+        )
+        .await?;
+        (oprf_key_id, oprf_public_key)
+    };
+
+    // setup TLS config - even if we are http
+    let mut root_store = RootCertStore::empty();
+    root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let rustls_config = ClientConfig::builder()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+    let connector = Connector::Rustls(Arc::new(rustls_config));
+    Ok((connector, oprf_key_id, oprf_public_key))
+}
+
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     nodes_observability::install_tracing(
@@ -367,39 +467,10 @@ async fn main() -> eyre::Result<()> {
         .context("while connecting to RPC")?
         .erased();
 
-    let (oprf_key_id, oprf_public_key) = if let Some(oprf_key_id) = config.oprf_key_id {
-        let oprf_key_id = OprfKeyId::new(oprf_key_id);
-        let share_epoch = ShareEpoch::from(config.share_epoch);
-        let oprf_public_key = health_checks::oprf_public_key_from_services(
-            oprf_key_id,
-            share_epoch,
-            &config.nodes,
-            config.max_wait_time,
-        )
-        .await?;
-        (oprf_key_id, oprf_public_key)
-    } else {
-        let (oprf_key_id, oprf_public_key) = taceo_oprf_dev_client::init_key_gen(
-            &config.nodes,
-            config.oprf_key_registry_contract,
-            provider.clone(),
-            config.max_wait_time,
-        )
-        .await?;
-        (oprf_key_id, oprf_public_key)
-    };
-
-    // setup TLS config - even if we are http
-    let mut root_store = RootCertStore::empty();
-    root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    let rustls_config = ClientConfig::builder()
-        .with_root_certificates(root_store)
-        .with_no_client_auth();
-    let connector = Connector::Rustls(Arc::new(rustls_config));
-
     match config.command.clone() {
         Command::Test => {
             tracing::info!("running oprf-test");
+            let (connector, oprf_key_id, _) = setup_oprf_test(&config, provider.clone()).await?;
             run_oprf(
                 &config.nodes,
                 &config.module,
@@ -410,9 +481,23 @@ async fn main() -> eyre::Result<()> {
             .await?;
             tracing::info!("oprf-test successful");
         }
-        Command::StressTest(cmd) => {
-            tracing::info!("running stress-test");
-            stress_test(
+        Command::StressTestKeyGen(cmd) => {
+            tracing::info!("running key-gen stress-test");
+            stress_test_key_gen(
+                cmd,
+                &config.nodes,
+                config.oprf_key_registry_contract,
+                provider,
+                config.max_wait_time,
+            )
+            .await?;
+            tracing::info!("stress-test successful");
+        }
+        Command::StressTestOprf(cmd) => {
+            tracing::info!("running oprf stress-test");
+            let (connector, oprf_key_id, oprf_public_key) =
+                setup_oprf_test(&config, provider.clone()).await?;
+            stress_test_oprf(
                 cmd,
                 &config.nodes,
                 &config.module,
@@ -426,6 +511,7 @@ async fn main() -> eyre::Result<()> {
         }
         Command::ReshareTest(ReshareTest { acceptance_num }) => {
             tracing::info!("running reshare-test");
+            let (connector, oprf_key_id, _) = setup_oprf_test(&config, provider.clone()).await?;
             reshare_test(
                 &config.nodes,
                 &config.module,

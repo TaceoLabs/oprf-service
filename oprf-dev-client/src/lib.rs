@@ -19,7 +19,7 @@ use uuid::Uuid;
 pub use oprf_test_utils;
 
 #[derive(Clone, Parser, Debug)]
-pub struct StressTestCommand {
+pub struct StressTestOprfCommand {
     /// The amount of OPRF runs
     #[clap(long, env = "OPRF_DEV_CLIENT_RUNS", default_value = "10")]
     pub runs: usize,
@@ -34,6 +34,13 @@ pub struct StressTestCommand {
 }
 
 #[derive(Clone, Parser, Debug)]
+pub struct StressTestKeyGenCommand {
+    /// The amount of OPRF runs
+    #[clap(long, env = "OPRF_DEV_CLIENT_RUNS", default_value = "10")]
+    pub runs: usize,
+}
+
+#[derive(Clone, Parser, Debug)]
 pub struct ReshareTest {
     /// The amount of requests we need to observe to accept the new epoch
     #[clap(long, env = "OPRF_DEV_CLIENT_ACCEPTANCE_NUM", default_value = "50")]
@@ -43,7 +50,8 @@ pub struct ReshareTest {
 #[derive(Clone, Debug, Subcommand)]
 pub enum Command {
     Test,
-    StressTest(StressTestCommand),
+    StressTestOprf(StressTestOprfCommand),
+    StressTestKeyGen(StressTestKeyGenCommand),
     ReshareTest(ReshareTest),
 }
 
