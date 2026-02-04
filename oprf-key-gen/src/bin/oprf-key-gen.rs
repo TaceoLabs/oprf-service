@@ -57,28 +57,25 @@ async fn main() -> eyre::Result<ExitCode> {
             .await
             .context("while initiating key-gen service")?;
 
-    tracing::info!("binding to {}", bind_addr);
-    let tcp_listener = tokio::net::TcpListener::bind(bind_addr)
-        .await
-        .context("while binding tcp-listener")?;
-
-    let axum_cancel_token = cancellation_token.clone();
-    let server = tokio::spawn(async move {
-        // we cancel the token if this task closes for some reason
-        let _drop_guard = axum_cancel_token.drop_guard_ref();
-        tracing::info!(
-            "starting axum server on {}",
-            tcp_listener
-                .local_addr()
-                .map(|x| x.to_string())
-                .unwrap_or(String::from("invalid addr"))
-        );
-        let axum_shutdown_signal = axum_cancel_token.clone();
-        let axum_result = axum::serve(tcp_listener, key_gen_router)
-            .with_graceful_shutdown(async move { axum_shutdown_signal.cancelled().await })
-            .await;
-        tracing::info!("axum server shutdown");
-        axum_result
+    let server = tokio::spawn({
+        let cancellation_token = cancellation_token.clone();
+        async move {
+            // we cancel the token if this task closes for some reason
+            let _drop_guard = cancellation_token.drop_guard_ref();
+            tracing::info!("starting axum server on to {bind_addr}");
+            let tcp_listener = tokio::net::TcpListener::bind(bind_addr)
+                .await
+                .context("while binding tcp-listener")?;
+            let axum_result = axum::serve(tcp_listener, key_gen_router)
+                .with_graceful_shutdown({
+                    let cancellation_token = cancellation_token.clone();
+                    async move { cancellation_token.cancelled().await }
+                })
+                .await
+                .context("while running axum");
+            tracing::info!("axum server shutdown");
+            axum_result
+        }
     });
 
     tracing::info!("everything started successfully - now waiting for shutdown...");
