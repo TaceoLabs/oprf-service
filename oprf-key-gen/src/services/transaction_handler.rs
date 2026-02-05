@@ -1,6 +1,9 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -150,6 +153,7 @@ pub(crate) struct TransactionHandlerInitArgs {
     pub(crate) contract_address: Address,
     pub(crate) provider: DynProvider,
     pub(crate) wallet_address: Address,
+    pub(crate) start_signal: Arc<AtomicBool>,
     pub(crate) cancellation_token: CancellationToken,
 }
 
@@ -169,6 +173,7 @@ impl TransactionHandler {
             contract_address,
             provider,
             wallet_address,
+            start_signal,
             cancellation_token,
         } = args;
         let sub = OprfKeyRegistry::new(contract_address, provider.clone())
@@ -190,6 +195,8 @@ impl TransactionHandler {
             wallet_address,
             provider,
         };
+        tracing::info!("transaction handler is ready");
+        start_signal.store(true, Ordering::Relaxed);
         let handle = tokio::task::spawn({
             let transaction_handler = transaction_handler.clone();
             async move {

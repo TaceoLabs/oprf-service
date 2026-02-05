@@ -7,7 +7,6 @@
 //! From there, they can be fetched by the OPRF nodes that handle OPRF requests.
 //!
 //! For details on the OPRF protocol, see the [design document](https://github.com/TaceoLabs/nullifier-oracle-service/blob/491416de204dcad8d46ee1296d59b58b5be54ed9/docs/oprf.pdf).
-use std::sync::{Arc, atomic::AtomicBool};
 
 use crate::{
     config::OprfKeyGenConfig,
@@ -37,6 +36,7 @@ pub mod config;
 pub mod metrics;
 pub(crate) mod services;
 
+pub use nodes_common::StartedServices;
 pub use services::secret_manager;
 use tokio_util::sync::CancellationToken;
 
@@ -68,6 +68,7 @@ impl KeyGenTasks {
 pub async fn start(
     config: OprfKeyGenConfig,
     secret_manager: SecretManagerService,
+    started_services: StartedServices,
     cancellation_token: CancellationToken,
 ) -> eyre::Result<(axum::Router, KeyGenTasks)> {
     tracing::info!("init oprf key-gen service..");
@@ -133,17 +134,16 @@ pub async fn start(
             contract_address: config.oprf_key_registry_contract,
             provider: provider.clone(),
             wallet_address: address,
+            start_signal: started_services.new_service(),
             cancellation_token: cancellation_token.clone(),
         })
         .await
         .context("while spawning transaction handler")?;
 
-    let key_event_watcher_started_signal = Arc::new(AtomicBool::default());
     tracing::info!("spawning key event watcher..");
     let key_event_watcher = tokio::spawn({
         let provider = provider.clone();
         let contract_address = config.oprf_key_registry_contract;
-        let key_event_watcher_started_signal = key_event_watcher_started_signal.clone();
         let cancellation_token = cancellation_token.clone();
         services::key_event_watcher::key_event_watcher_task(KeyEventWatcherTaskConfig {
             party_id,
@@ -153,12 +153,12 @@ pub async fn start(
             start_block: config.start_block,
             secret_manager,
             transaction_handler,
-            start_signal: key_event_watcher_started_signal,
+            start_signal: started_services.new_service(),
             cancellation_token,
         })
     });
 
-    let key_gen_router = api::routes(address, key_event_watcher_started_signal);
+    let key_gen_router = api::routes(address, started_services);
     Ok((
         key_gen_router,
         KeyGenTasks {

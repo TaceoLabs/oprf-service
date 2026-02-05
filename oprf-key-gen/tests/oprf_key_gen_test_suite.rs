@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use alloy::{primitives::U160, sol_types::SolEvent};
 use oprf_test_utils::{DeploySetup, OPRF_PEER_ADDRESS_0, TEST_TIMEOUT, TestSetup};
 use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
@@ -175,9 +177,30 @@ async fn test_not_a_participant() -> eyre::Result<()> {
 async fn test_health_route() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gen = TestKeyGen::start(0, &setup).await?;
+    let started_services = key_gen.started_services.clone();
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        loop {
+            if started_services.all_started() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await?;
     let result = key_gen.server.get("/health").expect_success().await;
     result.assert_status_ok();
     result.assert_text("healthy");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_health_route_not_ready() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let key_gen = TestKeyGen::start(0, &setup).await?;
+    let _not_started_service = key_gen.started_services.new_service();
+    let result = key_gen.server.get("/health").expect_failure().await;
+    result.assert_status_service_unavailable();
+    result.assert_text("starting");
     Ok(())
 }
 

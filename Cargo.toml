@@ -49,7 +49,7 @@ humantime = "2"
 itertools = "0.14"
 k256 = "0.13"
 metrics = "0.24"
-nodes-common = { package = "taceo-nodes-common", version = "0.2" }
+nodes-common = { package = "taceo-nodes-common", version = ">=0.2.1" }
 nodes-observability = { package = "taceo-nodes-observability", version = "0.1" }
 num-bigint = "0.4"
 parking_lot = "0.12"

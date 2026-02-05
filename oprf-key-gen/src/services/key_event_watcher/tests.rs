@@ -1,4 +1,7 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, atomic::AtomicBool},
+    time::Duration,
+};
 
 use alloy::primitives::U160;
 use groth16_material::circom::{CircomGroth16Material, CircomGroth16MaterialBuilder};
@@ -50,6 +53,7 @@ async fn test_config(setup: &TestSetup) -> (CircomGroth16Material, TransactionHa
         contract_address: setup.oprf_key_registry,
         provider: setup.provider.clone(),
         wallet_address: PEER_ADDRESSES[0],
+        start_signal: Arc::new(AtomicBool::new(false)),
         cancellation_token: setup.cancellation_token.child_token(),
     })
     .await
