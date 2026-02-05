@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.6.0...taceo-oprf-types-v0.7.0)
+
+### 🚜 Refactor
+
+
+- [**breaking**] Auth-module trait now returns the OPRF key id and removed from req ([#433](https://github.com/TaceoLabs/oprf-service/pull/433)) - ([1428e3d](https://github.com/TaceoLabs/oprf-service/commit/1428e3daf88b779838610e1e7b380b48293b006b))
+
+
 ## [0.6.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.5.0...taceo-oprf-types-v0.6.0)
 
 ### ⛰️ Features
