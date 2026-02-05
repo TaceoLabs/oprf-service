@@ -32,7 +32,7 @@ oprf_node_test_secret_manager!(
 );
 
 #[derive(Clone, Serialize, Deserialize)]
-pub(crate) struct ConfigurableTestRequestAuth;
+pub(crate) struct ConfigurableTestRequestAuth(OprfKeyId);
 
 #[derive(Debug, thiserror::Error)]
 #[allow(unused)]
@@ -47,11 +47,12 @@ impl OprfRequestAuthenticator for ConfigurableTestAuthenticator {
     type RequestAuth = ConfigurableTestRequestAuth;
     type RequestAuthError = TestError;
 
-    async fn verify(
+    async fn authenticate(
         &self,
-        _request: &OprfRequest<Self::RequestAuth>,
-    ) -> Result<(), Self::RequestAuthError> {
-        Ok(())
+        request: &OprfRequest<Self::RequestAuth>,
+    ) -> Result<OprfKeyId, Self::RequestAuthError> {
+        let ConfigurableTestRequestAuth(oprf_key_id) = &request.auth;
+        Ok(*oprf_key_id)
     }
 }
 
@@ -202,8 +203,7 @@ impl TestNode {
         let oprf_req = OprfRequest {
             request_id: Uuid::new_v4(),
             blinded_query: blinded_request.blinded_query(),
-            oprf_key_id,
-            auth: (),
+            auth: ConfigurableTestRequestAuth(oprf_key_id),
         };
         let mut websocket = self
             .server
@@ -231,8 +231,7 @@ impl TestNode {
         let oprf_req = OprfRequest {
             request_id: Uuid::new_v4(),
             blinded_query: blinded_request.blinded_query(),
-            oprf_key_id,
-            auth: (),
+            auth: ConfigurableTestRequestAuth(oprf_key_id),
         };
         let mut websocket = self
             .server

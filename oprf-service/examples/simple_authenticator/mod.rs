@@ -1,11 +1,14 @@
 use async_trait::async_trait;
 use axum::{http::StatusCode, response::IntoResponse};
-use oprf_types::api::{OprfRequest, OprfRequestAuthenticator};
+use oprf_types::{
+    OprfKeyId,
+    api::{OprfRequest, OprfRequestAuthenticator},
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Clone, Serialize, Deserialize)]
-pub(crate) struct ExampleOprfRequestAuth;
+pub(crate) struct ExampleOprfRequestAuth(OprfKeyId);
 
 /// Errors returned by the [`ExampleOprfRequestAuthError`].
 #[derive(Debug, thiserror::Error)]
@@ -44,10 +47,11 @@ impl OprfRequestAuthenticator for ExampleOprfRequestAuthenticator {
     type RequestAuth = ExampleOprfRequestAuth;
     type RequestAuthError = ExampleOprfRequestAuthError;
 
-    async fn verify(
+    async fn authenticate(
         &self,
-        _request: &OprfRequest<Self::RequestAuth>,
-    ) -> Result<(), Self::RequestAuthError> {
-        Ok(())
+        request: &OprfRequest<Self::RequestAuth>,
+    ) -> Result<OprfKeyId, Self::RequestAuthError> {
+        let ExampleOprfRequestAuth(oprf_key_id) = &request.auth;
+        Ok(*oprf_key_id)
     }
 }

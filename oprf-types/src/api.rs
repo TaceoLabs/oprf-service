@@ -53,8 +53,6 @@ pub struct OprfRequest<OprfRequestAuth> {
     #[serde(serialize_with = "babyjubjub::serialize_affine")]
     #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
     pub blinded_query: ark_babyjubjub::EdwardsAffine,
-    /// Identifies the OPRF key
-    pub oprf_key_id: OprfKeyId,
     /// The additional authentication info for this request
     pub auth: OprfRequestAuth,
 }
@@ -75,7 +73,6 @@ impl<OprfReqestAuth> fmt::Debug for OprfRequest<OprfReqestAuth> {
         f.debug_struct("OprfRequest")
             .field("req_id", &self.request_id)
             .field("blinded_query", &self.blinded_query.to_string())
-            .field("key_id", &self.oprf_key_id)
             .finish()
     }
 }
@@ -83,25 +80,25 @@ impl<OprfReqestAuth> fmt::Debug for OprfRequest<OprfReqestAuth> {
 /// Trait defining the authentication mechanism for OPRF requests.
 ///
 /// This trait enables the verification of OPRF requests to ensure they are
-/// properly authenticated before processing. It is designed to be implemented
+/// properly authenticated before processing and returns the [`OprfKeyId`] that shall be used for the distributed OPRF protocol. It is designed to be implemented
 /// by authentication services that can validate the authenticity of incoming
 /// OPRF requests.
 #[async_trait]
 pub trait OprfRequestAuthenticator: Send + Sync {
     /// Represents the authentication data type included in the OPRF request.
     type RequestAuth;
-    /// The error type that may be returned by the [`OprfRequestAuthenticator`] on [`OprfRequestAuthenticator::verify`].
+    /// The error type that may be returned by the [`OprfRequestAuthenticator`] on [`OprfRequestAuthenticator::authenticate`].
     ///
     /// This method shall implement `fmt::Display` because a human-readable message will be sent back to the user for troubleshooting.
     ///
     /// **Note:** it is very important that `fmt::Display` does not print any sensitive information. For debugging information, use `fmt::Debug`.
     type RequestAuthError: Send + 'static + std::error::Error;
 
-    /// Verifies the authenticity of an OPRF request.
-    async fn verify(
+    /// Verifies the authenticity of an OPRF request and returns the [`OprfKeyId`] which the service shall use for the distributed OPRF protocol.
+    async fn authenticate(
         &self,
         req: &OprfRequest<Self::RequestAuth>,
-    ) -> Result<(), Self::RequestAuthError>;
+    ) -> Result<OprfKeyId, Self::RequestAuthError>;
 }
 
 /// Dynamic trait object for `OprfRequestAuthenticator` service.

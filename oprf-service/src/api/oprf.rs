@@ -209,13 +209,6 @@ async fn partial_oprf<
     tracing::debug!("starting with request id: {request_id}");
     let oprf_span = tracing::Span::current();
     oprf_span.record("request_id", request_id.to_string());
-    // this is just to fail fast if the key-id doesn't exist. We check in partial_commit again if the key actually exists
-    if !oprf_material_store.contains(init_request.oprf_key_id) {
-        return Err(Error::BadRequest(format!(
-            "unknown OPRF key id: {}",
-            init_request.oprf_key_id
-        )));
-    }
 
     // check that blinded query (B) is not the identity element
     if init_request.blinded_query.is_zero() {
@@ -228,8 +221,8 @@ async fn partial_oprf<
 
     tracing::debug!("verifying request with auth service...");
     let start_verify = Instant::now();
-    req_auth_service
-        .verify(&init_request)
+    let oprf_key_id = req_auth_service
+        .authenticate(&init_request)
         .await
         .map_err(|err| {
             tracing::debug!("Could not auth request: {err:?}");
@@ -239,12 +232,9 @@ async fn partial_oprf<
     ::metrics::histogram!(METRICS_ID_NODE_REQUEST_VERIFY_DURATION)
         .record(duration_verify.as_secs_f64());
 
-    tracing::debug!(
-        "initiating session with key id {:?}...",
-        init_request.oprf_key_id
-    );
+    tracing::debug!("initiating session with key id {oprf_key_id:?}...");
     let (session, commitments) =
-        oprf_material_store.partial_commit(init_request.blinded_query, init_request.oprf_key_id)?;
+        oprf_material_store.partial_commit(init_request.blinded_query, oprf_key_id)?;
 
     let response = OprfResponse {
         commitments,

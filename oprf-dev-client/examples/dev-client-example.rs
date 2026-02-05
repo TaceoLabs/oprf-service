@@ -25,10 +25,14 @@ use oprf_types::{OprfKeyId, ShareEpoch, api::OprfRequest, crypto::OprfPublicKey}
 use rand::{CryptoRng, Rng, SeedableRng as _};
 use rustls::{ClientConfig, RootCertStore};
 use secrecy::{ExposeSecret as _, SecretString};
+use serde::{Deserialize, Serialize};
 use taceo_oprf_dev_client::{Command, ReshareTest, StressTestKeyGenCommand, StressTestOprfCommand};
 use tokio::{sync::mpsc, task::JoinSet};
 use tracing::instrument;
 use uuid::Uuid;
+
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct ExampleOprfRequestAuth(OprfKeyId);
 
 /// The configuration for the OPRF client.
 ///
@@ -95,8 +99,8 @@ pub struct OprfDevClientConfig {
 pub async fn distributed_oprf<R: Rng + CryptoRng>(
     services: &[String],
     module: &str,
-    threshold: usize,
     oprf_key_id: OprfKeyId,
+    threshold: usize,
     action: ark_babyjubjub::Fq,
     connector: Connector,
     rng: &mut R,
@@ -104,7 +108,7 @@ pub async fn distributed_oprf<R: Rng + CryptoRng>(
     let query = action;
     let blinding_factor = BlindingFactor::rand(rng);
     let domain_separator = ark_babyjubjub::Fq::from_be_bytes_mod_order(b"OPRF");
-    let auth = ();
+    let auth = ExampleOprfRequestAuth(oprf_key_id);
 
     let VerifiableOprfOutput {
         output,
@@ -118,7 +122,6 @@ pub async fn distributed_oprf<R: Rng + CryptoRng>(
         services,
         module,
         threshold,
-        oprf_key_id,
         query,
         blinding_factor,
         domain_separator,
@@ -153,8 +156,8 @@ async fn run_oprf(
     let (_, epoch) = distributed_oprf(
         nodes,
         module,
-        threshold,
         oprf_key_id,
+        threshold,
         action,
         connector,
         &mut rng,
@@ -166,7 +169,11 @@ async fn run_oprf(
 
 fn prepare_oprf_stress_test_oprf_request(
     oprf_key_id: OprfKeyId,
-) -> eyre::Result<(Uuid, BlindedOprfRequest, OprfRequest<()>)> {
+) -> eyre::Result<(
+    Uuid,
+    BlindedOprfRequest,
+    OprfRequest<ExampleOprfRequestAuth>,
+)> {
     let mut rng = rand_chacha::ChaCha12Rng::from_entropy();
 
     let request_id = Uuid::new_v4();
@@ -177,8 +184,7 @@ fn prepare_oprf_stress_test_oprf_request(
     let oprf_req = OprfRequest {
         request_id,
         blinded_query: blinded_request.blinded_query(),
-        oprf_key_id,
-        auth: (),
+        auth: ExampleOprfRequestAuth(oprf_key_id),
     };
 
     Ok((request_id, blinded_request, oprf_req))

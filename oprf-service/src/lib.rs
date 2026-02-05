@@ -17,7 +17,7 @@
 //! The general workflow is as follows:
 //! 1) End-users initiate a session at $n$ nodes.
 //!    - the specified OPRF module of the OPRF service receives the request.
-//!    - the module router calls [`oprf_types::api::OprfRequestAuthenticator::verify`] of the provided authentication implementation. This can be anything from no verification to providing credentials.
+//!    - the module router calls [`oprf_types::api::OprfRequestAuthenticator::authenticate`] of the provided authentication implementation. This can be anything from no verification to providing credentials.
 //!    - the node creates a session identified by a UUID and sends a commitment back to the user.
 //! 2) As soon as end-users have opened $t$ sessions, they compute challenges for the answering nodes.
 //!    - the router answers the challenge and deletes all information containing the sessions.
@@ -227,7 +227,7 @@ impl OprfServiceBuilder {
 mod tests {
     use std::{collections::HashMap, fmt, sync::Arc};
 
-    use alloy::uint;
+    use alloy::{primitives::U160, uint};
     use ark_ff::UniformRand as _;
 
     use async_trait::async_trait;
@@ -270,14 +270,14 @@ mod tests {
 
     #[async_trait]
     impl OprfRequestAuthenticator for WithoutAuthentication {
-        type RequestAuth = ();
+        type RequestAuth = OprfKeyId;
         type RequestAuthError = WithoutAuthenticationError;
 
-        async fn verify(
+        async fn authenticate(
             &self,
-            _req: &OprfRequest<Self::RequestAuth>,
-        ) -> Result<(), Self::RequestAuthError> {
-            Ok(())
+            req: &OprfRequest<Self::RequestAuth>,
+        ) -> Result<OprfKeyId, Self::RequestAuthError> {
+            Ok(req.auth)
         }
     }
 
@@ -287,7 +287,7 @@ mod tests {
     }
 
     impl TestOprfNode {
-        async fn send_oprf_request(&mut self, req: &OprfRequest<()>) {
+        async fn send_oprf_request(&mut self, req: &OprfRequest<OprfKeyId>) {
             let oprf_req = serde_json::to_string(req).expect("can serialize");
             self.websocket.send_text(&oprf_req).await;
         }
@@ -310,7 +310,7 @@ mod tests {
 
     async fn test_setup() -> (
         TestOprfNode,
-        OprfRequest<()>,
+        OprfRequest<OprfKeyId>,
         DLogCommitmentsShamir,
         TestServer,
     ) {
@@ -324,8 +324,7 @@ mod tests {
         let oprf_req = OprfRequest {
             request_id,
             blinded_query: blinded_request.blinded_query(),
-            oprf_key_id,
-            auth: (),
+            auth: oprf_key_id,
         };
         let challenge_req = DLogCommitmentsShamir::new(
             ark_babyjubjub::EdwardsAffine::rand(&mut rng),
@@ -415,7 +414,7 @@ mod tests {
     #[tokio::test]
     async fn init_unknown_oprf_key_id() -> eyre::Result<()> {
         let (mut node, mut oprf_req, _, _) = test_setup().await;
-        oprf_req.oprf_key_id = OprfKeyId::new(uint!(1_U160));
+        oprf_req.auth = OprfKeyId::from(U160::from(1));
         node.send_oprf_request(&oprf_req).await;
         node.websocket
             .assert_receive_text("unknown OPRF key id: 1")

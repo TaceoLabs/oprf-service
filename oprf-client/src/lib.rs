@@ -8,7 +8,7 @@ use oprf_core::{
     dlog_equality::DLogEqualityProof,
     oprf::{BlindedOprfRequest, BlindedOprfResponse, BlindingFactor},
 };
-use oprf_types::{OprfKeyId, ShareEpoch, api::OprfRequest, crypto::OprfPublicKey};
+use oprf_types::{ShareEpoch, api::OprfRequest, crypto::OprfPublicKey};
 use serde::Serialize;
 use tokio_tungstenite::tungstenite::{self, http::uri::InvalidUri};
 use tracing::instrument;
@@ -95,7 +95,6 @@ pub async fn distributed_oprf<OprfRequestAuth>(
     services: &[String],
     module: &str,
     threshold: usize,
-    oprf_key_id: OprfKeyId,
     query: ark_babyjubjub::Fq,
     blinding_factor: BlindingFactor,
     domain_separator: ark_babyjubjub::Fq,
@@ -126,7 +125,6 @@ where
         request_id,
         blinded_query: blinded_request.blinded_query(),
         auth,
-        oprf_key_id,
     };
 
     tracing::debug!("initializing sessions at {} services", services.len());
@@ -143,9 +141,7 @@ where
         .iter()
         .all(|pk| *pk == oprf_public_key)
     {
-        tracing::error!(
-            "inconsistent OPRF public keys for OPRF key id {oprf_key_id} received from nodes"
-        );
+        tracing::error!("inconsistent OPRF public keys received from nodes");
         return Err(Error::InconsistentOprfPublicKeys);
     }
 
