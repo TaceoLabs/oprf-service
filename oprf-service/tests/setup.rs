@@ -5,6 +5,7 @@ use ark_ff::UniformRand as _;
 use async_trait::async_trait;
 use axum_test::TestServer;
 use http::StatusCode;
+use nodes_common::StartedServices;
 use oprf_core::oprf::BlindingFactor;
 use oprf_test_utils::{
     PEER_PRIVATE_KEYS, TEST_TIMEOUT, TestSetup, oprf_node_test_secret_manager,
@@ -19,7 +20,7 @@ use rand::{CryptoRng, Rng};
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use taceo_oprf_service::{
-    OprfServiceBuilder, StartedServices,
+    OprfServiceBuilder,
     config::{Environment, OprfNodeConfig},
 };
 use tokio_util::sync::CancellationToken;

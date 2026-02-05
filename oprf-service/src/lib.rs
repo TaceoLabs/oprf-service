@@ -50,7 +50,7 @@ pub mod config;
 pub mod metrics;
 pub(crate) mod services;
 
-pub use services::StartedServices;
+pub use nodes_common::StartedServices;
 pub use services::oprf_key_material_store;
 pub use services::secret_manager;
 
@@ -83,7 +83,7 @@ impl OprfServiceBuilder {
     pub async fn init(
         config: OprfNodeConfig,
         secret_manager: SecretManagerService,
-        mut started_services: StartedServices,
+        started_services: StartedServices,
         cancellation_token: CancellationToken,
     ) -> eyre::Result<Self> {
         ::metrics::gauge!(METRICS_ID_NODE_SESSIONS_OPEN).set(0);

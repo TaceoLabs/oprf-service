@@ -8,6 +8,7 @@ use std::{process::ExitCode, sync::Arc};
 
 use clap::Parser;
 use eyre::Context;
+use nodes_common::StartedServices;
 use taceo_oprf_key_gen::{
     config::{Environment, OprfKeyGenConfig},
     secret_manager::postgres::PostgresSecretManager,
@@ -52,10 +53,14 @@ async fn main() -> eyre::Result<ExitCode> {
     let bind_addr = config.bind_addr;
     let max_wait_time_shutdown = config.max_wait_time_shutdown;
 
-    let (key_gen_router, key_gen_task) =
-        taceo_oprf_key_gen::start(config, secret_manager, cancellation_token.clone())
-            .await
-            .context("while initiating key-gen service")?;
+    let (key_gen_router, key_gen_task) = taceo_oprf_key_gen::start(
+        config,
+        secret_manager,
+        StartedServices::new(),
+        cancellation_token.clone(),
+    )
+    .await
+    .context("while initiating key-gen service")?;
 
     let server = tokio::spawn({
         let cancellation_token = cancellation_token.clone();

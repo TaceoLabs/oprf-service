@@ -1,6 +1,7 @@
 use std::{fmt, sync::Arc, time::Duration};
 
 use axum_test::TestServer;
+use nodes_common::StartedServices;
 use oprf_test_utils::test_secret_manager::TestSecretManager;
 use oprf_test_utils::{PEER_PRIVATE_KEYS, TestSetup, key_gen_test_secret_manager};
 use taceo_oprf_key_gen::KeyGenTasks;
@@ -12,6 +13,7 @@ pub struct TestKeyGen {
     pub secret_manager: Arc<TestSecretManager>,
     pub server: TestServer,
     pub key_gen_task: KeyGenTasks,
+    pub started_services: StartedServices,
     pub cancellation_token: CancellationToken,
 }
 
@@ -63,8 +65,15 @@ impl TestKeyGen {
             db_schema: "test".to_owned(),
         };
 
-        let (router, key_gen_task) =
-            taceo_oprf_key_gen::start(config, keygen_secret_manager, child_token.clone()).await?;
+        let started_services = StartedServices::new();
+
+        let (router, key_gen_task) = taceo_oprf_key_gen::start(
+            config,
+            keygen_secret_manager,
+            started_services.clone(),
+            child_token.clone(),
+        )
+        .await?;
         let server = TestServer::builder()
             .http_transport()
             .build(router)
@@ -74,6 +83,7 @@ impl TestKeyGen {
             party_id,
             server,
             key_gen_task,
+            started_services,
             cancellation_token: child_token,
         })
     }

@@ -12,9 +12,8 @@ use axum::{
     response::IntoResponse,
     routing::get,
 };
+use nodes_common::StartedServices;
 use tower_http::set_header::SetResponseHeaderLayer;
-
-use crate::services::StartedServices;
 
 /// Create a router containing the health endpoints.
 ///
