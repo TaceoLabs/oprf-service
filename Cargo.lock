@@ -6463,9 +6463,9 @@ dependencies = [
 
 [[package]]
 name = "taceo-ark-serde-compat"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51f9b64004b819c656f1c5bb439894faf7cc8abb9f315ccf50f19cba14ba12c8"
+checksum = "07528b4dd1a0c9e49ef352f96219c611af0aa2f7cbd97ddb7276dcf3c2cf8dd0"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -6478,9 +6478,9 @@ dependencies = [
 
 [[package]]
 name = "taceo-circom-types"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "769ac948012e3a64526c1ab29e214d8cf718bc52b30411e01adacd68596f6843"
+checksum = "677eb3ed8275b2f179d4b1a93126a51c5b4f409c5ea9d7bc50398b13e517e30b"
 dependencies = [
  "ark-bn254",
  "ark-ec",
