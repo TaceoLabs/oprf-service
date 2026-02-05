@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.2.0...taceo-oprf-dev-client-v0.3.0)
+
+### 🚜 Refactor
+
+
+- [**breaking**] Auth-module trait now returns the OPRF key id and removed from req ([#433](https://github.com/TaceoLabs/oprf-service/pull/433)) - ([1428e3d](https://github.com/TaceoLabs/oprf-service/commit/1428e3daf88b779838610e1e7b380b48293b006b))
+
+### 🧪 Testing
+
+
+- Added stress-test for key-gen in dev-client ([#429](https://github.com/TaceoLabs/oprf-service/pull/429)) - ([e41e864](https://github.com/TaceoLabs/oprf-service/commit/e41e8641ca3197e051193a40e185575a4a9465e9))
+
+
 ## [0.2.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.1.0...taceo-oprf-dev-client-v0.2.0)
 
 ### 🚜 Refactor

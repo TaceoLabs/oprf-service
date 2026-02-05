@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.2.0...taceo-oprf-test-utils-v0.2.1)
+
+### 🐛 Bug Fixes
+
+
+- Prevents empty schema name for postgres secret-manager ([#423](https://github.com/TaceoLabs/oprf-service/pull/423)) - ([b71d25a](https://github.com/TaceoLabs/oprf-service/commit/b71d25a88f58728f0548d12bd27e04d9c4c2528d))
+
+### 🧪 Testing
+
+
+- Added macro for key-gen/node-secret-manager in test_utils - ([91af688](https://github.com/TaceoLabs/oprf-service/commit/91af688626d3cc11b2160fd865ac155c78d7fe1c))
+
+
 ## [0.2.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.1.0...taceo-oprf-test-utils-v0.2.0)
 
 ### 🚜 Refactor

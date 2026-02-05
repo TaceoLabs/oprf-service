@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.2.0...taceo-oprf-v0.3.0)
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Updated the following local packages: taceo-oprf-types, taceo-oprf-client, taceo-oprf-dev-client, taceo-oprf-service - ([0000000](https://github.com/TaceoLabs/oprf-service/commit/0000000))
+
+
 ## [0.2.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.1.0...taceo-oprf-v0.2.0)
 
 ### 📚 Documentation
@@ -36,4 +44,3 @@
 
 - Updated readme - ([279f20e](https://github.com/TaceoLabs/oprf-service/commit/279f20ef722aecebc8a2a9f58a9688c4d2f88c80))
 - Rename submodule to contracts - ([e58e29a](https://github.com/TaceoLabs/oprf-service/commit/e58e29a3eba67e68ab69de2093c689060a7bb881))
-

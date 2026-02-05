@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.2.0...taceo-oprf-key-gen-v0.3.0)
+
+### 🐛 Bug Fixes
+
+
+- Prevents empty schema name for postgres secret-manager ([#423](https://github.com/TaceoLabs/oprf-service/pull/423)) - ([b71d25a](https://github.com/TaceoLabs/oprf-service/commit/b71d25a88f58728f0548d12bd27e04d9c4c2528d))
+
+### 🚜 Refactor
+
+
+- [**breaking**] Removed StartedServices and moved to nodes-common ([#431](https://github.com/TaceoLabs/oprf-service/pull/431)) - ([c3d065e](https://github.com/TaceoLabs/oprf-service/commit/c3d065e7dd17ee6ddde756c18498d12e50d66cc0))
+- Moved tcp-listener in key-gen to axum task - ([81c9ea1](https://github.com/TaceoLabs/oprf-service/commit/81c9ea1de8294750a9c3a8d2d64102e0957a7ae8))
+- Key-gen tasks now propagte error to callsite if they crash - ([46e51df](https://github.com/TaceoLabs/oprf-service/commit/46e51dfb1d194c27d8330631e8127d7e0a01a79d))
+- Remove unnecessary check as we check that at callsite as well - ([b2d97d6](https://github.com/TaceoLabs/oprf-service/commit/b2d97d66a580b1de0795a164417f586d4f3f4698))
+- [**breaking**] Key-gen lib now only spawns tasks/axum router and we expect - ([7d91c6e](https://github.com/TaceoLabs/oprf-service/commit/7d91c6e78421f9563a0bbfca01fd6ce144452836))
+
+### 📚 Documentation
+
+
+- Fixes broken docs - ([9f5f0e4](https://github.com/TaceoLabs/oprf-service/commit/9f5f0e4629e3205704c988dbcf42bc6e227eeec3))
+
+### 🧪 Testing
+
+
+- More tests for key-gen event watcher - ([78727c5](https://github.com/TaceoLabs/oprf-service/commit/78727c5dc9be57ebcf814694b6752efaee28ba4b))
+- Added more tests to key-gen test suite - ([d7db1df](https://github.com/TaceoLabs/oprf-service/commit/d7db1dffdf2bb13d498eff69dc5cdf60f643a6a6))
+- Updated test-setup for key-gen and added axum tests - ([ae246b5](https://github.com/TaceoLabs/oprf-service/commit/ae246b5b895ea2228fc25c44e105b616ac55e95b))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Removed debug logs from test - ([fc51577](https://github.com/TaceoLabs/oprf-service/commit/fc515774a830baba23f6fddbec0d6650deef104b))
+
+
 ## [0.2.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.1.0...taceo-oprf-key-gen-v0.2.0)
 
 ### ⛰️ Features

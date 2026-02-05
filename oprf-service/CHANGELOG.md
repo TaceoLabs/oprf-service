@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.5.0...taceo-oprf-service-v0.6.0)
+
+### 🐛 Bug Fixes
+
+
+- Prevents empty schema name for postgres secret-manager ([#423](https://github.com/TaceoLabs/oprf-service/pull/423)) - ([b71d25a](https://github.com/TaceoLabs/oprf-service/commit/b71d25a88f58728f0548d12bd27e04d9c4c2528d))
+
+### 🚜 Refactor
+
+
+- [**breaking**] Auth-module trait now returns the OPRF key id and removed from req ([#433](https://github.com/TaceoLabs/oprf-service/pull/433)) - ([1428e3d](https://github.com/TaceoLabs/oprf-service/commit/1428e3daf88b779838610e1e7b380b48293b006b))
+- [**breaking**] Removed StartedServices and moved to nodes-common ([#431](https://github.com/TaceoLabs/oprf-service/pull/431)) - ([c3d065e](https://github.com/TaceoLabs/oprf-service/commit/c3d065e7dd17ee6ddde756c18498d12e50d66cc0))
+
+### 🧪 Testing
+
+
+- More tests for key-gen event watcher - ([78727c5](https://github.com/TaceoLabs/oprf-service/commit/78727c5dc9be57ebcf814694b6752efaee28ba4b))
+
+
 ## [0.5.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.4.0...taceo-oprf-service-v0.5.0)
 
 ### ⛰️ Features
