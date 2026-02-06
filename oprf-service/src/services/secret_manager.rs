@@ -7,13 +7,11 @@
 //! - AWS (cloud storage)
 //! - Postgres
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use alloy::primitives::Address;
 use async_trait::async_trait;
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfKeyMaterial};
-
-use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
 
 #[cfg(feature = "aws")]
 pub mod aws;
@@ -33,8 +31,8 @@ pub trait SecretManager {
     /// Loads the EVM `Address` of this node.
     async fn load_address(&self) -> eyre::Result<Address>;
 
-    /// Loads the DLog secrets and creates a [`OprfKeyMaterialStore`].
-    async fn load_secrets(&self) -> eyre::Result<OprfKeyMaterialStore>;
+    /// Loads the DLog secrets and their associated [`OprfKeyId`]s.
+    async fn load_secrets(&self) -> eyre::Result<HashMap<OprfKeyId, OprfKeyMaterial>>;
 
     /// Returns the [`OprfKeyMaterial`] for the given [`OprfKeyId`] and [`ShareEpoch`] if it exists.
     ///

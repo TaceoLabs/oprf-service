@@ -122,10 +122,36 @@ impl OprfServiceBuilder {
         );
 
         tracing::info!("init OPRF material-store..");
-        let oprf_key_material_store = secret_manager
-            .load_secrets()
-            .await
-            .context("while loading secrets from secret-manager")?;
+        let oprf_key_material_store = OprfKeyMaterialStore::new(
+            secret_manager
+                .load_secrets()
+                .await
+                .context("while loading secrets from secret-manager")?,
+        );
+
+        tokio::task::spawn({
+            let secret_manager = secret_manager.clone();
+            let oprf_key_material_store = oprf_key_material_store.clone();
+            let mut interval = tokio::time::interval(config.reload_key_material_interval);
+            async move {
+                // first tick triggers instantly
+                interval.tick().await;
+                loop {
+                    interval.tick().await;
+                    tracing::info!("Refreshing key-material store - loading from DB");
+                    match secret_manager.load_secrets().await {
+                        Ok(refreshed_key_material) => {
+                            oprf_key_material_store.reload(refreshed_key_material)
+                        }
+                        // In case we get an error from the secret-manager, we simply log the error - we can still serve OPRF requests, nothing wrong with that.
+                        // If there is a new key-gen/reshare, we will die if the DB is really down, but there is no reason to stop the service in this case.
+                        Err(err) => tracing::error!(
+                            "Could not load key-material store from secret-manager: {err:?}"
+                        ),
+                    }
+                }
+            }
+        });
 
         tracing::info!("spawning key event watcher..");
         let key_event_watcher = tokio::spawn({

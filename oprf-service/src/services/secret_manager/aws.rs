@@ -25,7 +25,6 @@ use secrecy::zeroize::Zeroize as _;
 use secrecy::{ExposeSecret, SecretString};
 use tracing::instrument;
 
-use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
 use crate::services::secret_manager::SecretManager;
 
 /// AWS Secret Manager client wrapper.
@@ -78,12 +77,13 @@ impl SecretManager for AwsSecretManager {
         hex_private_key.zeroize();
         Ok(private_key.address())
     }
+
     /// Loads all OPRF secrets from AWS Secrets Manager.
     ///
     /// Iterates through all secrets with the configured prefix and deserializes
-    /// them into an [`OprfKeyMaterialStore`].
+    /// them into an [`OprfKeyMaterial`]s.
     #[instrument(level = "info", skip_all)]
-    async fn load_secrets(&self) -> eyre::Result<OprfKeyMaterialStore> {
+    async fn load_secrets(&self) -> eyre::Result<HashMap<OprfKeyId, OprfKeyMaterial>> {
         tracing::debug!(
             "loading OPRF secrets with prefix: {}",
             self.oprf_secret_id_prefix
@@ -135,7 +135,7 @@ impl SecretManager for AwsSecretManager {
                 break;
             }
         }
-        Ok(OprfKeyMaterialStore::new(oprf_materials))
+        Ok(oprf_materials)
     }
 
     #[instrument(level = "info", skip(self))]

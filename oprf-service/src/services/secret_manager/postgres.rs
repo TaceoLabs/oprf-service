@@ -17,7 +17,7 @@ use secrecy::{ExposeSecret as _, SecretString, zeroize::ZeroizeOnDrop};
 use sqlx::{Executor, PgPool, postgres::PgPoolOptions};
 use tracing::instrument;
 
-use crate::{oprf_key_material_store::OprfKeyMaterialStore, secret_manager::SecretManager};
+use crate::secret_manager::SecretManager;
 
 fn sanitize_identifier(input: &str) -> eyre::Result<()> {
     eyre::ensure!(!input.is_empty(), "Empty schema is not allowed");
@@ -103,7 +103,7 @@ impl SecretManager for PostgresSecretManager {
     }
 
     #[instrument(level = "info", skip_all)]
-    async fn load_secrets(&self) -> eyre::Result<OprfKeyMaterialStore> {
+    async fn load_secrets(&self) -> eyre::Result<HashMap<OprfKeyId, OprfKeyMaterial>> {
         tracing::info!("fetching all OPRF keys from DB..");
         let rows: Vec<ShareRow> = sqlx::query_as(
             r#"
@@ -124,7 +124,7 @@ impl SecretManager for PostgresSecretManager {
             .map(db_row_into_key_material)
             .collect::<HashMap<_, _>>();
         tracing::info!("successfully parsed {} OPRF entries", map.len());
-        Ok(OprfKeyMaterialStore::new(map))
+        Ok(map)
     }
 
     #[instrument(level = "info", skip_all)]
@@ -165,7 +165,7 @@ fn from_db_ark_deserialize_uncompressed<T: CanonicalDeserialize>(b: impl AsRef<[
     T::deserialize_uncompressed_unchecked(b.as_ref()).expect("DB is sane")
 }
 
-/// Converts a row from the DB to an entry in the [`OprfKeyMaterialStore`]. This method will panic if the DB is not sane (i.e., has corrupted data stored).
+/// Converts a row from the DB to an [`OprfKeyId`] and an associated [`OprfKeyMaterial`]. This method will panic if the DB is not sane (i.e., has corrupted data stored).
 fn db_row_into_key_material(row: ShareRow) -> (OprfKeyId, OprfKeyMaterial) {
     let id = OprfKeyId::from_le_slice(&row.id);
     let share = from_db_ark_deserialize_uncompressed::<DLogShareShamir>(&row.share);

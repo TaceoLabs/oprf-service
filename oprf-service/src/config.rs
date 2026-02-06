@@ -70,6 +70,15 @@ pub struct OprfNodeConfig {
     )]
     pub chain_ws_rpc_url: SecretString,
 
+    /// Interval for which the node reloads all oprf-secrets from the secret-manager. Can be a rather long and only acts as fail-safe.
+    #[clap(
+        long,
+        env = "OPRF_NODE_RELOAD_KEY_MATERIAL_INTERVAL",
+        default_value="1day",
+        value_parser = humantime::parse_duration
+    )]
+    pub reload_key_material_interval: Duration,
+
     /// Max time to wait for oprf key material secret retrieval from secret manager during key-event processing.
     #[clap(
         long,

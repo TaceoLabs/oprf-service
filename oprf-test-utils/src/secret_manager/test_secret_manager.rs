@@ -75,6 +75,7 @@ macro_rules! key_gen_test_secret_manager {
 macro_rules! oprf_node_test_secret_manager {
     ($trait: path, $name: ident) => {
         mod impl_secret_manager {
+            use std::collections::HashMap;
             use std::sync::Arc;
 
             use alloy::primitives::Address;
@@ -94,8 +95,8 @@ macro_rules! oprf_node_test_secret_manager {
                 async fn load_address(&self) -> eyre::Result<Address> {
                     self.0.load_address().await
                 }
-                async fn load_secrets(&self) -> eyre::Result<OprfKeyMaterialStore> {
-                    Ok(OprfKeyMaterialStore::new(self.0.store.lock().clone()))
+                async fn load_secrets(&self) -> eyre::Result<HashMap<OprfKeyId, OprfKeyMaterial>> {
+                    Ok(self.0.store.lock().clone())
                 }
 
                 async fn get_oprf_key_material(

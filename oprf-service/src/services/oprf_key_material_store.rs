@@ -83,6 +83,17 @@ impl OprfKeyMaterialStore {
         self.0.read().contains_key(&oprf_key_id)
     }
 
+    /// Swaps the inner `HashMap` with the provided `HashMap`.
+    pub(crate) fn reload(&self, mut inner: HashMap<OprfKeyId, OprfKeyMaterial>) {
+        tracing::info!("new store size: {}", inner.len());
+        ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).set(inner.len() as f64);
+        {
+            let mut current = self.0.write();
+            std::mem::swap(&mut *current, &mut inner);
+        }
+        tracing::info!("old store size: {}", inner.len());
+    }
+
     /// Computes C = B * x_share and commitments to a random value k_share, where x_share is identified by [`OprfKeyId`].
     ///
     /// This generates the node's partial contribution used in the DLogEqualityProof and returns an [`OprfSession`] and a [`PartialDLogCommitmentsShamir`].

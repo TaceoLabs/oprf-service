@@ -1,4 +1,7 @@
-use crate::secret_manager::{SecretManager, postgres::PostgresSecretManager};
+use crate::{
+    oprf_key_material_store::OprfKeyMaterialStore,
+    secret_manager::{SecretManager, postgres::PostgresSecretManager},
+};
 use alloy::primitives::U160;
 use ark_serialize::CanonicalSerialize;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
@@ -157,7 +160,7 @@ async fn test_load_all_secret_three_shares() -> eyre::Result<()> {
     insert_row(oprf_key_id1, share1.clone(), epoch1, public_key1, &mut conn).await?;
     insert_row(oprf_key_id2, share2.clone(), epoch2, public_key2, &mut conn).await?;
 
-    let key_material_store = secret_manager.load_secrets().await?;
+    let key_material_store = OprfKeyMaterialStore::new(secret_manager.load_secrets().await?);
     assert_eq!(key_material_store.len(), 3);
     let (session0, _) = key_material_store
         .partial_commit(rand::random(), oprf_key_id0)
