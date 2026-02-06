@@ -8,6 +8,7 @@ use alloy::{
     providers::DynProvider,
 };
 use clap::{Parser, Subcommand};
+use eyre::Context;
 use oprf_client::{Connector, OprfSessions};
 use oprf_core::ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir};
 use oprf_test_utils::health_checks;
@@ -87,8 +88,9 @@ pub async fn send_init_requests<OprfRequestAuth: Clone + Serialize + Send + 'sta
         let connector = connector.clone();
         init_results.spawn(async move {
             let init_start = Instant::now();
-            let sessions =
-                oprf_client::init_sessions(&nodes, &module, threshold, req, connector).await?;
+            let sessions = oprf_client::init_sessions(&nodes, &module, threshold, req, connector)
+                .await
+                .context(format!("while handling session-id: {id}"))?;
             let init_duration = init_start.elapsed();
             eyre::Ok((id, sessions, init_duration))
         });
@@ -143,7 +145,9 @@ pub async fn send_finish_requests(
         let session = sessions.remove(&id).expect("is there");
         finish_results.spawn(async move {
             let finish_start = Instant::now();
-            let responses = oprf_client::finish_sessions(session, req.clone()).await?;
+            let responses = oprf_client::finish_sessions(session, req.clone())
+                .await
+                .context(format!("while handling session-id: {id}"))?;
             let duration = finish_start.elapsed();
             eyre::Ok((id, responses, duration))
         });
