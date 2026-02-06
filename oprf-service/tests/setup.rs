@@ -93,6 +93,7 @@ impl TestNode {
             ws_max_message_size: 1024 * 1024,
             session_lifetime: Duration::from_secs(10),
             get_oprf_key_material_timeout: Duration::from_secs(60),
+            poll_oprf_key_material_interval: Duration::from_millis(200),
             start_block: None,
             version_req: "1.0.0".parse().unwrap(),
             region: "EU".to_owned(),

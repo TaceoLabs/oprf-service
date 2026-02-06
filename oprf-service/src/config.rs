@@ -79,6 +79,15 @@ pub struct OprfNodeConfig {
     )]
     pub get_oprf_key_material_timeout: Duration,
 
+    /// Polling interval during key-material retrieval from secret-manager.
+    #[clap(
+        long,
+        env = "OPRF_NODE_POLL_OPRF_KEY_MATERIAL_INTERVAL",
+        default_value="500ms",
+        value_parser = humantime::parse_duration
+    )]
+    pub poll_oprf_key_material_interval: Duration,
+
     /// The block number to start listening for events from the OprfKeyRegistry contract.
     /// If not set, will start from the latest block.
     #[clap(long, env = "OPRF_NODE_START_BLOCK")]

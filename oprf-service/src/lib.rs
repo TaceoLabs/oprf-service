@@ -138,6 +138,7 @@ impl OprfServiceBuilder {
                 secret_manager,
                 oprf_key_material_store: oprf_key_material_store.clone(),
                 get_oprf_key_material_timeout: config.get_oprf_key_material_timeout,
+                poll_oprf_key_material_interval: config.poll_oprf_key_material_interval,
                 start_block: config.start_block,
                 started: started_services.new_service(),
                 cancellation_token,

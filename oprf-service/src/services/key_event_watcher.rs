@@ -36,6 +36,7 @@ pub(crate) struct KeyEventWatcherTaskArgs {
     pub(crate) secret_manager: SecretManagerService,
     pub(crate) oprf_key_material_store: OprfKeyMaterialStore,
     pub(crate) get_oprf_key_material_timeout: Duration,
+    pub(crate) poll_oprf_key_material_interval: Duration,
     pub(crate) start_block: Option<u64>,
     pub(crate) started: Arc<AtomicBool>,
     pub(crate) cancellation_token: CancellationToken,
@@ -81,6 +82,7 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
         secret_manager,
         oprf_key_material_store,
         get_oprf_key_material_timeout,
+        poll_oprf_key_material_interval,
         start_block,
         started,
         cancellation_token,
@@ -118,6 +120,7 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
                 &oprf_key_material_store,
                 &secret_manager,
                 get_oprf_key_material_timeout,
+                poll_oprf_key_material_interval,
                 &cancellation_token,
             )
             .await
@@ -152,6 +155,7 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
             &oprf_key_material_store,
             &secret_manager,
             get_oprf_key_material_timeout,
+            poll_oprf_key_material_interval,
             &cancellation_token,
         )
         .await
@@ -166,6 +170,7 @@ async fn handle_log(
     oprf_key_material_store: &OprfKeyMaterialStore,
     secret_manager: &SecretManagerService,
     get_oprf_key_material_timeout: Duration,
+    poll_oprf_key_material_interval: Duration,
     cancellation_token: &CancellationToken,
 ) -> eyre::Result<()> {
     match log.topic0() {
@@ -174,6 +179,7 @@ async fn handle_log(
             oprf_key_material_store,
             secret_manager,
             get_oprf_key_material_timeout,
+            poll_oprf_key_material_interval,
             cancellation_token,
         )
         .await
@@ -195,6 +201,7 @@ async fn handle_finalize(
     oprf_key_material_store: &OprfKeyMaterialStore,
     secret_manager: &SecretManagerService,
     get_oprf_key_material_timeout: Duration,
+    poll_oprf_key_material_interval: Duration,
     cancellation_token: &CancellationToken,
 ) -> eyre::Result<()> {
     tracing::info!("Received Finalize event");
@@ -209,6 +216,7 @@ async fn handle_finalize(
         oprf_key_material_store.clone(),
         secret_manager.clone(),
         get_oprf_key_material_timeout,
+        poll_oprf_key_material_interval,
         epoch.into(),
         cancellation_token.clone(),
     ));
@@ -221,11 +229,12 @@ async fn fetch_oprf_key_material_from_secret_manager(
     oprf_key_material_store: OprfKeyMaterialStore,
     secret_manager: SecretManagerService,
     get_oprf_key_material_timeout: Duration,
+    poll_oprf_key_material_interval: Duration,
     epoch: ShareEpoch,
     cancellation_token: CancellationToken,
 ) {
     tracing::info!("trying to fetch {oprf_key_id} for epoch {epoch}");
-    let mut interval = tokio::time::interval(Duration::from_secs(5));
+    let mut interval = tokio::time::interval(poll_oprf_key_material_interval);
     let cancellation_token_timeout = cancellation_token.clone();
     if tokio::time::timeout(get_oprf_key_material_timeout, async {
         loop {
