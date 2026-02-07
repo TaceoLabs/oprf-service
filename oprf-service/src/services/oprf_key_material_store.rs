@@ -84,14 +84,14 @@ impl OprfKeyMaterialStore {
     }
 
     /// Swaps the inner `HashMap` with the provided `HashMap`.
-    pub(crate) fn reload(&self, mut inner: HashMap<OprfKeyId, OprfKeyMaterial>) {
-        tracing::info!("new store size: {}", inner.len());
-        ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).set(inner.len() as f64);
+    pub(crate) fn reload(&self, mut new_store: HashMap<OprfKeyId, OprfKeyMaterial>) {
+        tracing::info!("new store size: {}", new_store.len());
+        ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).set(new_store.len() as f64);
         {
             let mut current = self.0.write();
-            std::mem::swap(&mut *current, &mut inner);
+            std::mem::swap(&mut *current, &mut new_store);
         }
-        tracing::info!("old store size: {}", inner.len());
+        tracing::info!("old store size: {}", new_store.len());
     }
 
     /// Computes C = B * x_share and commitments to a random value k_share, where x_share is identified by [`OprfKeyId`].
