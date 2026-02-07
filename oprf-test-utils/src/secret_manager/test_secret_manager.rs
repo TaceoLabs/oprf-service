@@ -18,22 +18,24 @@ use crate::TEST_TIMEOUT;
 
 #[macro_export]
 macro_rules! key_gen_test_secret_manager {
-    ($trait: path, $name: ident) => {
+    ($module: path, $name: ident) => {
         mod impl_secret_manager {
             use std::sync::Arc;
 
             use alloy::signers::local::PrivateKeySigner;
             use async_trait::async_trait;
+            use eyre::Context;
             use oprf_core::ddlog_equality::shamir::DLogShareShamir;
             use oprf_test_utils::test_secret_manager::TestSecretManager;
             use oprf_types::{
                 OprfKeyId, ShareEpoch,
                 crypto::{OprfKeyMaterial, OprfPublicKey},
             };
+            use $module::{SecretManager, SecretManagerError, StoreDLogShare};
             // need a new type to implement the trait
             pub struct $name(pub Arc<TestSecretManager>);
             #[async_trait]
-            impl $trait for $name {
+            impl SecretManager for $name {
                 async fn load_or_insert_wallet_private_key(
                     &self,
                 ) -> eyre::Result<PrivateKeySigner> {
@@ -50,20 +52,52 @@ macro_rules! key_gen_test_secret_manager {
                         .await
                 }
 
-                async fn remove_oprf_key_material(&self, rp_id: OprfKeyId) -> eyre::Result<()> {
-                    self.0.remove_oprf_key_material(rp_id).await
+                async fn remove_oprf_key_material(
+                    &self,
+                    rp_id: OprfKeyId,
+                ) -> Result<(), SecretManagerError> {
+                    self.0
+                        .remove_oprf_key_material(rp_id)
+                        .await
+                        .context("while remove oprf key material")?;
+                    Ok(())
+                }
+
+                async fn remove_oprf_key_material_batch(
+                    &self,
+                    oprf_key_ids: &[OprfKeyId],
+                ) -> eyre::Result<()> {
+                    for oprf_key_id in oprf_key_ids {
+                        self.remove_oprf_key_material(*oprf_key_id).await?;
+                    }
+                    Ok(())
                 }
 
                 async fn store_dlog_share(
                     &self,
-                    oprf_key_id: OprfKeyId,
-                    public_key: OprfPublicKey,
-                    epoch: ShareEpoch,
-                    share: DLogShareShamir,
-                ) -> eyre::Result<()> {
+                    store_dlog_share: StoreDLogShare,
+                ) -> Result<(), SecretManagerError> {
+                    let StoreDLogShare {
+                        oprf_key_id,
+                        public_key,
+                        epoch,
+                        share,
+                    } = store_dlog_share;
                     self.0
                         .store_dlog_share(oprf_key_id, public_key, epoch, share)
                         .await
+                        .context("while store DlogShare")?;
+                    Ok(())
+                }
+
+                async fn store_dlog_share_batch(
+                    &self,
+                    store_dlog_shares: Vec<StoreDLogShare>,
+                ) -> eyre::Result<()> {
+                    for store_dlog_share in store_dlog_shares {
+                        self.store_dlog_share(store_dlog_share).await?;
+                    }
+                    Ok(())
                 }
             }
         }

@@ -155,6 +155,7 @@ pub async fn start(
             transaction_handler,
             start_signal: started_services.new_service(),
             cancellation_token,
+            recover_task_flush_interval: config.recover_task_flush_interval,
         })
     });
 

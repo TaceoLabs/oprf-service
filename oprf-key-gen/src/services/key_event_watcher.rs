@@ -4,22 +4,27 @@
 //!
 //! The watcher subscribes to various key generation events and reports contributions back to the contract.
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
 };
 
 use crate::{
     metrics::{
         METRICS_ATTRID_PROTOCOL, METRICS_ATTRID_ROLE, METRICS_ATTRVAL_PROTOCOL_KEY_GEN,
         METRICS_ATTRVAL_PROTOCOL_RESHARE, METRICS_ATTRVAL_ROLE_CONSUMER,
-        METRICS_ATTRVAL_ROLE_PRODUCER, METRICS_ID_KEY_GEN_ABORT, METRICS_ID_KEY_GEN_DELETION,
+        METRICS_ATTRVAL_ROLE_PRODUCER, METRICS_ID_KEY_GEN_ABORT,
+        METRICS_ID_KEY_GEN_DELETE_DLOG_SHARE_RECOVERY, METRICS_ID_KEY_GEN_DELETION,
         METRICS_ID_KEY_GEN_NOT_ENOUGH_PRODUCERS, METRICS_ID_KEY_GEN_ROUND_1_FINISH,
         METRICS_ID_KEY_GEN_ROUND_1_START, METRICS_ID_KEY_GEN_ROUND_2_FINISH,
         METRICS_ID_KEY_GEN_ROUND_2_START, METRICS_ID_KEY_GEN_ROUND_3_FINISH,
         METRICS_ID_KEY_GEN_ROUND_3_START, METRICS_ID_KEY_GEN_ROUND_4_FINISH,
-        METRICS_ID_KEY_GEN_ROUND_4_START,
+        METRICS_ID_KEY_GEN_ROUND_4_START, METRICS_ID_KEY_GEN_STORE_DLOG_SHARE_RECOVERY,
     },
+    secret_manager::{SecretManagerError, StoreDLogShare},
     services::{
         secret_gen::{Contributions, DLogSecretGenService},
         secret_manager::SecretManagerService,
@@ -45,6 +50,7 @@ use oprf_types::{
     },
     crypto::{EphemeralEncryptionPublicKey, OprfPublicKey, PartyId, SecretGenCiphertext},
 };
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
@@ -75,6 +81,12 @@ impl From<alloy::contract::Error> for TransactionError {
     }
 }
 
+enum RecoverTask {
+    Delete(OprfKeyId),
+    Store(StoreDLogShare),
+    Flush,
+}
+
 pub(crate) struct KeyEventWatcherTaskConfig {
     pub(crate) party_id: PartyId,
     pub(crate) provider: DynProvider,
@@ -82,6 +94,7 @@ pub(crate) struct KeyEventWatcherTaskConfig {
     pub(crate) secret_manager: SecretManagerService,
     pub(crate) dlog_secret_gen_service: DLogSecretGenService,
     pub(crate) start_block: Option<u64>,
+    pub(crate) recover_task_flush_interval: Duration,
     pub(crate) transaction_handler: TransactionHandler,
     pub(crate) start_signal: Arc<AtomicBool>,
     pub(crate) cancellation_token: CancellationToken,
@@ -108,11 +121,79 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
         secret_manager,
         mut dlog_secret_gen_service,
         start_block,
+        recover_task_flush_interval,
         transaction_handler,
         start_signal,
         cancellation_token,
     } = args;
     let contract = OprfKeyRegistry::new(contract_address, provider.clone());
+
+    // fairly arbitrary mailbox size
+    let (recover_tx, mut rx) = mpsc::channel(32);
+    tokio::task::spawn({
+        let secret_manager = secret_manager.clone();
+        async move {
+            let mut delete_tasks = Vec::new();
+            let mut store_tasks = Vec::new();
+            while let Some(job) = rx.recv().await {
+                match job {
+                    RecoverTask::Delete(oprf_key_id) => {
+                        delete_tasks.push(oprf_key_id);
+                        ::metrics::counter!(METRICS_ID_KEY_GEN_DELETE_DLOG_SHARE_RECOVERY)
+                            .increment(1);
+                    }
+                    RecoverTask::Store(store_task) => {
+                        store_tasks.push(store_task);
+                        ::metrics::counter!(METRICS_ID_KEY_GEN_STORE_DLOG_SHARE_RECOVERY)
+                            .increment(1);
+                    }
+                    RecoverTask::Flush => {
+                        tracing::info!("flushing recovery task!");
+                        tracing::info!("starting with store");
+                        match secret_manager
+                            .store_dlog_share_batch(store_tasks.clone())
+                            .await
+                        {
+                            Ok(()) => {
+                                tracing::info!("successfully stored shares!");
+                                store_tasks.clear();
+                            }
+                            Err(err) => tracing::error!("Cannot store batch: {err:?}"),
+                        }
+                        tracing::info!("starting with delete");
+                        match secret_manager
+                            .remove_oprf_key_material_batch(&delete_tasks)
+                            .await
+                        {
+                            Ok(()) => {
+                                tracing::info!("successfully deleted shares!");
+                                delete_tasks.clear();
+                            }
+                            Err(err) => tracing::error!("Cannot store batch: {err:?}"),
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    let mut interval = tokio::time::interval(recover_task_flush_interval);
+    tokio::task::spawn({
+        let recover_tx = recover_tx.clone();
+        let cancellation_token = cancellation_token.clone();
+        async move {
+            let _drop_guard = cancellation_token.drop_guard();
+            loop {
+                interval.tick().await;
+                if recover_tx.send(RecoverTask::Flush).await.is_err() {
+                    // this should never happen;
+                    tracing::error!("RecoverTask not reachable!");
+                    break;
+                }
+            }
+        }
+    });
+
     let event_signatures = vec![
         OprfKeyRegistry::SecretGenRound1::SIGNATURE_HASH,
         OprfKeyRegistry::SecretGenRound2::SIGNATURE_HASH,
@@ -155,6 +236,8 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
                 &mut dlog_secret_gen_service,
                 &secret_manager,
                 &transaction_handler,
+                &recover_tx,
+                &cancellation_token,
             )
             .await
             .context("while handling past log")?;
@@ -189,6 +272,8 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
             &mut dlog_secret_gen_service,
             &secret_manager,
             &transaction_handler,
+            &recover_tx,
+            &cancellation_token,
         )
         .await
         .context("while handling log")?;
@@ -196,6 +281,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
     Ok(())
 }
 
+#[expect(clippy::too_many_arguments)]
 #[instrument(level = "info", skip_all)]
 async fn handle_log(
     party_id: PartyId,
@@ -204,6 +290,8 @@ async fn handle_log(
     secret_gen: &mut DLogSecretGenService,
     secret_manager: &SecretManagerService,
     transaction_handler: &TransactionHandler,
+    recover_tx: &mpsc::Sender<RecoverTask>,
+    cancellation_token: &CancellationToken,
 ) -> Result<()> {
     match log.topic0() {
         Some(&OprfKeyRegistry::SecretGenRound1::SIGNATURE_HASH) => {
@@ -247,7 +335,15 @@ async fn handle_log(
         }
         Some(&OprfKeyRegistry::SecretGenFinalize::SIGNATURE_HASH) => {
             let log = log.log_decode().context("while decoding finalize event")?;
-            handle_finalize(log.inner.data, contract, secret_gen, secret_manager).await
+            handle_finalize(
+                log.inner.data,
+                contract,
+                secret_gen,
+                secret_manager.clone(),
+                recover_tx.clone(),
+                cancellation_token.clone(),
+            )
+            .await
         }
         Some(&OprfKeyRegistry::ReshareRound1::SIGNATURE_HASH) => {
             let log = log
@@ -285,7 +381,14 @@ async fn handle_log(
             let log = log
                 .log_decode()
                 .context("while decoding key-deletion event")?;
-            handle_delete(log.inner.data, secret_gen, secret_manager).await
+            handle_delete(
+                log.inner.data,
+                secret_gen,
+                secret_manager.clone(),
+                recover_tx.clone(),
+                cancellation_token.clone(),
+            )
+            .await
         }
         Some(&OprfKeyRegistry::NotEnoughProducers::SIGNATURE_HASH) => {
             let log = log
@@ -437,7 +540,9 @@ async fn handle_finalize(
     event: OprfKeyRegistry::SecretGenFinalize,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &mut DLogSecretGenService,
-    secret_manager: &SecretManagerService,
+    secret_manager: SecretManagerService,
+    recover_tx: mpsc::Sender<RecoverTask>,
+    cancellation_token: CancellationToken,
 ) -> Result<()> {
     tracing::info!("Received SecretGenFinalize event");
     // we don't know yet whether we are key_gen or reshare, FINISH holds this information
@@ -449,15 +554,43 @@ async fn handle_finalize(
     tracing::info!("Event for {oprfKeyId} with epoch {epoch}");
     let oprf_public_key = contract.getOprfPublicKey(oprfKeyId).call().await?;
     let oprf_key_id = OprfKeyId::from(oprfKeyId);
-    let oprf_public_key = OprfPublicKey::new(oprf_public_key.try_into()?);
+    let public_key = OprfPublicKey::new(oprf_public_key.try_into()?);
     let epoch = ShareEpoch::from(epoch);
-    let dlog_share = secret_gen
+    let share = secret_gen
         .finalize(oprf_key_id)
         .context("while finalizing secret-gen")?;
-    secret_manager
-        .store_dlog_share(oprf_key_id, oprf_public_key, epoch, dlog_share)
-        .await
-        .context("while storing dlog share")?;
+    tokio::task::spawn(async move {
+        let store_dlog_share = StoreDLogShare {
+            oprf_key_id,
+            public_key,
+            epoch,
+            share,
+        };
+        match secret_manager
+            .store_dlog_share(store_dlog_share.clone())
+            .await
+        {
+            Ok(_) => tracing::info!("successfully stored DLog Share for {oprfKeyId}"),
+            Err(SecretManagerError::Recoverable) => {
+                tracing::info!(
+                    "encountered recoverable error - sending to recover task for store {oprfKeyId}"
+                );
+                if recover_tx
+                    .send(RecoverTask::Store(store_dlog_share))
+                    .await
+                    .is_err()
+                {
+                    // this should never happen
+                    tracing::error!("RecoverTask not reachable!");
+                    cancellation_token.cancel();
+                }
+            }
+            Err(SecretManagerError::NonRecoverable(err)) => {
+                tracing::error!("Encountered NonRecoverable while storing DLogShare: {err:?}");
+                cancellation_token.cancel();
+            }
+        }
+    });
     ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_4_FINISH,
             METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_RESHARE)
     .increment(1);
@@ -585,7 +718,9 @@ async fn handle_reshare_round3(
 async fn handle_delete(
     event: OprfKeyRegistry::KeyDeletion,
     secret_gen: &mut DLogSecretGenService,
-    secret_manager: &SecretManagerService,
+    secret_manager: SecretManagerService,
+    recover_tx: mpsc::Sender<RecoverTask>,
+    cancellation_token: CancellationToken,
 ) -> Result<()> {
     tracing::info!("Received Delete event");
     ::metrics::counter!(METRICS_ID_KEY_GEN_DELETION).increment(1);
@@ -597,10 +732,28 @@ async fn handle_delete(
     // we need to delete all the toxic waste associated with the oprf key-id
     secret_gen.delete_oprf_key_material(oprf_key_id);
     // Additionally, we remove the shares from the secret-manager
-    secret_manager
-        .remove_oprf_key_material(oprf_key_id)
-        .await
-        .context("while storing share to secret manager")?;
+    tokio::task::spawn(async move {
+        match secret_manager.remove_oprf_key_material(oprf_key_id).await {
+            Ok(()) => tracing::info!("successfully delete {oprfKeyId}"),
+            Err(SecretManagerError::Recoverable) => {
+                tracing::info!(
+                    "encountered recoverable error - sending to recover task for delete {oprfKeyId}"
+                );
+                if recover_tx
+                    .send(RecoverTask::Delete(oprf_key_id))
+                    .await
+                    .is_err()
+                {
+                    tracing::error!("RecoverTask not reachable!");
+                    cancellation_token.cancel();
+                }
+            }
+            Err(SecretManagerError::NonRecoverable(err)) => {
+                tracing::error!("Encountered NonRecoverable while deleting share: {err:?}");
+                cancellation_token.cancel();
+            }
+        }
+    });
     Ok(())
 }
 

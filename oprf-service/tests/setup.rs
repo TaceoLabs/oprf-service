@@ -101,6 +101,7 @@ impl TestNode {
             db_connection_string: SecretString::from("connection-string"),
             db_max_connections: 1.try_into().unwrap(),
             db_schema: "schema".to_owned(),
+            db_acquire_timeout: Duration::from_secs(2),
         };
 
         let child_token = cancellation_token.child_token();

@@ -16,6 +16,30 @@ use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 pub mod aws;
 pub mod postgres;
 
+/// The error from a secret-manager. Can either be Recoverable or NonRecoverable.
+#[derive(Debug, thiserror::Error)]
+pub enum SecretManagerError {
+    /// A Recoverable error - we don't need to shutdown the binary.
+    #[error("Can recover from this error")]
+    Recoverable,
+    /// A Non-Recoverable error - we most likely need to shutdown the binary.
+    #[error(transparent)]
+    NonRecoverable(#[from] eyre::Report),
+}
+
+/// All information needed to persist the share of an OPRF key.
+#[derive(Clone)]
+pub struct StoreDLogShare {
+    /// The oprf key id
+    pub oprf_key_id: OprfKeyId,
+    /// The public key
+    pub public_key: OprfPublicKey,
+    /// The epoch of this share
+    pub epoch: ShareEpoch,
+    /// The actual share
+    pub share: DLogShareShamir,
+}
+
 /// Dynamic trait object for secret manager service.
 ///
 /// Must be `Send + Sync` to work with async contexts (e.g., Axum).
@@ -42,18 +66,25 @@ pub trait SecretManager {
     /// Removes all information stored associated with the specified [`OprfKeyId`].
     ///
     /// Certain secret-managers might not be able to immediately delete the secret. In that case it shall mark the secret for deletion.
-    async fn remove_oprf_key_material(&self, oprf_key_id: OprfKeyId) -> eyre::Result<()>;
-
-    /// Stores an OPRF secret with at the secret-manager with the provided epoch.
-    ///
-    /// If epoch is zero or if the secret-manager does not contain a secret with this [`OprfKeyId`], calls `create_secret`.
-    ///
-    /// Otherwise, loads the existing secret, moves the current epoch to previous and stores the new share as the current epoch.
-    async fn store_dlog_share(
+    async fn remove_oprf_key_material(
         &self,
         oprf_key_id: OprfKeyId,
-        public_key: OprfPublicKey,
-        epoch: ShareEpoch,
-        share: DLogShareShamir,
+    ) -> Result<(), SecretManagerError>;
+
+    /// Removes all information stored associated with the specified [`OprfKeyId`]s.
+    ///
+    /// Certain secret-managers might not be able to immediately delete the secret. In that case it shall mark the secret for deletion.
+    async fn remove_oprf_key_material_batch(&self, oprf_key_ids: &[OprfKeyId]) -> eyre::Result<()>;
+
+    /// Stores an OPRF secret with at secret-manager with the provided epoch.
+    async fn store_dlog_share(
+        &self,
+        store_dlog_share: StoreDLogShare,
+    ) -> Result<(), SecretManagerError>;
+
+    /// Stores a batch of OPRF secrets. If a persisted share has a later epoch than the one inserted here, will ignore that row.
+    async fn store_dlog_share_batch(
+        &self,
+        store_dlog_shares: Vec<StoreDLogShare>,
     ) -> eyre::Result<()>;
 }

@@ -14,6 +14,8 @@ use oprf_types::{
     chain::{OprfKeyRegistry, RevertError, Verifier::VerifierErrors},
     crypto::PartyId,
 };
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     secret_manager::SecretManagerService,
@@ -26,10 +28,7 @@ use crate::{
     },
 };
 
-key_gen_test_secret_manager!(
-    crate::secret_manager::SecretManager,
-    KeyGenTestSecretManager
-);
+key_gen_test_secret_manager!(crate::secret_manager, KeyGenTestSecretManager);
 
 const INVALID_PROOF_KEY: usize = 43;
 
@@ -110,10 +109,17 @@ async fn test_delete() -> eyre::Result<()> {
     let event = OprfKeyRegistry::KeyDeletion {
         oprfKeyId: oprf_key_id.into_inner(),
     };
+    let (tx, _) = mpsc::channel(1);
 
-    handle_delete(event, &mut secret_gen, &key_gen_secret_manager)
-        .await
-        .expect("Works");
+    handle_delete(
+        event,
+        &mut secret_gen,
+        key_gen_secret_manager,
+        tx,
+        CancellationToken::new(),
+    )
+    .await
+    .expect("Works");
 
     assert!(!secret_gen.has_round1(oprf_key_id));
     assert!(
