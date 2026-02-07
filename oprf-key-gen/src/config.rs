@@ -128,4 +128,14 @@ pub struct OprfKeyGenConfig {
         default_value = "14"
     )]
     pub confirmations_for_transaction: u64,
+
+    /// Interval for the recovery task in which it tries to write to DB.
+    #[clap(
+        long,
+        env = "OPRF_NODE_RECOVER_TASK_FLUSH_INTERVAL",
+        default_value = "30min",
+        value_parser=humantime::parse_duration
+
+    )]
+    pub recover_task_flush_interval: Duration,
 }

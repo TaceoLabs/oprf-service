@@ -10,13 +10,14 @@ use alloy::signers::local::PrivateKeySigner;
 use async_trait::async_trait;
 use backoff::ExponentialBackoff;
 use eyre::Context;
+use itertools::Itertools;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
+use oprf_types::{OprfKeyId, ShareEpoch};
 use secrecy::{ExposeSecret, SecretString};
 use sqlx::{Executor as _, PgPool, postgres::PgPoolOptions};
 use tracing::instrument;
 
-use crate::secret_manager::{self, SecretManager, SecretManagerError};
+use crate::secret_manager::{self, SecretManager, SecretManagerError, StoreDLogShare};
 
 impl From<sqlx::Error> for SecretManagerError {
     fn from(value: sqlx::Error) -> Self {
@@ -190,28 +191,53 @@ impl SecretManager for PostgresSecretManager {
         Ok(())
     }
 
-    #[instrument(level = "info", skip_all, fields(oprf_key_id, epoch))]
+    #[instrument(level = "info", skip_all)]
+    async fn remove_oprf_key_material_batch(&self, oprf_key_ids: &[OprfKeyId]) -> eyre::Result<()> {
+        tracing::info!("Remove oprf key material batch: {}", oprf_key_ids.len());
+        if oprf_key_ids.is_empty() {
+            return Ok(());
+        }
+        let ids = oprf_key_ids.iter().map(|id| id.to_le_bytes()).collect_vec();
+
+        let success = sqlx::query(
+            r#"
+                DELETE FROM shares
+                WHERE id = ANY($1::bytea[])
+            "#,
+        )
+        .bind(&ids)
+        .execute(&self.pool)
+        .await?;
+        tracing::info!("Deleted {} rows", success.rows_affected());
+        Ok(())
+    }
+
+    #[instrument(level = "info", skip_all, fields(store_dlog_share.oprf_key_id, store_dlog_share.epoch))]
     async fn store_dlog_share(
         &self,
-        oprf_key_id: OprfKeyId,
-        public_key: OprfPublicKey,
-        epoch: ShareEpoch,
-        share: DLogShareShamir,
+        store_dlog_share: StoreDLogShare,
     ) -> Result<(), SecretManagerError> {
+        let StoreDLogShare {
+            oprf_key_id,
+            public_key,
+            epoch,
+            share,
+        } = store_dlog_share;
         tracing::info!("storing share...");
         let backoff = ExponentialBackoff::default();
 
         backoff::future::retry(backoff, || async {
             let query_result = sqlx::query(
                 r#"
-                INSERT INTO shares (id, share, epoch, public_key)
-                VALUES ($1, $2, $3, $4)
-                ON CONFLICT (id)
-                DO UPDATE SET
-                    share = EXCLUDED.share,
-                    epoch = EXCLUDED.epoch,
-                    public_key = EXCLUDED.public_key;
-            "#,
+                    INSERT INTO shares (id, share, epoch, public_key)
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT (id)
+                    DO UPDATE SET
+                        share = EXCLUDED.share,
+                        epoch = EXCLUDED.epoch,
+                        public_key = EXCLUDED.public_key
+                    WHERE shares.epoch < EXCLUDED.epoch;
+                "#,
             )
             .bind(oprf_key_id.to_le_bytes())
             .bind(to_db_ark_serialize_uncompressed(share.clone()))
@@ -220,7 +246,14 @@ impl SecretManager for PostgresSecretManager {
             .execute(&self.pool)
             .await;
             match query_result {
-                Ok(_) => Ok(()),
+                Ok(success) => {
+                    if success.rows_affected() == 0 {
+                        tracing::warn!("Did not insert anything, maybe someone else stored something with later epoch?")
+                    } else {
+                        tracing::info!("Successfully stored share!");
+                    }
+                    Ok(())
+                }
                 Err(sqlx::Error::PoolTimedOut) => {
                     tracing::warn!("Ran into timeout while storing DLogShare");
                     Err(backoff::Error::transient(sqlx::Error::PoolTimedOut))
@@ -229,6 +262,56 @@ impl SecretManager for PostgresSecretManager {
             }
         })
         .await?;
+        Ok(())
+    }
+
+    /// Stores a batch of OPRF secrets.
+    ///
+    /// _Attention_: Overwrites old shares!
+    #[instrument(level = "info", skip_all)]
+    async fn store_dlog_share_batch(
+        &self,
+        store_dlog_shares: Vec<StoreDLogShare>,
+    ) -> eyre::Result<()> {
+        tracing::info!("storing batch DLogShare {}..", store_dlog_shares.len());
+        let mut ids = Vec::with_capacity(store_dlog_shares.len());
+        let mut public_keys = Vec::with_capacity(store_dlog_shares.len());
+        let mut epochs = Vec::with_capacity(store_dlog_shares.len());
+        let mut shares = Vec::with_capacity(store_dlog_shares.len());
+        for store_dlog_share in store_dlog_shares {
+            ids.push(store_dlog_share.oprf_key_id.to_le_bytes());
+            public_keys.push(to_db_ark_serialize_uncompressed(
+                store_dlog_share.public_key,
+            ));
+            epochs.push(i64::from(store_dlog_share.epoch));
+            shares.push(to_db_ark_serialize_uncompressed(store_dlog_share.share))
+        }
+        let result = sqlx::query(
+            r#"
+                INSERT INTO shares (id, share, epoch, public_key)
+                SELECT *
+                FROM UNNEST(
+                    $1::bytea[],
+                    $2::bytea[],
+                    $3::bigint[],
+                    $4::bytea[]
+                )
+                ON CONFLICT (id)
+                DO UPDATE SET
+                    share = EXCLUDED.share,
+                    epoch = EXCLUDED.epoch,
+                    public_key = EXCLUDED.public_key
+                WHERE shares.epoch < EXCLUDED.epoch;
+            "#,
+        )
+        .bind(&ids)
+        .bind(&shares)
+        .bind(&epochs)
+        .bind(&public_keys)
+        .execute(&self.pool)
+        .await
+        .context("while doing batch store")?;
+        tracing::info!("Batch store updated {} rows", result.rows_affected());
         Ok(())
     }
 }

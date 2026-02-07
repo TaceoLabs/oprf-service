@@ -1,8 +1,8 @@
 use std::str::FromStr;
 use std::time::Duration;
 
-use crate::secret_manager::SecretManager as _;
 use crate::secret_manager::postgres::PostgresSecretManager;
+use crate::secret_manager::{SecretManager as _, StoreDLogShare};
 use alloy::{primitives::U160, signers::local::PrivateKeySigner};
 use ark_serialize::CanonicalDeserialize;
 use eyre::Context;
@@ -235,12 +235,12 @@ async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
     // EPOCH 0
     // store at epoch 0
     secret_manager
-        .store_dlog_share(
+        .store_dlog_share(StoreDLogShare {
             oprf_key_id,
             public_key,
-            epoch0,
-            should_epoch_0_share.clone(),
-        )
+            epoch: epoch0,
+            share: should_epoch_0_share.clone(),
+        })
         .await?;
 
     let epoch_0_dump = all_rows(&mut pg_connection).await?;
@@ -272,12 +272,12 @@ async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
     // EPOCH 1
     // store at epoch 1
     secret_manager
-        .store_dlog_share(
+        .store_dlog_share(StoreDLogShare {
             oprf_key_id,
             public_key,
-            epoch1,
-            should_epoch_1_share.clone(),
-        )
+            epoch: epoch1,
+            share: should_epoch_1_share.clone(),
+        })
         .await?;
 
     let epoch_1_dump = all_rows(&mut pg_connection).await?;
@@ -311,12 +311,12 @@ async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
     // EPOCH 2
     // store at epoch 2 -> epoch 0 should be gone now
     secret_manager
-        .store_dlog_share(
+        .store_dlog_share(StoreDLogShare {
             oprf_key_id,
             public_key,
-            epoch2,
-            should_epoch_2_share.clone(),
-        )
+            epoch: epoch2,
+            share: should_epoch_2_share.clone(),
+        })
         .await?;
     let is_epoch_2_share = secret_manager
         .get_share_by_epoch(oprf_key_id, epoch2)
@@ -355,12 +355,12 @@ async fn store_dlog_share_as_consumer() -> eyre::Result<()> {
 
     //store epoch 42 without inserting anything beforehand
     secret_manager
-        .store_dlog_share(
+        .store_dlog_share(StoreDLogShare {
             oprf_key_id,
             public_key,
-            epoch42,
-            should_epoch_42_share.clone(),
-        )
+            epoch: epoch42,
+            share: should_epoch_42_share.clone(),
+        })
         .await?;
 
     let epoch_42_dump = all_rows(&mut pg_connection).await?;
@@ -375,12 +375,12 @@ async fn store_dlog_share_as_consumer() -> eyre::Result<()> {
 
     //store epoch 128 after epoch 42 - now prev should be None again
     secret_manager
-        .store_dlog_share(
+        .store_dlog_share(StoreDLogShare {
             oprf_key_id,
             public_key,
-            epoch128,
-            should_epoch_128_share.clone(),
-        )
+            epoch: epoch128,
+            share: should_epoch_128_share.clone(),
+        })
         .await?;
     let epoch_128_dump = all_rows(&mut pg_connection).await?;
     assert_eq!(epoch_128_dump.len(), 1);
@@ -407,12 +407,12 @@ async fn try_retrieve_random_empty_epochs() -> eyre::Result<()> {
 
     //store epoch 42 without inserting anything beforehand
     secret_manager
-        .store_dlog_share(
+        .store_dlog_share(StoreDLogShare {
             oprf_key_id,
             public_key,
-            epoch42,
-            should_epoch_42_share.clone(),
-        )
+            epoch: epoch42,
+            share: should_epoch_42_share.clone(),
+        })
         .await?;
 
     assert!(
@@ -462,12 +462,12 @@ async fn test_insert_same_epoch_twice() -> eyre::Result<()> {
 
     //store epoch 42 without inserting anything beforehand
     secret_manager
-        .store_dlog_share(
+        .store_dlog_share(StoreDLogShare {
             oprf_key_id,
             public_key,
-            epoch42,
-            should_epoch_42_share.clone(),
-        )
+            epoch: epoch42,
+            share: should_epoch_42_share.clone(),
+        })
         .await?;
 
     let epoch_42_dump = all_rows(&mut pg_connection).await?;
@@ -482,12 +482,12 @@ async fn test_insert_same_epoch_twice() -> eyre::Result<()> {
 
     // store epoch 42 again - should be noop
     secret_manager
-        .store_dlog_share(
+        .store_dlog_share(StoreDLogShare {
             oprf_key_id,
             public_key,
-            epoch42,
-            should_epoch_42_share.clone(),
-        )
+            epoch: epoch42,
+            share: should_epoch_42_share.clone(),
+        })
         .await?;
     let epoch_42_dump_new = all_rows(&mut pg_connection).await?;
     assert_eq!(epoch_42_dump_new.len(), 1);
@@ -518,12 +518,12 @@ async fn test_delete() -> eyre::Result<()> {
     secret_manager.remove_oprf_key_material(oprf_key_id).await?;
 
     secret_manager
-        .store_dlog_share(
+        .store_dlog_share(StoreDLogShare {
             oprf_key_id,
             public_key,
-            epoch42,
-            should_epoch_42_share.clone(),
-        )
+            epoch: epoch42,
+            share: should_epoch_42_share.clone(),
+        })
         .await?;
 
     let epoch_42_dump = all_rows(&mut pg_connection).await?;

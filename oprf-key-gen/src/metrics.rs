@@ -21,6 +21,13 @@ pub const METRICS_ATTRVAL_PROTOCOL_KEY_GEN: &str = "key_gen";
 /// Attribute value for PROTOCOL describing reshare
 pub const METRICS_ATTRVAL_PROTOCOL_RESHARE: &str = "reshare";
 
+/// How often we observed recovery task for storing share
+pub const METRICS_ID_KEY_GEN_STORE_DLOG_SHARE_RECOVERY: &str = "taceo.oprf.key_gen.store.recovery";
+
+/// How often we observed recovery task for deleting share
+pub const METRICS_ID_KEY_GEN_DELETE_DLOG_SHARE_RECOVERY: &str =
+    "taceo.oprf.key_gen.delete.recovery";
+
 /// Observed event for start of round 1
 pub const METRICS_ID_KEY_GEN_ROUND_1_START: &str = "taceo.oprf.key_gen.round_1.start";
 /// Finished processing round 1 on our side
@@ -81,6 +88,16 @@ pub const METRICS_ID_BLOB_GAS_PRICE: &str = "taceo.oprf.key_gen.transaction.cost
 ///
 /// This calls the `describe_*` functions from the `metrics` crate to set metadata on the different metrics.
 pub fn describe_metrics() {
+    metrics::describe_counter!(
+        METRICS_ID_KEY_GEN_STORE_DLOG_SHARE_RECOVERY,
+        metrics::Unit::Count,
+        "Number of observed recovery tasks for storing shares"
+    );
+    metrics::describe_counter!(
+        METRICS_ID_KEY_GEN_DELETE_DLOG_SHARE_RECOVERY,
+        metrics::Unit::Count,
+        "Number of observed recovery tasks for deleting shares"
+    );
     metrics::describe_counter!(
         METRICS_ID_KEY_GEN_ROUND_1_START,
         metrics::Unit::Count,

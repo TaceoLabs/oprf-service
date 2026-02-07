@@ -17,11 +17,7 @@ pub struct TestKeyGen {
     pub cancellation_token: CancellationToken,
 }
 
-key_gen_test_secret_manager!(
-    taceo_oprf_key_gen::secret_manager::SecretManager,
-    taceo_oprf_key_gen::secret_manager::SecretManagerError,
-    KeyGenTestSecretManager
-);
+key_gen_test_secret_manager!(taceo_oprf_key_gen::secret_manager, KeyGenTestSecretManager);
 
 impl fmt::Debug for TestKeyGen {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -66,6 +62,7 @@ impl TestKeyGen {
             db_schema: "test".to_owned(),
             max_db_connection: 1.try_into().expect("Is nonZero"),
             db_acquire_timeout: Duration::from_secs(2),
+            recover_task_flush_interval: Duration::from_secs(3600),
         };
 
         let started_services = StartedServices::new();

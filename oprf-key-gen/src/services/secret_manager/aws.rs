@@ -23,7 +23,10 @@ use oprf_types::{
 use secrecy::{ExposeSecret, SecretString};
 use tracing::instrument;
 
-use crate::{secret_manager::SecretManagerError, services::secret_manager::SecretManager};
+use crate::{
+    secret_manager::{SecretManagerError, StoreDLogShare},
+    services::secret_manager::SecretManager,
+};
 
 /// AWS Secret Manager client wrapper.
 #[derive(Debug)]
@@ -179,6 +182,10 @@ impl SecretManager for AwsSecretManager {
         Ok(())
     }
 
+    async fn remove_oprf_key_material_batch(&self, _: &[OprfKeyId]) -> eyre::Result<()> {
+        eyre::bail!("Batch delete not supported for AWS secret-manager")
+    }
+
     /// Stores an OPRF secret with at the secret-manager with the provided epoch.
     ///
     /// If epoch is zero or if the secret-manager does not contain a secret with this [`OprfKeyId`], calls `create_secret`.
@@ -187,11 +194,14 @@ impl SecretManager for AwsSecretManager {
     #[instrument(level = "info", skip_all, fields(oprf_key_id, epoch))]
     async fn store_dlog_share(
         &self,
-        oprf_key_id: OprfKeyId,
-        public_key: OprfPublicKey,
-        epoch: ShareEpoch,
-        share: DLogShareShamir,
+        store_dlog_share: StoreDLogShare,
     ) -> Result<(), SecretManagerError> {
+        let StoreDLogShare {
+            oprf_key_id,
+            public_key,
+            epoch,
+            share,
+        } = store_dlog_share;
         let secret_id = to_key_secret_id(&self.oprf_secret_id_prefix, oprf_key_id);
         if epoch.is_initial_epoch() {
             self.create_secret(&secret_id, oprf_key_id, public_key, epoch, share)
@@ -231,6 +241,10 @@ impl SecretManager for AwsSecretManager {
                 }
             }
         }
+    }
+
+    async fn store_dlog_share_batch(&self, _: Vec<StoreDLogShare>) -> eyre::Result<()> {
+        eyre::bail!("Batch insert not supported for AWS secret-manager")
     }
 }
 
