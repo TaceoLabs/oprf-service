@@ -19,14 +19,19 @@ use alloy::{
     rpc::types::{Filter, Log},
     sol_types::SolEvent as _,
 };
+use backon::{BackoffBuilder, ExponentialBuilder, Retryable as _};
 use eyre::Context;
 use futures::StreamExt as _;
 use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
-use crate::services::{
-    oprf_key_material_store::OprfKeyMaterialStore, secret_manager::SecretManagerService,
+use crate::{
+    metrics::METRICS_ID_NODE_CANNOT_FETCH_KEY_MATERIAL,
+    secret_manager::GetOprfKeyMaterialError,
+    services::{
+        oprf_key_material_store::OprfKeyMaterialStore, secret_manager::SecretManagerService,
+    },
 };
 
 /// The arguments to start the key-even-watcher.
@@ -36,7 +41,6 @@ pub(crate) struct KeyEventWatcherTaskArgs {
     pub(crate) secret_manager: SecretManagerService,
     pub(crate) oprf_key_material_store: OprfKeyMaterialStore,
     pub(crate) get_oprf_key_material_timeout: Duration,
-    pub(crate) poll_oprf_key_material_interval: Duration,
     pub(crate) start_block: Option<u64>,
     pub(crate) started: Arc<AtomicBool>,
     pub(crate) cancellation_token: CancellationToken,
@@ -82,7 +86,6 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
         secret_manager,
         oprf_key_material_store,
         get_oprf_key_material_timeout,
-        poll_oprf_key_material_interval,
         start_block,
         started,
         cancellation_token,
@@ -120,8 +123,6 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
                 &oprf_key_material_store,
                 &secret_manager,
                 get_oprf_key_material_timeout,
-                poll_oprf_key_material_interval,
-                &cancellation_token,
             )
             .await
             .context("while handling past log")?;
@@ -155,8 +156,6 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
             &oprf_key_material_store,
             &secret_manager,
             get_oprf_key_material_timeout,
-            poll_oprf_key_material_interval,
-            &cancellation_token,
         )
         .await
         .context("while handling log")?;
@@ -170,8 +169,6 @@ async fn handle_log(
     oprf_key_material_store: &OprfKeyMaterialStore,
     secret_manager: &SecretManagerService,
     get_oprf_key_material_timeout: Duration,
-    poll_oprf_key_material_interval: Duration,
-    cancellation_token: &CancellationToken,
 ) -> eyre::Result<()> {
     match log.topic0() {
         Some(&OprfKeyRegistry::SecretGenFinalize::SIGNATURE_HASH) => handle_finalize(
@@ -179,8 +176,6 @@ async fn handle_log(
             oprf_key_material_store,
             secret_manager,
             get_oprf_key_material_timeout,
-            poll_oprf_key_material_interval,
-            cancellation_token,
         )
         .await
         .context("while handling finalize")?,
@@ -201,8 +196,6 @@ async fn handle_finalize(
     oprf_key_material_store: &OprfKeyMaterialStore,
     secret_manager: &SecretManagerService,
     get_oprf_key_material_timeout: Duration,
-    poll_oprf_key_material_interval: Duration,
-    cancellation_token: &CancellationToken,
 ) -> eyre::Result<()> {
     tracing::info!("Received Finalize event");
     let finalize = log.log_decode().context("while decoding finalize event")?;
@@ -216,9 +209,7 @@ async fn handle_finalize(
         oprf_key_material_store.clone(),
         secret_manager.clone(),
         get_oprf_key_material_timeout,
-        poll_oprf_key_material_interval,
         epoch.into(),
-        cancellation_token.clone(),
     ));
     Ok(())
 }
@@ -229,43 +220,39 @@ async fn fetch_oprf_key_material_from_secret_manager(
     oprf_key_material_store: OprfKeyMaterialStore,
     secret_manager: SecretManagerService,
     get_oprf_key_material_timeout: Duration,
-    poll_oprf_key_material_interval: Duration,
     epoch: ShareEpoch,
-    cancellation_token: CancellationToken,
 ) {
     tracing::info!("trying to fetch {oprf_key_id} for epoch {epoch}");
-    let mut interval = tokio::time::interval(poll_oprf_key_material_interval);
-    let cancellation_token_timeout = cancellation_token.clone();
-    if tokio::time::timeout(get_oprf_key_material_timeout, async {
-        loop {
-            interval.tick().await;
-            match secret_manager
-                .get_oprf_key_material(oprf_key_id, epoch)
-                .await
-            {
-                Ok(Some(key_material)) => {
-                    tracing::info!(
-                        "got key from secret manager for {oprf_key_id} and epoch {epoch}"
-                    );
-                    oprf_key_material_store.insert(oprf_key_id, key_material);
-                    break;
-                }
-                Ok(None) => {
-                    tracing::debug!("{epoch} for {oprf_key_id} not yet in secret-manager");
-                }
-                Err(err) => {
-                    tracing::error!("Cannot fetch from secret-manager: {err:?}");
-                    cancellation_token.cancel();
-                    break;
-                }
-            }
+
+    let backoff_strategy = ExponentialBuilder::new()
+        .with_total_delay(Some(get_oprf_key_material_timeout))
+        .without_max_times()
+        .build();
+    let result = (|| secret_manager.get_oprf_key_material(oprf_key_id, epoch))
+        .retry(backoff_strategy)
+        .sleep(tokio::time::sleep)
+        .when(|e| matches!(e, GetOprfKeyMaterialError::NotInDb))
+        .notify(|_, duration| {
+            tracing::debug!(
+                "Share {oprf_key_id} with epoch {epoch} not yet in DB. Retrying after {duration:?}."
+            )
+        })
+        .await;
+    match result {
+        Ok(key_material) => {
+            tracing::info!("got key from secret manager for {oprf_key_id} and epoch {epoch}");
+            oprf_key_material_store.insert(oprf_key_id, key_material);
         }
-    })
-    .await
-    .is_err()
-    {
-        tracing::error!("timed out waiting for secret manager to provide key for {oprf_key_id}");
-        cancellation_token_timeout.cancel();
+        Err(GetOprfKeyMaterialError::NotInDb) => {
+            tracing::warn!(
+                "Could not fetch oprf-key-id {oprf_key_id} and epoch {epoch} after {get_oprf_key_material_timeout:?}. Will continue anyways."
+            );
+            ::metrics::counter!(METRICS_ID_NODE_CANNOT_FETCH_KEY_MATERIAL).increment(1);
+        }
+        Err(err) => {
+            tracing::error!("Could not fetch key-material: {err:?}");
+            ::metrics::counter!(METRICS_ID_NODE_CANNOT_FETCH_KEY_MATERIAL).increment(1);
+        }
     }
 }
 

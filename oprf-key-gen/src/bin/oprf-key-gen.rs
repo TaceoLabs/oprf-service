@@ -11,7 +11,7 @@ use eyre::Context;
 use nodes_common::StartedServices;
 use taceo_oprf_key_gen::{
     config::{Environment, OprfKeyGenConfig},
-    secret_manager::postgres::PostgresSecretManager,
+    secret_manager::postgres::{PostgresSecretManager, PostgresSecretManagerArgs},
 };
 
 #[tokio::main]
@@ -36,14 +36,16 @@ async fn main() -> eyre::Result<ExitCode> {
 
     // Load the Postgres secret manager.
     let secret_manager = Arc::new(
-        PostgresSecretManager::init(
-            &config.db_connection_string,
-            &config.db_schema,
-            config.max_db_connection,
-            config.db_acquire_timeout,
+        PostgresSecretManager::init(PostgresSecretManagerArgs {
+            connection_string: &config.db_connection_string,
+            schema: &config.db_schema,
+            max_connections: config.max_db_connection,
+            acquire_timeout: config.db_acquire_timeout,
+            max_retries: config.db_max_retries,
+            retry_delay: config.db_retry_delay,
             aws_config,
-            &config.wallet_private_key_secret_id,
-        )
+            wallet_private_key_secret_id: &config.wallet_private_key_secret_id,
+        })
         .await
         .context("while starting postgres secret-manager")?,
     );

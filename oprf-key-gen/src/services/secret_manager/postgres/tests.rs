@@ -2,7 +2,7 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use crate::secret_manager::SecretManager as _;
-use crate::secret_manager::postgres::PostgresSecretManager;
+use crate::secret_manager::postgres::{PostgresSecretManager, PostgresSecretManagerArgs};
 use alloy::{primitives::U160, signers::local::PrivateKeySigner};
 use ark_serialize::CanonicalDeserialize;
 use eyre::Context;
@@ -19,14 +19,16 @@ async fn postgres_secret_manager_with_localstack(
     aws_config: &aws_config::SdkConfig,
     connection_string: &str,
 ) -> eyre::Result<PostgresSecretManager> {
-    PostgresSecretManager::init(
-        &SecretString::from(connection_string.to_owned()),
-        TEST_SCHEMA,
-        3.try_into().expect("Is non zero"),
-        Duration::from_secs(2),
-        aws_config.to_owned(),
-        TEST_WALLET_PRIVATE_KEY_SECRET_ID,
-    )
+    PostgresSecretManager::init(PostgresSecretManagerArgs {
+        connection_string: &SecretString::from(connection_string.to_owned()),
+        schema: TEST_SCHEMA,
+        max_connections: 3.try_into().expect("Is non zero"),
+        acquire_timeout: Duration::from_secs(2),
+        max_retries: 15.try_into().expect("Is not zero"),
+        retry_delay: Duration::from_secs(1),
+        aws_config: aws_config.to_owned(),
+        wallet_private_key_secret_id: TEST_WALLET_PRIVATE_KEY_SECRET_ID,
+    })
     .await
 }
 
@@ -36,14 +38,16 @@ async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<Postgr
     sqlx::migrate!("./migrations")
         .run(&mut pg_connection)
         .await?;
-    PostgresSecretManager::init(
-        &SecretString::from(connection_string.to_owned()),
-        TEST_SCHEMA,
-        3.try_into().expect("Is non zero"),
-        Duration::from_secs(2),
-        oprf_test_utils::dummy_localstack_config().await,
-        TEST_WALLET_PRIVATE_KEY_SECRET_ID,
-    )
+    PostgresSecretManager::init(PostgresSecretManagerArgs {
+        connection_string: &SecretString::from(connection_string.to_owned()),
+        schema: TEST_SCHEMA,
+        max_connections: 3.try_into().expect("Is non zero"),
+        acquire_timeout: Duration::from_secs(2),
+        max_retries: 15.try_into().expect("Is not zero"),
+        retry_delay: Duration::from_secs(1),
+        aws_config: oprf_test_utils::dummy_localstack_config().await,
+        wallet_private_key_secret_id: TEST_WALLET_PRIVATE_KEY_SECRET_ID,
+    })
     .await
 }
 
@@ -203,14 +207,16 @@ fn assert_row_matches(
 async fn test_empty_schema_name() -> eyre::Result<()> {
     let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
 
-    let should_error = PostgresSecretManager::init(
-        &SecretString::from(connection_string.to_owned()),
-        "",
-        3.try_into().expect("Is non zero"),
-        Duration::from_secs(2),
-        oprf_test_utils::dummy_localstack_config().await,
-        TEST_WALLET_PRIVATE_KEY_SECRET_ID,
-    )
+    let should_error = PostgresSecretManager::init(PostgresSecretManagerArgs {
+        connection_string: &SecretString::from(connection_string.to_owned()),
+        schema: "",
+        max_connections: 3.try_into().expect("Is non zero"),
+        acquire_timeout: Duration::from_secs(2),
+        max_retries: 15.try_into().expect("Is not zero"),
+        retry_delay: Duration::from_secs(1),
+        aws_config: oprf_test_utils::dummy_localstack_config().await,
+        wallet_private_key_secret_id: TEST_WALLET_PRIVATE_KEY_SECRET_ID,
+    })
     .await
     .expect_err("Should fail");
     assert_eq!("while building schema string", should_error.to_string());

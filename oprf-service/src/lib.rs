@@ -144,7 +144,6 @@ impl OprfServiceBuilder {
                             oprf_key_material_store.reload(refreshed_key_material)
                         }
                         // In case we get an error from the secret-manager, we simply log the error - we can still serve OPRF requests, nothing wrong with that.
-                        // If there is a new key-gen/reshare, we will die if the DB is really down, but there is no reason to stop the service in this case.
                         Err(err) => tracing::error!(
                             "Could not load key-material store from secret-manager: {err:?}"
                         ),
@@ -164,7 +163,6 @@ impl OprfServiceBuilder {
                 secret_manager,
                 oprf_key_material_store: oprf_key_material_store.clone(),
                 get_oprf_key_material_timeout: config.get_oprf_key_material_timeout,
-                poll_oprf_key_material_interval: config.poll_oprf_key_material_interval,
                 start_block: config.start_block,
                 started: started_services.new_service(),
                 cancellation_token,

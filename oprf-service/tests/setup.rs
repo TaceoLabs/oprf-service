@@ -26,10 +26,7 @@ use taceo_oprf_service::{
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-oprf_node_test_secret_manager!(
-    taceo_oprf_service::secret_manager::SecretManager,
-    NodeTestSecretManager
-);
+oprf_node_test_secret_manager!(taceo_oprf_service::secret_manager, NodeTestSecretManager);
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct ConfigurableTestRequestAuth(OprfKeyId);
@@ -94,7 +91,6 @@ impl TestNode {
             session_lifetime: Duration::from_secs(10),
             reload_key_material_interval: Duration::from_secs(3600),
             get_oprf_key_material_timeout: Duration::from_secs(60),
-            poll_oprf_key_material_interval: Duration::from_millis(200),
             start_block: None,
             version_req: "1.0.0".parse().unwrap(),
             region: "EU".to_owned(),
@@ -102,6 +98,8 @@ impl TestNode {
             db_max_connections: 1.try_into().unwrap(),
             db_schema: "schema".to_owned(),
             db_acquire_timeout: Duration::from_secs(2),
+            db_retry_delay: Duration::from_secs(1),
+            db_max_retries: 30.try_into().expect("Is non zero"),
         };
 
         let child_token = cancellation_token.child_token();

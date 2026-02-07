@@ -2,11 +2,16 @@
 //!
 //! Additionally, fetches the node-provider's Ethereum address from the DB.
 
-use std::{collections::HashMap, num::NonZeroU32, time::Duration};
+use std::{
+    collections::HashMap,
+    num::{NonZeroU32, NonZeroUsize},
+    time::Duration,
+};
 
 use alloy::primitives::Address;
 use ark_serialize::CanonicalDeserialize;
 use async_trait::async_trait;
+use backon::{BackoffBuilder as _, ConstantBackoff, ConstantBuilder, Retryable as _};
 use eyre::Context as _;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::{
@@ -17,7 +22,7 @@ use secrecy::{ExposeSecret as _, SecretString, zeroize::ZeroizeOnDrop};
 use sqlx::{Executor, PgPool, postgres::PgPoolOptions};
 use tracing::instrument;
 
-use crate::secret_manager::SecretManager;
+use crate::secret_manager::{GetOprfKeyMaterialError, SecretManager};
 
 fn sanitize_identifier(input: &str) -> eyre::Result<()> {
     eyre::ensure!(!input.is_empty(), "Empty schema is not allowed");
@@ -38,7 +43,11 @@ fn schema_connect(schema: &str) -> eyre::Result<String> {
 
 /// The postgres secret manager wrapping a `PgPool`.
 #[derive(Debug)]
-pub struct PostgresSecretManager(PgPool);
+pub struct PostgresSecretManager {
+    pool: PgPool,
+    max_retries: NonZeroUsize,
+    retry_delay: Duration,
+}
 
 #[derive(Debug, sqlx::FromRow, ZeroizeOnDrop)]
 struct ShareRow {
@@ -62,12 +71,18 @@ impl PostgresSecretManager {
         schema: &str,
         max_connections: NonZeroU32,
         acquire_timeout: Duration,
+        max_retries: NonZeroUsize,
+        retry_delay: Duration,
     ) -> eyre::Result<Self> {
         // we only need one connection but as this will be used behind an Arc, we can't use PgConnection, as this needs a mutable reference to execute queries.
         tracing::info!("connecting to DB...");
         let schema_connect = schema_connect(schema).context("while building schema string")?;
         tracing::debug!("{schema_connect}");
-        let pool = PgPoolOptions::new()
+        let backoff_strategy = ConstantBuilder::new()
+            .with_delay(retry_delay)
+            .with_max_times(max_retries.get())
+            .build();
+        let pg_pool_options = PgPoolOptions::new()
             .max_connections(max_connections.get())
             .acquire_timeout(acquire_timeout)
             .after_connect(move |conn, _| {
@@ -79,13 +94,27 @@ impl PostgresSecretManager {
                     }
                     Ok(())
                 })
-            })
-            .connect(connection_string.expose_secret())
-            .await
-            .context("while connecting to postgres DB")?;
+            });
+        let pool = (|| {
+            pg_pool_options
+                .clone()
+                .connect(connection_string.expose_secret())
+        })
+        .retry(backoff_strategy)
+        .sleep(tokio::time::sleep)
+        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .notify(|e, duration| {
+            tracing::warn!("Timeout while creating pool: {e:?} Retry after {duration:?}")
+        })
+        .await
+        .context("while connecting to postgres DB")?;
         // we don't run migrations, we just read
         // TODO do we need to check version of the DB to fast crash if migrations don't match?
-        Ok(Self(pool))
+        Ok(Self {
+            pool,
+            max_retries,
+            retry_delay,
+        })
     }
 }
 
@@ -94,21 +123,25 @@ impl SecretManager for PostgresSecretManager {
     #[instrument(level = "info", skip_all)]
     async fn load_address(&self) -> eyre::Result<Address> {
         tracing::info!("loading address from secret-manager");
-        let stored_address: String =
+        let stored_address: String = (|| {
             sqlx::query_scalar("SELECT address FROM evm_address WHERE id = TRUE")
-                .fetch_optional(&self.0)
-                .await?
-                .ok_or_else(|| {
-                    eyre::eyre!("Cannot get address from DB, maybe key-gen needs to start")
-                })?;
+                .fetch_optional(&self.pool)
+        })
+        .retry(self.backoff_strategy())
+        .sleep(tokio::time::sleep)
+        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .notify(|e, duration| tracing::warn!("Retrying load address: {e:?} after {duration:?}"))
+        .await?
+        .ok_or_else(|| eyre::eyre!("Cannot get address from DB, maybe key-gen needs to start"))?;
         Address::parse_checksummed(stored_address, None).context("invalid address stored in DB")
     }
 
     #[instrument(level = "info", skip_all)]
     async fn load_secrets(&self) -> eyre::Result<HashMap<OprfKeyId, OprfKeyMaterial>> {
         tracing::info!("fetching all OPRF keys from DB..");
-        let rows: Vec<ShareRow> = sqlx::query_as(
-            r#"
+        let rows: Vec<ShareRow> = (|| {
+            sqlx::query_as(
+                r#"
                 SELECT
                     id,
                     share,
@@ -116,8 +149,13 @@ impl SecretManager for PostgresSecretManager {
                     public_key
                 FROM shares
             "#,
-        )
-        .fetch_all(&self.0)
+            )
+            .fetch_all(&self.pool)
+        })
+        .retry(self.backoff_strategy())
+        .sleep(tokio::time::sleep)
+        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .notify(|e, duration| tracing::warn!("Retrying load secrets: {e:?} after {duration:?}"))
         .await
         .context("while fetching all OPRF keys")?;
         tracing::debug!("loaded {} rows. parsing..", rows.len());
@@ -134,9 +172,10 @@ impl SecretManager for PostgresSecretManager {
         &self,
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
-    ) -> eyre::Result<Option<OprfKeyMaterial>> {
-        let maybe_row: Option<ShareRow> = sqlx::query_as(
-            r#"
+    ) -> Result<OprfKeyMaterial, GetOprfKeyMaterialError> {
+        let maybe_row: Option<ShareRow> = (|| {
+            sqlx::query_as(
+                r#"
                 SELECT
                     id,
                     share,
@@ -145,20 +184,39 @@ impl SecretManager for PostgresSecretManager {
                 FROM shares
                 WHERE id = $1 AND epoch = $2
             "#,
-        )
-        .bind(oprf_key_id.to_le_bytes())
-        .bind(i64::from(epoch.into_inner()))
-        .fetch_optional(&self.0)
+            )
+            .bind(oprf_key_id.to_le_bytes())
+            .bind(i64::from(epoch.into_inner()))
+            .fetch_optional(&self.pool)
+        })
+        .retry(self.backoff_strategy())
+        .sleep(tokio::time::sleep)
+        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .notify(|e, duration| {
+            tracing::warn!(
+                "Retrying get_oprf_key_material for {oprf_key_id}: {e:?} after {duration:?}"
+            )
+        })
         .await
         .context("while fetching previous share")?;
         if let Some(row) = maybe_row {
             tracing::info!("found new key-material!");
             let (_, key_material) = db_row_into_key_material(row);
-            Ok(Some(key_material))
+            Ok(key_material)
         } else {
             tracing::debug!("Cannot find share for requested key and epoch");
-            Ok(None)
+            Err(GetOprfKeyMaterialError::NotInDb)
         }
+    }
+}
+
+impl PostgresSecretManager {
+    #[inline(always)]
+    fn backoff_strategy(&self) -> ConstantBackoff {
+        ConstantBuilder::new()
+            .with_delay(self.retry_delay)
+            .with_max_times(self.max_retries.get())
+            .build()
     }
 }
 

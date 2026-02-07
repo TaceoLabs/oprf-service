@@ -2,7 +2,12 @@
 //!
 //! Additionally this module defines the [`Environment`] to assert dev-only code.
 
-use std::{net::SocketAddr, num::NonZeroU32, path::PathBuf, time::Duration};
+use std::{
+    net::SocketAddr,
+    num::{NonZeroU32, NonZeroUsize},
+    path::PathBuf,
+    time::Duration,
+};
 
 use alloy::primitives::Address;
 use clap::{Parser, ValueEnum};
@@ -73,6 +78,14 @@ pub struct OprfKeyGenConfig {
     /// The max time we wait for a DB connection
     #[clap(long, env = "OPRF_KEY_GEN_DB_ACQUIRE_TIMEOUT", value_parser=humantime::parse_duration, default_value="2min")]
     pub db_acquire_timeout: Duration,
+
+    /// The delay between retires for db backoff.
+    #[clap(long, env = "OPRF_KEY_GEN_DB_RETRY_DELAY", value_parser=humantime::parse_duration, default_value="1min")]
+    pub db_retry_delay: Duration,
+
+    /// The max retries for backoff strategy in db. With default acquire_timeout and retry delay, this is ~1h.
+    #[clap(long, env = "OPRF_KEY_GEN_DB_MAX_RETRIES", default_value = "20")]
+    pub db_max_retries: NonZeroUsize,
 
     /// The location of the zkey for the key-gen proof in round 2 of KeyGen
     #[clap(long, env = "OPRF_NODE_KEY_GEN_ZKEY")]

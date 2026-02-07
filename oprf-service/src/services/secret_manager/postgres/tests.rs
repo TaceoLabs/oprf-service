@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::{
     oprf_key_material_store::OprfKeyMaterialStore,
-    secret_manager::{SecretManager, postgres::PostgresSecretManager},
+    secret_manager::{GetOprfKeyMaterialError, SecretManager, postgres::PostgresSecretManager},
 };
 use alloy::primitives::U160;
 use ark_serialize::CanonicalSerialize;
@@ -30,6 +30,8 @@ async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<Postgr
         TEST_SCHEMA,
         1.try_into().unwrap(),
         Duration::from_secs(2),
+        30.try_into().expect("Is NonZero"),
+        Duration::from_secs(1),
     )
     .await
 }
@@ -86,6 +88,8 @@ async fn test_empty_schema_name() -> eyre::Result<()> {
         "",
         1.try_into().unwrap(),
         Duration::from_secs(2),
+        30.try_into().expect("Is NonZero"),
+        Duration::from_secs(1),
     )
     .await
     .expect_err("Should fail");
@@ -216,8 +220,7 @@ async fn test_get_oprf_key_material() -> eyre::Result<()> {
 
     let key_material0 = secret_manager
         .get_oprf_key_material(oprf_key_id0, epoch0)
-        .await?
-        .expect("Should be some");
+        .await?;
     assert_eq!(
         ark_babyjubjub::Fr::from(key_material0.share()),
         ark_babyjubjub::Fr::from(share0)
@@ -225,26 +228,25 @@ async fn test_get_oprf_key_material() -> eyre::Result<()> {
     assert!(key_material0.is_epoch(epoch0));
     assert_eq!(key_material0.public_key(), public_key0);
 
-    // should be None
-    assert!(
+    // should be NotInDb
+    assert!(matches!(
         secret_manager
             .get_oprf_key_material(oprf_key_id0, epoch1)
-            .await?
-            .is_none()
-    );
+            .await,
+        Err(GetOprfKeyMaterialError::NotInDb)
+    ));
 
-    // should be None
-    assert!(
+    // should be NotInDb
+    assert!(matches!(
         secret_manager
             .get_oprf_key_material(oprf_key_id_unknown, epoch1)
-            .await?
-            .is_none()
-    );
+            .await,
+        Err(GetOprfKeyMaterialError::NotInDb)
+    ));
 
     let key_material1 = secret_manager
         .get_oprf_key_material(oprf_key_id1, epoch1)
-        .await?
-        .expect("Should be some");
+        .await?;
     assert_eq!(
         ark_babyjubjub::Fr::from(key_material1.share()),
         ark_babyjubjub::Fr::from(share1)
@@ -253,12 +255,12 @@ async fn test_get_oprf_key_material() -> eyre::Result<()> {
     assert_eq!(key_material1.public_key(), public_key1);
 
     // should be None
-    assert!(
+    assert!(matches!(
         secret_manager
             .get_oprf_key_material(oprf_key_id1, epoch1.prev())
-            .await?
-            .is_none()
-    );
+            .await,
+        Err(GetOprfKeyMaterialError::NotInDb)
+    ));
 
     Ok(())
 }

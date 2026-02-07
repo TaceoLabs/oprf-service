@@ -4,7 +4,10 @@
 //!
 //! Additionally this module defines the [`Environment`] to assert dev-only code.
 
-use std::{num::NonZeroU32, time::Duration};
+use std::{
+    num::{NonZeroU32, NonZeroUsize},
+    time::Duration,
+};
 
 use alloy::primitives::Address;
 use clap::{Parser, ValueEnum};
@@ -83,19 +86,10 @@ pub struct OprfNodeConfig {
     #[clap(
         long,
         env = "OPRF_NODE_GET_OPRF_KEY_MATERIAL_TIMEOUT",
-        default_value="5min",
+        default_value="10min",
         value_parser = humantime::parse_duration
     )]
     pub get_oprf_key_material_timeout: Duration,
-
-    /// Polling interval during key-material retrieval from secret-manager.
-    #[clap(
-        long,
-        env = "OPRF_NODE_POLL_OPRF_KEY_MATERIAL_INTERVAL",
-        default_value="500ms",
-        value_parser = humantime::parse_duration
-    )]
-    pub poll_oprf_key_material_interval: Duration,
 
     /// The block number to start listening for events from the OprfKeyRegistry contract.
     /// If not set, will start from the latest block.
@@ -125,4 +119,12 @@ pub struct OprfNodeConfig {
     /// The max time we wait for a DB connection
     #[clap(long, env = "OPRF_NODE_DB_ACQUIRE_TIMEOUT", value_parser=humantime::parse_duration, default_value="2min")]
     pub db_acquire_timeout: Duration,
+
+    /// The delay between retires for db backoff.
+    #[clap(long, env = "OPRF_NODE_DB_RETRY_DELAY", value_parser=humantime::parse_duration, default_value="1min")]
+    pub db_retry_delay: Duration,
+
+    /// The max retries for backoff strategy in db. With default acquire_timeout and retry delay, this is ~1h.
+    #[clap(long, env = "OPRF_NODE_DB_MAX_RETRIES", default_value = "20")]
+    pub db_max_retries: NonZeroUsize,
 }

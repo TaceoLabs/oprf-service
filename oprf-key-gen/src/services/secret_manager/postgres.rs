@@ -2,12 +2,17 @@
 //!
 //! If the EVM private-key doesn't exist at the requested `secret-id`, it will create a new one and store it. Additionally, will store the associated address in the DB so that the accompanying OPRF-nodes can fetch the address from there.
 
+use std::num::NonZeroUsize;
 use std::{num::NonZeroU32, time::Duration};
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 use alloy::signers::local::PrivateKeySigner;
 use async_trait::async_trait;
+use backon::BackoffBuilder;
+use backon::ConstantBackoff;
+use backon::ConstantBuilder;
+use backon::Retryable;
 use eyre::Context;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
@@ -23,6 +28,28 @@ pub struct PostgresSecretManager {
     pool: PgPool,
     aws_config: aws_config::SdkConfig,
     wallet_private_key_secret_id: String,
+    max_retries: NonZeroUsize,
+    retry_delay: Duration,
+}
+
+/// The arguments for the [`PostgresSecretManager`].
+pub struct PostgresSecretManagerArgs<'a> {
+    /// Connection string for the database. Treat this as a secret.
+    pub connection_string: &'a SecretString,
+    /// Database schema to use. If it does not exist yet, the secret manager will create the schema automatically.
+    pub schema: &'a str,
+    /// Maximum number of connections in the connection pool.
+    pub max_connections: NonZeroU32,
+    /// Timeout for acquiring a new connection from the pool. If a connection is not established within this duration, a linear backoff strategy is started.
+    pub acquire_timeout: Duration,
+    /// The retries during the backoff strategy. DB is considered down, if cannot get connection after this amount of retries.
+    pub max_retries: NonZeroUsize,
+    /// Sleep duration between retries when connection acquisition from the pool times out.
+    pub retry_delay: Duration,
+    /// AWS SDK configuration used by the secret manager to load or create the Ethereum private key.
+    pub aws_config: aws_config::SdkConfig,
+    /// Secret ID used by the secret manager to fetch the Ethereum private key, or to store it if it does not already exist.
+    pub wallet_private_key_secret_id: &'a str,
 }
 
 fn sanitize_identifier(input: &str) -> eyre::Result<()> {
@@ -50,19 +77,24 @@ fn schema_connect(schema: &str) -> eyre::Result<String> {
 impl PostgresSecretManager {
     /// Initializes a `PostgresSecretManager` and potentially runs migrations if necessary.
     #[instrument(level = "info", skip_all)]
-    pub async fn init(
-        connection_string: &SecretString,
-        schema: &str,
-        max_connections: NonZeroU32,
-        acquire_timeout: Duration,
-        aws_config: aws_config::SdkConfig,
-        wallet_private_key_secret_id: &str,
-    ) -> eyre::Result<Self> {
-        tracing::debug!("building pool");
-        // we only need one connection but as this will be used behind an Arc, we can't use PgConnection, as this needs a mutable reference to execute queries.
+    pub async fn init(args: PostgresSecretManagerArgs<'_>) -> eyre::Result<Self> {
+        let PostgresSecretManagerArgs {
+            connection_string,
+            schema,
+            max_connections,
+            acquire_timeout,
+            max_retries,
+            retry_delay,
+            aws_config,
+            wallet_private_key_secret_id,
+        } = args;
         tracing::info!("using schema: {schema}");
         let schema_connect = schema_connect(schema).context("while building schema string")?;
-        let pool = PgPoolOptions::new()
+        let backoff_strategy = ConstantBuilder::new()
+            .with_delay(retry_delay)
+            .with_max_times(max_retries.get())
+            .build();
+        let pg_pool_options = PgPoolOptions::new()
             .max_connections(max_connections.get())
             .acquire_timeout(acquire_timeout)
             .after_connect(move |conn, _| {
@@ -74,11 +106,23 @@ impl PostgresSecretManager {
                     }
                     Ok(())
                 })
-            })
-            .connect(connection_string.expose_secret())
-            .await
-            .context("while connecting to postgres DB")?;
+            });
+        // connect with constant backoff strategy
+        let pool = (|| {
+            pg_pool_options
+                .clone()
+                .connect(connection_string.expose_secret())
+        })
+        .retry(backoff_strategy)
+        .sleep(tokio::time::sleep)
+        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .notify(|e, duration| {
+            tracing::warn!("Timeout while creating pool: {e:?} Retry after {duration:?}")
+        })
+        .await
+        .context("while connecting to postgres DB")?;
         tracing::info!("running migrations...");
+        // if we just got a fresh db pool, we have a valid connection, as we don't have connect_lazy, therefore this should not run into timeouts.
         sqlx::migrate!("./migrations")
             .run(&pool)
             .await
@@ -87,6 +131,8 @@ impl PostgresSecretManager {
             pool,
             wallet_private_key_secret_id: wallet_private_key_secret_id.to_owned(),
             aws_config,
+            max_retries,
+            retry_delay,
         })
     }
 }
@@ -96,6 +142,7 @@ impl SecretManager for PostgresSecretManager {
     #[instrument(level = "info", skip_all)]
     async fn load_or_insert_wallet_private_key(&self) -> eyre::Result<PrivateKeySigner> {
         // load or insert the key with the secret-manager
+        // has internal backoff strategy, therefore we don't need to wrap this manually.
         let private_key = secret_manager::aws::load_or_insert_ethereum_private_key(
             &aws_sdk_secretsmanager::Client::new(&self.aws_config),
             &self.wallet_private_key_secret_id,
@@ -103,16 +150,24 @@ impl SecretManager for PostgresSecretManager {
         .await?;
         tracing::debug!("insert address into DB...");
         // insert address into postgres DB
-        sqlx::query(
-            r#"
-                INSERT INTO evm_address (id, address)
-                VALUES (TRUE, $1)
-                ON CONFLICT (id)
-                DO UPDATE SET address = EXCLUDED.address
-            "#,
-        )
-        .bind(private_key.address().to_string())
-        .execute(&self.pool)
+        (|| {
+            sqlx::query(
+                r#"
+                    INSERT INTO evm_address (id, address)
+                    VALUES (TRUE, $1)
+                    ON CONFLICT (id)
+                    DO UPDATE SET address = EXCLUDED.address
+                "#,
+            )
+            .bind(private_key.address().to_string())
+            .execute(&self.pool)
+        })
+        .retry(self.backoff_strategy())
+        .sleep(tokio::time::sleep)
+        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .notify(|e, duration| {
+            tracing::warn!("Retrying load or insert db: {e:?} after {duration:?}")
+        })
         .await
         .context("while storing address into DB")?;
         tracing::info!("stored address in DB");
@@ -125,18 +180,29 @@ impl SecretManager for PostgresSecretManager {
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
     ) -> eyre::Result<Option<DLogShareShamir>> {
-        let maybe_share_bytes: Option<Vec<u8>> = sqlx::query_scalar(
-            r#"
+        tracing::debug!("loading share...");
+        let maybe_share_bytes: Option<Vec<u8>> = (|| {
+            sqlx::query_scalar(
+                r#"
                 SELECT share
                 FROM shares
                 WHERE id = $1 AND epoch = $2
             "#,
-        )
-        .bind(oprf_key_id.to_le_bytes())
-        .bind(i64::from(epoch))
-        .fetch_optional(&self.pool)
+            )
+            .bind(oprf_key_id.to_le_bytes())
+            .bind(i64::from(epoch))
+            .fetch_optional(&self.pool)
+        })
+        .retry(self.backoff_strategy())
+        .sleep(tokio::time::sleep)
+        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .notify(|e, duration| {
+            tracing::warn!(
+                "Retrying get_share_epoch {oprf_key_id} because timeout from db: {e:?} after {duration:?}"
+            )
+        })
         .await
-        .context("while fetching previous share")?;
+        .context(format!("while fetching share {oprf_key_id} with epoch {epoch}"))?;
 
         if let Some(share_bytes) = maybe_share_bytes {
             Ok(Some(
@@ -151,16 +217,25 @@ impl SecretManager for PostgresSecretManager {
 
     #[instrument(level = "info", skip_all, fields(oprf_key_id))]
     async fn remove_oprf_key_material(&self, oprf_key_id: OprfKeyId) -> eyre::Result<()> {
-        let rows_deleted = sqlx::query(
-            r#"
+        tracing::debug!("trying to delete key-material..");
+        let rows_deleted = (|| {
+            sqlx::query(
+                r#"
                 DELETE FROM shares
                 WHERE id = $1
             "#,
-        )
-        .bind(oprf_key_id.to_le_bytes())
-        .execute(&self.pool)
+            )
+            .bind(oprf_key_id.to_le_bytes())
+            .execute(&self.pool)
+        })
+        .retry(self.backoff_strategy())
+        .sleep(tokio::time::sleep)
+        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .notify(|e, duration| {
+            tracing::warn!("Retrying remove {oprf_key_id} in db: {e:?} after {duration:?}")
+        })
         .await
-        .context("while removing OPRF key-material")?
+        .context(format!("while deleting key-share {oprf_key_id}"))?
         .rows_affected();
 
         tracing::info!("deleted {rows_deleted} secrets from postgres");
@@ -176,8 +251,10 @@ impl SecretManager for PostgresSecretManager {
         share: DLogShareShamir,
     ) -> eyre::Result<()> {
         tracing::info!("storing share...");
-        sqlx::query(
-            r#"
+
+        (|| {
+            sqlx::query(
+                r#"
                 INSERT INTO shares (id, share, epoch, public_key)
                 VALUES ($1, $2, $3, $4)
                 ON CONFLICT (id)
@@ -186,15 +263,33 @@ impl SecretManager for PostgresSecretManager {
                     epoch = EXCLUDED.epoch,
                     public_key = EXCLUDED.public_key;
             "#,
-        )
-        .bind(oprf_key_id.to_le_bytes())
-        .bind(to_db_ark_serialize_uncompressed(share))
-        .bind(i64::from(epoch.into_inner())) // convert to larger i64 to preserve sign of epoch, we compare share.epoch and if we flip the sign this might break something
-        .bind(to_db_ark_serialize_uncompressed(public_key))
-        .execute(&self.pool)
+            )
+            .bind(oprf_key_id.to_le_bytes())
+            .bind(to_db_ark_serialize_uncompressed(share.clone()))
+            .bind(i64::from(epoch.into_inner())) // convert to larger i64 to preserve sign of epoch, we compare share.epoch and if we flip the sign this might break something
+            .bind(to_db_ark_serialize_uncompressed(public_key))
+            .execute(&self.pool)
+        })
+        .retry(self.backoff_strategy())
+        .sleep(tokio::time::sleep)
+        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .notify(|e, duration| {
+            tracing::warn!("Retrying store DLogShare {oprf_key_id} in db: {e:?} after {duration:?}")
+        })
         .await
-        .context("while storing new DLogShare")?;
+        .context(format!("while storing DLogShare {oprf_key_id}"))?;
+        tracing::info!("successfully stored {oprf_key_id}");
         Ok(())
+    }
+}
+
+impl PostgresSecretManager {
+    #[inline(always)]
+    fn backoff_strategy(&self) -> ConstantBackoff {
+        ConstantBuilder::new()
+            .with_delay(self.retry_delay)
+            .with_max_times(self.max_retries.get())
+            .build()
     }
 }
 

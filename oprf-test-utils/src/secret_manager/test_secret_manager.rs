@@ -24,6 +24,7 @@ macro_rules! key_gen_test_secret_manager {
 
             use alloy::signers::local::PrivateKeySigner;
             use async_trait::async_trait;
+            use eyre::Context;
             use oprf_core::ddlog_equality::shamir::DLogShareShamir;
             use oprf_test_utils::test_secret_manager::TestSecretManager;
             use oprf_types::{
@@ -51,7 +52,11 @@ macro_rules! key_gen_test_secret_manager {
                 }
 
                 async fn remove_oprf_key_material(&self, rp_id: OprfKeyId) -> eyre::Result<()> {
-                    self.0.remove_oprf_key_material(rp_id).await
+                    self.0
+                        .remove_oprf_key_material(rp_id)
+                        .await
+                        .context("while remove oprf key material")?;
+                    Ok(())
                 }
 
                 async fn store_dlog_share(
@@ -64,6 +69,8 @@ macro_rules! key_gen_test_secret_manager {
                     self.0
                         .store_dlog_share(oprf_key_id, public_key, epoch, share)
                         .await
+                        .context("while store DlogShare")?;
+                    Ok(())
                 }
             }
         }
@@ -73,7 +80,7 @@ macro_rules! key_gen_test_secret_manager {
 
 #[macro_export]
 macro_rules! oprf_node_test_secret_manager {
-    ($trait: path, $name: ident) => {
+    ($module: path, $name: ident) => {
         mod impl_secret_manager {
             use std::collections::HashMap;
             use std::sync::Arc;
@@ -88,10 +95,11 @@ macro_rules! oprf_node_test_secret_manager {
                 crypto::{OprfKeyMaterial, OprfPublicKey},
             };
             use taceo_oprf_service::oprf_key_material_store::OprfKeyMaterialStore;
+            use $module::{GetOprfKeyMaterialError, SecretManager};
             // need a new type to implement the trait
             pub struct $name(pub Arc<TestSecretManager>);
             #[async_trait]
-            impl $trait for $name {
+            impl SecretManager for $name {
                 async fn load_address(&self) -> eyre::Result<Address> {
                     self.0.load_address().await
                 }
@@ -103,8 +111,11 @@ macro_rules! oprf_node_test_secret_manager {
                     &self,
                     oprf_key_id: OprfKeyId,
                     epoch: ShareEpoch,
-                ) -> eyre::Result<Option<OprfKeyMaterial>> {
-                    self.0.get_oprf_key_material(oprf_key_id, epoch).await
+                ) -> Result<OprfKeyMaterial, GetOprfKeyMaterialError> {
+                    self.0
+                        .get_oprf_key_material(oprf_key_id, epoch)
+                        .await?
+                        .ok_or(GetOprfKeyMaterialError::NotInDb)
                 }
             }
         }

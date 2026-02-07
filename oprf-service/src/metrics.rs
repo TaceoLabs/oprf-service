@@ -27,6 +27,9 @@ pub const METRICS_ID_NODE_PART_2_START: &str = "taceo.oprf.node.part_2.start";
 /// Metrics key for number of finishing handling a request for part two of the OPRF computation
 pub const METRICS_ID_NODE_PART_2_FINISH: &str = "taceo.oprf.node.part_2.finish";
 
+/// Metrics key for times the node could not fetch key-material after finalize event.
+pub const METRICS_ID_NODE_CANNOT_FETCH_KEY_MATERIAL: &str = "taceo.oprf.node.fetch.error";
+
 /// Describe all metrics used by the service.
 ///
 /// This calls the `describe_*` functions from the `metrics` crate to set metadata on the different metrics.
@@ -96,4 +99,10 @@ pub fn describe_metrics() {
         metrics::Unit::Count,
         "Number of finished computations for part two of OPRF"
     );
+
+    metrics::describe_counter!(
+        METRICS_ID_NODE_CANNOT_FETCH_KEY_MATERIAL,
+        metrics::Unit::Count,
+        "Number of times we could not fetch key-material from secret-manager"
+    )
 }

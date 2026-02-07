@@ -35,6 +35,7 @@ aws-sdk-secretsmanager = "1"
 axum = "0.8"
 axum-extra = "0.12"
 axum-test = "18"
+backon = { version = "1.6", default-features = false }
 blake3 = "1"
 ciborium = "0.2"
 circom-types = { package = "taceo-circom-types", version = "0.2.2", default-features = false }

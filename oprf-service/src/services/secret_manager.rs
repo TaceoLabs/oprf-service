@@ -23,6 +23,17 @@ pub mod postgres;
 /// Must be `Send + Sync` to work with async contexts (e.g., Axum).
 pub type SecretManagerService = Arc<dyn SecretManager + Send + Sync>;
 
+/// Error when calling [`SecretManager::get_oprf_key_material`].
+#[derive(Debug, thiserror::Error)]
+pub enum GetOprfKeyMaterialError {
+    /// Cannot find the share with requested oprf-key-id and epoch.
+    #[error("Cannot find requested material")]
+    NotInDb,
+    /// Internal error from DB.
+    #[error(transparent)]
+    Internal(#[from] eyre::Report),
+}
+
 /// Trait that implementations of secret managers must provide.
 ///
 /// Handles persistence of `OprfKeyMaterial`.
@@ -35,11 +46,9 @@ pub trait SecretManager {
     async fn load_secrets(&self) -> eyre::Result<HashMap<OprfKeyId, OprfKeyMaterial>>;
 
     /// Returns the [`OprfKeyMaterial`] for the given [`OprfKeyId`] and [`ShareEpoch`] if it exists.
-    ///
-    /// Returns `None` if it doesn't exist or the key-material exists, but is not in the correct epoch.
     async fn get_oprf_key_material(
         &self,
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
-    ) -> eyre::Result<Option<OprfKeyMaterial>>;
+    ) -> Result<OprfKeyMaterial, GetOprfKeyMaterialError>;
 }
