@@ -57,6 +57,7 @@ async fn main() -> eyre::Result<ExitCode> {
             &config.service_config.db_connection_string,
             &config.service_config.db_schema,
             config.service_config.db_max_connections,
+            Duration::from_secs(2),
         )
         .await
         .context("while starting postgres secret-manager")?,

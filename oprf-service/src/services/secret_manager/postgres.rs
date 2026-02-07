@@ -2,7 +2,7 @@
 //!
 //! Additionally, fetches the node-provider's Ethereum address from the DB.
 
-use std::{collections::HashMap, num::NonZeroU32};
+use std::{collections::HashMap, num::NonZeroU32, time::Duration};
 
 use alloy::primitives::Address;
 use ark_serialize::CanonicalDeserialize;
@@ -61,6 +61,7 @@ impl PostgresSecretManager {
         connection_string: &SecretString,
         schema: &str,
         max_connections: NonZeroU32,
+        acquire_timeout: Duration,
     ) -> eyre::Result<Self> {
         // we only need one connection but as this will be used behind an Arc, we can't use PgConnection, as this needs a mutable reference to execute queries.
         tracing::info!("connecting to DB...");
@@ -68,6 +69,7 @@ impl PostgresSecretManager {
         tracing::debug!("{schema_connect}");
         let pool = PgPoolOptions::new()
             .max_connections(max_connections.get())
+            .acquire_timeout(acquire_timeout)
             .after_connect(move |conn, _| {
                 let schema_connect = schema_connect.clone();
                 Box::pin(async move {

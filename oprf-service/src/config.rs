@@ -119,6 +119,10 @@ pub struct OprfNodeConfig {
     pub db_schema: String,
 
     /// The connection string for the Postgres DB
-    #[clap(long, env = "OPRF_NODE_DB_MAX_CONNECTIONS", default_value = "3")]
+    #[clap(long, env = "OPRF_NODE_DB_MAX_CONNECTIONS", default_value = "4")]
     pub db_max_connections: NonZeroU32,
+
+    /// The max time we wait for a DB connection
+    #[clap(long, env = "OPRF_NODE_DB_ACQUIRE_TIMEOUT", value_parser=humantime::parse_duration, default_value="2min")]
+    pub db_acquire_timeout: Duration,
 }

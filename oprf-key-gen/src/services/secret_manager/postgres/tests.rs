@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::time::Duration;
 
 use crate::secret_manager::SecretManager as _;
 use crate::secret_manager::postgres::PostgresSecretManager;
@@ -21,6 +22,8 @@ async fn postgres_secret_manager_with_localstack(
     PostgresSecretManager::init(
         &SecretString::from(connection_string.to_owned()),
         TEST_SCHEMA,
+        3.try_into().expect("Is non zero"),
+        Duration::from_secs(2),
         aws_config.to_owned(),
         TEST_WALLET_PRIVATE_KEY_SECRET_ID,
     )
@@ -36,6 +39,8 @@ async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<Postgr
     PostgresSecretManager::init(
         &SecretString::from(connection_string.to_owned()),
         TEST_SCHEMA,
+        3.try_into().expect("Is non zero"),
+        Duration::from_secs(2),
         oprf_test_utils::dummy_localstack_config().await,
         TEST_WALLET_PRIVATE_KEY_SECRET_ID,
     )
@@ -201,6 +206,8 @@ async fn test_empty_schema_name() -> eyre::Result<()> {
     let should_error = PostgresSecretManager::init(
         &SecretString::from(connection_string.to_owned()),
         "",
+        3.try_into().expect("Is non zero"),
+        Duration::from_secs(2),
         oprf_test_utils::dummy_localstack_config().await,
         TEST_WALLET_PRIVATE_KEY_SECRET_ID,
     )

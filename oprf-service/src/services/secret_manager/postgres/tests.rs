@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::{
     oprf_key_material_store::OprfKeyMaterialStore,
     secret_manager::{SecretManager, postgres::PostgresSecretManager},
@@ -27,6 +29,7 @@ async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<Postgr
         &SecretString::from(connection_string.to_owned()),
         TEST_SCHEMA,
         1.try_into().unwrap(),
+        Duration::from_secs(2),
     )
     .await
 }
@@ -82,6 +85,7 @@ async fn test_empty_schema_name() -> eyre::Result<()> {
         &SecretString::from(connection_string.to_owned()),
         "",
         1.try_into().unwrap(),
+        Duration::from_secs(2),
     )
     .await
     .expect_err("Should fail");

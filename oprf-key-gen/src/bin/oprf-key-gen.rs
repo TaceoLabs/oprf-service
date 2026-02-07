@@ -39,6 +39,8 @@ async fn main() -> eyre::Result<ExitCode> {
         PostgresSecretManager::init(
             &config.db_connection_string,
             &config.db_schema,
+            config.max_db_connection,
+            config.db_acquire_timeout,
             aws_config,
             &config.wallet_private_key_secret_id,
         )
