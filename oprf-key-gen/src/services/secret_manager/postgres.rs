@@ -2,6 +2,8 @@
 //!
 //! If the EVM private-key doesn't exist at the requested `secret-id`, it will create a new one and store it. Additionally, will store the associated address in the DB so that the accompanying OPRF-nodes can fetch the address from there.
 
+use std::{num::NonZeroU32, time::Duration};
+
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 use alloy::signers::local::PrivateKeySigner;
@@ -15,7 +17,7 @@ use tracing::instrument;
 
 use crate::secret_manager::{self, SecretManager};
 
-/// The postgres secret manager wrapping a `PgPool`. As we don't want to have multiple connections, we set the `max_pool_size` to 1.
+/// The postgres secret manager wrapping a `PgPool`.
 #[derive(Debug)]
 pub struct PostgresSecretManager {
     pool: PgPool,
@@ -51,6 +53,8 @@ impl PostgresSecretManager {
     pub async fn init(
         connection_string: &SecretString,
         schema: &str,
+        max_connections: NonZeroU32,
+        acquire_timeout: Duration,
         aws_config: aws_config::SdkConfig,
         wallet_private_key_secret_id: &str,
     ) -> eyre::Result<Self> {
@@ -59,7 +63,8 @@ impl PostgresSecretManager {
         tracing::info!("using schema: {schema}");
         let schema_connect = schema_connect(schema).context("while building schema string")?;
         let pool = PgPoolOptions::new()
-            .max_connections(1)
+            .max_connections(max_connections.get())
+            .acquire_timeout(acquire_timeout)
             .after_connect(move |conn, _| {
                 let schema_connect = schema_connect.clone();
                 Box::pin(async move {
