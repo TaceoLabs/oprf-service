@@ -8,6 +8,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 use alloy::signers::local::PrivateKeySigner;
 use async_trait::async_trait;
+use backoff::ExponentialBackoff;
 use eyre::Context;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
@@ -15,7 +16,16 @@ use secrecy::{ExposeSecret, SecretString};
 use sqlx::{Executor as _, PgPool, postgres::PgPoolOptions};
 use tracing::instrument;
 
-use crate::secret_manager::{self, SecretManager};
+use crate::secret_manager::{self, SecretManager, SecretManagerError};
+
+impl From<sqlx::Error> for SecretManagerError {
+    fn from(value: sqlx::Error) -> Self {
+        match value {
+            sqlx::Error::PoolTimedOut => Self::Recoverable,
+            err => SecretManagerError::NonRecoverable(eyre::eyre!(err)),
+        }
+    }
+}
 
 /// The postgres secret manager wrapping a `PgPool`.
 #[derive(Debug)]
@@ -125,6 +135,7 @@ impl SecretManager for PostgresSecretManager {
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
     ) -> eyre::Result<Option<DLogShareShamir>> {
+        // we also need to implement exponential backoff here but reshare is not planed in the upcoming weeks, therefore we wait for the key-gen stability rewrite in version 1.1
         let maybe_share_bytes: Option<Vec<u8>> = sqlx::query_scalar(
             r#"
                 SELECT share
@@ -150,19 +161,31 @@ impl SecretManager for PostgresSecretManager {
     }
 
     #[instrument(level = "info", skip_all, fields(oprf_key_id))]
-    async fn remove_oprf_key_material(&self, oprf_key_id: OprfKeyId) -> eyre::Result<()> {
-        let rows_deleted = sqlx::query(
-            r#"
+    async fn remove_oprf_key_material(
+        &self,
+        oprf_key_id: OprfKeyId,
+    ) -> Result<(), SecretManagerError> {
+        let backoff = ExponentialBackoff::default();
+        let rows_deleted = backoff::future::retry(backoff, || async {
+            let result = sqlx::query(
+                r#"
                 DELETE FROM shares
                 WHERE id = $1
             "#,
-        )
-        .bind(oprf_key_id.to_le_bytes())
-        .execute(&self.pool)
-        .await
-        .context("while removing OPRF key-material")?
-        .rows_affected();
-
+            )
+            .bind(oprf_key_id.to_le_bytes())
+            .execute(&self.pool)
+            .await;
+            match result {
+                Ok(success) => Ok(success.rows_affected()),
+                Err(sqlx::Error::PoolTimedOut) => {
+                    tracing::warn!("Ran into timeout while deleting key-material");
+                    Err(backoff::Error::transient(sqlx::Error::PoolTimedOut))
+                }
+                Err(err) => Err(backoff::Error::Permanent(err)),
+            }
+        })
+        .await?;
         tracing::info!("deleted {rows_deleted} secrets from postgres");
         Ok(())
     }
@@ -174,10 +197,13 @@ impl SecretManager for PostgresSecretManager {
         public_key: OprfPublicKey,
         epoch: ShareEpoch,
         share: DLogShareShamir,
-    ) -> eyre::Result<()> {
+    ) -> Result<(), SecretManagerError> {
         tracing::info!("storing share...");
-        sqlx::query(
-            r#"
+        let backoff = ExponentialBackoff::default();
+
+        backoff::future::retry(backoff, || async {
+            let query_result = sqlx::query(
+                r#"
                 INSERT INTO shares (id, share, epoch, public_key)
                 VALUES ($1, $2, $3, $4)
                 ON CONFLICT (id)
@@ -186,14 +212,23 @@ impl SecretManager for PostgresSecretManager {
                     epoch = EXCLUDED.epoch,
                     public_key = EXCLUDED.public_key;
             "#,
-        )
-        .bind(oprf_key_id.to_le_bytes())
-        .bind(to_db_ark_serialize_uncompressed(share))
-        .bind(i64::from(epoch.into_inner())) // convert to larger i64 to preserve sign of epoch, we compare share.epoch and if we flip the sign this might break something
-        .bind(to_db_ark_serialize_uncompressed(public_key))
-        .execute(&self.pool)
-        .await
-        .context("while storing new DLogShare")?;
+            )
+            .bind(oprf_key_id.to_le_bytes())
+            .bind(to_db_ark_serialize_uncompressed(share.clone()))
+            .bind(i64::from(epoch.into_inner())) // convert to larger i64 to preserve sign of epoch, we compare share.epoch and if we flip the sign this might break something
+            .bind(to_db_ark_serialize_uncompressed(public_key))
+            .execute(&self.pool)
+            .await;
+            match query_result {
+                Ok(_) => Ok(()),
+                Err(sqlx::Error::PoolTimedOut) => {
+                    tracing::warn!("Ran into timeout while storing DLogShare");
+                    Err(backoff::Error::transient(sqlx::Error::PoolTimedOut))
+                }
+                Err(err) => Err(backoff::Error::Permanent(err)),
+            }
+        })
+        .await?;
         Ok(())
     }
 }

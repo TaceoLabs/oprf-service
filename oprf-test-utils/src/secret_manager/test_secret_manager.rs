@@ -18,18 +18,20 @@ use crate::TEST_TIMEOUT;
 
 #[macro_export]
 macro_rules! key_gen_test_secret_manager {
-    ($trait: path, $name: ident) => {
+    ($trait: path, $error: path, $name: ident) => {
         mod impl_secret_manager {
             use std::sync::Arc;
 
             use alloy::signers::local::PrivateKeySigner;
             use async_trait::async_trait;
+            use eyre::Context;
             use oprf_core::ddlog_equality::shamir::DLogShareShamir;
             use oprf_test_utils::test_secret_manager::TestSecretManager;
             use oprf_types::{
                 OprfKeyId, ShareEpoch,
                 crypto::{OprfKeyMaterial, OprfPublicKey},
             };
+            use $error;
             // need a new type to implement the trait
             pub struct $name(pub Arc<TestSecretManager>);
             #[async_trait]
@@ -50,8 +52,15 @@ macro_rules! key_gen_test_secret_manager {
                         .await
                 }
 
-                async fn remove_oprf_key_material(&self, rp_id: OprfKeyId) -> eyre::Result<()> {
-                    self.0.remove_oprf_key_material(rp_id).await
+                async fn remove_oprf_key_material(
+                    &self,
+                    rp_id: OprfKeyId,
+                ) -> Result<(), SecretManagerError> {
+                    self.0
+                        .remove_oprf_key_material(rp_id)
+                        .await
+                        .context("while remove oprf key material")?;
+                    Ok(())
                 }
 
                 async fn store_dlog_share(
@@ -60,10 +69,12 @@ macro_rules! key_gen_test_secret_manager {
                     public_key: OprfPublicKey,
                     epoch: ShareEpoch,
                     share: DLogShareShamir,
-                ) -> eyre::Result<()> {
+                ) -> Result<(), SecretManagerError> {
                     self.0
                         .store_dlog_share(oprf_key_id, public_key, epoch, share)
                         .await
+                        .context("while store DlogShare")?;
+                    Ok(())
                 }
             }
         }

@@ -23,7 +23,7 @@ use oprf_types::{
 use secrecy::{ExposeSecret, SecretString};
 use tracing::instrument;
 
-use crate::services::secret_manager::SecretManager;
+use crate::{secret_manager::SecretManagerError, services::secret_manager::SecretManager};
 
 /// AWS Secret Manager client wrapper.
 #[derive(Debug)]
@@ -163,7 +163,10 @@ impl SecretManager for AwsSecretManager {
     ///
     /// Permanently deletes the secret without recovery period.
     #[instrument(level = "info", skip_all, fields(oprf_key_id))]
-    async fn remove_oprf_key_material(&self, oprf_key_id: OprfKeyId) -> eyre::Result<()> {
+    async fn remove_oprf_key_material(
+        &self,
+        oprf_key_id: OprfKeyId,
+    ) -> Result<(), SecretManagerError> {
         let secret_id = to_key_secret_id(&self.oprf_secret_id_prefix, oprf_key_id);
         self.client
             .delete_secret()
@@ -188,12 +191,13 @@ impl SecretManager for AwsSecretManager {
         public_key: OprfPublicKey,
         epoch: ShareEpoch,
         share: DLogShareShamir,
-    ) -> eyre::Result<()> {
+    ) -> Result<(), SecretManagerError> {
         let secret_id = to_key_secret_id(&self.oprf_secret_id_prefix, oprf_key_id);
         if epoch.is_initial_epoch() {
             self.create_secret(&secret_id, oprf_key_id, public_key, epoch, share)
                 .await
-                .context("while creating secret")
+                .context("while creating secret")?;
+            Ok(())
         } else {
             // not initial epoch but maybe we don't have the share stored (consumer)
             tracing::info!("loading old secret at {secret_id}");
@@ -215,13 +219,15 @@ impl SecretManager for AwsSecretManager {
                     let new_oprf_key_material = OprfKeyMaterial::new(share, public_key, epoch);
                     self.update_secret(&secret_id, new_oprf_key_material, oprf_key_id, epoch)
                         .await
-                        .context("while updating secret")
+                        .context("while updating secret")?;
+                    Ok(())
                 }
                 None => {
                     tracing::debug!("Not stored! need to create secret");
                     self.create_secret(&secret_id, oprf_key_id, public_key, epoch, share)
                         .await
-                        .context("while creating secret")
+                        .context("while creating secret")?;
+                    Ok(())
                 }
             }
         }

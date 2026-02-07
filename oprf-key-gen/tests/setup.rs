@@ -19,6 +19,7 @@ pub struct TestKeyGen {
 
 key_gen_test_secret_manager!(
     taceo_oprf_key_gen::secret_manager::SecretManager,
+    taceo_oprf_key_gen::secret_manager::SecretManagerError,
     KeyGenTestSecretManager
 );
 

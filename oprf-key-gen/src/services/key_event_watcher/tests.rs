@@ -28,6 +28,7 @@ use crate::{
 
 key_gen_test_secret_manager!(
     crate::secret_manager::SecretManager,
+    crate::secret_manager::SecretManagerError,
     KeyGenTestSecretManager
 );
 

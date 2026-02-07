@@ -16,6 +16,17 @@ use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 pub mod aws;
 pub mod postgres;
 
+/// The error from a secret-manager. Can either be Recoverable or NonRecoverable.
+#[derive(Debug, thiserror::Error)]
+pub enum SecretManagerError {
+    /// A Recoverable error - we don't need to shutdown the binary.
+    #[error("Can recover from this error")]
+    Recoverable,
+    /// A Non-Recoverable error - we most likely need to shutdown the binary.
+    #[error(transparent)]
+    NonRecoverable(#[from] eyre::Report),
+}
+
 /// Dynamic trait object for secret manager service.
 ///
 /// Must be `Send + Sync` to work with async contexts (e.g., Axum).
@@ -42,7 +53,10 @@ pub trait SecretManager {
     /// Removes all information stored associated with the specified [`OprfKeyId`].
     ///
     /// Certain secret-managers might not be able to immediately delete the secret. In that case it shall mark the secret for deletion.
-    async fn remove_oprf_key_material(&self, oprf_key_id: OprfKeyId) -> eyre::Result<()>;
+    async fn remove_oprf_key_material(
+        &self,
+        oprf_key_id: OprfKeyId,
+    ) -> Result<(), SecretManagerError>;
 
     /// Stores an OPRF secret with at the secret-manager with the provided epoch.
     ///
@@ -55,5 +69,5 @@ pub trait SecretManager {
         public_key: OprfPublicKey,
         epoch: ShareEpoch,
         share: DLogShareShamir,
-    ) -> eyre::Result<()>;
+    ) -> Result<(), SecretManagerError>;
 }
