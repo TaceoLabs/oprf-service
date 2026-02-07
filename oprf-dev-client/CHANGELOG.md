@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.3.0...taceo-oprf-dev-client-v0.3.1)
+
+### 🧪 Testing
+
+
+- Report in stress-test which session-id failed ([#437](https://github.com/TaceoLabs/oprf-service/pull/437)) - ([b646a16](https://github.com/TaceoLabs/oprf-service/commit/b646a160e2d2f3b6f9ceb71d33b9e3f4744b80e5))
+
+
 ## [0.3.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.2.0...taceo-oprf-dev-client-v0.3.0)
 
 ### 🚜 Refactor
