@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.6.0...taceo-oprf-service-v0.7.0)
+
+### ⛰️ Features
+
+
+- [**breaking**] Add task that periodically refreshes shares for nodes - ([68a0344](https://github.com/TaceoLabs/oprf-service/commit/68a034422c75bfab4b21641a4e3acc76803e8cd9))
+
+### 🚜 Refactor
+
+
+- Make poll interval configurable from oprf-node to secret-manager - ([381126e](https://github.com/TaceoLabs/oprf-service/commit/381126e6578359f963f5d7f650c37a72ffd76ff1))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Renamed paramater name in reload - ([4496d05](https://github.com/TaceoLabs/oprf-service/commit/4496d05fc80f8a6c798f898f566ab9c4924c093b))
+
+
 ## [0.6.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.5.0...taceo-oprf-service-v0.6.0)
 
 ### 🐛 Bug Fixes

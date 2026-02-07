@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.2.1...taceo-oprf-test-utils-v0.3.0)
+
+### ⛰️ Features
+
+
+- [**breaking**] Add task that periodically refreshes shares for nodes - ([68a0344](https://github.com/TaceoLabs/oprf-service/commit/68a034422c75bfab4b21641a4e3acc76803e8cd9))
+
+
 ## [0.2.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.2.0...taceo-oprf-test-utils-v0.2.1)
 
 ### 🐛 Bug Fixes
