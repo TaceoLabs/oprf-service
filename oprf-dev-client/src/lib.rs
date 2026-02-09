@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -7,12 +8,17 @@ use alloy::{
     primitives::{Address, U160},
     providers::DynProvider,
 };
+use ark_ff::{PrimeField as _, UniformRand as _};
 use clap::{Parser, Subcommand};
 use eyre::Context;
 use oprf_client::{Connector, OprfSessions};
-use oprf_core::ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir};
+use oprf_core::{
+    ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir},
+    oprf::BlindingFactor,
+};
 use oprf_test_utils::health_checks;
 use oprf_types::{OprfKeyId, ShareEpoch, api::OprfRequest, crypto::OprfPublicKey};
+use rustls::{ClientConfig, RootCertStore};
 use serde::Serialize;
 use tokio::task::JoinSet;
 use uuid::Uuid;
@@ -51,9 +57,20 @@ pub struct ReshareTest {
 #[derive(Clone, Debug, Subcommand)]
 pub enum Command {
     Test,
+    DeleteTest,
     StressTestOprf(StressTestOprfCommand),
     StressTestKeyGen(StressTestKeyGenCommand),
     ReshareTest(ReshareTest),
+}
+
+pub struct DeleteTestArgs {
+    pub nodes: Vec<String>,
+    pub module: String,
+    pub threshold: usize,
+    pub oprf_key_registry: Address,
+    pub provider: DynProvider,
+    pub max_wait_time: Duration,
+    pub connector: Connector,
 }
 
 fn avg(durations: &[Duration]) -> Duration {
@@ -64,6 +81,78 @@ fn avg(durations: &[Duration]) -> Duration {
     } else {
         Duration::ZERO
     }
+}
+
+pub fn setup_connector() -> Connector {
+    let mut root_store = RootCertStore::empty();
+    root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    let rustls_config = ClientConfig::builder()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+    Connector::Rustls(Arc::new(rustls_config))
+}
+
+pub async fn delete_test<OprfRequestAuth, F>(
+    delete_test: DeleteTestArgs,
+    auth: F,
+) -> eyre::Result<()>
+where
+    OprfRequestAuth: Clone + Serialize + Send + 'static,
+    F: Fn(OprfKeyId) -> OprfRequestAuth,
+{
+    let DeleteTestArgs {
+        nodes,
+        module,
+        threshold,
+        oprf_key_registry,
+        provider,
+        max_wait_time,
+        connector,
+    } = delete_test;
+    tracing::info!("creating new key do delete afterwards");
+    let (oprf_key_id, _) =
+        init_key_gen(&nodes, oprf_key_registry, provider.clone(), max_wait_time).await?;
+    tracing::info!("created key: {oprf_key_id}");
+    tracing::info!("running one distributed oprf...");
+    let mut rng = rand::thread_rng();
+    let action = ark_babyjubjub::Fq::rand(&mut rng);
+    let blinding_factor = BlindingFactor::rand(&mut rng);
+    let domain_separator = ark_babyjubjub::Fq::from_be_bytes_mod_order(b"OPRF");
+    oprf_client::distributed_oprf(
+        &nodes,
+        &module,
+        threshold,
+        action,
+        blinding_factor.clone(),
+        domain_separator,
+        auth(oprf_key_id),
+        connector.clone(),
+    )
+    .await?;
+    tracing::info!("successfully ran distributed oprf - now deleting key");
+
+    oprf_test_utils::delete_oprf_key_material(provider, oprf_key_registry, oprf_key_id).await?;
+    tracing::info!("sent delete event - ping nodes to check this works");
+    health_checks::assert_key_id_unknown(oprf_key_id, &nodes, max_wait_time).await?;
+    tracing::info!("successfully delete key-material - check that we get an error now");
+    let result = oprf_client::distributed_oprf(
+        &nodes,
+        &module,
+        threshold,
+        action,
+        blinding_factor,
+        domain_separator,
+        auth(oprf_key_id),
+        connector,
+    )
+    .await;
+    if result.is_err() {
+        tracing::info!("Could not create oprf after delete - success");
+    } else {
+        eyre::bail!("still possible to create OPRF after delete!");
+    }
+
+    Ok(())
 }
 
 pub async fn send_init_requests<OprfRequestAuth: Clone + Serialize + Send + 'static>(

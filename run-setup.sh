@@ -185,6 +185,8 @@ main() {
             ./target/release/examples/dev-client-example stress-test-oprf
         OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$DEPLOYED_ADDRESS \
             ./target/release/examples/dev-client-example stress-test-key-gen 
+        OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$DEPLOYED_ADDRESS \
+            ./target/release/examples/dev-client-example delete-test 
         echo "Dev-client tests completed successfully"
     else
         echo "No dev-client tests requested, entering sleep mode. Press Ctrl+C to stop..."

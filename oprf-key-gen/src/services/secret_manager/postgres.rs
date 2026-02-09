@@ -184,10 +184,10 @@ impl SecretManager for PostgresSecretManager {
         let maybe_share_bytes: Option<Vec<u8>> = (|| {
             sqlx::query_scalar(
                 r#"
-                SELECT share
-                FROM shares
-                WHERE id = $1 AND epoch = $2 AND deleted = false
-            "#,
+                    SELECT share
+                    FROM shares
+                    WHERE id = $1 AND epoch = $2 AND deleted = false
+                "#,
             )
             .bind(oprf_key_id.to_le_bytes())
             .bind(i64::from(epoch))

@@ -23,10 +23,11 @@ use oprf_core::oprf::{BlindedOprfRequest, BlindingFactor};
 use oprf_test_utils::health_checks;
 use oprf_types::{OprfKeyId, ShareEpoch, api::OprfRequest, crypto::OprfPublicKey};
 use rand::{CryptoRng, Rng, SeedableRng as _};
-use rustls::{ClientConfig, RootCertStore};
 use secrecy::{ExposeSecret as _, SecretString};
 use serde::{Deserialize, Serialize};
-use taceo_oprf_dev_client::{Command, ReshareTest, StressTestKeyGenCommand, StressTestOprfCommand};
+use taceo_oprf_dev_client::{
+    Command, DeleteTestArgs, ReshareTest, StressTestKeyGenCommand, StressTestOprfCommand,
+};
 use tokio::{sync::mpsc, task::JoinSet};
 use tracing::instrument;
 use uuid::Uuid;
@@ -436,12 +437,7 @@ async fn setup_oprf_test(
     };
 
     // setup TLS config - even if we are http
-    let mut root_store = RootCertStore::empty();
-    root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    let rustls_config = ClientConfig::builder()
-        .with_root_certificates(root_store)
-        .with_no_client_auth();
-    let connector = Connector::Rustls(Arc::new(rustls_config));
+    let connector = taceo_oprf_dev_client::setup_connector();
     Ok((connector, oprf_key_id, oprf_public_key))
 }
 
@@ -486,6 +482,26 @@ async fn main() -> eyre::Result<()> {
             )
             .await?;
             tracing::info!("oprf-test successful");
+        }
+        Command::DeleteTest => {
+            tracing::info!("running delete-test");
+            if let Some(oprf_key_id) = config.oprf_key_id {
+                tracing::warn!("ignoring provided key-id: {oprf_key_id}, refusing to delete");
+            }
+            taceo_oprf_dev_client::delete_test(
+                DeleteTestArgs {
+                    nodes: config.nodes.clone(),
+                    module: config.module.clone(),
+                    threshold: config.threshold,
+                    oprf_key_registry: config.oprf_key_registry_contract,
+                    provider,
+                    max_wait_time: config.max_wait_time,
+                    connector: taceo_oprf_dev_client::setup_connector(),
+                },
+                ExampleOprfRequestAuth,
+            )
+            .await?;
+            tracing::info!("oprf delete test successful");
         }
         Command::StressTestKeyGen(cmd) => {
             tracing::info!("running key-gen stress-test");

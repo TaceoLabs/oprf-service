@@ -3,16 +3,18 @@ name = "taceo-oprf-dev-client"
 version = "0.3.0"
 edition.workspace = true
 rust-version.workspace = true
+description = "A development client to interact with the TACEO:OPRF service."
 readme.workspace = true
 homepage.workspace = true
 repository.workspace = true
 license.workspace = true
-description = "A development client to interact with the TACEO:OPRF service."
-keywords = ["oprf", "mpc", "client", "development"]
+keywords = ["client", "development", "mpc", "oprf"]
 publish = true
 
 [dependencies]
 alloy = { workspace = true, features = ["full", "rpc", "rpc-client-ws"] }
+ark-babyjubjub.workspace = true
+ark-ff.workspace = true
 clap = { workspace = true, features = ["derive", "env"] }
 eyre.workspace = true
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.6" }
@@ -20,6 +22,7 @@ oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.4
 oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.2" }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.7" }
 rand.workspace = true
+rustls.workspace = true
 serde.workspace = true
 tokio = { workspace = true, features = [
   "net",
@@ -31,6 +34,7 @@ tokio = { workspace = true, features = [
 ] }
 tracing.workspace = true
 uuid.workspace = true
+webpki-roots = { workspace = true }
 
 [dev-dependencies]
 ark-babyjubjub = { workspace = true }
