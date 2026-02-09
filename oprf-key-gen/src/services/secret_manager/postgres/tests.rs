@@ -180,21 +180,24 @@ async fn all_rows(conn: &mut PgConnection) -> eyre::Result<Vec<PgRow>> {
 fn assert_row_matches(
     row: &PgRow,
     should_oprf_key_id: OprfKeyId,
-    should_share: DLogShareShamir,
+    should_share: Option<DLogShareShamir>,
     should_epoch: ShareEpoch,
     should_public_key: OprfPublicKey,
 ) {
     let is_id: Vec<u8> = row.get(0);
-    let is_share: Vec<u8> = row.get(1);
+    let is_share: Option<Vec<u8>> = row.get(1);
     let is_epoch: i64 = row.get(2);
     let is_public_key: Vec<u8> = row.get(3);
+    let is_deleted: bool = row.get(4);
 
     assert_eq!(should_oprf_key_id, OprfKeyId::from_le_slice(&is_id));
 
-    assert_eq!(
-        ark_babyjubjub::Fr::from(should_share),
+    assert_eq!(should_share.is_none(), is_deleted);
+    let is_share = is_share.map(|is_share| {
         ark_babyjubjub::Fr::deserialize_uncompressed(is_share.as_slice()).expect("Can deserialize")
-    );
+    });
+    let should_share = should_share.map(ark_babyjubjub::Fr::from);
+    assert_eq!(should_share, is_share);
     assert_eq!(should_epoch.into_inner() as i64, is_epoch);
     assert_eq!(
         should_public_key,
@@ -254,7 +257,7 @@ async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
     assert_row_matches(
         &epoch_0_dump[0],
         oprf_key_id,
-        should_epoch_0_share.clone(),
+        Some(should_epoch_0_share.clone()),
         epoch0,
         public_key,
     );
@@ -291,7 +294,7 @@ async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
     assert_row_matches(
         &epoch_1_dump[0],
         oprf_key_id,
-        should_epoch_1_share.clone(),
+        Some(should_epoch_1_share.clone()),
         epoch1,
         public_key,
     );
@@ -338,7 +341,7 @@ async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
     assert_row_matches(
         &epoch_2_dump[0],
         oprf_key_id,
-        should_epoch_2_share.clone(),
+        Some(should_epoch_2_share.clone()),
         epoch2,
         public_key,
     );
@@ -374,7 +377,7 @@ async fn store_dlog_share_as_consumer() -> eyre::Result<()> {
     assert_row_matches(
         &epoch_42_dump[0],
         oprf_key_id,
-        should_epoch_42_share.clone(),
+        Some(should_epoch_42_share.clone()),
         epoch42,
         public_key,
     );
@@ -393,7 +396,7 @@ async fn store_dlog_share_as_consumer() -> eyre::Result<()> {
     assert_row_matches(
         &epoch_128_dump[0],
         oprf_key_id,
-        should_epoch_128_share.clone(),
+        Some(should_epoch_128_share.clone()),
         epoch128,
         public_key,
     );
@@ -481,7 +484,7 @@ async fn test_insert_same_epoch_twice() -> eyre::Result<()> {
     assert_row_matches(
         &epoch_42_dump[0],
         oprf_key_id,
-        should_epoch_42_share.clone(),
+        Some(should_epoch_42_share.clone()),
         epoch42,
         public_key,
     );
@@ -500,7 +503,7 @@ async fn test_insert_same_epoch_twice() -> eyre::Result<()> {
     assert_row_matches(
         &epoch_42_dump_new[0],
         oprf_key_id,
-        should_epoch_42_share.clone(),
+        Some(should_epoch_42_share.clone()),
         epoch42,
         public_key,
     );
@@ -537,13 +540,14 @@ async fn test_delete() -> eyre::Result<()> {
     assert_row_matches(
         &epoch_42_dump[0],
         oprf_key_id,
-        should_epoch_42_share.clone(),
+        Some(should_epoch_42_share.clone()),
         epoch42,
         public_key,
     );
 
     // remove the key and check if DB is empty now
     secret_manager.remove_oprf_key_material(oprf_key_id).await?;
-    assert!(all_rows(&mut pg_connection).await?.is_empty());
+    let epoch_42_deleted = all_rows(&mut pg_connection).await?;
+    assert_row_matches(&epoch_42_deleted[0], oprf_key_id, None, epoch42, public_key);
     Ok(())
 }

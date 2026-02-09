@@ -186,7 +186,7 @@ impl SecretManager for PostgresSecretManager {
                 r#"
                 SELECT share
                 FROM shares
-                WHERE id = $1 AND epoch = $2
+                WHERE id = $1 AND epoch = $2 AND deleted = false
             "#,
             )
             .bind(oprf_key_id.to_le_bytes())
@@ -221,9 +221,12 @@ impl SecretManager for PostgresSecretManager {
         let rows_deleted = (|| {
             sqlx::query(
                 r#"
-                DELETE FROM shares
-                WHERE id = $1
-            "#,
+                    UPDATE shares
+                    SET
+                        share = NULL,
+                        deleted = true
+                    WHERE id = $1
+                "#,
             )
             .bind(oprf_key_id.to_le_bytes())
             .execute(&self.pool)
@@ -252,17 +255,20 @@ impl SecretManager for PostgresSecretManager {
     ) -> eyre::Result<()> {
         tracing::info!("storing share...");
 
-        (|| {
+        let success = (|| {
             sqlx::query(
                 r#"
-                INSERT INTO shares (id, share, epoch, public_key)
-                VALUES ($1, $2, $3, $4)
-                ON CONFLICT (id)
-                DO UPDATE SET
-                    share = EXCLUDED.share,
-                    epoch = EXCLUDED.epoch,
-                    public_key = EXCLUDED.public_key;
-            "#,
+                    INSERT INTO shares (id, share, epoch, public_key)
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT (id)
+                    DO UPDATE SET
+                        share = EXCLUDED.share,
+                        epoch = EXCLUDED.epoch,
+                        public_key = EXCLUDED.public_key
+                    WHERE
+                        shares.epoch < EXCLUDED.epoch AND
+                        shares.deleted = false;
+                "#,
             )
             .bind(oprf_key_id.to_le_bytes())
             .bind(to_db_ark_serialize_uncompressed(share.clone()))
@@ -279,6 +285,13 @@ impl SecretManager for PostgresSecretManager {
         .await
         .with_context(|| format!("while storing DLogShare {oprf_key_id}"))?;
         tracing::info!("successfully stored {oprf_key_id}");
+        if success.rows_affected() == 0 {
+            tracing::warn!(
+                "Did not insert anything, maybe someone else stored something with later epoch?"
+            )
+        } else {
+            tracing::info!("Successfully stored share!");
+        }
         Ok(())
     }
 }

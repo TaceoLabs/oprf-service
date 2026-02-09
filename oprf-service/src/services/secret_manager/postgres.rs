@@ -142,13 +142,14 @@ impl SecretManager for PostgresSecretManager {
         let rows: Vec<ShareRow> = (|| {
             sqlx::query_as(
                 r#"
-                SELECT
-                    id,
-                    share,
-                    epoch,
-                    public_key
-                FROM shares
-            "#,
+                    SELECT
+                        id,
+                        share,
+                        epoch,
+                        public_key
+                    FROM shares
+                    WHERE deleted = false
+                "#,
             )
             .fetch_all(&self.pool)
         })
@@ -182,7 +183,7 @@ impl SecretManager for PostgresSecretManager {
                     epoch,
                     public_key
                 FROM shares
-                WHERE id = $1 AND epoch = $2
+                WHERE id = $1 AND epoch = $2 AND deleted = false
             "#,
             )
             .bind(oprf_key_id.to_le_bytes())
