@@ -231,7 +231,7 @@ async fn fetch_oprf_key_material_from_secret_manager(
     let result = (|| secret_manager.get_oprf_key_material(oprf_key_id, epoch))
         .retry(backoff_strategy)
         .sleep(tokio::time::sleep)
-        .when(|e| matches!(e, GetOprfKeyMaterialError::NotInDb))
+        .when(|e| matches!(e, GetOprfKeyMaterialError::NotFound))
         .notify(|_, duration| {
             tracing::debug!(
                 "Share {oprf_key_id} with epoch {epoch} not yet in DB. Retrying after {duration:?}."
@@ -243,7 +243,7 @@ async fn fetch_oprf_key_material_from_secret_manager(
             tracing::info!("got key from secret manager for {oprf_key_id} and epoch {epoch}");
             oprf_key_material_store.insert(oprf_key_id, key_material);
         }
-        Err(GetOprfKeyMaterialError::NotInDb) => {
+        Err(GetOprfKeyMaterialError::NotFound) => {
             tracing::warn!(
                 "Could not fetch oprf-key-id {oprf_key_id} and epoch {epoch} after {get_oprf_key_material_timeout:?}. Will continue anyways."
             );

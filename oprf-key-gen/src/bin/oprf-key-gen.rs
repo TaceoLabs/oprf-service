@@ -37,14 +37,14 @@ async fn main() -> eyre::Result<ExitCode> {
     // Load the Postgres secret manager.
     let secret_manager = Arc::new(
         PostgresSecretManager::init(PostgresSecretManagerArgs {
-            connection_string: &config.db_connection_string,
-            schema: &config.db_schema,
-            max_connections: config.max_db_connection,
+            connection_string: config.db_connection_string.clone(),
+            schema: config.db_schema.clone(),
+            max_connections: config.max_db_connections,
             acquire_timeout: config.db_acquire_timeout,
             max_retries: config.db_max_retries,
             retry_delay: config.db_retry_delay,
             aws_config,
-            wallet_private_key_secret_id: &config.wallet_private_key_secret_id,
+            wallet_private_key_secret_id: config.wallet_private_key_secret_id.clone(),
         })
         .await
         .context("while starting postgres secret-manager")?,

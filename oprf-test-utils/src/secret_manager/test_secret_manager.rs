@@ -115,7 +115,7 @@ macro_rules! oprf_node_test_secret_manager {
                     self.0
                         .get_oprf_key_material(oprf_key_id, epoch)
                         .await?
-                        .ok_or(GetOprfKeyMaterialError::NotInDb)
+                        .ok_or(GetOprfKeyMaterialError::NotFound)
                 }
             }
         }

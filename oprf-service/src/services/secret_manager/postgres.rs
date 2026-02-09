@@ -102,7 +102,7 @@ impl PostgresSecretManager {
         })
         .retry(backoff_strategy)
         .sleep(tokio::time::sleep)
-        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .when(is_retryable_error)
         .notify(|e, duration| {
             tracing::warn!("Timeout while creating pool: {e:?} Retry after {duration:?}")
         })
@@ -129,7 +129,7 @@ impl SecretManager for PostgresSecretManager {
         })
         .retry(self.backoff_strategy())
         .sleep(tokio::time::sleep)
-        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .when(is_retryable_error)
         .notify(|e, duration| tracing::warn!("Retrying load address: {e:?} after {duration:?}"))
         .await?
         .ok_or_else(|| eyre::eyre!("Cannot get address from DB, maybe key-gen needs to start"))?;
@@ -154,7 +154,7 @@ impl SecretManager for PostgresSecretManager {
         })
         .retry(self.backoff_strategy())
         .sleep(tokio::time::sleep)
-        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .when(is_retryable_error)
         .notify(|e, duration| tracing::warn!("Retrying load secrets: {e:?} after {duration:?}"))
         .await
         .context("while fetching all OPRF keys")?;
@@ -191,7 +191,7 @@ impl SecretManager for PostgresSecretManager {
         })
         .retry(self.backoff_strategy())
         .sleep(tokio::time::sleep)
-        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .when(is_retryable_error)
         .notify(|e, duration| {
             tracing::warn!(
                 "Retrying get_oprf_key_material for {oprf_key_id}: {e:?} after {duration:?}"
@@ -205,13 +205,13 @@ impl SecretManager for PostgresSecretManager {
             Ok(key_material)
         } else {
             tracing::debug!("Cannot find share for requested key and epoch");
-            Err(GetOprfKeyMaterialError::NotInDb)
+            Err(GetOprfKeyMaterialError::NotFound)
         }
     }
 }
 
 impl PostgresSecretManager {
-    #[inline(always)]
+    #[inline]
     fn backoff_strategy(&self) -> ConstantBackoff {
         ConstantBuilder::new()
             .with_delay(self.retry_delay)
@@ -220,7 +220,20 @@ impl PostgresSecretManager {
     }
 }
 
-#[inline(always)]
+#[inline]
+fn is_retryable_error(e: &sqlx::Error) -> bool {
+    matches!(
+        e,
+        sqlx::Error::PoolTimedOut
+            | sqlx::Error::Io(_)
+            | sqlx::Error::Tls(_)
+            | sqlx::Error::Protocol(_)
+            | sqlx::Error::AnyDriverError(_)
+            | sqlx::Error::WorkerCrashed
+    )
+}
+
+#[inline]
 fn from_db_ark_deserialize_uncompressed<T: CanonicalDeserialize>(b: impl AsRef<[u8]>) -> T {
     T::deserialize_uncompressed_unchecked(b.as_ref()).expect("DB is sane")
 }

@@ -20,14 +20,14 @@ async fn postgres_secret_manager_with_localstack(
     connection_string: &str,
 ) -> eyre::Result<PostgresSecretManager> {
     PostgresSecretManager::init(PostgresSecretManagerArgs {
-        connection_string: &SecretString::from(connection_string.to_owned()),
-        schema: TEST_SCHEMA,
+        connection_string: SecretString::from(connection_string.to_owned()),
+        schema: TEST_SCHEMA.to_owned(),
         max_connections: 3.try_into().expect("Is non zero"),
         acquire_timeout: Duration::from_secs(2),
         max_retries: 15.try_into().expect("Is not zero"),
         retry_delay: Duration::from_secs(1),
         aws_config: aws_config.to_owned(),
-        wallet_private_key_secret_id: TEST_WALLET_PRIVATE_KEY_SECRET_ID,
+        wallet_private_key_secret_id: TEST_WALLET_PRIVATE_KEY_SECRET_ID.to_owned(),
     })
     .await
 }
@@ -39,14 +39,14 @@ async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<Postgr
         .run(&mut pg_connection)
         .await?;
     PostgresSecretManager::init(PostgresSecretManagerArgs {
-        connection_string: &SecretString::from(connection_string.to_owned()),
-        schema: TEST_SCHEMA,
+        connection_string: SecretString::from(connection_string.to_owned()),
+        schema: TEST_SCHEMA.to_owned(),
         max_connections: 3.try_into().expect("Is non zero"),
         acquire_timeout: Duration::from_secs(2),
         max_retries: 15.try_into().expect("Is not zero"),
         retry_delay: Duration::from_secs(1),
         aws_config: oprf_test_utils::dummy_localstack_config().await,
-        wallet_private_key_secret_id: TEST_WALLET_PRIVATE_KEY_SECRET_ID,
+        wallet_private_key_secret_id: TEST_WALLET_PRIVATE_KEY_SECRET_ID.to_owned(),
     })
     .await
 }
@@ -208,14 +208,14 @@ async fn test_empty_schema_name() -> eyre::Result<()> {
     let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
 
     let should_error = PostgresSecretManager::init(PostgresSecretManagerArgs {
-        connection_string: &SecretString::from(connection_string.to_owned()),
-        schema: "",
+        connection_string: SecretString::from(connection_string.to_owned()),
+        schema: "".to_owned(),
         max_connections: 3.try_into().expect("Is non zero"),
         acquire_timeout: Duration::from_secs(2),
         max_retries: 15.try_into().expect("Is not zero"),
         retry_delay: Duration::from_secs(1),
         aws_config: oprf_test_utils::dummy_localstack_config().await,
-        wallet_private_key_secret_id: TEST_WALLET_PRIVATE_KEY_SECRET_ID,
+        wallet_private_key_secret_id: TEST_WALLET_PRIVATE_KEY_SECRET_ID.to_owned(),
     })
     .await
     .expect_err("Should fail");

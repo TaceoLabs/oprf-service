@@ -170,13 +170,13 @@ impl SecretManager for AwsSecretManager {
                         "Cannot find requested epoch in secret-manager, latest epoch is: {:?}",
                         key_material.epoch()
                     );
-                    Err(GetOprfKeyMaterialError::NotInDb)
+                    Err(GetOprfKeyMaterialError::NotFound)
                 }
             }
             Err(x) => match x.into_service_error() {
                 GetSecretValueError::ResourceNotFoundException(_) => {
                     tracing::debug!("{secret_id} not yet in secret-manager");
-                    Err(GetOprfKeyMaterialError::NotInDb)
+                    Err(GetOprfKeyMaterialError::NotFound)
                 }
                 x => Err(eyre::eyre!(x))?,
             },

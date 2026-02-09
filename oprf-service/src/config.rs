@@ -121,10 +121,10 @@ pub struct OprfNodeConfig {
     pub db_acquire_timeout: Duration,
 
     /// The delay between retires for db backoff.
-    #[clap(long, env = "OPRF_NODE_DB_RETRY_DELAY", value_parser=humantime::parse_duration, default_value="1min")]
+    #[clap(long, env = "OPRF_NODE_DB_RETRY_DELAY", value_parser=humantime::parse_duration, default_value="5s")]
     pub db_retry_delay: Duration,
 
-    /// The max retries for backoff strategy in db. With default acquire_timeout and retry delay, this is ~1h.
+    /// The max retries for backoff strategy in db. With default acquire_timeout and retry delay, this is ~40min.
     #[clap(long, env = "OPRF_NODE_DB_MAX_RETRIES", default_value = "20")]
     pub db_max_retries: NonZeroUsize,
 }

@@ -233,7 +233,7 @@ async fn test_get_oprf_key_material() -> eyre::Result<()> {
         secret_manager
             .get_oprf_key_material(oprf_key_id0, epoch1)
             .await,
-        Err(GetOprfKeyMaterialError::NotInDb)
+        Err(GetOprfKeyMaterialError::NotFound)
     ));
 
     // should be NotInDb
@@ -241,7 +241,7 @@ async fn test_get_oprf_key_material() -> eyre::Result<()> {
         secret_manager
             .get_oprf_key_material(oprf_key_id_unknown, epoch1)
             .await,
-        Err(GetOprfKeyMaterialError::NotInDb)
+        Err(GetOprfKeyMaterialError::NotFound)
     ));
 
     let key_material1 = secret_manager
@@ -259,7 +259,7 @@ async fn test_get_oprf_key_material() -> eyre::Result<()> {
         secret_manager
             .get_oprf_key_material(oprf_key_id1, epoch1.prev())
             .await,
-        Err(GetOprfKeyMaterialError::NotInDb)
+        Err(GetOprfKeyMaterialError::NotFound)
     ));
 
     Ok(())

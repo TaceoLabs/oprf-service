@@ -28,7 +28,7 @@ pub type SecretManagerService = Arc<dyn SecretManager + Send + Sync>;
 pub enum GetOprfKeyMaterialError {
     /// Cannot find the share with requested oprf-key-id and epoch.
     #[error("Cannot find requested material")]
-    NotInDb,
+    NotFound,
     /// Internal error from DB.
     #[error(transparent)]
     Internal(#[from] eyre::Report),

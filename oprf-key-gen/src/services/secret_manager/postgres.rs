@@ -33,11 +33,11 @@ pub struct PostgresSecretManager {
 }
 
 /// The arguments for the [`PostgresSecretManager`].
-pub struct PostgresSecretManagerArgs<'a> {
+pub struct PostgresSecretManagerArgs {
     /// Connection string for the database. Treat this as a secret.
-    pub connection_string: &'a SecretString,
+    pub connection_string: SecretString,
     /// Database schema to use. If it does not exist yet, the secret manager will create the schema automatically.
-    pub schema: &'a str,
+    pub schema: String,
     /// Maximum number of connections in the connection pool.
     pub max_connections: NonZeroU32,
     /// Timeout for acquiring a new connection from the pool. If a connection is not established within this duration, a linear backoff strategy is started.
@@ -49,7 +49,7 @@ pub struct PostgresSecretManagerArgs<'a> {
     /// AWS SDK configuration used by the secret manager to load or create the Ethereum private key.
     pub aws_config: aws_config::SdkConfig,
     /// Secret ID used by the secret manager to fetch the Ethereum private key, or to store it if it does not already exist.
-    pub wallet_private_key_secret_id: &'a str,
+    pub wallet_private_key_secret_id: String,
 }
 
 fn sanitize_identifier(input: &str) -> eyre::Result<()> {
@@ -77,7 +77,7 @@ fn schema_connect(schema: &str) -> eyre::Result<String> {
 impl PostgresSecretManager {
     /// Initializes a `PostgresSecretManager` and potentially runs migrations if necessary.
     #[instrument(level = "info", skip_all)]
-    pub async fn init(args: PostgresSecretManagerArgs<'_>) -> eyre::Result<Self> {
+    pub async fn init(args: PostgresSecretManagerArgs) -> eyre::Result<Self> {
         let PostgresSecretManagerArgs {
             connection_string,
             schema,
@@ -89,7 +89,7 @@ impl PostgresSecretManager {
             wallet_private_key_secret_id,
         } = args;
         tracing::info!("using schema: {schema}");
-        let schema_connect = schema_connect(schema).context("while building schema string")?;
+        let schema_connect = schema_connect(&schema).context("while building schema string")?;
         let backoff_strategy = ConstantBuilder::new()
             .with_delay(retry_delay)
             .with_max_times(max_retries.get())
@@ -115,7 +115,7 @@ impl PostgresSecretManager {
         })
         .retry(backoff_strategy)
         .sleep(tokio::time::sleep)
-        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .when(is_retryable_error)
         .notify(|e, duration| {
             tracing::warn!("Timeout while creating pool: {e:?} Retry after {duration:?}")
         })
@@ -164,7 +164,7 @@ impl SecretManager for PostgresSecretManager {
         })
         .retry(self.backoff_strategy())
         .sleep(tokio::time::sleep)
-        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .when(is_retryable_error)
         .notify(|e, duration| {
             tracing::warn!("Retrying load or insert db: {e:?} after {duration:?}")
         })
@@ -195,14 +195,14 @@ impl SecretManager for PostgresSecretManager {
         })
         .retry(self.backoff_strategy())
         .sleep(tokio::time::sleep)
-        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .when(is_retryable_error)
         .notify(|e, duration| {
             tracing::warn!(
                 "Retrying get_share_epoch {oprf_key_id} because timeout from db: {e:?} after {duration:?}"
             )
         })
         .await
-        .context(format!("while fetching share {oprf_key_id} with epoch {epoch}"))?;
+        .with_context(||format!("while fetching share {oprf_key_id} with epoch {epoch}"))?;
 
         if let Some(share_bytes) = maybe_share_bytes {
             Ok(Some(
@@ -230,12 +230,12 @@ impl SecretManager for PostgresSecretManager {
         })
         .retry(self.backoff_strategy())
         .sleep(tokio::time::sleep)
-        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .when(is_retryable_error)
         .notify(|e, duration| {
             tracing::warn!("Retrying remove {oprf_key_id} in db: {e:?} after {duration:?}")
         })
         .await
-        .context(format!("while deleting key-share {oprf_key_id}"))?
+        .with_context(|| format!("while deleting key-share {oprf_key_id}"))?
         .rows_affected();
 
         tracing::info!("deleted {rows_deleted} secrets from postgres");
@@ -272,19 +272,19 @@ impl SecretManager for PostgresSecretManager {
         })
         .retry(self.backoff_strategy())
         .sleep(tokio::time::sleep)
-        .when(|e| matches!(e, sqlx::Error::PoolTimedOut))
+        .when(is_retryable_error)
         .notify(|e, duration| {
             tracing::warn!("Retrying store DLogShare {oprf_key_id} in db: {e:?} after {duration:?}")
         })
         .await
-        .context(format!("while storing DLogShare {oprf_key_id}"))?;
+        .with_context(|| format!("while storing DLogShare {oprf_key_id}"))?;
         tracing::info!("successfully stored {oprf_key_id}");
         Ok(())
     }
 }
 
 impl PostgresSecretManager {
-    #[inline(always)]
+    #[inline]
     fn backoff_strategy(&self) -> ConstantBackoff {
         ConstantBuilder::new()
             .with_delay(self.retry_delay)
@@ -293,7 +293,20 @@ impl PostgresSecretManager {
     }
 }
 
-#[inline(always)]
+#[inline]
+fn is_retryable_error(e: &sqlx::Error) -> bool {
+    matches!(
+        e,
+        sqlx::Error::PoolTimedOut
+            | sqlx::Error::Io(_)
+            | sqlx::Error::Tls(_)
+            | sqlx::Error::Protocol(_)
+            | sqlx::Error::AnyDriverError(_)
+            | sqlx::Error::WorkerCrashed
+    )
+}
+
+#[inline]
 fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: T) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(t.uncompressed_size());
     t.serialize_uncompressed(&mut bytes).expect("Can serialize");

@@ -63,7 +63,7 @@ impl TestKeyGen {
             confirmations_for_transaction: 1,
             db_connection_string: "not used".into(),
             db_schema: "test".to_owned(),
-            max_db_connection: 1.try_into().expect("Is nonZero"),
+            max_db_connections: 1.try_into().expect("Is nonZero"),
             db_acquire_timeout: Duration::from_secs(2),
             db_retry_delay: Duration::from_secs(1),
             db_max_retries: 30.try_into().expect("Is non zero"),
