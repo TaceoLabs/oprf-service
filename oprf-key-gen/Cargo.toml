@@ -1,6 +1,6 @@
 [package]
 name = "taceo-oprf-key-gen"
-version = "0.3.0"
+version = "0.4.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "TACEO:OPRF Distributed Key Generation Protocol."
@@ -61,4 +61,4 @@ zeroize = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 axum-test = { workspace = true, features = ["ws"] }
-oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.2" }
+oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.3" }

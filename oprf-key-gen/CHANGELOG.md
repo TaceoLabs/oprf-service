@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.3.0...taceo-oprf-key-gen-v0.4.0)
+
+### 🚜 Refactor
+
+
+- [**breaking**] Cleanup (remarks DK) - ([ec2a3de](https://github.com/TaceoLabs/oprf-service/commit/ec2a3defa6bc5e01bafd595628d2add281885e35))
+- [**breaking**] Uses constant backoff for DB queries in service/key-gen - ([cf919d0](https://github.com/TaceoLabs/oprf-service/commit/cf919d0e49222c363b5cb9a18b2c45fd3358a415))
+- [**breaking**] Make max_db_connections + acquire timeout configureable - ([db4167a](https://github.com/TaceoLabs/oprf-service/commit/db4167a08b1b4e5d3e05b92c0b154027aa95c040))
+
+
 ## [0.3.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.2.0...taceo-oprf-key-gen-v0.3.0)
 
 ### 🐛 Bug Fixes
