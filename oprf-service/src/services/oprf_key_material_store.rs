@@ -175,12 +175,28 @@ impl OprfKeyMaterialStore {
 
     /// Adds OPRF key-material and overwrites any existing entry.
     pub(super) fn insert(&self, oprf_key_id: OprfKeyId, key_material: OprfKeyMaterial) {
-        if self.0.write().insert(oprf_key_id, key_material).is_some() {
-            tracing::debug!("overwriting material for {oprf_key_id}");
-        } else {
+        let mut store = self.0.write();
+        store
+        .entry(oprf_key_id)
+        .and_modify(|stored| {
+            if stored.epoch() >= key_material.epoch() {
+                tracing::debug!(
+                    "refusing to roll back share for {oprf_key_id} to epoch {} when already at {}",
+                    key_material.epoch(),
+                    stored.epoch()
+                );
+            } else {
+                tracing::debug!("overwriting material for {oprf_key_id}");
+                *stored = key_material.clone();
+            }
+        })
+        .or_insert_with(|| {
             ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).increment(1);
-            tracing::debug!("added {oprf_key_id:?} material to OprfKeyMaterialStore");
-        }
+            tracing::debug!(
+                "added {oprf_key_id:?} material to OprfKeyMaterialStore"
+            );
+            key_material
+        });
     }
 
     /// Removes the OPRF key entry associated with the provided [`OprfKeyId`].
@@ -191,5 +207,74 @@ impl OprfKeyMaterialStore {
             ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).decrement(1);
             tracing::debug!("removed {oprf_key_id:?} material from OprfKeyMaterialStore");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use alloy::primitives::U160;
+    use oprf_core::ddlog_equality::shamir::DLogShareShamir;
+    use oprf_types::{
+        OprfKeyId, ShareEpoch,
+        crypto::{OprfKeyMaterial, OprfPublicKey},
+    };
+
+    use crate::oprf_key_material_store::OprfKeyMaterialStore;
+
+    #[test]
+    fn test_oprf_key_material_insert() {
+        let oprf_key_material_store = OprfKeyMaterialStore::new(HashMap::new());
+        let oprf_key_id = OprfKeyId::from(U160::from(42));
+        let public_key = OprfPublicKey::new(rand::random());
+        let epoch0 = ShareEpoch::default();
+        let epoch42 = ShareEpoch::new(42);
+        let should_epoch_0_share = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
+        let should_epoch_1_share = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
+        let share_not_used = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
+
+        let should_material0 = OprfKeyMaterial::new(should_epoch_0_share, public_key, epoch0);
+        oprf_key_material_store.insert(oprf_key_id, should_material0.clone());
+        check_key_material(&oprf_key_material_store, oprf_key_id, should_material0);
+
+        let should_material1 = OprfKeyMaterial::new(should_epoch_1_share, public_key, epoch42);
+        oprf_key_material_store.insert(oprf_key_id, should_material1.clone());
+        check_key_material(
+            &oprf_key_material_store,
+            oprf_key_id,
+            should_material1.clone(),
+        );
+
+        let material_to_refuse =
+            OprfKeyMaterial::new(share_not_used.clone(), public_key, epoch42.prev());
+        oprf_key_material_store.insert(oprf_key_id, material_to_refuse);
+        // Check that still older material
+        check_key_material(
+            &oprf_key_material_store,
+            oprf_key_id,
+            should_material1.clone(),
+        );
+
+        let material_to_refuse = OprfKeyMaterial::new(share_not_used, public_key, epoch42);
+        oprf_key_material_store.insert(oprf_key_id, material_to_refuse.clone());
+        // Check that still older material
+        check_key_material(&oprf_key_material_store, oprf_key_id, should_material1);
+    }
+
+    fn check_key_material(
+        store: &OprfKeyMaterialStore,
+        oprf_key_id: OprfKeyId,
+        should_material: OprfKeyMaterial,
+    ) {
+        let is_material = store.get(oprf_key_id).expect("Must be there");
+        assert_eq!(
+            is_material.public_key_with_epoch(),
+            should_material.public_key_with_epoch()
+        );
+        assert_eq!(
+            ark_babyjubjub::Fr::from(is_material.share()),
+            ark_babyjubjub::Fr::from(should_material.share()),
+        );
     }
 }
