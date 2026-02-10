@@ -121,6 +121,13 @@ impl SecretManager for AwsSecretManager {
         load_or_insert_ethereum_private_key(&self.client, &self.wallet_private_key_secret_id).await
     }
 
+    #[instrument(level = "trace")]
+    async fn ping(&self) -> eyre::Result<()> {
+        tracing::trace!("noop for AWS secret-manager");
+        // noop
+        Ok(())
+    }
+
     #[instrument(level = "info", skip_all, fields(oprf_key_id, generated_epoch))]
     async fn get_share_by_epoch(
         &self,
