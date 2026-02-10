@@ -31,6 +31,9 @@ pub trait SecretManager {
     /// If the secret-manager can't find a secret, it shall create a new one, store it and then return the new one.
     async fn load_or_insert_wallet_private_key(&self) -> eyre::Result<PrivateKeySigner>;
 
+    /// Pings the secret manager. Mostly used for secret-managers in deep-sleep to reduce latency during finalize round.
+    async fn ping(&self) -> eyre::Result<()>;
+
     /// Returns the share of a given [`OprfKeyId`] and a given [`ShareEpoch`].
     /// Returns `Ok(None)` if the secret-manager does not contain a share associated with the key-id or if the epoch does not match.
     async fn get_share_by_epoch(

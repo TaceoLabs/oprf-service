@@ -41,6 +41,11 @@ macro_rules! key_gen_test_secret_manager {
                     self.0.load_or_insert_wallet_private_key().await
                 }
 
+                async fn ping(&self) -> eyre::Result<()> {
+                    // noop
+                    Ok(())
+                }
+
                 async fn get_share_by_epoch(
                     &self,
                     oprf_key_id: OprfKeyId,

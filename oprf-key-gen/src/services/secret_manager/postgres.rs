@@ -174,6 +174,14 @@ impl SecretManager for PostgresSecretManager {
         Ok(private_key)
     }
 
+    async fn ping(&self) -> eyre::Result<()> {
+        sqlx::query("SELECT 1")
+            .execute(&self.pool)
+            .await
+            .context("while pinging DB")?;
+        Ok(())
+    }
+
     #[instrument(level = "info", skip_all, fields(oprf_key_id, generated_epoch))]
     async fn get_share_by_epoch(
         &self,
