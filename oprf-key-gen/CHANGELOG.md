@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.3.0...taceo-oprf-key-gen-v0.4.0)
+
+### ⛰️ Features
+
+
+- [**breaking**] Ping secret-manager to wake up from deep-sleep when doing key-gen ([#447](https://github.com/TaceoLabs/oprf-service/pull/447)) - ([e01827b](https://github.com/TaceoLabs/oprf-service/commit/e01827bbd5c6f1ccdb24389f6fedec81135eb479))
+
+### 🚜 Refactor
+
+
+- Uses soft delete over hard delete of shares now - ([319fc77](https://github.com/TaceoLabs/oprf-service/commit/319fc77b5a17dd4c8b1de2235d378d9b2d99db96))
+- [**breaking**] Cleanup (remarks DK) - ([ec2a3de](https://github.com/TaceoLabs/oprf-service/commit/ec2a3defa6bc5e01bafd595628d2add281885e35))
+- [**breaking**] Uses constant backoff for DB queries in service/key-gen - ([cf919d0](https://github.com/TaceoLabs/oprf-service/commit/cf919d0e49222c363b5cb9a18b2c45fd3358a415))
+- [**breaking**] Make max_db_connections + acquire timeout configureable - ([db4167a](https://github.com/TaceoLabs/oprf-service/commit/db4167a08b1b4e5d3e05b92c0b154027aa95c040))
+
+### 🧪 Testing
+
+
+- Added unit tests for delete in oprf-service - ([a4606c6](https://github.com/TaceoLabs/oprf-service/commit/a4606c62a96e5a44f3e7c3663d06f4d2529a4dde))
+- Added delete test in dev-client - ([abd576f](https://github.com/TaceoLabs/oprf-service/commit/abd576f4bc20fcb49ae9449b9254006e82347a41))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Reduce default transaction confirmations to 5 - ([9043369](https://github.com/TaceoLabs/oprf-service/commit/90433695c61c2ff53e90cff9a03698be5b157a4a))
+
+
 ## [0.3.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.2.0...taceo-oprf-key-gen-v0.3.0)
 
 ### 🐛 Bug Fixes

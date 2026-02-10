@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.3.0...taceo-oprf-dev-client-v0.4.0)
+
+### 🧪 Testing
+
+
+- Added unit tests for delete in oprf-service - ([a4606c6](https://github.com/TaceoLabs/oprf-service/commit/a4606c62a96e5a44f3e7c3663d06f4d2529a4dde))
+- Added delete test in dev-client - ([abd576f](https://github.com/TaceoLabs/oprf-service/commit/abd576f4bc20fcb49ae9449b9254006e82347a41))
+- Report in stress-test which session-id failed ([#437](https://github.com/TaceoLabs/oprf-service/pull/437)) - ([b646a16](https://github.com/TaceoLabs/oprf-service/commit/b646a160e2d2f3b6f9ceb71d33b9e3f4744b80e5))
+
+
 ## [0.3.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.2.0...taceo-oprf-dev-client-v0.3.0)
 
 ### 🚜 Refactor

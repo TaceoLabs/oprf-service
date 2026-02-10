@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.7.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.7.0...taceo-oprf-types-v0.7.1)
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Removed unused deps - ([a33e71f](https://github.com/TaceoLabs/oprf-service/commit/a33e71f2e83523fe93410eb5ddb5dafdd524ada7))
+
+
 ## [0.7.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.6.0...taceo-oprf-types-v0.7.0)
 
 ### 🚜 Refactor
