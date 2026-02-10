@@ -133,12 +133,6 @@ pub struct OprfKeyGenConfig {
 
     /// Number of block confirmations required before a transaction is
     /// considered successful.
-    ///
-    /// Default value derived from (<https://help.coinbase.com/en/coinbase/getting-started/crypto-education/glossary/confirmations>).
-    #[clap(
-        long,
-        env = "OPRF_NODE_TRANSACTION_CONFIRMATIONS",
-        default_value = "14"
-    )]
+    #[clap(long, env = "OPRF_NODE_TRANSACTION_CONFIRMATIONS", default_value = "5")]
     pub confirmations_for_transaction: u64,
 }
