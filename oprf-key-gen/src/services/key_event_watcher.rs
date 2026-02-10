@@ -314,12 +314,6 @@ async fn handle_log(
             );
             Ok(())
         }
-        Err(TransactionError::Revert(RevertError::OprfKeyRegistry(
-            OprfKeyRegistryErrors::DeletedId(_),
-        ))) => {
-            tracing::info!("Key got deleted in the meantime - we continue");
-            Ok(())
-        }
         Err(err) => Err(err),
     }
 }
@@ -393,7 +387,7 @@ async fn handle_round2(
         Ok(nodes) => nodes,
         Err(err) => {
             if let Some(WrongRound(round)) = err.as_decoded_error::<OprfKeyRegistry::WrongRound>() {
-                tracing::debug!("reshare is already in round: {round} - we were a consumer");
+                tracing::info!("reshare is already in round: {round} - we were a consumer");
                 // return an empty array to signal we are consumer
                 Vec::new()
             } else {
@@ -484,7 +478,21 @@ async fn handle_finalize(
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
     handle_span.record("epoch", epoch.to_string());
     tracing::info!("Event for {oprfKeyId} with epoch {epoch}");
-    let oprf_public_key = contract.getOprfPublicKey(oprfKeyId).call().await?;
+    let oprf_public_key = match contract.getOprfPublicKey(oprfKeyId).call().await {
+        Ok(oprf_public_key) => oprf_public_key,
+        Err(err) => {
+            if let Some(OprfKeyRegistry::DeletedId { id: _ }) =
+                err.as_decoded_error::<OprfKeyRegistry::DeletedId>()
+            {
+                tracing::info!(
+                    "Key got deleted in the meantime - we ignore this key for now. Nodes will run into an error, but they will be fine"
+                );
+                return Ok(());
+            } else {
+                return Err(TransactionError::from(err));
+            }
+        }
+    };
     let oprf_key_id = OprfKeyId::from(oprfKeyId);
     let oprf_public_key = OprfPublicKey::new(oprf_public_key.try_into()?);
     let epoch = ShareEpoch::from(epoch);
