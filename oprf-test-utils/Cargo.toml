@@ -44,7 +44,6 @@ parking_lot = { workspace = true }
 rand.workspace = true
 rand_chacha.workspace = true
 reqwest = { workspace = true }
-secrecy = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 sqlx = { workspace = true, features = [
   "postgres",
@@ -82,8 +81,4 @@ generate-test-transcript = [
   "dep:groth16-sol",
   "dep:nodes-observability"
 ]
-postgres-test-container = [
-  "dep:secrecy",
-  "dep:sqlx",
-  "dep:testcontainers-modules"
-]
+postgres-test-container = ["dep:sqlx", "dep:testcontainers-modules"]
