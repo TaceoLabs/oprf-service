@@ -10,7 +10,7 @@ use oprf_test_utils::{
     test_secret_manager::TestSecretManager,
 };
 use oprf_types::{
-    ShareEpoch,
+    OprfKeyId, ShareEpoch,
     chain::{OprfKeyRegistry, RevertError, Verifier::VerifierErrors},
     crypto::PartyId,
 };
@@ -32,6 +32,7 @@ key_gen_test_secret_manager!(
 );
 
 const INVALID_PROOF_KEY: usize = 43;
+const WRONG_ROUND_LOAD_PEER_PUBLIC_KEYS: usize = 44;
 
 fn key_gen_material(deploy_setup: DeploySetup) -> CircomGroth16Material {
     CircomGroth16MaterialBuilder::new()
@@ -123,6 +124,32 @@ async fn test_delete() -> eyre::Result<()> {
             .is_ok()
     );
 
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_round2_in_wrong_round_during_load_public_keys() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let (key_gen_material, transaction_handler) = test_config(&setup).await;
+    let mut secret_gen = DLogSecretGenService::init(key_gen_material);
+    let key_id = U160::from(WRONG_ROUND_LOAD_PEER_PUBLIC_KEYS);
+    secret_gen.key_gen_round1(key_id.into(), 2);
+    assert!(!secret_gen.has_round2(OprfKeyId::from(key_id)));
+    super::handle_round2(
+        PartyId(0),
+        OprfKeyRegistry::SecretGenRound2 {
+            oprfKeyId: key_id,
+            epoch: 0,
+        },
+        &OprfKeyRegistry::new(setup.oprf_key_registry, setup.provider.clone()),
+        &mut secret_gen,
+        &transaction_handler,
+    )
+    .await
+    .expect("Should still work");
+
+    // check that we did consumer round 2
+    assert!(secret_gen.has_round2(OprfKeyId::from(key_id)));
     Ok(())
 }
 
