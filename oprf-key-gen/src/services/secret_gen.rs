@@ -179,7 +179,6 @@ impl DLogSecretGenService {
 
     /// Returns `true` iff contains round2 toxic waste associated with the [`OprfKeyId`].
     #[cfg(test)]
-    #[expect(unused)]
     pub(crate) fn has_round2(&self, oprf_key_id: OprfKeyId) -> bool {
         self.toxic_waste_round2.contains_key(&oprf_key_id)
     }
