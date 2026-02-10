@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.3.0...taceo-oprf-test-utils-v0.4.0)
+
+### 🐛 Bug Fixes
+
+
+- Handle revert reasons during key-gen more gracefully ([#451](https://github.com/TaceoLabs/oprf-service/pull/451)) - ([d16321c](https://github.com/TaceoLabs/oprf-service/commit/d16321c98fde0aa1ed30aa380f0700baf6e91c1c))
+
+
 ## [0.3.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.2.1...taceo-oprf-test-utils-v0.3.0)
 
 ### ⛰️ Features
