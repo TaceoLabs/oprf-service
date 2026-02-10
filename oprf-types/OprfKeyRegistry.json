@@ -832,6 +832,31 @@
   },
   {
     "type": "event",
+    "name": "OprfPeerChanged",
+    "inputs": [
+      {
+        "name": "partyId",
+        "type": "uint16",
+        "indexed": true,
+        "internalType": "uint16"
+      },
+      {
+        "name": "oldPeer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newPeer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "OwnershipTransferStarted",
     "inputs": [
       {
