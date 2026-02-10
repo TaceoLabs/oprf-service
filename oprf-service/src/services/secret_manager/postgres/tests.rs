@@ -1,8 +1,7 @@
 use std::time::Duration;
 
-use crate::{
-    oprf_key_material_store::OprfKeyMaterialStore,
-    secret_manager::{GetOprfKeyMaterialError, SecretManager, postgres::PostgresSecretManager},
+use crate::secret_manager::{
+    GetOprfKeyMaterialError, SecretManager, postgres::PostgresSecretManager,
 };
 use alloy::primitives::U160;
 use ark_serialize::CanonicalSerialize;
@@ -55,6 +54,23 @@ async fn insert_row(
     .bind(to_db_ark_serialize_uncompressed(public_key))
     .execute(connection)
     .await?;
+    Ok(())
+}
+
+async fn delete_row(oprf_key_id: OprfKeyId, connection: &mut PgConnection) -> eyre::Result<()> {
+    let success = sqlx::query(
+        r#"
+            UPDATE shares
+            SET
+                share = NULL,
+                deleted = true
+            WHERE id = $1
+        "#,
+    )
+    .bind(oprf_key_id.to_le_bytes())
+    .execute(connection)
+    .await?;
+    assert!(success.rows_affected() == 1);
     Ok(())
 }
 
@@ -153,7 +169,6 @@ async fn test_load_all_secret_three_shares() -> eyre::Result<()> {
     let oprf_key_id0 = OprfKeyId::new(U160::from(42));
     let oprf_key_id1 = OprfKeyId::new(U160::from(128));
     let oprf_key_id2 = OprfKeyId::new(U160::from(6891));
-    let oprf_key_id_unknown = OprfKeyId::new(U160::from(32109));
     let public_key0 = OprfPublicKey::new(rand::random());
     let public_key1 = OprfPublicKey::new(rand::random());
     let public_key2 = OprfPublicKey::new(rand::random());
@@ -168,32 +183,23 @@ async fn test_load_all_secret_three_shares() -> eyre::Result<()> {
     insert_row(oprf_key_id1, share1.clone(), epoch1, public_key1, &mut conn).await?;
     insert_row(oprf_key_id2, share2.clone(), epoch2, public_key2, &mut conn).await?;
 
-    let key_material_store = OprfKeyMaterialStore::new(secret_manager.load_secrets().await?);
+    let key_material_store = secret_manager.load_secrets().await?;
     assert_eq!(key_material_store.len(), 3);
-    let (session0, _) = key_material_store
-        .partial_commit(rand::random(), oprf_key_id0)
-        .expect("works");
-    assert_eq!(session0.public_key_with_epoch().epoch, epoch0);
-    assert_eq!(session0.public_key_with_epoch().key, public_key0);
-
-    let (session1, _) = key_material_store
-        .partial_commit(rand::random(), oprf_key_id1)
-        .expect("works");
-    assert_eq!(session1.public_key_with_epoch().epoch, epoch1);
-    assert_eq!(session1.public_key_with_epoch().key, public_key1);
-
-    let (session2, _) = key_material_store
-        .partial_commit(rand::random(), oprf_key_id2)
-        .expect("works");
-    assert_eq!(session2.public_key_with_epoch().epoch, epoch2);
-    assert_eq!(session2.public_key_with_epoch().key, public_key2);
-
-    // should no longer work
-    assert!(
-        key_material_store
-            .partial_commit(rand::random(), oprf_key_id_unknown)
-            .is_err()
-    );
+    let is_key_material0 = key_material_store
+        .get(&oprf_key_id0)
+        .expect("Should be some");
+    assert_eq!(is_key_material0.public_key_with_epoch().epoch, epoch0);
+    assert_eq!(is_key_material0.public_key_with_epoch().key, public_key0);
+    let is_key_material1 = key_material_store
+        .get(&oprf_key_id1)
+        .expect("Should be some");
+    assert_eq!(is_key_material1.public_key_with_epoch().epoch, epoch1);
+    assert_eq!(is_key_material1.public_key_with_epoch().key, public_key1);
+    let is_key_material2 = key_material_store
+        .get(&oprf_key_id2)
+        .expect("Should be some");
+    assert_eq!(is_key_material2.public_key_with_epoch().epoch, epoch2);
+    assert_eq!(is_key_material2.public_key_with_epoch().key, public_key2);
     Ok(())
 }
 
@@ -262,5 +268,73 @@ async fn test_get_oprf_key_material() -> eyre::Result<()> {
         Err(GetOprfKeyMaterialError::NotFound)
     ));
 
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_load_all_secret_with_deleted() -> eyre::Result<()> {
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager = postgres_secret_manager(&connection_string).await?;
+    let oprf_key_id0 = OprfKeyId::new(U160::from(42));
+    let oprf_key_id1 = OprfKeyId::new(U160::from(128));
+    let oprf_key_id2 = OprfKeyId::new(U160::from(6891));
+    let public_key0 = OprfPublicKey::new(rand::random());
+    let public_key1 = OprfPublicKey::new(rand::random());
+    let public_key2 = OprfPublicKey::new(rand::random());
+    let epoch0 = ShareEpoch::new(42);
+    let epoch1 = ShareEpoch::new(32819);
+    let epoch2 = ShareEpoch::new(3242);
+    let share0 = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
+    let share1 = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
+    let share2 = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
+
+    let mut conn = oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
+    insert_row(oprf_key_id0, share0.clone(), epoch0, public_key0, &mut conn).await?;
+    insert_row(oprf_key_id1, share1.clone(), epoch1, public_key1, &mut conn).await?;
+    insert_row(oprf_key_id2, share2.clone(), epoch2, public_key2, &mut conn).await?;
+
+    delete_row(oprf_key_id1, &mut conn).await?;
+
+    let key_material_store = secret_manager.load_secrets().await?;
+    assert_eq!(key_material_store.len(), 2);
+    let is_material0 = key_material_store.get(&oprf_key_id0).expect("Must be Some");
+    assert!(!key_material_store.contains_key(&oprf_key_id1));
+    let is_material2 = key_material_store.get(&oprf_key_id2).expect("Must be Some");
+    assert_eq!(is_material0.public_key_with_epoch().key, public_key0);
+    assert_eq!(is_material0.public_key_with_epoch().epoch, epoch0);
+    assert_eq!(
+        ark_babyjubjub::Fr::from(is_material0.share()),
+        ark_babyjubjub::Fr::from(share0)
+    );
+    assert_eq!(is_material2.public_key_with_epoch().key, public_key2);
+    assert_eq!(is_material2.public_key_with_epoch().epoch, epoch2);
+    assert_eq!(
+        ark_babyjubjub::Fr::from(is_material2.share()),
+        ark_babyjubjub::Fr::from(share2)
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_get_deleted_secret() -> eyre::Result<()> {
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager = postgres_secret_manager(&connection_string).await?;
+    let oprf_key_id = OprfKeyId::new(U160::from(42));
+    let public_key = OprfPublicKey::new(rand::random());
+    let epoch = ShareEpoch::new(42);
+    let share = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
+
+    let mut conn = oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
+    insert_row(oprf_key_id, share.clone(), epoch, public_key, &mut conn).await?;
+
+    delete_row(oprf_key_id, &mut conn).await?;
+
+    // this should be an error
+    assert!(matches!(
+        secret_manager
+            .get_oprf_key_material(oprf_key_id, epoch)
+            .await,
+        Err(GetOprfKeyMaterialError::NotFound)
+    ));
     Ok(())
 }

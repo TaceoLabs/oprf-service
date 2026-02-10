@@ -549,5 +549,12 @@ async fn test_delete() -> eyre::Result<()> {
     secret_manager.remove_oprf_key_material(oprf_key_id).await?;
     let epoch_42_deleted = all_rows(&mut pg_connection).await?;
     assert_row_matches(&epoch_42_deleted[0], oprf_key_id, None, epoch42, public_key);
+
+    assert!(
+        secret_manager
+            .get_share_by_epoch(oprf_key_id, epoch42)
+            .await?
+            .is_none()
+    );
     Ok(())
 }

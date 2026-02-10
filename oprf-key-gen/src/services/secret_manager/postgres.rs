@@ -284,13 +284,12 @@ impl SecretManager for PostgresSecretManager {
         })
         .await
         .with_context(|| format!("while storing DLogShare {oprf_key_id}"))?;
-        tracing::info!("successfully stored {oprf_key_id}");
         if success.rows_affected() == 0 {
             tracing::warn!(
                 "Did not insert anything, maybe someone else stored something with later epoch?"
             )
         } else {
-            tracing::info!("Successfully stored share!");
+            tracing::info!("successfully stored {oprf_key_id}");
         }
         Ok(())
     }

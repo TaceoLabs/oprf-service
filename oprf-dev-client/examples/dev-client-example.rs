@@ -486,7 +486,7 @@ async fn main() -> eyre::Result<()> {
         Command::DeleteTest => {
             tracing::info!("running delete-test");
             if let Some(oprf_key_id) = config.oprf_key_id {
-                tracing::warn!("ignoring provided key-id: {oprf_key_id}, refusing to delete");
+                tracing::warn!("ignoring provided key-id: {oprf_key_id}");
             }
             taceo_oprf_dev_client::delete_test(
                 DeleteTestArgs {

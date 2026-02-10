@@ -134,7 +134,7 @@ where
     oprf_test_utils::delete_oprf_key_material(provider, oprf_key_registry, oprf_key_id).await?;
     tracing::info!("sent delete event - ping nodes to check this works");
     health_checks::assert_key_id_unknown(oprf_key_id, &nodes, max_wait_time).await?;
-    tracing::info!("successfully delete key-material - check that we get an error now");
+    tracing::info!("successfully deleted key-material - check that we get an error now");
     let result = oprf_client::distributed_oprf(
         &nodes,
         &module,
