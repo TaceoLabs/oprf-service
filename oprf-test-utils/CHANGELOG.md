@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.2.1...taceo-oprf-test-utils-v0.3.0)
+
+### ⛰️ Features
+
+
+- [**breaking**] Ping secret-manager to wake up from deep-sleep when doing key-gen ([#447](https://github.com/TaceoLabs/oprf-service/pull/447)) - ([e01827b](https://github.com/TaceoLabs/oprf-service/commit/e01827bbd5c6f1ccdb24389f6fedec81135eb479))
+- [**breaking**] Add task that periodically refreshes shares for nodes - ([68a0344](https://github.com/TaceoLabs/oprf-service/commit/68a034422c75bfab4b21641a4e3acc76803e8cd9))
+
+### 🚜 Refactor
+
+
+- [**breaking**] Cleanup (remarks DK) - ([ec2a3de](https://github.com/TaceoLabs/oprf-service/commit/ec2a3defa6bc5e01bafd595628d2add281885e35))
+- [**breaking**] Uses constant backoff for DB queries in service/key-gen - ([cf919d0](https://github.com/TaceoLabs/oprf-service/commit/cf919d0e49222c363b5cb9a18b2c45fd3358a415))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Removed unused deps - ([a33e71f](https://github.com/TaceoLabs/oprf-service/commit/a33e71f2e83523fe93410eb5ddb5dafdd524ada7))
+
+
 ## [0.2.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.2.0...taceo-oprf-test-utils-v0.2.1)
 
 ### 🐛 Bug Fixes

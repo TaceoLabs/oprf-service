@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.6.0...taceo-oprf-service-v0.7.0)
+
+### ⛰️ Features
+
+
+- [**breaking**] Add task that periodically refreshes shares for nodes - ([68a0344](https://github.com/TaceoLabs/oprf-service/commit/68a034422c75bfab4b21641a4e3acc76803e8cd9))
+
+### 🐛 Bug Fixes
+
+
+- Key-material-store refuses to roll back when older share ([#445](https://github.com/TaceoLabs/oprf-service/pull/445)) - ([11ff80f](https://github.com/TaceoLabs/oprf-service/commit/11ff80fbcbe2af56b819c84c3afc2dd3becb8297))
+
+### 🚜 Refactor
+
+
+- Uses soft delete over hard delete of shares now - ([319fc77](https://github.com/TaceoLabs/oprf-service/commit/319fc77b5a17dd4c8b1de2235d378d9b2d99db96))
+- [**breaking**] Cleanup (remarks DK) - ([ec2a3de](https://github.com/TaceoLabs/oprf-service/commit/ec2a3defa6bc5e01bafd595628d2add281885e35))
+- [**breaking**] Uses constant backoff for DB queries in service/key-gen - ([cf919d0](https://github.com/TaceoLabs/oprf-service/commit/cf919d0e49222c363b5cb9a18b2c45fd3358a415))
+- [**breaking**] Make max_db_connections + acquire timeout configureable - ([db4167a](https://github.com/TaceoLabs/oprf-service/commit/db4167a08b1b4e5d3e05b92c0b154027aa95c040))
+- Make poll interval configurable from oprf-node to secret-manager - ([381126e](https://github.com/TaceoLabs/oprf-service/commit/381126e6578359f963f5d7f650c37a72ffd76ff1))
+
+### 🧪 Testing
+
+
+- Added unit tests for delete in oprf-service - ([a4606c6](https://github.com/TaceoLabs/oprf-service/commit/a4606c62a96e5a44f3e7c3663d06f4d2529a4dde))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Renamed paramater name in reload - ([4496d05](https://github.com/TaceoLabs/oprf-service/commit/4496d05fc80f8a6c798f898f566ab9c4924c093b))
+
+
 ## [0.6.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.5.0...taceo-oprf-service-v0.6.0)
 
 ### 🐛 Bug Fixes
