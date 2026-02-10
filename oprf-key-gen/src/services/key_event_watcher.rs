@@ -42,7 +42,7 @@ use oprf_types::{
     OprfKeyId, ShareEpoch,
     chain::{
         OprfKeyGen::{Round1Contribution, Round2Contribution},
-        OprfKeyRegistry::{self, OprfKeyRegistryErrors, OprfKeyRegistryInstance},
+        OprfKeyRegistry::{self, OprfKeyRegistryErrors, OprfKeyRegistryInstance, WrongRound},
         RevertError, SecretGenRound1Contribution,
         Verifier::VerifierErrors,
     },
@@ -210,7 +210,7 @@ async fn handle_log(
 ) -> Result<()> {
     // First step during every log is asynchronously ping the secret-manager to wake up in case it is in deep-sleep
     ping_secret_manager(secret_manager.to_owned());
-    match log.topic0() {
+    let result = match log.topic0() {
         Some(&OprfKeyRegistry::SecretGenRound1::SIGNATURE_HASH) => {
             let log = log
                 .log_decode()
@@ -303,6 +303,18 @@ async fn handle_log(
             tracing::warn!("unknown event: {x:?}");
             return Ok(());
         }
+    };
+    match result {
+        Ok(_) => Ok(()),
+        Err(TransactionError::Revert(RevertError::OprfKeyRegistry(
+            OprfKeyRegistryErrors::WrongRound(WrongRound(round)),
+        ))) => {
+            tracing::info!(
+                "Reverted event with wrong round - most likely this key-gen was aborted: we are in {round}"
+            );
+            Ok(())
+        }
+        Err(err) => Err(err),
     }
 }
 
@@ -369,7 +381,20 @@ async fn handle_round2(
     let nodes = contract
         .loadPeerPublicKeysForProducers(oprfKeyId)
         .call()
-        .await?;
+        .await;
+    // we need to handle this separately because this can happen in an ordinary flow without aborts - in that case we still need to do consumer_round2. In all other cases, we can handle the abort case at callsite.
+    let nodes = match nodes {
+        Ok(nodes) => nodes,
+        Err(err) => {
+            if let Some(WrongRound(round)) = err.as_decoded_error::<OprfKeyRegistry::WrongRound>() {
+                tracing::info!("reshare is already in round: {round} - we were a consumer");
+                // return an empty array to signal we are consumer
+                Vec::new()
+            } else {
+                Err(err)?
+            }
+        }
+    };
     if nodes.is_empty() {
         tracing::debug!("I am not a producer - nothing do to for me except clean after me");
         secret_gen.consumer_round2(oprf_key_id);
@@ -453,7 +478,21 @@ async fn handle_finalize(
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
     handle_span.record("epoch", epoch.to_string());
     tracing::info!("Event for {oprfKeyId} with epoch {epoch}");
-    let oprf_public_key = contract.getOprfPublicKey(oprfKeyId).call().await?;
+    let oprf_public_key = match contract.getOprfPublicKey(oprfKeyId).call().await {
+        Ok(oprf_public_key) => oprf_public_key,
+        Err(err) => {
+            if let Some(OprfKeyRegistry::DeletedId { id: _ }) =
+                err.as_decoded_error::<OprfKeyRegistry::DeletedId>()
+            {
+                tracing::info!(
+                    "Key got deleted in the meantime - we ignore this key for now. Nodes will run into an error, but they will be fine"
+                );
+                return Ok(());
+            } else {
+                return Err(TransactionError::from(err));
+            }
+        }
+    };
     let oprf_key_id = OprfKeyId::from(oprfKeyId);
     let oprf_public_key = OprfPublicKey::new(oprf_public_key.try_into()?);
     let epoch = ShareEpoch::from(epoch);
