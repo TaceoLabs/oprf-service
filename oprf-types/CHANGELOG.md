@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.7.1...taceo-oprf-types-v0.8.0)
+
+### 🐛 Bug Fixes
+
+
+- Handle revert reasons during key-gen more gracefully ([#451](https://github.com/TaceoLabs/oprf-service/pull/451)) - ([d16321c](https://github.com/TaceoLabs/oprf-service/commit/d16321c98fde0aa1ed30aa380f0700baf6e91c1c))
+
+
 ## [0.7.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.7.0...taceo-oprf-types-v0.7.1)
 
 ### ⚙️ Miscellaneous Tasks

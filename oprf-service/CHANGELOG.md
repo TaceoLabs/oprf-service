@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.7.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.7.0...taceo-oprf-service-v0.7.1)
+
+### 🚜 Refactor
+
+
+- Removed ready check + log close reason for key-event-watcher - ([31cc24f](https://github.com/TaceoLabs/oprf-service/commit/31cc24fcb757d7e743b7e51875a8a2a5cb2c95ca))
+
+
 ## [0.7.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.6.0...taceo-oprf-service-v0.7.0)
 
 ### ⛰️ Features

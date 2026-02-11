@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.4.0...taceo-oprf-key-gen-v0.4.1)
+
+### 🐛 Bug Fixes
+
+
+- Handle revert reasons during key-gen more gracefully ([#451](https://github.com/TaceoLabs/oprf-service/pull/451)) - ([d16321c](https://github.com/TaceoLabs/oprf-service/commit/d16321c98fde0aa1ed30aa380f0700baf6e91c1c))
+
+### 🚜 Refactor
+
+
+- Removed ready check + log close reason for key-event-watcher - ([31cc24f](https://github.com/TaceoLabs/oprf-service/commit/31cc24fcb757d7e743b7e51875a8a2a5cb2c95ca))
+- Key-gen binary correctly prints errors for logging if shutdown - ([e8cb44f](https://github.com/TaceoLabs/oprf-service/commit/e8cb44fef3b283974ba76e2dfc60ec3ab937a870))
+
+
 ## [0.4.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.3.0...taceo-oprf-key-gen-v0.4.0)
 
 ### ⛰️ Features
