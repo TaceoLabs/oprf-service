@@ -141,3 +141,17 @@ impl From<ShareEpoch> for i64 {
         i64::from(value.0)
     }
 }
+
+macro_rules! from_impl {
+    ($($type:ty),+ $(,)?) => {
+        $(
+            impl From<$type> for OprfKeyId {
+                fn from(value: $type) -> Self {
+                    Self(U160::from(value))
+                }
+            }
+        )+
+    };
+}
+
+from_impl!(usize, u8, u16, u32, u64, u128);

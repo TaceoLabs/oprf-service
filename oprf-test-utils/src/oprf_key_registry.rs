@@ -1,5 +1,5 @@
 use alloy::{primitives::Address, providers::DynProvider};
-use oprf_types::{OprfKeyId, chain::OprfKeyRegistry};
+use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
 
 use crate::TestOprfKeyRegistry;
 
@@ -125,6 +125,25 @@ pub async fn emit_delete_event(
         .await?;
     if !receipt.status() {
         eyre::bail!("could not emit delete event");
+    }
+    Ok(())
+}
+
+pub async fn emit_secret_gen_finalize(
+    provider: DynProvider,
+    oprf_key_registry: Address,
+    oprf_key_id: OprfKeyId,
+    epoch: ShareEpoch,
+) -> eyre::Result<()> {
+    let oprf_key_registry = TestOprfKeyRegistry::new(oprf_key_registry, provider);
+    let receipt = oprf_key_registry
+        .emitSecretGenFinalize(oprf_key_id.into_inner(), epoch.into_inner())
+        .send()
+        .await?
+        .get_receipt()
+        .await?;
+    if !receipt.status() {
+        eyre::bail!("could not emit secret-gen finalize");
     }
     Ok(())
 }

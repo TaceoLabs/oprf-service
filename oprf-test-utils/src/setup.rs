@@ -16,7 +16,7 @@ use alloy::{
 use eyre::Context as _;
 use futures::StreamExt as _;
 use itertools::Itertools;
-use oprf_types::OprfKeyId;
+use oprf_types::{OprfKeyId, ShareEpoch};
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
@@ -107,6 +107,20 @@ impl TestSetup {
 
     pub async fn delete_oprf_key(&self, oprf_key_id: OprfKeyId) -> eyre::Result<()> {
         crate::emit_delete_event(self.provider.clone(), self.oprf_key_registry, oprf_key_id).await
+    }
+
+    pub async fn finalize_keygen(
+        &self,
+        oprf_key_id: OprfKeyId,
+        share_epoch: ShareEpoch,
+    ) -> eyre::Result<()> {
+        crate::emit_secret_gen_finalize(
+            self.provider.clone(),
+            self.oprf_key_registry,
+            oprf_key_id,
+            share_epoch,
+        )
+        .await
     }
 
     pub async fn init_keygen(&self, oprf_key_id: OprfKeyId) -> eyre::Result<()> {

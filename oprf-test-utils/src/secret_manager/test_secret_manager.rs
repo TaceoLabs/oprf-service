@@ -1,9 +1,6 @@
 use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 
-use alloy::{
-    primitives::{Address, U160},
-    signers::local::PrivateKeySigner,
-};
+use alloy::{primitives::Address, signers::local::PrivateKeySigner};
 use ark_ff::UniformRand;
 use itertools::Itertools;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
@@ -158,14 +155,39 @@ impl TestSecretManager {
         self.store.lock().extend(map);
     }
 
+    pub fn add_random_key_material_with_epoch<R: Rng + CryptoRng>(
+        &self,
+        epoch: ShareEpoch,
+        rng: &mut R,
+    ) -> OprfKeyId {
+        let oprf_key_id = OprfKeyId::from(rng.r#gen::<usize>());
+        self.add_random_key_material_with_id_epoch(oprf_key_id, epoch, rng);
+        oprf_key_id
+    }
+
     pub fn add_random_key_material<R: Rng + CryptoRng>(&self, rng: &mut R) -> OprfKeyId {
-        // need to generate usize because rust-analyzer is unhappy with generating U160
-        let oprf_key_id = OprfKeyId::new(U160::from(rng.r#gen::<usize>()));
-        let epoch = ShareEpoch::default();
+        let oprf_key_id = OprfKeyId::from(rng.r#gen::<usize>());
+        self.add_random_key_material_with_id(oprf_key_id, rng);
+        oprf_key_id
+    }
+
+    pub fn add_random_key_material_with_id<R: Rng + CryptoRng>(
+        &self,
+        oprf_key_id: OprfKeyId,
+        rng: &mut R,
+    ) {
+        self.add_random_key_material_with_id_epoch(oprf_key_id, ShareEpoch::default(), rng);
+    }
+
+    pub fn add_random_key_material_with_id_epoch<R: Rng + CryptoRng>(
+        &self,
+        oprf_key_id: OprfKeyId,
+        epoch: ShareEpoch,
+        rng: &mut R,
+    ) {
         let share = DLogShareShamir::from(ark_babyjubjub::Fr::rand(rng));
         let key_material = OprfKeyMaterial::new(share, OprfPublicKey::new(rng.r#gen()), epoch);
         self.store.lock().insert(oprf_key_id, key_material);
-        oprf_key_id
     }
 
     pub fn get_key_material(&self, oprf_key_id: OprfKeyId) -> Option<OprfKeyMaterial> {
