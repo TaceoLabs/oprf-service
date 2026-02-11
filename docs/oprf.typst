@@ -1,7 +1,6 @@
 #import "preamble.typst": *
-#import "@preview/fletcher:0.5.8" as fletcher: diagram, edge, node
-#import "@preview/frame-it:1.2.0": *
-#import "@preview/dashy-todo:0.1.0": todo
+#import "@preview/frame-it:2.0.0": *
+#import "@preview/dashy-todo:0.1.3": todo
 
 #let inst_taceo = institute("TACEO", email: "papers@taceo.io");
 
@@ -25,6 +24,7 @@
 
 #let sk = $serif("sk")$;
 #let pk = $italic("pk")$;
+#let com = $serif("com")$;
 #let nonce = $italic("nonce")$;
 #let uid = $italic("id")_italic("u")$;
 #let rpid = $italic("id")_italic("rp")$;
@@ -53,11 +53,12 @@ To add another secret back into the nullifier calculation, we employ an Obliviou
 
 Finally, an important part of the original Semaphore protocol is the zero-knowledge proof attesting the correct calculation of the nullifier. We still require this property, but have to extend it with the correct calculation of the OPRF. Therefore, a verifiable variant of the OPRF is used, which allows the OPRF servers to prove the correct calculation of the OPRF against a known public key. This proof must then be verified in the zero-knowledge proof attesting the correct calculation of the nullifier.
 
+
+= Background
+
 == Notation
 
 In the rest of the manuscript, if not described otherwise, we refer to the prime describing the scalarfield of the BN254 curve (which is also the basefield of the BabyJubJub curve) as $p$ and refer to the prime describing the scalarfield of the BabyJubJub curve as $q$. Furthermore, we denote field elements $in bb(F)$ with small letters, whereas elliptic curve points are denoted by capital letters. To denote a secret sharing of a value $x$ or $X$ we use a bracket notation $[x]$ and $[X]$.
-
-= Background
 
 == BabyJubJub <sec:babyjubjub>
 
@@ -393,43 +394,46 @@ We now present our secure variant of the threshold discrete logarithm equality p
     Comment([Each server $i$:])
     Function(
       "partial_commitments",
-      $k_i, B, D$,
+      $k_i, A, G$,
       {
-        LineComment(Assign[$f_i$][$bb(F)_q$], [Sample random share $f_i$])
-        LineComment(Assign[$g_i$][$bb(F)_q$], [Sample random share $g_i$])
-        Assign[$F_(i,1)$][$f_i dot D$]
-        Assign[$F_(i,2)$][$f_i dot B$]
-        Assign[$G_(i,1)$][$g_i dot D$]
-        Assign[$G_(i,2)$][$g_i dot B$]
-        Assign[$C_i$][$k_i dot B$]
-        Return[$f_i, g_i, C_i, F_(i,1), F_(i,2), G_(i,1), G_(i,2)$]
+        LineComment(Assign[$d_i$][$bb(F)_q$], [Sample random share $d_i$])
+        LineComment(Assign[$e_i$][$bb(F)_q$], [Sample random share $e_i$])
+        Assign[$D_(i,1)$][$d_i dot G$]
+        Assign[$D_(i,2)$][$d_i dot A$]
+        Assign[$E_(i,1)$][$e_i dot G$]
+        Assign[$E_(i,2)$][$e_i dot A$]
+        Assign[$B_i$][$k_i dot A$]
+        Return[$(d_i, e_i), B_i, D_(i,1), D_(i,2), E_(i,1), E_(i,2)$]
       },
     )
     LineBreak
     Comment([The accumulator with input from all $n$ servers:])
     Function(
       "recombine_commitments",
-      $(C_1, F_(1,1), F_(1,2), G_(1,1), G_(1,2)), dots, (C_n, G_(n,1), G_(n,2), G_(n,1), G_(n,2))$,
+      $(B_1, D_(1,1), D_(1,2), E_(1,1), E_(1,2)), dots, (B_n, D_(n,1), D_(n,2), E_(n,1), E_(n,2))$,
       {
-        Assign[$F_1$][$F_(1,1) + dots + F_(n, 1)$]
-        Assign[$F_2$][$F_(1,2) + dots + F_(n, 2)$]
-        Assign[$G_1$][$G_(1,1) + dots + G_(n, 1)$]
-        Assign[$G_2$][$G_(1,2) + dots + G_(n, 2)$]
-        Assign[$C$][$C_1 + dots + C_n$]
-        Return[$F_1,F_2,G_1,G_2,C$]
+        Assign[$D_1$][$D_(1,1) + dots + D_(n, 1)$]
+        Assign[$D_2$][$D_(1,2) + dots + D_(n, 2)$]
+        Assign[$E_1$][$E_(1,1) + dots + E_(n, 1)$]
+        Assign[$E_2$][$E_(1,2) + dots + E_(n, 2)$]
+        Assign[$B$][$B_1 + dots + B_n$]
+        Return[$D_1,D_2,E_1,E_2,B$]
       },
     )
     LineBreak
-    Comment([Each server $i$ on input $(F_1,F_2,G_1,G_2,C)$ from the client:])
+    Comment([Each server $i$ on input $(D_1,D_2,E_1,E_2,B)$ from the client:])
     Function(
       "challenge",
-      $k_i, f_i, g_i, A, B, C, D, F_1, F_2, G_1, G_2$,
+      $k_i, d_i, e_i, K, A, B, G, D_1, D_2, E_1, E_2$,
       {
-        Assign[$b$][$H_b (C, A, F_1, G_1, F_2, G_2) in bb(F)_q$]
-        Assign[$R_1$][$F_1+ b dot G_1$]
-        Assign[$R_2$][$F_2+ b dot G_2$]
-        Assign[$e$][$H(A, B, C, D, R_1, R_2) in bb(F)_q$]
-        Assign[$s_i$][$f_i + b dot g_i + e dot k_i$]
+        LineComment(
+          Assign[$b$][$H_b (T, K, B, D_1, D_2, E_1, E_2) in bb(F)_q$],
+          [$T$ is the ordered set of participating parties.],
+        )
+        Assign[$R_1$][$D_1+ b dot E_1$]
+        Assign[$R_2$][$D_2+ b dot E_2$]
+        Assign[$e$][$H(K, A, B, G, R_1, R_2) in bb(F)_q$]
+        Assign[$s_i$][$d_i + b dot e_i + e dot k_i$]
         Return[$s_i$]
       },
     )
@@ -437,12 +441,12 @@ We now present our secure variant of the threshold discrete logarithm equality p
     Comment([The accumulator with input from all $n$ servers:])
     Function(
       "combine_proofs",
-      $s_1, ..., s_n, A, B, C, D, F_1, G_1, F_2, G_2$,
+      $s_1, ..., s_n, K, A, B, G, D_1, D_2, E_1, E_2$,
       {
-        Assign[$b$][$H_b (C, A, F_1, G_1, F_2, G_2) in bb(F)_q$]
-        Assign[$R_1$][$F_1+ b dot G_1$]
-        Assign[$R_2$][$F_2+ b dot G_2$]
-        Assign[$e$][$H(A, B, C, D, R_1, R_2) in bb(F)_q$]
+        Assign[$b$][$H_b (T, K, B, D_1, D_2, E_1, E_2) in bb(F)_q$]
+        Assign[$R_1$][$D_1+ b dot E_1$]
+        Assign[$R_2$][$D_2+ b dot E_2$]
+        Assign[$e$][$H(K, A, B, G, R_1, R_2) in bb(F)_q$]
         Assign[$s$][$s_1 + dots + s_n$]
         Return[$e, s$]
       },
@@ -465,45 +469,45 @@ In order to rewrite @alg:add_prover from additive to Shamir secret-sharing, we h
     Comment([Each server $i$:])
     Function(
       "partial_commitments",
-      $k_i, B, D$,
+      $k_i, A, G$,
       {
-        LineComment(Assign[$f_i$][$bb(F)_q$], [Sample random share $f_i$])
-        LineComment(Assign[$g_i$][$bb(F)_q$], [Sample random share $g_i$])
-        Assign[$F_(i,1)$][$f_i dot D$]
-        Assign[$F_(i,2)$][$f_i dot B$]
-        Assign[$G_(i,1)$][$g_i dot D$]
-        Assign[$G_(i,2)$][$g_i dot B$]
-        Assign[$C_i$][$k_i dot B$]
-        Return[$f_i, g_i, C_i, F_(i,1), F_(i,2), G_(i,1), G_(i,2)$]
+        LineComment(Assign[$d_i$][$bb(F)_q$], [Sample random share $d_i$])
+        LineComment(Assign[$e_i$][$bb(F)_q$], [Sample random share $e_i$])
+        Assign[$F_(i,1)$][$d_i dot G$]
+        Assign[$F_(i,2)$][$d_i dot A$]
+        Assign[$G_(i,1)$][$e_i dot G$]
+        Assign[$G_(i,2)$][$e_i dot A$]
+        Assign[$B_i$][$k_i dot A$]
+        Return[$d_i, e_i, B_i, D_(i,1), D_(i,2), E_(i,1), E_(i,2)$]
       },
     )
     LineBreak
     Comment([The accumulator with input from $t = d+1$ out of $n$ servers:])
     Function(
       "recombine_commitments",
-      $(C_1, F_(1,1), F_(1,2), G_(1,1), G_(1,2)), dots, (C_n, G_(t,1), G_(t,2), G_(t,1), G_(t,2))$,
+      $(B_1, D_(1,1), D_(1,2), E_(1,1), E_(1,2)), dots, (B_t, D_(t,1), D_(t,2), E_(t,1), E_(t,2))$,
       {
-        Assign[$F_1$][$F_(1,1) + dots + F_(t, 1)$]
-        Assign[$F_2$][$F_(1,2) + dots + F_(t, 2)$]
-        Assign[$G_1$][$G_(1,1) + dots + G_(t, 1)$]
-        Assign[$G_2$][$G_(1,2) + dots + G_(t, 2)$]
-        Assign[$C$][$#emph(text(blue)[$lambda_1$])dot C_1 + dots + #emph(text(blue)[$lambda_t$])dot C_t$]
-        Return[$F_1,F_2,G_1,G_2,C$]
+        Assign[$D_1$][$D_(1,1) + dots + D_(t, 1)$]
+        Assign[$D_2$][$D_(1,2) + dots + D_(t, 2)$]
+        Assign[$E_1$][$E_(1,1) + dots + E_(t, 1)$]
+        Assign[$E_2$][$E_(1,2) + dots + E_(t, 2)$]
+        Assign[$B$][$#emph(text(blue)[$lambda_1$])dot B_1 + dots + #emph(text(blue)[$lambda_t$])dot B_t$]
+        Return[$D_1,D_2,E_1,E_2,B$]
       },
     )
     LineBreak
     Comment(
-      [Each server $i$ on input  $(F_1,F_2,G_1,G_2,C)$ and the signing set #emph(text(blue)[$T$]) from the client:],
+      [Each server $i$ on input  $(D_1,D_2,E_1,E_2,B)$ and the signing set #emph(text(blue)[$T$]) from the client:],
     )
     Function(
       "challenge",
-      $k_i, f_i, g_i, A, B, C, D, F_1, F_2, G_1, G_2, #emph(text(blue)[$T$]))$,
+      $k_i, d_i, e_i, K, A, B, G, D_1, D_2, E_1, E_2, #emph(text(blue)[$T$]))$,
       {
-        Assign[$b$][$H_b (C, A, F_1, G_1, F_2, G_2, #emph(text(blue)[$T$])) in bb(F)_q$]
-        Assign[$R_1$][$F_1+ b dot G_1$]
-        Assign[$R_2$][$F_2+ b dot G_2$]
-        Assign[$e$][$H(A,B, C, D,R_1, R_2) in bb(F)_q$]
-        Assign[$s_i$][$f_i + b dot g_i + e dot k_i dot #emph(text(blue)[$lambda_i$])$]
+        Assign[$b$][$H_b (#emph(text(blue)[$T$]), K, B, D_1, D_2, E_1, E_2) in bb(F)_q$]
+        Assign[$R_1$][$D_1+ b dot E_1$]
+        Assign[$R_2$][$D_2+ b dot E_2$]
+        Assign[$e$][$H(K, A, B, G,R_1, R_2) in bb(F)_q$]
+        Assign[$s_i$][$d_i + b dot e_i + e dot k_i dot #emph(text(blue)[$lambda_i$])$]
         Return[$s_i$]
       },
     )
@@ -511,12 +515,12 @@ In order to rewrite @alg:add_prover from additive to Shamir secret-sharing, we h
     Comment([The accumulator with input from $t = d+1$ out of $n$ servers:])
     Function(
       "combine_proofs",
-      $s_1, ..., s_t, A, B, C, D, F_1, G_1, F_2, G_2$,
+      $s_1, ..., s_t, K, A, B, G, D_1, D_2, E_1, E_2$,
       {
-        Assign[$b$][$H_b (C, A, F_1, G_1, F_2, G_2, #emph(text(blue)[$T$])) in bb(F)_q$]
-        Assign[$R_1$][$F_1+ b dot G_1$]
-        Assign[$R_2$][$F_2+ b dot G_2$]
-        Assign[$e$][$H(A, B, C, D, R_1, R_2) in bb(F)_q$]
+        Assign[$b$][$H_b ( #emph(text(blue)[$T$]), K, B, D_1, D_2, E_1, E_2) in bb(F)_q$]
+        Assign[$R_1$][$D_1+ b dot E_1$]
+        Assign[$R_2$][$D_2+ b dot E_2$]
+        Assign[$e$][$H(K, A, B, G, R_1, R_2) in bb(F)_q$]
         Assign[$s$][$s_1 + dots + s_t$]
         Return[$e, s$]
       },
@@ -524,9 +528,97 @@ In order to rewrite @alg:add_prover from additive to Shamir secret-sharing, we h
   },
 )  <alg:shamir_prover>
 
-In order to chose the signing set $T$ we propose that the client sends the first request to all $n$ servers, and chooses the fastest $d+1$ responging servers for engaging in the second round to complete the protocol.
+In order to chose the signing set $T$ we propose that the client sends the first request to all $n$ servers, and chooses the fastest $d+1$ responding servers for engaging in the second round to complete the protocol, keeping the identifiers in T canonically ordered.
 
-== Full Distributed OPRF-Based Nullifier Protocol
+=== On Communication Patters
+
+#todo("Client as Aggregator vs one of the Servers", position: "inline")
+
+== Full Distributed, OPRF Protocol with Public Verifiability
+
+In this section, we present the full threshold OPRF protocol with additions to make the clients execution of the OPRF publicly verifiable. The final statement the client proves is the following:
+"I know an input $x$, that is committed to as $com$, and the output of the OPRF using the public key $K$ is $y$."
+
+#figure(
+  rect(table(
+    columns: (2fr, 1fr, 2fr),
+    stroke: none,
+    table.header([Client($x, K, G$)], [], [$n$ Servers($k_i, K = k dot G$)]),
+    table.hline(stroke: 0.05em),
+    [$beta arrowrl bb(Z)_q^*$], [], [],
+    [$r arrowrl bb(Z)_p$], [], [],
+    [$com <- H_"com" (x, r)$], [], [],
+    [$A <- beta dot H_1(x)$], [], [],
+    [],
+    math.attach($arrow.r$, t: $A$),
+    [], [], [],
+    [$((d_i, e_i), B_i, D_(i,1), D_(i,2), E_(i,1), E_(i,2)) <- #linebreak() mono("dlog.partial_commitments")(k_i, A, G)$],
+    [$T$ is the set of $t$ used parties], math.attach($arrow.l$, t: $[B], [D_1], [D_2], [E_1], [E_2]$), [],
+    [$(B, D_1, D_2, E_1, E_2) <-#linebreak() mono("dlog.recombine_commitments")( [B], #linebreak() [D_1], [D_2], [E_1], [E_2])$],
+    [],
+    [],
+    [], math.attach($arrow.r$, t: $B, D_1, D_2, E_1, E_2, T$), [],
+    [], [], [$s_i <-mono("dlog.challenge")(k_i, d_i, e_i, #linebreak() K, A, B, G, D_1, D_2, E_1, E_2, T)$],
+    [$(e,s) <-mono("dlog.combine_proofs")(#linebreak()s_1, ..., s_t, K, A, B, G, D_1, D_2, E_1, E_2)$],
+    math.attach($arrow.l$, t: $[s]$),
+    [],
+    [$y <- H_2(x, (beta^(-1) dot B))$], [], [],
+    [$pi_"oprf" <-mono("prove_oprf")((y, com, K), #linebreak() (x, beta, e, s, B))$], [], [],
+    [Output $(y, com, pi_"oprf")$],
+  )),
+  caption: [The verifiable threshold TwoHashDH OPRF construction derived from @fig:twohashdh.],
+  kind: "scheme",
+  supplement: [Scheme],
+)
+<fig:full_protocol>
+
+
+=== Client Side ZK Proof
+
+The client, after executing the OPRF with the set of servers proves that the OPRF output $y$ is well-formed with respect to the input commitment $com$ and the OPRF public key $K$. This is achieved by proving the validity of a rank 1 constraint system (R1CS) that maps to @alg:prove_oprf.
+
+#show: style-algorithm
+#algorithm-figure(
+  [Client Side OPRF proof $pi_"oprf"$],
+  stroke: black,
+  {
+    import algorithmic: *
+
+    Comment(
+      [With public inputs $(y, com, K)$ and private inputs $(x, beta, r, e, s, B)$],
+    )
+    Function(
+      "prove_oprf",
+      $(y, com, K), (x, beta, r, e, s, B)$,
+      {
+        Assign($com'$, $H_"com" (x, r)$)
+        Line($mono("assert") com' == com$)
+        Assign($Q$, $H_1(x)$)
+        Assign($A$, $Q dot beta$)
+        Line($mono("assert") mono("DLogEQ.Verify")(K,B,G,A,e,s)$)
+        Assign($Q_2$, $B dot beta^-1$)
+        Assign($y'$, $H_2 (x, Q_2)$)
+        Line($mono("assert") y' == y$)
+      },
+    )
+    LineBreak
+  },
+)
+<alg:prove_oprf>
+
+#linebreak()
+We will now go through @alg:prove_oprf line by line and explore the relative costs for performing these operations in a zkSNARK.
+- Line 3: Recomputing the input commitment hash, instantiated using Poseidon2, about 240 R1CS constraints.
+- Line 5: Recomputing the `encode_to_curve` function, about 800 R1CS constraints.
+- Line 6: Recomputing the scalar multiplication with the blinding factor, about 2300 R1CS constraints.
+- Line 7: Verifying that the DLogEQ proof is correct, about 12000 R1CS constraints.
+- Line 8: Recomputing the scaler multiplication with the blinding factor, about 2300 R1CS constraints.
+- Line 9: Recomputing the OPRF output hash, instantiated using Poseidon2, about 260 R1CS constraints.
+
+#remark[On ZK optimizations and additional checks][We utilize various common optimizations in the above ZK circuit. For example, instead of having to compute the inverse of $beta$ in line 8, we inject $Q_2$ as an additional input and verify that $B = Q_2 dot beta$. However, additional care needs to be taken for such steps, as the co-factor of BabyJubJub is not 1. Therefore, we additionally need to check that $Q_2$ is a point in the prime-order subgroup of BabyJubJub, otherwise there might be combinations of $Q_2$ and $beta$ where multiple points $Q_2$ map to the same $B$, making the ZK proof malleable. ]
+
+
+= Use Case: OPRF-Based Nullifier Protocol
 
 We give the full verifiable OPRF based distributed nullifier service construction in @fig:full_protocol. For the description of the zero-knowledge proofs $pi_1$ and $pi_2$ we refer to @sec:ZK.
 
@@ -563,11 +655,11 @@ We give the full verifiable OPRF based distributed nullifier service constructio
   kind: "scheme",
   supplement: [Scheme],
 )
-<fig:full_protocol>
+<fig:full_protocol_use_case>
 
 === Clients Zero-Knowledge Proofs <sec:ZK>
 
-We describe the ZK proofs $pi_1$ and $pi_2$ from @fig:full_protocol in this section.
+We describe the ZK proofs $pi_1$ and $pi_2$ from @fig:full_protocol_use_case in this section.
 
 ==== Query Proof $pi_1$
 
