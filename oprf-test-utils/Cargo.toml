@@ -1,6 +1,6 @@
 [package]
 name = "taceo-oprf-test-utils"
-version = "0.3.0"
+version = "0.4.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Utilities for testing TACEO:OPRF based services."
@@ -39,7 +39,7 @@ groth16-sol = { workspace = true, optional = true }
 itertools.workspace = true
 nodes-observability = { workspace = true, optional = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.4" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.7" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.8" }
 parking_lot = { workspace = true }
 rand.workspace = true
 rand_chacha.workspace = true
