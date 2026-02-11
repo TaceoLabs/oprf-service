@@ -14,13 +14,7 @@ use taceo_oprf_key_gen::{
     secret_manager::postgres::{PostgresSecretManager, PostgresSecretManagerArgs},
 };
 
-#[tokio::main]
-async fn main() -> eyre::Result<ExitCode> {
-    rustls::crypto::aws_lc_rs::default_provider()
-        .install_default()
-        .expect("can install");
-    let tracing_config = nodes_observability::TracingConfig::try_from_env()?;
-    let _tracing_handle = nodes_observability::initialize_tracing(&tracing_config)?;
+async fn run() -> eyre::Result<()> {
     taceo_oprf_key_gen::metrics::describe_metrics();
 
     tracing::info!("{}", nodes_common::version_info!());
@@ -92,7 +86,7 @@ async fn main() -> eyre::Result<ExitCode> {
 
     tracing::info!("waiting for shutdown of services (max wait time {max_wait_time_shutdown:?})..");
 
-    let result = match tokio::time::timeout(max_wait_time_shutdown, async move {
+    match tokio::time::timeout(max_wait_time_shutdown, async move {
         let (axum_result, key_gen_result) = tokio::join!(server, key_gen_task.join());
         axum_result??;
         key_gen_result?;
@@ -102,17 +96,34 @@ async fn main() -> eyre::Result<ExitCode> {
     {
         Ok(Ok(_)) => {
             tracing::info!("successfully finished shutdown in time");
-            Ok(ExitCode::SUCCESS)
+            Ok(())
         }
-        Ok(Err(err)) => {
-            tracing::error!("key-gen encountered an error: {err:?}");
-            Ok(ExitCode::FAILURE)
-        }
+        Ok(Err(err)) => Err(err),
         Err(_) => {
-            tracing::warn!("could not finish shutdown in time");
-            Ok(ExitCode::FAILURE)
+            eyre::bail!("could not finish shutdown in time");
         }
-    };
-    tracing::info!("good night!");
-    result
+    }
+}
+
+#[tokio::main]
+async fn main() -> ExitCode {
+    // we panic if we cannot setup tracing + TLS - if that fails we won't see anything anyways on tracing endpoint
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .expect("Can install");
+    let tracing_config =
+        nodes_observability::TracingConfig::try_from_env().expect("Can create TryingConfig");
+    let _tracing_handle =
+        nodes_observability::initialize_tracing(&tracing_config).expect("Can get tracing handle");
+    match run().await {
+        Ok(_) => {
+            tracing::info!("good night");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            tracing::error!("key-gen did shutdown: {err:?}");
+            tracing::error!("good night anyways");
+            ExitCode::FAILURE
+        }
+    }
 }
