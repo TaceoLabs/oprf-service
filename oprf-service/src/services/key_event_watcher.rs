@@ -57,25 +57,13 @@ pub(crate) async fn key_event_watcher_task(
     let cancellation_token = key_event_watcher_task_args.cancellation_token.clone();
     let _drop_guard = cancellation_token.drop_guard_ref();
 
-    tracing::info!(
-        "checking OprfKeyRegistry ready state at address {}..",
-        key_event_watcher_task_args.contract_address
-    );
-    let contract = OprfKeyRegistry::new(
-        key_event_watcher_task_args.contract_address,
-        key_event_watcher_task_args.provider.clone(),
-    );
-    if !contract.isContractReady().call().await? {
-        eyre::bail!("OprfKeyRegistry contract not ready");
-    }
-    tracing::info!("ready!");
-
     tracing::info!("start handling events");
-    match handle_events(key_event_watcher_task_args).await {
-        Ok(_) => tracing::info!("stopped key event watcher"),
-        Err(err) => tracing::error!("key event watcher encountered an error: {err}"),
-    }
-    Ok(())
+    let result = handle_events(key_event_watcher_task_args).await;
+    match result.as_ref() {
+        Ok(_) => tracing::info!("stopped key event watcher without error"),
+        Err(err) => tracing::warn!("key event watcher encountered an error: {err:?}"),
+    };
+    result
 }
 
 /// Filters for various key generation event signatures and handles them
