@@ -18,7 +18,6 @@ use oprf_types::{
 };
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc};
-use tracing::instrument;
 use uuid::Uuid;
 
 use crate::metrics::METRICS_ID_NODE_OPRF_SECRETS;
@@ -44,14 +43,20 @@ pub struct OprfKeyMaterialStore(Arc<RwLock<HashMap<OprfKeyId, OprfKeyMaterial>>>
 
 /// The session obtained after calling `partial_commit`. Doesn't implement `Debug/Clone` to not accidentally leak private data and prevent reusing the same session.
 pub(crate) struct OprfSession {
+    oprf_key_id: OprfKeyId,
     dlog_session: DLogSessionShamir,
     key_material: OprfKeyMaterial,
 }
 
 impl OprfSession {
     /// Returns the public part of the [`OprfSession`], the [`OprfPublicKeyWithEpoch`].
-    pub fn public_key_with_epoch(&self) -> OprfPublicKeyWithEpoch {
+    pub(crate) fn public_key_with_epoch(&self) -> OprfPublicKeyWithEpoch {
         self.key_material.public_key_with_epoch()
+    }
+
+    /// Returns the [`OprfKeyId`] associated with this session.
+    pub(crate) fn key_id(&self) -> OprfKeyId {
+        self.oprf_key_id
     }
 }
 
@@ -101,7 +106,6 @@ impl OprfKeyMaterialStore {
     /// # Errors
     ///
     /// Returns an error if the OPRF key is unknown.
-    #[instrument(level = "debug", skip_all)]
     pub(crate) fn partial_commit(
         &self,
         point_b: ark_babyjubjub::EdwardsAffine,
@@ -119,6 +123,7 @@ impl OprfKeyMaterialStore {
         );
         tracing::debug!("created session with epoch {}", key_material.epoch());
         let session = OprfSession {
+            oprf_key_id,
             dlog_session,
             key_material,
         };
@@ -142,6 +147,7 @@ impl OprfKeyMaterialStore {
     ) -> DLogProofShareShamir {
         tracing::debug!("finalizing proof share");
         let OprfSession {
+            oprf_key_id: _,
             dlog_session,
             key_material,
         } = session;

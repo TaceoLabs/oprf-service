@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    f64,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -390,29 +391,33 @@ fn handle_success_receipt<R: ReceiptResponse>(
     let gas_used_gwei = ParseUnits::from(receipt.gas_used())
         .format_units(Unit::GWEI)
         .parse::<f64>()
-        .expect("Is a float");
+        .unwrap_or(f64::NAN);
     let cost_eth = alloy::primitives::utils::format_ether(receipt.cost());
+    // we do this to_string -> parse hop to have easy way to call to NAN if too large
+    let gas_price_wei = receipt
+        .effective_gas_price()
+        .to_string()
+        .parse::<f64>()
+        .unwrap_or(f64::NAN);
     let gas_price_eth = alloy::primitives::utils::format_ether(receipt.effective_gas_price());
-    // we did it!
+    tracing::debug!("successfully sent transaction");
     tracing::debug!("gas used: {gas_used_gwei} GWEI");
     tracing::debug!("transaction cost: {cost_eth} ETH");
     tracing::debug!("transaction gas price: {gas_price_eth} ETH");
-    tracing::debug!("successfully sent transaction");
-    metrics::histogram!(METRICS_ID_GAS_PRICE)
-        .record(gas_price_eth.parse::<f64>().expect("Is a float"));
+    metrics::gauge!(METRICS_ID_GAS_PRICE).set(gas_price_wei);
     match transaction_identifier.round {
         TransactionType::Round1 if epoch.is_initial_epoch() => {
-            metrics::histogram!(METRICS_ID_KEY_GEN_ROUND1_GAS).record(gas_used_gwei)
+            metrics::gauge!(METRICS_ID_KEY_GEN_ROUND1_GAS).set(gas_used_gwei)
         }
         TransactionType::Round1 => {
-            metrics::histogram!(METRICS_ID_RESHARE_ROUND1_GAS).record(gas_used_gwei)
+            metrics::gauge!(METRICS_ID_RESHARE_ROUND1_GAS).set(gas_used_gwei)
         }
-        TransactionType::Round2 => metrics::histogram!(METRICS_ID_ROUND2_GAS).record(gas_used_gwei),
+        TransactionType::Round2 => metrics::gauge!(METRICS_ID_ROUND2_GAS).set(gas_used_gwei),
         TransactionType::Round3 if epoch.is_initial_epoch() => {
-            metrics::histogram!(METRICS_ID_KEY_GEN_ROUND3_GAS).record(gas_used_gwei)
+            metrics::gauge!(METRICS_ID_KEY_GEN_ROUND3_GAS).set(gas_used_gwei)
         }
         TransactionType::Round3 => {
-            metrics::histogram!(METRICS_ID_RESHARE_ROUND3_GAS).record(gas_used_gwei)
+            metrics::gauge!(METRICS_ID_RESHARE_ROUND3_GAS).set(gas_used_gwei)
         }
     }
 }
