@@ -97,8 +97,8 @@ start_keygen() {
             --bind-addr 127.0.0.1:$port \
             --environment dev \
             --wallet-private-key-secret-id oprf/eth/$prefix \
-            --key-gen-zkey-path ./circom/main/key-gen/OPRFKeyGen.13.arks.zkey \
-            --key-gen-witness-graph-path ./circom/main/key-gen/OPRFKeyGenGraph.13.bin \
+            --zkey-path ./circom/main/key-gen/OPRFKeyGen.13.arks.zkey \
+            --witness-graph-path ./circom/main/key-gen/OPRFKeyGenGraph.13.bin \
             --oprf-key-registry-contract $oprf_key_registry \
             --confirmations-for-transaction 1 \
             --db-connection-string $db_conn \
