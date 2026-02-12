@@ -5,6 +5,7 @@ use crate::metrics::{
     METRICS_ID_NODE_PART_2_START, METRICS_ID_NODE_REQUEST_VERIFY_DURATION,
     METRICS_ID_NODE_SESSIONS_TIMEOUT,
 };
+use crate::oprf_key_material_store::OprfSession;
 use crate::services::open_sessions::OpenSessions;
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
 use axum::response::IntoResponse;
@@ -19,7 +20,7 @@ use axum::{
 use axum_extra::headers::Header;
 use axum_extra::{TypedHeader, headers};
 use http::{HeaderValue, StatusCode};
-use oprf_core::ddlog_equality::shamir::DLogCommitmentsShamir;
+use oprf_core::ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir};
 use oprf_types::api::OprfRequestAuthService;
 use oprf_types::{
     api::{OprfRequest, OprfResponse, oprf_error_codes},
@@ -30,8 +31,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use uuid::Uuid;
 
-use tracing::instrument;
+use tracing::{Instrument, instrument};
 
 /// A custom header that clients need to send to OPRF servers to indicate their version.
 #[derive(Debug, Clone)]
@@ -119,6 +121,7 @@ enum HumanReadable {
 /// Adds a `failed_upgrade` handler that logs the error.
 ///
 /// See [`partial_oprf`] for the flow of the web-socket connection. If the session finishes successfully, encounters an error, the user closes the connection, or we run into a timeout, the implementation will try to initiate a graceful shutdown of the web-socket connection (closing handshake). We do this at a best-effort basis but are very restrictive on what we expect. We close any session that sends invalid requests/authentication. If the sending of the `Close` frame fails, we simply ignore the error and destruct everything associated with the session.
+#[instrument(level = "debug", skip_all,name="request", fields(client=%args.client_version))]
 async fn ws<
     ReqAuth: for<'de> Deserialize<'de> + Send + 'static,
     ReqAuthError: Send + 'static + std::error::Error,
@@ -126,47 +129,51 @@ async fn ws<
     args: WsArgs<ReqAuth, ReqAuthError>,
 ) -> axum::response::Response {
     tracing::trace!("checking version header: {}", args.client_version);
+    let parent_span = tracing::Span::current();
     if args.version_req.matches(&args.client_version) {
         args.ws
             .max_message_size(args.max_message_size)
             .on_failed_upgrade(|err| {
                 tracing::warn!("could not establish websocket connection: {err:?}");
             })
-            .on_upgrade(move |mut ws| async move {
-                let close_frame = match tokio::time::timeout(
-                    args.max_connection_lifetime,
-                    partial_oprf::<ReqAuth, ReqAuthError>(
-                        &mut ws,
-                        args.party_id,
-                        args.threshold,
-                        args.open_sessions,
-                        args.oprf_material_store,
-                        args.req_auth_service,
-                    ),
-                )
-                .await
-                {
-                    Ok(Ok(_)) => {
-                        ::metrics::counter!(METRICS_ID_NODE_OPRF_SUCCESS).increment(1);
-                        Some(CloseFrame {
-                            code: close_code::NORMAL,
-                            reason: "success".into(),
-                        })
+            .on_upgrade(move |mut ws| {
+                async move {
+                    let close_frame = match tokio::time::timeout(
+                        args.max_connection_lifetime,
+                        partial_oprf::<ReqAuth, ReqAuthError>(
+                            &mut ws,
+                            args.party_id,
+                            args.threshold,
+                            args.open_sessions,
+                            args.oprf_material_store,
+                            args.req_auth_service,
+                        ),
+                    )
+                    .await
+                    {
+                        Ok(Ok(_)) => {
+                            ::metrics::counter!(METRICS_ID_NODE_OPRF_SUCCESS).increment(1);
+                            Some(CloseFrame {
+                                code: close_code::NORMAL,
+                                reason: "success".into(),
+                            })
+                        }
+                        Ok(Err(err)) => err.into_close_frame(),
+                        Err(_) => {
+                            ::metrics::counter!(METRICS_ID_NODE_SESSIONS_TIMEOUT).increment(1);
+                            Some(CloseFrame {
+                                code: oprf_error_codes::TIMEOUT,
+                                reason: "timeout".into(),
+                            })
+                        }
+                    };
+                    if let Some(close_frame) = close_frame {
+                        tracing::trace!(" < sending close frame");
+                        // In their example, axum just sends the frame and ignores the error afterwards and also don't wait for the peers close frame. Therefore we do the same,
+                        let _ = ws.send(ws::Message::Close(Some(close_frame))).await;
                     }
-                    Ok(Err(err)) => err.into_close_frame(),
-                    Err(_) => {
-                        ::metrics::counter!(METRICS_ID_NODE_SESSIONS_TIMEOUT).increment(1);
-                        Some(CloseFrame {
-                            code: oprf_error_codes::TIMEOUT,
-                            reason: "timeout".into(),
-                        })
-                    }
-                };
-                if let Some(close_frame) = close_frame {
-                    tracing::trace!(" < sending close frame");
-                    // In their example, axum just sends the frame and ignores the error afterwards and also don't wait for the peers close frame. Therefore we do the same,
-                    let _ = ws.send(ws::Message::Close(Some(close_frame))).await;
                 }
+                .instrument(parent_span)
             })
     } else {
         tracing::trace!("rejecting because version mismatch");
@@ -188,7 +195,7 @@ async fn ws<
 /// 6) Finalizes the proof share for the session and sends it back to the user (same serialization as the initial request of the user).
 ///
 /// Clients may and will close the connection at any point because they only need `threshold` amount of sessions, therefore it is very much expected that sane clients send a `Close` frame at any point (or simply drop the connection). This method handles this gracefully at any point.
-#[instrument(level="debug", skip_all, fields(request_id=tracing::field::Empty))]
+#[instrument(level="debug", skip_all, fields(request_id=tracing::field::Empty, oprf_key_id=tracing::field::Empty))]
 async fn partial_oprf<
     ReqAuth: for<'de> Deserialize<'de> + Send + 'static,
     ReqAuthError: Send + 'static + std::error::Error,
@@ -202,22 +209,75 @@ async fn partial_oprf<
 ) -> Result<(), Error> {
     tracing::trace!("> new oprf session - reading request...");
     ::metrics::counter!(METRICS_ID_NODE_PART_1_START).increment(1);
-    let (init_request, human_readable) = read_request::<OprfRequest<ReqAuth>>(socket).await?;
-    let start_part_one = Instant::now();
-    let request_id = init_request.request_id;
+    let (init_request, human_readable) = read_request::<OprfRequest<ReqAuth>>(socket)
+        .instrument(tracing::debug_span!("read_init_request"))
+        .await?;
 
+    // Some setup before we start processing - setup span and reserve the session ID
+    let request_id = init_request.request_id;
     tracing::debug!("starting with request id: {request_id}");
     let oprf_span = tracing::Span::current();
     oprf_span.record("request_id", request_id.to_string());
 
+    // this session guard need to live throughout the whole run. Do not touch except you really know what you are doing (you really don't want to move this, this must be at the very top of the method).
+    let _session_guard = open_sessions.insert_new_session(request_id)?;
+
+    let (session, response) = init_session(
+        init_request,
+        party_id,
+        &req_auth_service,
+        &oprf_material_store,
+    )
+    .await?;
+    // record the key-id for the span
+    oprf_span.record("oprf_key_id", session.key_id().to_string());
+
+    write_response(response, human_readable, socket)
+        .instrument(tracing::debug_span!("write_init_response"))
+        .await?;
+    ::metrics::counter!(METRICS_ID_NODE_PART_1_FINISH).increment(1);
+
+    let (challenge_request, _) = read_request::<DLogCommitmentsShamir>(socket)
+        .instrument(tracing::debug_span!("read_challenge_request"))
+        .await?;
+    ::metrics::counter!(METRICS_ID_NODE_PART_2_START).increment(1);
+
+    let proof_share = challenge(
+        challenge_request,
+        request_id,
+        party_id,
+        threshold,
+        session,
+        &oprf_material_store,
+    )
+    .await?;
+
+    tracing::debug!("sending challenge response to client...");
+    write_response(proof_share, human_readable, socket)
+        .instrument(tracing::debug_span!("write_challenge_response"))
+        .await?;
+    ::metrics::counter!(METRICS_ID_NODE_PART_2_FINISH).increment(1);
+    Ok(())
+}
+
+#[instrument(level = "debug", skip_all)]
+async fn init_session<
+    ReqAuth: for<'de> Deserialize<'de> + Send + 'static,
+    ReqAuthError: Send + 'static + std::error::Error,
+>(
+    init_request: OprfRequest<ReqAuth>,
+    party_id: PartyId,
+    req_auth_service: &OprfRequestAuthService<ReqAuth, ReqAuthError>,
+    oprf_material_store: &OprfKeyMaterialStore,
+) -> Result<(OprfSession, OprfResponse), Error> {
+    let start_part_one = Instant::now();
+    tracing::trace!("checking that blinded query is not zero...");
     // check that blinded query (B) is not the identity element
     if init_request.blinded_query.is_zero() {
         return Err(Error::BadRequest(
             "blinded query must not be identity".to_owned(),
         ));
     }
-
-    let _session_guard = open_sessions.insert_new_session(init_request.request_id)?;
 
     tracing::debug!("verifying request with auth service...");
     let start_verify = Instant::now();
@@ -230,7 +290,7 @@ async fn partial_oprf<
         })?;
     let duration_verify = start_verify.elapsed();
     ::metrics::histogram!(METRICS_ID_NODE_REQUEST_VERIFY_DURATION)
-        .record(duration_verify.as_secs_f64());
+        .record(duration_verify.as_millis() as f64);
 
     tracing::debug!("initiating session with key id {oprf_key_id:?}...");
     let (session, commitments) =
@@ -241,18 +301,22 @@ async fn partial_oprf<
         party_id,
         oprf_pub_key_with_epoch: session.public_key_with_epoch(),
     };
-
-    tracing::debug!("sending response...");
     let duration_part_one = start_part_one.elapsed();
-    ::metrics::histogram!(METRICS_ID_NODE_PART_1_DURATION).record(duration_part_one.as_secs_f64());
-    write_response(response, human_readable, socket).await?;
-    ::metrics::counter!(METRICS_ID_NODE_PART_1_FINISH).increment(1);
+    ::metrics::histogram!(METRICS_ID_NODE_PART_1_DURATION)
+        .record(duration_part_one.as_millis() as f64);
+    Ok((session, response))
+}
 
-    tracing::debug!("reading challenge...");
-    let (challenge, _) = read_request::<DLogCommitmentsShamir>(socket).await?;
-    ::metrics::counter!(METRICS_ID_NODE_PART_2_START).increment(1);
+#[instrument(level = "debug", skip_all)]
+async fn challenge(
+    challenge: DLogCommitmentsShamir,
+    request_id: Uuid,
+    party_id: PartyId,
+    threshold: usize,
+    session: OprfSession,
+    oprf_material_store: &OprfKeyMaterialStore,
+) -> Result<DLogProofShareShamir, Error> {
     let start_part_two = Instant::now();
-
     let coeffs = challenge.get_contributing_parties();
     let num_coeffs = coeffs.len();
     if num_coeffs != threshold {
@@ -283,12 +347,9 @@ async fn partial_oprf<
     let proof_share = oprf_material_store.challenge(request_id, party_id, session, challenge);
 
     let duration_part_two = start_part_two.elapsed();
-    ::metrics::histogram!(METRICS_ID_NODE_PART_2_DURATION).record(duration_part_two.as_secs_f64());
-
-    tracing::debug!("sending challenge response to client...");
-    write_response(proof_share, human_readable, socket).await?;
-    ::metrics::counter!(METRICS_ID_NODE_PART_2_FINISH).increment(1);
-    Ok(())
+    ::metrics::histogram!(METRICS_ID_NODE_PART_2_DURATION)
+        .record(duration_part_two.as_millis() as f64);
+    Ok(proof_share)
 }
 
 /// Attempts to read a `Msg` from the web-socket. Accepts `Text` and `Binary` frames and tries to deserialize the message with either `json` or `cbor`.
@@ -298,6 +359,7 @@ async fn partial_oprf<
 async fn read_request<Msg: for<'de> Deserialize<'de>>(
     socket: &mut WebSocket,
 ) -> Result<(Msg, HumanReadable), Error> {
+    tracing::trace!(" > read request");
     let res = match socket.recv().await.ok_or(Error::ConnectionClosed)?? {
         ws::Message::Text(json) => (
             serde_json::from_slice::<Msg>(json.as_bytes())?,
@@ -316,6 +378,7 @@ async fn write_response<Msg: Serialize>(
     human_readable: HumanReadable,
     socket: &mut WebSocket,
 ) -> Result<(), Error> {
+    tracing::trace!(" > write response");
     let msg = match human_readable {
         HumanReadable::Yes => {
             let msg = serde_json::to_string(&response).expect("Can serialize response");

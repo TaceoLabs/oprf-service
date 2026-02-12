@@ -60,19 +60,19 @@ pub fn describe_metrics() {
 
     metrics::describe_histogram!(
         METRICS_ID_NODE_REQUEST_VERIFY_DURATION,
-        metrics::Unit::Seconds,
+        metrics::Unit::Milliseconds,
         "Duration of successful OprfRequestAuth verification"
     );
 
     metrics::describe_histogram!(
         METRICS_ID_NODE_PART_1_DURATION,
-        metrics::Unit::Seconds,
+        metrics::Unit::Milliseconds,
         "Duration of the OPRF computation part one"
     );
 
     metrics::describe_histogram!(
         METRICS_ID_NODE_PART_2_DURATION,
-        metrics::Unit::Seconds,
+        metrics::Unit::Milliseconds,
         "Duration of the OPRF computation part two"
     );
 
