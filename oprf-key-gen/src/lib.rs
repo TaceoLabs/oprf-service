@@ -121,7 +121,7 @@ pub async fn start(
     let key_gen_material = CircomGroth16MaterialBuilder::new()
         .bbf_inv()
         .bbf_num_2_bits_helper()
-        .build_from_paths(config.key_gen_zkey_path, config.key_gen_witness_graph_path)?;
+        .build_from_paths(config.zkey_path, config.witness_graph_path)?;
     let dlog_secret_gen_service = DLogSecretGenService::init(key_gen_material);
     tracing::info!("spawning transaction handler..");
     let (transaction_handler, transaction_handler_handle) =

@@ -33,7 +33,7 @@ async fn run() -> eyre::Result<()> {
         PostgresSecretManager::init(PostgresSecretManagerArgs {
             connection_string: config.db_connection_string.clone(),
             schema: config.db_schema.clone(),
-            max_connections: config.max_db_connections,
+            max_connections: config.db_max_connections,
             acquire_timeout: config.db_acquire_timeout,
             max_retries: config.db_max_retries,
             retry_delay: config.db_retry_delay,

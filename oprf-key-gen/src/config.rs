@@ -40,40 +40,40 @@ impl Environment {
 #[derive(Parser, Debug)]
 pub struct OprfKeyGenConfig {
     /// The environment of OPRF-service (either `prod` or `dev`).
-    #[clap(long, env = "OPRF_NODE_ENVIRONMENT", default_value = "prod")]
+    #[clap(long, env = "OPRF_KEY_GEN_ENVIRONMENT", default_value = "prod")]
     pub environment: Environment,
 
     /// The bind addr of the AXUM server
-    #[clap(long, env = "OPRF_NODE_BIND_ADDR", default_value = "0.0.0.0:5432")]
+    #[clap(long, env = "OPRF_KEY_GEN_BIND_ADDR", default_value = "0.0.0.0:5432")]
     pub bind_addr: SocketAddr,
 
     /// The Address of the OprfKeyRegistry contract.
-    #[clap(long, env = "OPRF_NODE_OPRF_KEY_REGISTRY_CONTRACT")]
+    #[clap(long, env = "OPRF_KEY_GEN_OPRF_KEY_REGISTRY_CONTRACT")]
     pub oprf_key_registry_contract: Address,
 
     /// The websocket rpc url of the chain
     #[clap(
         long,
-        env = "OPRF_NODE_CHAIN_WS_RPC_URL",
+        env = "OPRF_KEY_GEN_CHAIN_WS_RPC_URL",
         default_value = "ws://127.0.0.1:8545"
     )]
     pub chain_ws_rpc_url: SecretString,
 
     /// Secret Id of the wallet private key.
-    #[clap(long, env = "OPRF_NODE_WALLET_PRIVATE_KEY_SECRET_ID")]
+    #[clap(long, env = "OPRF_KEY_GEN_WALLET_PRIVATE_KEY_SECRET_ID")]
     pub wallet_private_key_secret_id: String,
 
     /// The connection string for the Postgres DB
-    #[clap(long, env = "OPRF_NODE_DB_CONNECTION_STRING")]
+    #[clap(long, env = "OPRF_KEY_GEN_DB_CONNECTION_STRING")]
     pub db_connection_string: SecretString,
 
     /// The schema we use for the DB
-    #[clap(long, env = "OPRF_NODE_DB_SCHEMA")]
+    #[clap(long, env = "OPRF_KEY_GEN_DB_SCHEMA")]
     pub db_schema: String,
 
     /// The max connections for the Postgres pool
-    #[clap(long, env = "OPRF_KEY_GEN_MAX_DB_CONNECTION", default_value = "4")]
-    pub max_db_connections: NonZeroU32,
+    #[clap(long, env = "OPRF_KEY_GEN_DB_MAX_CONNECTION", default_value = "4")]
+    pub db_max_connections: NonZeroU32,
 
     /// The max time we wait for a DB connection
     #[clap(long, env = "OPRF_KEY_GEN_DB_ACQUIRE_TIMEOUT", value_parser=humantime::parse_duration, default_value="2min")]
@@ -88,17 +88,17 @@ pub struct OprfKeyGenConfig {
     pub db_max_retries: NonZeroUsize,
 
     /// The location of the zkey for the key-gen proof in round 2 of KeyGen
-    #[clap(long, env = "OPRF_NODE_KEY_GEN_ZKEY")]
-    pub key_gen_zkey_path: PathBuf,
+    #[clap(long, env = "OPRF_KEY_GEN_ZKEY_PATH")]
+    pub zkey_path: PathBuf,
 
     /// The location of the graph binary for the key-gen witness extension
-    #[clap(long, env = "OPRF_NODE_KEY_GEN_GRAPH")]
-    pub key_gen_witness_graph_path: PathBuf,
+    #[clap(long, env = "OPRF_KEY_GEN_WITNESS_GRAPH_PATH")]
+    pub witness_graph_path: PathBuf,
 
     /// Max wait time the service waits for its workers during shutdown.
     #[clap(
         long,
-        env = "OPRF_NODE_MAX_WAIT_TIME_SHUTDOWN",
+        env = "OPRF_KEY_GEN_MAX_WAIT_TIME_SHUTDOWN",
         default_value = "10s",
         value_parser = humantime::parse_duration
 
@@ -108,31 +108,39 @@ pub struct OprfKeyGenConfig {
     /// Max time we wait for a transaction confirmation event until we assume the transaction didn't go through.
     ///
     /// We need this because RPCs are not very reliable, so we need to verify whether a transaction did get through or not.
-    #[clap(long, env = "OPRF_NODE_MAX_WAIT_TIME_TRANSACTION_CONFIRMATION", default_value = "5min", value_parser=humantime::parse_duration)]
+    #[clap(long, env = "OPRF_KEY_GEN_MAX_WAIT_TIME_TRANSACTION_CONFIRMATION", default_value = "5min", value_parser=humantime::parse_duration)]
     pub max_wait_time_transaction_confirmation: Duration,
 
     /// Max attempts for sending a transaction when we get null response from RPC.
     ///
     /// We need this because RPCs are not very reliable, so we potentially need to resend a transaction did get through or not.
-    #[clap(long, env = "OPRF_NODE_MAX_TRANSACTION_ATTEMPTS", default_value = "3")]
+    #[clap(
+        long,
+        env = "OPRF_KEY_GEN_MAX_TRANSACTION_ATTEMPTS",
+        default_value = "3"
+    )]
     pub max_transaction_attempts: usize,
 
     /// The block number to start listening for events from the OprfKeyRegistry contract.
     /// If not set, will start from the latest block.
-    #[clap(long, env = "OPRF_NODE_START_BLOCK")]
+    #[clap(long, env = "OPRF_KEY_GEN_START_BLOCK")]
     pub start_block: Option<u64>,
 
     /// Maximum amount of gas a single transaction is allowed to consume.
     /// This acts as a safety limit to prevent transactions from exceeding expected execution costs. The default value is set to approximately 2× the average gas used by a round-2 transaction, which is currently the most gas-intensive round.
     #[clap(
         long,
-        env = "OPRF_NODE_MAX_GAS_PER_TRANSACTION",
+        env = "OPRF_KEY_GEN_MAX_GAS_PER_TRANSACTION",
         default_value = "8000000"
     )]
     pub max_gas_per_transaction: u64,
 
     /// Number of block confirmations required before a transaction is
     /// considered successful.
-    #[clap(long, env = "OPRF_NODE_TRANSACTION_CONFIRMATIONS", default_value = "5")]
+    #[clap(
+        long,
+        env = "OPRF_KEY_GEN_TRANSACTION_CONFIRMATIONS",
+        default_value = "5"
+    )]
     pub confirmations_for_transaction: u64,
 }
