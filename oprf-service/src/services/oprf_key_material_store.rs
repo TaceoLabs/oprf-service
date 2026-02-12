@@ -139,7 +139,7 @@ impl OprfKeyMaterialStore {
         my_party_id: PartyId,
         session: OprfSession,
         challenge: DLogCommitmentsShamir,
-    ) -> Result<DLogProofShareShamir> {
+    ) -> DLogProofShareShamir {
         tracing::debug!("finalizing proof share");
         let OprfSession {
             dlog_session,
@@ -149,13 +149,13 @@ impl OprfKeyMaterialStore {
             my_party_id.into_inner() + 1,
             challenge.get_contributing_parties(),
         );
-        Ok(dlog_session.challenge(
+        dlog_session.challenge(
             session_id,
             key_material.share(),
             key_material.public_key().inner(),
             challenge,
             lagrange_coefficient,
-        ))
+        )
     }
 
     /// Retrieves the [`OprfKeyMaterial`] for the given [`OprfKeyId`].

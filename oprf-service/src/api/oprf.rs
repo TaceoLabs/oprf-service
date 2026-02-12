@@ -280,7 +280,7 @@ async fn partial_oprf<
     }
 
     tracing::debug!("finalizing session...");
-    let proof_share = oprf_material_store.challenge(request_id, party_id, session, challenge)?;
+    let proof_share = oprf_material_store.challenge(request_id, party_id, session, challenge);
 
     let duration_part_two = start_part_two.elapsed();
     ::metrics::histogram!(METRICS_ID_NODE_PART_2_DURATION).record(duration_part_two.as_secs_f64());
