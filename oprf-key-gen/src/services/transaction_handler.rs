@@ -26,11 +26,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     metrics::{
-        METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_BLOB_GAS_PRICE, METRICS_ID_GAS_PRICE,
-        METRICS_ID_KEY_GEN_ROUND1_GAS, METRICS_ID_KEY_GEN_ROUND3_GAS,
-        METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK, METRICS_ID_KEY_GEN_RPC_RETRY,
-        METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ID_RESHARE_ROUND1_GAS,
-        METRICS_ID_RESHARE_ROUND3_GAS, METRICS_ID_ROUND2_GAS,
+        METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_GAS_PRICE, METRICS_ID_KEY_GEN_ROUND1_GAS,
+        METRICS_ID_KEY_GEN_ROUND3_GAS, METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK,
+        METRICS_ID_KEY_GEN_RPC_RETRY, METRICS_ID_KEY_GEN_WALLET_BALANCE,
+        METRICS_ID_RESHARE_ROUND1_GAS, METRICS_ID_RESHARE_ROUND3_GAS, METRICS_ID_ROUND2_GAS,
     },
     services::key_event_watcher::TransactionError,
 };
@@ -398,12 +397,6 @@ fn handle_success_receipt<R: ReceiptResponse>(
     tracing::debug!("gas used: {gas_used_gwei} GWEI");
     tracing::debug!("transaction cost: {cost_eth} ETH");
     tracing::debug!("transaction gas price: {gas_price_eth} ETH");
-    if let Some(blob_price) = receipt.blob_gas_price() {
-        let blob_price_eth = alloy::primitives::utils::format_ether(blob_price);
-        tracing::debug!("transaction blob gas price: {blob_price_eth} ETH");
-        metrics::histogram!(METRICS_ID_BLOB_GAS_PRICE)
-            .record(blob_price_eth.parse::<f64>().expect("Is a float"))
-    }
     tracing::debug!("successfully sent transaction");
     metrics::histogram!(METRICS_ID_GAS_PRICE)
         .record(gas_price_eth.parse::<f64>().expect("Is a float"));
