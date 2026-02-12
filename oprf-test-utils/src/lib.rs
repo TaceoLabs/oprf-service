@@ -1,3 +1,9 @@
+pub use alloy;
+pub use async_trait;
+pub use eyre;
+pub use oprf_core;
+pub use oprf_types;
+
 #[cfg(feature = "deploy-anvil")]
 pub mod deploy_anvil;
 pub mod health_checks;

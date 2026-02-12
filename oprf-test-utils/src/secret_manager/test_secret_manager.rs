@@ -17,19 +17,15 @@ use crate::TEST_TIMEOUT;
 macro_rules! key_gen_test_secret_manager {
     ($trait: path, $name: ident) => {
         mod impl_secret_manager {
-            use std::sync::Arc;
+            use $crate::alloy::signers::local::PrivateKeySigner;
+            use $crate::async_trait::async_trait;
+            use $crate::eyre::Context;
+            use $crate::oprf_core::ddlog_equality::shamir::DLogShareShamir;
+            use $crate::oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 
-            use alloy::signers::local::PrivateKeySigner;
-            use async_trait::async_trait;
-            use eyre::Context;
-            use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-            use oprf_test_utils::test_secret_manager::TestSecretManager;
-            use oprf_types::{
-                OprfKeyId, ShareEpoch,
-                crypto::{OprfKeyMaterial, OprfPublicKey},
-            };
             // need a new type to implement the trait
-            pub struct $name(pub Arc<TestSecretManager>);
+            pub struct $name(pub std::sync::Arc<$crate::test_secret_manager::TestSecretManager>);
+
             #[async_trait]
             impl $trait for $name {
                 async fn load_or_insert_wallet_private_key(
@@ -84,28 +80,23 @@ macro_rules! key_gen_test_secret_manager {
 macro_rules! oprf_node_test_secret_manager {
     ($module: path, $name: ident) => {
         mod impl_secret_manager {
-            use std::collections::HashMap;
-            use std::sync::Arc;
-
-            use alloy::primitives::Address;
-            use alloy::signers::local::PrivateKeySigner;
-            use async_trait::async_trait;
-            use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-            use oprf_test_utils::test_secret_manager::TestSecretManager;
-            use oprf_types::{
-                OprfKeyId, ShareEpoch,
-                crypto::{OprfKeyMaterial, OprfPublicKey},
-            };
-            use taceo_oprf_service::oprf_key_material_store::OprfKeyMaterialStore;
+            use $crate::alloy::primitives::Address;
+            use $crate::async_trait::async_trait;
+            use $crate::oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfKeyMaterial};
             use $module::{GetOprfKeyMaterialError, SecretManager};
+
             // need a new type to implement the trait
-            pub struct $name(pub Arc<TestSecretManager>);
+            pub struct $name(pub std::sync::Arc<$crate::test_secret_manager::TestSecretManager>);
+
             #[async_trait]
             impl SecretManager for $name {
                 async fn load_address(&self) -> eyre::Result<Address> {
                     self.0.load_address().await
                 }
-                async fn load_secrets(&self) -> eyre::Result<HashMap<OprfKeyId, OprfKeyMaterial>> {
+
+                async fn load_secrets(
+                    &self,
+                ) -> eyre::Result<std::collections::HashMap<OprfKeyId, OprfKeyMaterial>> {
                     Ok(self.0.store.lock().clone())
                 }
 
