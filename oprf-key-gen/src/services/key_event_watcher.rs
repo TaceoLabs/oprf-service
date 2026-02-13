@@ -49,7 +49,7 @@ use oprf_types::{
     crypto::{EphemeralEncryptionPublicKey, OprfPublicKey, PartyId, SecretGenCiphertext},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::instrument;
+use tracing::{Instrument, instrument};
 
 #[cfg(test)]
 mod tests;
@@ -156,7 +156,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
             let block_number = log.block_number.unwrap_or_default();
             latest_block = block_number;
             tracing::info!("handling past event from block {block_number}..");
-            handle_log(
+            key_gen_event(
                 party_id,
                 log,
                 &contract,
@@ -190,7 +190,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
             );
             continue;
         }
-        handle_log(
+        key_gen_event(
             party_id,
             log,
             &contract,
@@ -205,7 +205,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
 }
 
 #[instrument(level = "info", skip_all)]
-async fn handle_log(
+async fn key_gen_event(
     party_id: PartyId,
     log: Log<LogData>,
     contract: &OprfKeyRegistryInstance<DynProvider>,
@@ -214,7 +214,7 @@ async fn handle_log(
     transaction_handler: &TransactionHandler,
 ) -> Result<()> {
     // First step during every log is asynchronously ping the secret-manager to wake up in case it is in deep-sleep
-    ping_secret_manager(secret_manager.to_owned());
+    ping_secret_manager(secret_manager.to_owned(), tracing::Span::current());
     let result = match log.topic0() {
         Some(&OprfKeyRegistry::SecretGenRound1::SIGNATURE_HASH) => {
             let log = log
@@ -727,17 +727,21 @@ async fn handle_round3_inner(
 }
 
 /// Pings the secret-manager. Should wake up the secret-manager if in deep-sleep. Doesn't matter if fails, the finalize event handles errors gracefully anyways.
-fn ping_secret_manager(secret_manager: SecretManagerService) {
-    tokio::task::spawn(async move {
-        tracing::info!("pinging secret-manager to wake up if in deep sleep");
-        let instant = Instant::now();
-        let ping_result = secret_manager.ping().await;
-        let elapsed = instant.elapsed();
-        match ping_result {
-            Ok(_) => tracing::info!("successfully pinged DB - took {elapsed:?}"),
-            Err(err) => {
-                tracing::warn!("Could not reach DB within acquire time {elapsed:?}: {err:?}")
+fn ping_secret_manager(secret_manager: SecretManagerService, calling_span: tracing::Span) {
+    tokio::task::spawn(
+        async move {
+            tracing::Span::current().follows_from(calling_span);
+            tracing::info!("pinging secret-manager to wake up if in deep sleep");
+            let instant = Instant::now();
+            let ping_result = secret_manager.ping().await;
+            let elapsed = instant.elapsed();
+            match ping_result {
+                Ok(_) => tracing::info!("successfully pinged DB - took {elapsed:?}"),
+                Err(err) => {
+                    tracing::warn!("Could not reach DB within acquire time {elapsed:?}: {err:?}")
+                }
             }
         }
-    });
+        .instrument(tracing::debug_span!("ping_secret_manager",)),
+    );
 }
