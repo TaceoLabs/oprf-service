@@ -158,11 +158,11 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
 ) -> Result<OprfSessions, super::Error> {
     let mut join_set = oprf_services
         .iter()
-        .cloned()
         .map(|service| {
             let connector = connector.clone();
             let module = module.to_owned();
             let req = req.clone();
+            let service = service.to_owned();
             async move {
                 init_session(service.clone(), module, req, connector)
                     .await
