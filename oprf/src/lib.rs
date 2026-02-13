@@ -3,6 +3,7 @@ pub mod client {
     pub use oprf_client::*;
 }
 
+#[cfg(feature = "core")]
 pub mod core {
     pub use oprf_core::*;
 }
@@ -17,6 +18,7 @@ pub mod service {
     pub use oprf_service::*;
 }
 
+#[cfg(feature = "types")]
 pub mod types {
     pub use oprf_types::*;
 }

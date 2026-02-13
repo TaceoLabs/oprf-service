@@ -13,16 +13,18 @@ publish = true
 
 [dependencies]
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.6", optional = true }
-oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.4" }
+oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.4", optional = true }
 oprf-dev-client = { package = "taceo-oprf-dev-client", path = "../oprf-dev-client", version = "0.4", optional = true }
 oprf-service = { package = "taceo-oprf-service", path = "../oprf-service", version = "0.7", optional = true }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.8" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.8", optional = true }
 
 [features]
 default = ["full"]
 client = ["dep:oprf-client"]
+core = ["dep:oprf-core"]
 dev-client = ["client", "dep:oprf-dev-client"]
-full = ["client", "dev-client", "service"]
+full = ["client", "core", "dev-client", "service", "types"]
 service = [
   "dep:oprf-service",
 ]
+types = ["dep:oprf-types"]
