@@ -9,7 +9,6 @@ use std::{
 };
 
 use alloy::{
-    consensus::constants::ETH_TO_WEI,
     contract::{CallBuilder, CallDecoder},
     eips::BlockNumberOrTag,
     network::{Network, ReceiptResponse},
@@ -24,6 +23,7 @@ use futures::StreamExt as _;
 use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry, crypto::PartyId};
 use tokio::{sync::oneshot, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
+use tracing::instrument;
 
 use crate::{
     metrics::{
@@ -244,6 +244,7 @@ impl TransactionHandler {
     ///     .await?;
     /// ```
     /// This method will then attempt to send the transaction via the provided RPC.
+    #[instrument(level = "info", skip_all)]
     pub(crate) async fn attempt_transaction<P, D, N, F>(
         &self,
         transaction_identifier: TransactionIdentifier,
@@ -273,12 +274,10 @@ impl TransactionHandler {
                 .get_receipt()
                 .await;
             if let Ok(balance) = self.provider.get_balance(self.wallet_address).await {
-                tracing::debug!(
-                    "current wallet balance: {} ETH",
-                    alloy::primitives::utils::format_ether(balance)
-                );
+                let balance_eth = alloy::primitives::utils::format_ether(balance);
+                tracing::debug!("current wallet balance: {balance_eth} ETH",);
                 ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ATTRID_WALLET_ADDRESS => self.wallet_address.to_string())
-                    .set(f64::from(balance) / ETH_TO_WEI as f64);
+                    .set(balance_eth.parse::<f64>().unwrap_or(f64::NAN));
             } else {
                 tracing::warn!("could not fetch current wallet balance");
             }

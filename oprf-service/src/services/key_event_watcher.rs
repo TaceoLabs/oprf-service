@@ -24,7 +24,7 @@ use eyre::Context;
 use futures::StreamExt as _;
 use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
 use tokio_util::sync::CancellationToken;
-use tracing::instrument;
+use tracing::{Instrument, instrument};
 
 use crate::{
     metrics::METRICS_ID_NODE_CANNOT_FETCH_KEY_MATERIAL,
@@ -106,7 +106,7 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
             let block_number = log.block_number.unwrap_or_default();
             latest_block = block_number;
             tracing::info!("handling past event from block {block_number}..");
-            handle_log(
+            key_gen_event(
                 log,
                 &oprf_key_material_store,
                 &secret_manager,
@@ -139,7 +139,7 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
             );
             continue;
         }
-        handle_log(
+        key_gen_event(
             log,
             &oprf_key_material_store,
             &secret_manager,
@@ -152,7 +152,7 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
 }
 
 #[instrument(level = "info", skip_all)]
-async fn handle_log(
+async fn key_gen_event(
     log: Log<LogData>,
     oprf_key_material_store: &OprfKeyMaterialStore,
     secret_manager: &SecretManagerService,
@@ -192,17 +192,20 @@ async fn handle_finalize(
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
     tracing::info!("Event for {oprfKeyId} ");
     let oprf_key_id = OprfKeyId::from(oprfKeyId);
-    tokio::spawn(fetch_oprf_key_material_from_secret_manager(
-        oprf_key_id,
-        oprf_key_material_store.clone(),
-        secret_manager.clone(),
-        get_oprf_key_material_timeout,
-        epoch.into(),
-    ));
+    let current_span = tracing::Span::current();
+    tokio::spawn(
+        fetch_oprf_key_material_from_secret_manager(
+            oprf_key_id,
+            oprf_key_material_store.clone(),
+            secret_manager.clone(),
+            get_oprf_key_material_timeout,
+            epoch.into(),
+        )
+        .instrument(tracing::info_span!(parent: &current_span,"fetch_oprf_key_material", oprf_key_id=%oprf_key_id, epoch=%epoch)),
+    );
     Ok(())
 }
 
-#[instrument(level="info", skip_all, fields(oprf_key_id=%oprf_key_id, epoch=%epoch))]
 async fn fetch_oprf_key_material_from_secret_manager(
     oprf_key_id: OprfKeyId,
     oprf_key_material_store: OprfKeyMaterialStore,
