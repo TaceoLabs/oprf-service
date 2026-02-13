@@ -2,6 +2,8 @@
 //! This crate provides utility functions for clients of the distributed OPRF protocol.
 //!
 //! Most implementations will only need the [`distributed_oprf`] method. For more fine-grained workflows, we expose all necessary functions.
+use std::collections::HashMap;
+
 use ark_ec::AffineRepr as _;
 use oprf_core::{
     ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir},
@@ -38,8 +40,9 @@ pub enum Error {
     #[error("Endpoint closed connection")]
     Eof,
     /// Not enough OPRF responses received to satisfy the required threshold.
+    /// The second field contains any errors from the individual OPRF responses.
     #[error("Could not reach {0} responses")]
-    NotEnoughOprfResponses(usize),
+    NotEnoughOprfResponses(usize, HashMap<String, Error>),
     /// The DLog equality proof failed verification.
     #[error("DLog proof could not be verified")]
     InvalidDLogProof,

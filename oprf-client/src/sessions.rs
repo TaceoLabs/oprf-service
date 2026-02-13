@@ -159,9 +159,19 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
     let mut join_set = oprf_services
         .iter()
         .cloned()
-        .map(|service| init_session(service, module.to_owned(), req.clone(), connector.clone()))
+        .map(|service| {
+            let connector = connector.clone();
+            let module = module.to_owned();
+            let req = req.clone();
+            async move {
+                init_session(service.clone(), module, req, connector)
+                    .await
+                    .map_err(|err| (service, err))
+            }
+        })
         .collect::<JoinSet<_>>();
     let mut epoch_session_map = HashMap::new();
+    let mut session_errors = HashMap::new();
     while let Some(session_handle) = join_set.join_next().await {
         match session_handle {
             Ok(Ok((session, resp))) => {
@@ -186,9 +196,10 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
                     return Ok(chosen_sessions);
                 }
             }
-            Ok(Err(err)) => {
+            Ok(Err((service, err))) => {
                 // we very much expect certain services to return an error therefore we do not log at warn/error level.
-                tracing::debug!("Got error response: {err:?}");
+                tracing::debug!("Got error response from {service}: {err:?}");
+                session_errors.insert(service, err);
             }
             Err(_) => {
                 tracing::warn!("Could not join init_session task")
@@ -204,5 +215,8 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
             tracing::warn!("got for epoch {epoch} {} sessions", sessions.len())
         }
     }
-    Err(super::Error::NotEnoughOprfResponses(threshold))
+    Err(super::Error::NotEnoughOprfResponses(
+        threshold,
+        session_errors,
+    ))
 }
