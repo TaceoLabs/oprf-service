@@ -208,11 +208,11 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
     }
 
     if epoch_session_map.is_empty() {
-        tracing::warn!("could not get a single session!");
+        tracing::debug!("could not get a single session!");
     } else {
-        tracing::warn!("could not get enough sessions. I got the following sessions:");
+        tracing::debug!("could not get enough sessions. I got the following sessions:");
         for (epoch, sessions) in epoch_session_map {
-            tracing::warn!("got for epoch {epoch} {} sessions", sessions.len())
+            tracing::debug!("got for epoch {epoch} {} sessions", sessions.len())
         }
     }
     Err(super::Error::NotEnoughOprfResponses(
