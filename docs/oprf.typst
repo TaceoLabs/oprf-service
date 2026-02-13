@@ -1,7 +1,6 @@
 #import "preamble.typst": *
-#import "@preview/fletcher:0.5.8" as fletcher: diagram, edge, node
-#import "@preview/frame-it:1.2.0": *
-#import "@preview/dashy-todo:0.1.0": todo
+#import "@preview/frame-it:2.0.0": *
+#import "@preview/dashy-todo:0.1.3": todo
 
 #let inst_taceo = institute("TACEO", email: "papers@taceo.io");
 
@@ -11,8 +10,8 @@
 )
 
 #let title = "A Nullifier Protocol based on a Verifiable, Threshold OPRF"
-#let abstract = "In this paper we describe a service capable of creating publicly verifiable nullifiers using a threshold version of a verifiable oblivious pseudo random function (OPRF). Our construction is based on the TwoHashDH OPRF, discrete logarithm equality proofs, Shamir secret sharing and zk-SNARKs."
-#let keywords = ("OPRF", "VOPRF", "threshold", "ZKP")
+#let abstract = "In this paper we describe a service capable of creating publicly verifiable nullifiers using a threshold version of a verifiable oblivious pseudorandom function (OPRF). Our construction is based on the TwoHashDH OPRF, discrete logarithm equality proofs, Shamir secret sharing and zk-SNARKs."
+#let keywords = ("OPRF", "vOPRF", "threshold", "ZKP")
 
 #show: report.with(
   title: title,
@@ -25,6 +24,7 @@
 
 #let sk = $serif("sk")$;
 #let pk = $italic("pk")$;
+#let com = $serif("com")$;
 #let nonce = $italic("nonce")$;
 #let uid = $italic("id")_italic("u")$;
 #let rpid = $italic("id")_italic("rp")$;
@@ -43,41 +43,42 @@
 
 = Introduction
 
-Semaphore @semaphorev4 is a zero-knowledge protocol that allows users to cast a message (e.g., a vote) as a provable member of a predetermined group, without revealing their actual identity. Internally it also produces a nullifier, which can be stored and is used to prevent users from casting a message twice (e.g., prevent double voting). The basic workflow of Semaphore is as follows: Users first create an identity (a private/public keypair) and add a so-called identity commitment to a public Merkle tree. These Merkle trees are usually managed on-chain and define the group members, as all identities committed to in the leaves of the Merkle tree are part of a group. Finally, to send a message, a user creates a zero-knowledge proof that shows: (i) they hold the secret key for a given identity, (ii) the given identity is committed to in the Merkle tree corresponding to a given public root hash and (iii) the produced nullifier is computed correctly for the given message as $H(sk, "scope")$. Since the nullifier is enforced to be computed correctly in the ZK proof, it can be used to check that a given secret key is only used once for a given scope.
+Oblivious pseudorandom functions (OPRFs) are a useful cryptographic primitive, where the execution of a traditional pseudorandom function $y = F(k,x)$ is carried out between a client holding the input $x$ and the server holding the input $k$, such that neither learn the other party's input and only the client learns the output $y$.
 
-The Semaphore protocol is already in version 4 and audited implementations of the circuits and client SDK exist.#footnote[See https://docs.semaphore.pse.dev for more details.] However, for some especially long-running use-cases there exists some drawbacks as well: First, the standard Semaphore protocol equates a group member with a single identity. This lack of account abstraction makes multi-device support as well as recovery of group membership when losing a secret key difficult. Second, since the secret key of the identity is directly hashed as part of the nullifier, leakage of this secret key allows all entities to create nullifier hashes for any scopes. This obviously allows account takeover, but additionally also allows historical analysis of this accounts behavior, linking together nullifiers from different scopes.
+Common use cases for OPRFs include stronger password-based key-derivation, adding additional entropy on top of user passwords, password-authenticated key-exchange @JareckiKK14, alternatives to CAPTCHAs such as PrivacyPass#footnote[https://privacypass.github.io/], or as building blocks in other cryptographic primitives such as private set intersection @FreedmanIPR05.
+OPRF protocols come in many flavors and can be extended to allow for additional properties such as allowing the client to verify a specific key $k$ was used in the protocol execution, splitting the OPRF key $k$ into a set of secret shares held by different servers or allowing for the server to learn specific parts of $x$. We recommend interested readers to look at @CasacubertaHL22, a recent systematization of knowledge study about OPRF properties and instantiations.
 
-In this document we propose a nullifier protocol that improves upon these aspects. First, as a minor change, the Merkle tree holding the accounts now has an additional layer that allows accounts to add a small number of identities in a single leaf, allowing for any of those identities to be used to create the nullifier. This introduces some problems, since now we can no longer use the secret key as part of the nullifier, since an account can now have multiple identities. To address this, we remove the secret key as part of the nullifier altogether, and use the index of the account in the Merkle tree instead. Just doing this naïvely breaks some privacy aspects of the nullifier, since now anyone could try to brute force the nullifier hash for some given index, and therefore trace actions of a specific account.
+While verifiability with respect to the client, in other words allowing clients to verify the server used a previously committed to key $k$ in the protocol execution, is a common feature of OPRF protocols, proving this property to other parties is not straightforward, as it would require disclosing the query point or other internal blinding values to the verifying parties.
+A generic and composable approach is to prove the validity of the OPRF execution from the client's perspective in a generic zero-knowledge proof system (zk-SNARK), which additionally allows the client to proof additional properties about its input $x$.
 
-To add another secret back into the nullifier calculation, we employ an Oblivious Pseudorandom Function, where the client inputs the index into the OPRF protocol and the OPRF server holding a key $k$ returns $F_k (i)$, without learning $i$. In this setup, there is now a secret $k$ that is part of the nullifier calculation, however, it is known to the OPRF server, which could still perform the above attack. To address this, the OPRF key is secret-shared between a set of nodes, and a threshold OPRF protocol is executed instead. This protects against a malicious server, but we also need to enforce that clients cannot query arbitrary OPRF inputs, as this would allow them to calculate nullifiers of other accounts. To this end, the clients also proof in zero-knowledge that they know a secret key for a given identity in the leaf that is queried in the OPRF.
+In this paper, we explore this setting in more detail and optimize various aspects of a widely used OPRF protocol to be more efficient, including using ZK-friendly building blocks such as the BabyJubJub curve and Poseidon2 hash function internally. Finally, we explore a use-case that utilizes the OPRF construction to output nullifiers which can be used for ZK-based authentication.
 
-Finally, an important part of the original Semaphore protocol is the zero-knowledge proof attesting the correct calculation of the nullifier. We still require this property, but have to extend it with the correct calculation of the OPRF. Therefore, a verifiable variant of the OPRF is used, which allows the OPRF servers to prove the correct calculation of the OPRF against a known public key. This proof must then be verified in the zero-knowledge proof attesting the correct calculation of the nullifier.
+= Background
 
 == Notation
 
-In the rest of the manuscript, if not described otherwise, we refer to the prime describing the scalarfield of the BN254 curve (which is also the basefield of the BabyJubJub curve) as $p$ and refer to the prime describing the scalarfield of the BabyJubJub curve as $q$. Furthermore, we denote field elements $in bb(F)$ with small letters, whereas elliptic curve points are denoted by capital letters. To denote a secret sharing of a value $x$ or $X$ we use a bracket notation $[x]$ and $[X]$.
-
-= Background
+In the rest of the manuscript, if not described otherwise, we refer to the prime describing the scalar field of the BN254 curve (which is also the base field of the BabyJubJub curve) as $p$ and refer to the prime describing the scalar field of the BabyJubJub curve as $q$. Furthermore, we denote field elements $in bb(F)$ with small letters, whereas elliptic curve points are denoted by capital letters. To denote a secret sharing of a value $x$ or $X$ we use a bracket notation $[x]$ and $[X]$, and using a value $[x]$ in an algorithm usually implies all parties operating on their share $x_i$.
 
 == BabyJubJub <sec:babyjubjub>
 
 BabyJubJub is an elliptic curve designed for efficient operations inside zk-SNARKs that operate over the BN254 scalar field. The main efficiency aspects stem from the fact that the BN254 scalar field is the base field of BabyJubJub and therefore we can directly operate on the $(x,y)$ coordinate representation in the proof system without having to use foreign field arithmetic, which is notoriously expensive. BabyJubJub is defined in EIP-2494 @eip2494, and it should be noted that there are a few conflicting definitions floating around that use slightly different, isomorphic curves instead.
 
-#implementation[On the `ark-ed-on-bn254` crate][At the time of writing, the `ark-ed-on-bn254` crate is one of these conflicting implementations, as its definition of the twisted Edwards curve is actually using the "Reduced Twisted Edwards" form from @eip2494 and is therefore incompatible, although cheap mapping functions do exist. That is why we created a new crate `ark-babyjubjub` that follows the definitions below.]
+#implementation[On the `ark-ed-on-bn254` crate][At the time of writing, the `ark-ed-on-bn254` crate is one of these conflicting implementations, as its definition of the twisted Edwards curve is actually using the "Reduced Twisted Edwards" form from @eip2494. It is therefore incompatible, although cheap mapping functions do exist. That is why we created a new crate `ark-babyjubjub` that follows the definitions below.]
 
-The definitions below follow the EIP-2494 proposal and are compatible with existing implementations in Circom. We repeat the definitions of the BabyJubJub curve below.
+The definitions below follow the EIP-2494 proposal and are compatible with existing implementations in Circom. We repeat the definitions of the BabyJubJub curve in the following.
 
 === Definition of BabyJubJub
 Let
-$ p = 21888242871839275222246405745257275088548364400416034343698204186575808495617 $ and $bb(F)_p$ be the finite field with $p$ elements. $p$ is the order of the scalar field of the elliptic curve BN254, a common pairing curve used in zk-SNARKs.
+$ p = 21888242871839275222246405745257275088548364400416034343698204186575808495617 $ and $bb(F)_p$ be the finite field with $p$ elements. $p$ is the order of the scalar field of the elliptic curve BN254, a common pairing-friendly curve used in zk-SNARKs.
 
 ==== Twisted Edwards Form
 
 Let $E$ be the twisted Edwards elliptic curve defined over $bb(F)_p$ described by the equation $ 168700x^2 + y^2 = 1 + 168696 x^2 y^2. $ $E$ is called BabyJubJub and has order $ n = 21888242871839275222246405745257275088614511777268538073601725287587578984328, $ which factors into $n = h dot q$, where the cofactor $h = 8$ and the prime $ q = 2736030358979909402780800718157159386076813972158567259200215660948447373041. $
 
-The generator point $G$ of the elliptic curve is the point of order $n$ with $ G = (995203441582195749578291179787384436505546430278305826713579947235728471134,\ 5472060717959818805561601436314318772137091100104008585924551046643952123905). $
-The base point $B$ is chosen to be $B = 8G$ and has order $q$. Let $ B = (5299619240641551281634865583518297030282874472190772894086521144482721001553, \
+The generator point $G_E$ of the elliptic curve is the point of order $n$ with $ G_E = (995203441582195749578291179787384436505546430278305826713579947235728471134,\ 5472060717959818805561601436314318772137091100104008585924551046643952123905). $
+The base point $G$ is chosen to be $G = 8G_E$ and has order $q$. Let $ G = (5299619240641551281634865583518297030282874472190772894086521144482721001553, \
   16950150798460657717958625567821834550301663161624707787222815936182638968203). $
+In the following, we usually work with points in the prime-order subgroup generated by $G$.
 
 ==== Montgomery Form
 
@@ -108,10 +109,10 @@ One of the main use-cases of BabyJubJub is to build a digital signature scheme f
         LineComment(Assign[$k$][${0,1}^256$], [Sample random $k$])
         LineComment(Assign[$(h_0,h_1,...,h_511)$][$serif("Blake3")(k)$], [Expand secret using hash function])
         LineComment(
-          Assign[$s$][$2^251 + h_250 dot 2^250 + dots + h_3 dot 2^3$],
+          Assign[$sk$][$2^251 + h_250 dot 2^250 + dots + h_3 dot 2^3$],
           [Compute secret scalar, with specific bits chosen],
         )
-        LineComment(Assign[$pk$][$sk dot B$], [Compute the public key])
+        LineComment(Assign[$pk$][$sk dot G$], [Compute the public key])
         Return[$sk, (h_256,...,h_511), pk$]
       },
     )
@@ -121,7 +122,7 @@ One of the main use-cases of BabyJubJub is to build a digital signature scheme f
       $M, sk, (h_256,...,h_511)$,
       {
         LineComment(Assign[$r$][$serif("Blake3")(h_256||...||h_511||M)$], [Generate a pseudorandom nonce])
-        LineComment(Assign[$R$][$r dot B$], [Interpret $r$ as a scalar and obtain a curve point ])
+        LineComment(Assign[$R$][$r dot G$], [Interpret $r$ as a scalar and obtain a curve point ])
         LineComment(Assign[$e$][$serif("Poseidon2")(R||pk||M)$], [Compute the challenge $e$])
         Assign[$s$][$r + e dot sk mod q$]
         Return[$R,s$]
@@ -132,11 +133,11 @@ One of the main use-cases of BabyJubJub is to build a digital signature scheme f
       "Verify",
       $M, pk, sigma = (R,s)$,
       {
-        LineComment(Line([Reject if $S in.not {0,..,q-1}$]), [Check for non-canonical $s$])
-        Line([Reject if $A$ is one of the small-order points on $E$.])
-        Line([Reject if $A$ or $R$ are non-canonical.])
+        LineComment(Line([Reject if $s in.not {0,..,q-1}$]), [Check for non-canonical $s$])
+        Line([Reject if $pk$ is one of the small-order points on $E$.])
+        Line([Reject if $pk$ or $R$ are non-canonical.])
         LineComment(Assign[$e$][$serif("Poseidon2")(R||pk||M)$], [Compute the challenge $e$])
-        Line([Accept if $8(s dot B - R - e dot pk) = 0$])
+        Line([Accept if $8(s dot G - R - e dot pk) = 0$])
       },
     )
   },
@@ -145,7 +146,7 @@ One of the main use-cases of BabyJubJub is to build a digital signature scheme f
 
 == TwoHashDH OPRF
 
-In this paper we aim to build a distributed and verifiable OPRF service. Our main construction is derived from the TwoHashDH OPRF which was introduced in @JareckiL10. We give its basic construction in @fig:twohashdh, where $H(x)$ hashes the input field element onto an elliptic curve (instantiated with BabyJubJub in our case) and $H'(dot)$ is a cryptographic hash function (Poseidon2 in our case).
+In this paper we aim to build a distributed and verifiable OPRF service. Our main construction is derived from the TwoHashDH OPRF which was introduced in @JareckiL10. We give its basic construction in @fig:twohashdh, where $H_1(x)$ hashes the input field element onto an elliptic curve (instantiated with BabyJubJub in our case) and $H_2(dot)$ is a cryptographic hash function (Poseidon2 in our case).
 
 #figure(
   rect(table(
@@ -154,9 +155,9 @@ In this paper we aim to build a distributed and verifiable OPRF service. Our mai
     table.header([Client($x$)], [], [Server($k$)]),
     table.hline(stroke: 0.05em),
     [$beta arrowrl bb(Z)_q^*$], [], [],
-    [$A <- beta dot H(x)$], math.attach($arrow.r$, t: $A$), [$B <- k dot A$],
+    [$A <- beta dot H_1(x)$], math.attach($arrow.r$, t: $A$), [$B <- k dot A$],
     [], math.attach($arrow.l$, t: $B$), [],
-    [Output $H'(x, (beta^(-1) dot B))$],
+    [Output $H_2(x, (beta^(-1) dot B))$],
   )),
   caption: [The TwoHashDH OPRF construction from @JareckiL10.],
   kind: "scheme",
@@ -168,7 +169,7 @@ A long line of work building on the TwoHashDH OPRF exists, adding various proper
 
 == Mapping inputs to Curve Points
 
-The above OPRF in @fig:twohashdh requires a function $H: bb(F)_p mapsto E$ to encode the OPRF input into a curve point. We follow the recommendations in RFC 9380 @rfc9380 "Hashing to Elliptic Curves". For the BabyJubJub curve we are using, this internally boils down to hashing the input into a field element, calling the Elligator2 @BernsteinHKL13 mapping to get a point on the Montgomery curve $E_M$, mapping this point onto $E$ via the birational map, and finally clearing the cofactor. We give an overview in @alg:hash2curve and refer to more details in @rfc9380. The `encode_to_curve` function gives a point with unknown discrete logarithm on the curve, however, the returned point is not uniform, as the Elligator2 map cannot hit about $50%$ of curve points. To get a truly uniform random point, the `hash_to_curve` function can be used instead, which internally maps to two points and adds them. However, for most use cases the `encode_to_curve` functions should be enough.
+The above OPRF in @fig:twohashdh requires a function $H_1: bb(F)_p mapsto E$ to encode the OPRF input into a curve point. We follow the recommendations in RFC 9380 @rfc9380 "Hashing to Elliptic Curves". For the BabyJubJub curve we are using, this internally boils down to hashing the input into a field element, calling the Elligator2 @BernsteinHKL13 mapping to get a point on the Montgomery curve $E_M$, mapping this point onto $E$ via the birational map, and finally clearing the cofactor. We give an overview in @alg:hash2curve and refer to more details in @rfc9380. The `encode_to_curve` function gives a point with unknown discrete logarithm on the curve, however, the returned point is not uniform, as the Elligator2 map cannot hit about $50%$ of curve points. To get a truly uniform random point, the `hash_to_curve` function can be used instead, which internally maps to two points and adds them. However, for most use cases the `encode_to_curve` functions should be enough.
 
 #show: style-algorithm
 #algorithm-figure(
@@ -213,54 +214,55 @@ The above OPRF in @fig:twohashdh requires a function $H: bb(F)_p mapsto E$ to en
   },
 )  <alg:hash2curve>
 
-== Discrete Logarithm Equality Proof
+== Discrete Logarithm Equality (DLogEq) Proof
 
 
-Adding verifiability to @fig:twohashdh can be done by adding a discrete logarithm equality proof @ChaumP92. The OPRF server is required to publish a public key $A = k dot D$, where $D$ is a known point (in practice, this can just be the base point). The server then proves to the client that it has used the same key $k$ in the OPRF evaluation @JareckiKK14. In the following we describe how one can prove that two group elements $A$ and $C$ share the same discrete logarithm $k$ for their respective bases $D$ and $B$. In other words, given $A, B, C, D in bb(G)$, we show that $A=k dot D$ and $C = k dot B$ for the same $k in bb(F)_q$. The following algorithm specifies $D$ as an arbitrary group element, in practice $D$ can simply be chosen as the generator of $bb(G)$.
+Adding verifiability to @fig:twohashdh can be done by adding a discrete logarithm equality proof @ChaumP92. The OPRF server is required to publish a public key $K = k dot G$, where $G$ is a known point (in practice, this can just be the base point). The server then proves to the client that it has used the same key $k$ in the OPRF evaluation @JareckiKK14. In the following we describe how one can prove that two group elements $A$ and $K$ share the same discrete logarithm $k$ for their respective bases $B$ and $G$. In other words, given $A, B, G, K in bb(G)$, we show that $B=k dot A$ and $K = k dot G$ for the same $k in bb(F)_q$. The following algorithm specifies $G$ as an arbitrary group element, in practice $G$ can simply be chosen as the generator of $bb(G)$.
 
 #show: style-algorithm
 #algorithm-figure(
-  "Discrete Logarithm Equality Proof",
+  "Discrete Logarithm Equality (DLogEq) Proof",
   stroke: black,
   {
     import algorithmic: *
     Function(
       "Prove",
-      $k, B, D$,
+      $k, A, G$,
       {
         LineComment(Assign[$r$][$bb(F)_q$], [Sample random $r$])
-        Assign[$R_1$][$r dot D$]
-        Assign[$R_2$][$r dot B$]
-        Assign[$e$][$H(k dot D,B, k dot B,D,R_1, R_2) in bb(F)_q$]
+        Assign[$R_1$][$r dot A$]
+        Assign[$R_2$][$r dot G$]
+        Assign[$e$][$H(A, G, k dot A, k dot G,R_1, R_2) in bb(F)_q$]
         Assign[$s$][$r + e dot k$]
-        Return[$e,s$]
+        Return[$(e,s)$]
       },
     )
     LineBreak
     Function(
       "Verify",
-      $A, B, C, D, e, s$,
+      $A, G, B, K, (e, s)$,
       {
         LineComment(Line([Reject if $s in.not {0,..,q-1}$]), [Check for non-canonical $s$])
-        If("not " + `validPoints` + $(A, B, C, D)$, { Return[$bot$] })
-        If("not " + `nonZeroPoints` + $(A,B,C,D)$, { Return[$bot$] })
-        Assign[$R_1$][$s dot D -e dot A$]
-        Assign[$R_2$][$s dot B -e dot C$]
+        If("not " + `validPoints` + $(A, G, B, K)$, { Return[$bot$] })
+        If("not " + `nonZeroPoints` + $(A,G, B,K)$, { Return[$bot$] })
+        Assign[$R_1$][$s dot A -e dot B$]
+        Assign[$R_2$][$s dot G -e dot K$]
         If("not " + `nonZeroPoints` + $(R_1, R_2)$, { Return[$bot$] })
-        Assign[$e'$][$H(A,B, C,D,R_1, R_2) in bb(F)_q$]
+        Assign[$e'$][$H(A, G, B, K,R_1, R_2) in bb(F)_q$]
         Return[$e=e'$]
       },
     )
   },
 )  <alg:prover>
 
-= Our Construction
+= A Threshold OPRF Protocol with Public Verifiability
+<sec:oprf>
 
 In this section we describe the full protocol between the client and multiple OPRF servers. We start by describing threshold variants of the OPRF construction and the discrete logarithm equality proof, before we give our full protocol with the accompanying zero-knowledge proofs.
 
 == Threshold OPRF
 
-Translating @fig:twohashdh from a single-server OPRF to a threshold OPRF is trivial. Since the server (in the single server setting) only performs one group operation $B <- k dot A$ on a blinded $A$, $k$ can just be secret-shared (e.g., using additive or Shamir @Shamir79 secret-sharing) and the client reconstructs the response point $B$ from the shares. The protocol is given in @fig:twohashdh_mpc. Thereby, the properties of the used secret-sharing protocol (e.g., honest/dishonest majority, threshold, etc.) are inherited. For a discussion on threshold OPRFs in general we refer to @CasacubertaHL22.
+Translating @fig:twohashdh from a single-server OPRF to a threshold OPRF is simple. Since the server (in the single server setting) only performs one group operation $B <- k dot A$ on a blinded $A$, $k$ can just be secret-shared (e.g., using additive or Shamir @Shamir79 secret-sharing) and the client reconstructs the response point $B$ from the shares. The protocol is given in @fig:twohashdh_mpc. Thereby, the properties of the used secret-sharing protocol (e.g., honest/dishonest majority, threshold, etc.) are inherited. For a discussion on threshold OPRFs in general we refer to @CasacubertaHL22.
 
 #figure(
   rect(table(
@@ -269,10 +271,10 @@ Translating @fig:twohashdh from a single-server OPRF to a threshold OPRF is triv
     table.header([Client($x$)], [], [$n$ Server($[k]$)]),
     table.hline(stroke: 0.05em),
     [$beta arrowrl bb(Z)_q^*$], [], [],
-    [$A <- beta dot H(x)$], math.attach($arrow.r$, t: $A$), [$[B] <- [k] dot A$],
+    [$A <- beta dot H_1(x)$], math.attach($arrow.r$, t: $A$), [$[B] <- [k] dot A$],
     [], math.attach($arrow.l$, t: $[B]$), [],
     [$B <-mono("Reconstruct")([B])$], [], [],
-    [Output $H'(x, (beta^(-1) dot B))$],
+    [Output $H_2(x, (beta^(-1) dot B))$],
   )),
   caption: [The distributed TwoHashDH OPRF construction derived from @fig:twohashdh.],
   kind: "scheme",
@@ -280,7 +282,35 @@ Translating @fig:twohashdh from a single-server OPRF to a threshold OPRF is triv
 )
 <fig:twohashdh_mpc>
 
+== Standard Ways to achieve Verifiability
+
+A verifiable OPRF protocol allows the OPRF client to ensure that the OPRF servers have correctly evaluated the OPRF function on the client's input. In the single-server setting, this can be achieved by having the server publish a public key $K = k dot G$ and proving that the same $k$ was used in the OPRF evaluation via a discrete logarithm equality (DLogEq) proof @ChaumP92, as described in @alg:prover. This method was originally proposed by @JareckiKK14. In the multi-server setting, we can trivially achieve verifiability by having each server publish a public key share $K_i = k_i dot G$ and then proving that the same $k_i$ was used in the OPRF evaluation using one DLogEq proof per party. We show this below in @fig:twohashdh_mpc_dlog.
+
+#figure(
+  rect(table(
+    columns: (2fr, 1fr, 2fr),
+    stroke: none,
+    table.header([Client($x$)], [], [$n$ Servers($[k]$)]),
+    table.hline(stroke: 0.05em),
+    [$beta arrowrl bb(Z)_q^*$], [], [],
+    [$A <- beta dot H_1(x)$], math.attach($arrow.r$, t: $A$), [$B_i <- k_i dot A$],
+    [], [], [$pi_i <- mono("DLogEq.Proof")(k_i, A, G)$],
+    [], math.attach($arrow.l$, t: $B_i, pi_i$), [],
+    [$B <-mono("Reconstruct")([B])$], [], [],
+    [$forall i: mono("DLogEq.Verify")(A, G, B_i, K_i, pi_i)$], [], [],
+    [Output $H_2(x, (beta^(-1) dot B))$],
+  )),
+  caption: [The distributed TwoHashDH OPRF construction derived from @fig:twohashdh_mpc, with added verifiability.],
+  kind: "scheme",
+  supplement: [Scheme],
+)
+<fig:twohashdh_mpc_dlog>
+
+This keeps the single request-response flow of the OPRF protocol, but adds a drawback: The client needs to verify a number of DLogEq proofs that scales with the set of servers participating in the OPRF protocol (or more concretely, the threshold used in the secret sharing scheme). Looking ahead, we want to recursively proof correct execution of the OPRF protocol in a zk-SNARK, and having this part be dependent on the threshold has two problems: (i) the ZK circuit is different for different configurations of thresholds and number of parties. Consequently, zk-SNARKs with a circuit-dependent setup phase have to perform that setup phase for each threshold that will be used; (ii) the cost of the zk-SNARK prover scales with the number of constraints in the system, and going to a large set of parties ($30+$) dominates other parts in the ZK circuit making it prohibitively expensive.
+
 == Distributed Discrete Logarithm Equality Proof
+
+To address the issues described in the previous section, we present a way to distribute the DLogEQ proof itself, essentially executing @alg:prover in a multiparty computation setting. This setting is very similar to the setting of Threshold EdDSA signatures and we use techniques from this line of work in the following.
 
 === Additively Shared Discrete Logarithm Equality Proof
 
@@ -298,25 +328,25 @@ We start with a trivial solution to highlight the general approach, before makin
     Comment([Each server $i$:])
     Function(
       "partial_commitments",
-      $k_i, B, D$,
+      $k_i, A, G$,
       {
         LineComment(Assign[$r_i$][$bb(F)_q$], [Sample random share $r_i$])
-        Assign[$R_(i,1)$][$r_i dot D$]
-        Assign[$R_(i,2)$][$r_i dot B$]
-        Assign[$C_i$][$k_i dot B$]
-        Return[$r_i, C_i, R_(i,1), R_(i,2)$]
+        Assign[$R_(i,1)$][$r_i dot A$]
+        Assign[$R_(i,2)$][$r_i dot G$]
+        Assign[$B_i$][$k_i dot A$]
+        Return[$r_i, B_i, R_(i,1), R_(i,2)$]
       },
     )
     LineBreak
     Comment([The accumulator with input from all $n$ servers:])
     Function(
       "create_challenge",
-      $A, B, D, (C_1, R_(1,1), R_(1,2)), dots, (C_n, R_(n,1), R_(n,2))$,
+      $A, G, K, (B_1, R_(1,1), R_(1,2)), dots, (B_n, R_(n,1), R_(n,2))$,
       {
         Assign[$R_1$][$R_(1,1) + dots + R_(n, 1)$]
         Assign[$R_2$][$R_(1,2) + dots + R_(n, 2)$]
-        Assign[$C$][$C_1 + dots + C_n$]
-        Assign[$e$][$H(A,B, C,D,R_1, R_2) in bb(F)_q$]
+        Assign[$B$][$B_1 + dots + B_n$]
+        Assign[$e$][$H(A,G, B,K,R_1, R_2) in bb(F)_q$]
         Return[$e$]
       },
     )
@@ -343,7 +373,7 @@ We start with a trivial solution to highlight the general approach, before makin
   },
 )  <alg:add_prover_insecure>
 
-@alg:add_prover_insecure requires two communication rounds between each server and the accumulator, but the servers do not need to communicate with any other server. Thereby, each random share of the server is protected by the discrete logarithm hardness assumption, preventing the accumulator from learning anything about the secrets $k, r$ and their shares.
+@alg:add_prover_insecure requires two communication rounds between each server and the accumulator, but the servers do not need to communicate with any other server. Thereby, each random share of the server is protected by the discrete logarithm hardness assumption, preventing the accumulator from learning anything about the secrets $k, r$, and their shares.
 
 In essence, @alg:add_prover rewrites the non-interactive prove back to its interactive version. Thus, the accumulator would not need to sample the random value $e$ via the Fiat-Shamir random oracle. However, keeping the same verifier as in the non-distributed version and keeping public verifiability (i.e., proving on chain the proof was not simulated) requires the usage of the random oracle. Since the provers do not chose the challenge via Fiat-Shamir themselves, each server should only respond at most once to a challenge for an existing random share $r_i$.
 
@@ -364,43 +394,43 @@ We now present our secure variant of the threshold discrete logarithm equality p
     Comment([Each server $i$:])
     Function(
       "partial_commitments",
-      $k_i, B, D$,
+      $k_i, A, G$,
       {
-        LineComment(Assign[$f_i$][$bb(F)_q$], [Sample random share $f_i$])
-        LineComment(Assign[$g_i$][$bb(F)_q$], [Sample random share $g_i$])
-        Assign[$F_(i,1)$][$f_i dot D$]
-        Assign[$F_(i,2)$][$f_i dot B$]
-        Assign[$G_(i,1)$][$g_i dot D$]
-        Assign[$G_(i,2)$][$g_i dot B$]
-        Assign[$C_i$][$k_i dot B$]
-        Return[$f_i, g_i, C_i, F_(i,1), F_(i,2), G_(i,1), G_(i,2)$]
+        LineComment(Assign[$d_i$][$bb(F)_q$], [Sample random share $d_i$])
+        LineComment(Assign[$e_i$][$bb(F)_q$], [Sample random share $e_i$])
+        Assign[$D_(i,1)$][$d_i dot A$]
+        Assign[$D_(i,2)$][$d_i dot G$]
+        Assign[$E_(i,1)$][$e_i dot A$]
+        Assign[$E_(i,2)$][$e_i dot G$]
+        Assign[$B_i$][$k_i dot A$]
+        Return[$(d_i, e_i), B_i, D_(i,1), D_(i,2), E_(i,1), E_(i,2)$]
       },
     )
     LineBreak
     Comment([The accumulator with input from all $n$ servers:])
     Function(
       "recombine_commitments",
-      $(C_1, F_(1,1), F_(1,2), G_(1,1), G_(1,2)), dots, (C_n, G_(n,1), G_(n,2), G_(n,1), G_(n,2))$,
+      $(B_1, D_(1,1), D_(1,2), E_(1,1), E_(1,2)), dots, (B_n, D_(n,1), D_(n,2), E_(n,1), E_(n,2))$,
       {
-        Assign[$F_1$][$F_(1,1) + dots + F_(n, 1)$]
-        Assign[$F_2$][$F_(1,2) + dots + F_(n, 2)$]
-        Assign[$G_1$][$G_(1,1) + dots + G_(n, 1)$]
-        Assign[$G_2$][$G_(1,2) + dots + G_(n, 2)$]
-        Assign[$C$][$C_1 + dots + C_n$]
-        Return[$F_1,F_2,G_1,G_2,C$]
+        Assign[$D_1$][$D_(1,1) + dots + D_(n, 1)$]
+        Assign[$D_2$][$D_(1,2) + dots + D_(n, 2)$]
+        Assign[$E_1$][$E_(1,1) + dots + E_(n, 1)$]
+        Assign[$E_2$][$E_(1,2) + dots + E_(n, 2)$]
+        Assign[$B$][$B_1 + dots + B_n$]
+        Return[$D_1,D_2,E_1,E_2,B$]
       },
     )
     LineBreak
-    Comment([Each server $i$ on input $(F_1,F_2,G_1,G_2,C)$ from the client:])
+    Comment([Each server $i$ on input $(D_1,D_2,E_1,E_2,B)$ from the client:])
     Function(
       "challenge",
-      $k_i, f_i, g_i, A, B, C, D, F_1, F_2, G_1, G_2$,
+      $k_i, d_i, e_i, A, G, B, K, D_1, D_2, E_1, E_2$,
       {
-        Assign[$b$][$H_b (C, A, F_1, G_1, F_2, G_2) in bb(F)_q$]
-        Assign[$R_1$][$F_1+ b dot G_1$]
-        Assign[$R_2$][$F_2+ b dot G_2$]
-        Assign[$e$][$H(A, B, C, D, R_1, R_2) in bb(F)_q$]
-        Assign[$s_i$][$f_i + b dot g_i + e dot k_i$]
+        Assign[$b$][$H_b (B, K, D_1, D_2, E_1, E_2) in bb(F)_q$]
+        Assign[$R_1$][$D_1+ b dot E_1$]
+        Assign[$R_2$][$D_2+ b dot E_2$]
+        Assign[$e$][$H(A,G, B, K, G, R_1, R_2) in bb(F)_q$]
+        Assign[$s_i$][$d_i + b dot e_i + e dot k_i$]
         Return[$s_i$]
       },
     )
@@ -408,12 +438,13 @@ We now present our secure variant of the threshold discrete logarithm equality p
     Comment([The accumulator with input from all $n$ servers:])
     Function(
       "combine_proofs",
-      $s_1, ..., s_n, A, B, C, D, F_1, G_1, F_2, G_2$,
+      $s_1, ..., s_n, A, G,B,K, D_1, D_2, E_1, E_2$,
       {
-        Assign[$b$][$H_b (C, A, F_1, G_1, F_2, G_2) in bb(F)_q$]
-        Assign[$R_1$][$F_1+ b dot G_1$]
-        Assign[$R_2$][$F_2+ b dot G_2$]
-        Assign[$e$][$H(A, B, C, D, R_1, R_2) in bb(F)_q$]
+        Assign[$b$][$H_b (B, K, D_1, D_2, E_1, E_2) in bb(F)_q$]
+        Assign[$R_1$][$D_1+ b dot E_1$]
+        Assign[$R_2$][$D_2+ b dot E_2$]
+        Assign[$e$][$H(A, G, B, K,
+          R_1, R_2) in bb(F)_q$]
         Assign[$s$][$s_1 + dots + s_n$]
         Return[$e, s$]
       },
@@ -425,7 +456,7 @@ The main differences to @alg:add_prover_insecure are that i) each server respond
 
 === Shamir Shared Discrete Logarithm Equality Proof
 
-In order to rewrite @alg:add_prover from additive to Shamir secret-sharing, we have to make the following changes. First, the share $k_i$ needs to be a valid Shamir share. Second, reconstructions of elements involving $k_i$ (i.e., $C$ from all $C_i$, and $s$ from $s_i$) require lagrange interpolation. The latter requires the client to chose $d+1$ servers (where $d$ is the chosen degree of the underlying sharing polynomial) as a signing set $T$. We further include $T$ in the random oracle choosing $b$ as well. We depict the final protocol in @alg:shamir_prover, highlighting the changes to @alg:add_prover in blue.
+In order to rewrite @alg:add_prover from additive to Shamir secret-sharing, we have to make the following changes. First, the share $k_i$ needs to be a valid Shamir share. Second, reconstructions of elements involving $k_i$ (i.e., $B$ from all $B_i$, and $s$ from $s_i$) require lagrange interpolation. The latter requires the client to chose $d+1$ servers (where $d$ is the chosen degree of the underlying sharing polynomial) as a signing set $T$. We further include $T$ in the random oracle choosing $b$ as well. We depict the final protocol in @alg:shamir_prover, highlighting the changes to @alg:add_prover in blue.
 
 #show: style-algorithm
 #algorithm-figure(
@@ -436,45 +467,45 @@ In order to rewrite @alg:add_prover from additive to Shamir secret-sharing, we h
     Comment([Each server $i$:])
     Function(
       "partial_commitments",
-      $k_i, B, D$,
+      $k_i, A, G$,
       {
-        LineComment(Assign[$f_i$][$bb(F)_q$], [Sample random share $f_i$])
-        LineComment(Assign[$g_i$][$bb(F)_q$], [Sample random share $g_i$])
-        Assign[$F_(i,1)$][$f_i dot D$]
-        Assign[$F_(i,2)$][$f_i dot B$]
-        Assign[$G_(i,1)$][$g_i dot D$]
-        Assign[$G_(i,2)$][$g_i dot B$]
-        Assign[$C_i$][$k_i dot B$]
-        Return[$f_i, g_i, C_i, F_(i,1), F_(i,2), G_(i,1), G_(i,2)$]
+        LineComment(Assign[$d_i$][$bb(F)_q$], [Sample random share $d_i$])
+        LineComment(Assign[$e_i$][$bb(F)_q$], [Sample random share $e_i$])
+        Assign[$D_(i,1)$][$d_i dot A$]
+        Assign[$D_(i,2)$][$d_i dot G$]
+        Assign[$E_(i,1)$][$e_i dot A$]
+        Assign[$E_(i,2)$][$e_i dot G$]
+        Assign[$B_i$][$k_i dot A$]
+        Return[$(d_i, e_i), B_i, D_(i,1), D_(i,2), E_(i,1), E_(i,2)$]
       },
     )
     LineBreak
     Comment([The accumulator with input from $t = d+1$ out of $n$ servers:])
     Function(
       "recombine_commitments",
-      $(C_1, F_(1,1), F_(1,2), G_(1,1), G_(1,2)), dots, (C_n, G_(t,1), G_(t,2), G_(t,1), G_(t,2))$,
+      $(B_1, D_(1,1), D_(1,2), E_(1,1), E_(1,2)), dots, (B_t, D_(t,1), D_(t,2), E_(t,1), E_(t,2))$,
       {
-        Assign[$F_1$][$F_(1,1) + dots + F_(t, 1)$]
-        Assign[$F_2$][$F_(1,2) + dots + F_(t, 2)$]
-        Assign[$G_1$][$G_(1,1) + dots + G_(t, 1)$]
-        Assign[$G_2$][$G_(1,2) + dots + G_(t, 2)$]
-        Assign[$C$][$#emph(text(blue)[$lambda_1$])dot C_1 + dots + #emph(text(blue)[$lambda_t$])dot C_t$]
-        Return[$F_1,F_2,G_1,G_2,C$]
+        Assign[$D_1$][$D_(1,1) + dots + D_(t, 1)$]
+        Assign[$D_2$][$D_(1,2) + dots + D_(t, 2)$]
+        Assign[$E_1$][$E_(1,1) + dots + E_(t, 1)$]
+        Assign[$E_2$][$E_(1,2) + dots + E_(t, 2)$]
+        Assign[$B$][$#emph(text(blue)[$lambda_1$])dot B_1 + dots + #emph(text(blue)[$lambda_t$])dot B_t$]
+        Return[$D_1,D_2,E_1,E_2,B$]
       },
     )
     LineBreak
     Comment(
-      [Each server $i$ on input  $(F_1,F_2,G_1,G_2,C)$ and the signing set #emph(text(blue)[$T$]) from the client:],
+      [Each server $i$ on input  $(D_1,D_2,E_1,E_2,B)$ and the signing set #emph(text(blue)[$T$]) from the client:],
     )
     Function(
       "challenge",
-      $k_i, f_i, g_i, A, B, C, D, F_1, F_2, G_1, G_2, #emph(text(blue)[$T$]))$,
+      $k_i, d_i, e_i, A, G, B, K, D_1, D_2, E_1, E_2, #emph(text(blue)[$T$]))$,
       {
-        Assign[$b$][$H_b (C, A, F_1, G_1, F_2, G_2, #emph(text(blue)[$T$])) in bb(F)_q$]
-        Assign[$R_1$][$F_1+ b dot G_1$]
-        Assign[$R_2$][$F_2+ b dot G_2$]
-        Assign[$e$][$H(A,B, C, D,R_1, R_2) in bb(F)_q$]
-        Assign[$s_i$][$f_i + b dot g_i + e dot k_i dot #emph(text(blue)[$lambda_i$])$]
+        Assign[$b$][$H_b (#emph(text(blue)[$T$]), B, K, D_1, D_2, E_1, E_2) in bb(F)_q$]
+        Assign[$R_1$][$D_1+ b dot E_1$]
+        Assign[$R_2$][$D_2+ b dot E_2$]
+        Assign[$e$][$H(A, G, B, K,R_1, R_2) in bb(F)_q$]
+        Assign[$s_i$][$d_i + b dot e_i + e dot k_i dot #emph(text(blue)[$lambda_i$])$]
         Return[$s_i$]
       },
     )
@@ -482,12 +513,12 @@ In order to rewrite @alg:add_prover from additive to Shamir secret-sharing, we h
     Comment([The accumulator with input from $t = d+1$ out of $n$ servers:])
     Function(
       "combine_proofs",
-      $s_1, ..., s_t, A, B, C, D, F_1, G_1, F_2, G_2$,
+      $s_1, ..., s_t, A, G, B, K, D_1, D_2, E_1, E_2, #emph(text(blue)[$T$])$,
       {
-        Assign[$b$][$H_b (C, A, F_1, G_1, F_2, G_2, #emph(text(blue)[$T$])) in bb(F)_q$]
-        Assign[$R_1$][$F_1+ b dot G_1$]
-        Assign[$R_2$][$F_2+ b dot G_2$]
-        Assign[$e$][$H(A, B, C, D, R_1, R_2) in bb(F)_q$]
+        Assign[$b$][$H_b ( #emph(text(blue)[$T$]), B, K, D_1, D_2, E_1, E_2) in bb(F)_q$]
+        Assign[$R_1$][$D_1+ b dot E_1$]
+        Assign[$R_2$][$D_2+ b dot E_2$]
+        Assign[$e$][$H(A, G, B, K, R_1, R_2) in bb(F)_q$]
         Assign[$s$][$s_1 + dots + s_t$]
         Return[$e, s$]
       },
@@ -495,104 +526,109 @@ In order to rewrite @alg:add_prover from additive to Shamir secret-sharing, we h
   },
 )  <alg:shamir_prover>
 
-In order to chose the signing set $T$ we propose that the client sends the first request to all $n$ servers, and chooses the fastest $d+1$ responging servers for engaging in the second round to complete the protocol.
+In order to chose the signing set $T$ we propose that the client sends the first request to all $n$ servers, and chooses the fastest $d+1$ responding servers for engaging in the second round to complete the protocol, keeping the identifiers in T canonically ordered.
 
-== Full Distributed OPRF-Based Nullifier Protocol
+=== On Communication Patters
 
-We give the full verifiable OPRF based distributed nullifier service construction in @fig:full_protocol. For the description of the zero-knowledge proofs $pi_1$ and $pi_2$ we refer to @sec:ZK.
+One property we inherit from Frost3  @Frost3 is that the aggregating party does not need to be trusted for the security of the protocol and at worst it could perform denial of service attacks by not doing its job. That is why in @fig:full_protocol, the client takes the role of the aggregating party.
+The communication pattern for this protocol involves two full round trips between the client and at least $t$ servers, where $t$ is the chosen threshold.
+
+An alternative communication pattern arises when one of the servers is selected as the aggregating party: Observe that both messages from the client are the same for all servers. This allows for the client to choose one of the servers, send the initial message (i.e., the blinded query point $A$) to that server only, which then forwards the request to the other servers. The chosen server then receives the partial commitments, aggregates them, and sends the second message to all servers, before aggregating the responses into the final proof, which it forwards to the client. This has the advantage of reducing the number of messages the client needs to send to a single one and reduces its overall client workload, at the cost of shifting more work to (one of) the OPRF servers.
+
+== Full Distributed, OPRF Protocol with Public Verifiability
+
+In this section, we present the full threshold OPRF protocol with additions to make the clients execution of the OPRF publicly verifiable. The final statement the client proves is the following:
+"I know an input $x$, that is committed to as $com$, and the output of the OPRF using the public key $K$ is $y$."
 
 #figure(
   rect(table(
     columns: (2fr, 1fr, 2fr),
     stroke: none,
-    table.header([Client($sk, pk, uid, rpid, action, K$)], [], [$n$ Server($k_i, K = k dot B$)]),
+    table.header([Client($x, K, G$)], [], [$n$ Servers($k_i, K = k dot G$)]),
     table.hline(stroke: 0.05em),
     [$beta arrowrl bb(Z)_q^*$], [], [],
-    [$q <- H_1(uid, rpid, action)$], [], [],
-    [$sigma <-mono("Sign")(sk, q)$], [], [],
-    [$A <- beta dot H_2(q)$], [], [],
-    [$pi_1 <-mono("prove")(sigma, A,mono("valid")(pk))$],
-    math.attach($arrow.r$, t: $A, pi_1, action, rpid$),
-    [if $mono("verify")(pi_1, A, action, rpid) = bot$ then abort],
+    [$r arrowrl bb(Z)_p$], [], [],
+    [$com <- H_"com" (x, r)$], [], [],
+    [$A <- beta dot H_1(x)$], [], [],
+    [],
+    math.attach($arrow.r$, t: $A$),
+    [], [], [],
+    [$((d_i, e_i), B_i, D_(i,1), D_(i,2), E_(i,1), E_(i,2)) <- #linebreak() mono("dlog.partial_commitments")(k_i, A, G)$],
+    [$T$ is the set of $t$ used parties], math.attach($arrow.l$, t: $[B], [D_1], [D_2], [E_1], [E_2]$), [],
+    [$(B, D_1, D_2, E_1, E_2) <-#linebreak() mono("dlog.recombine_commitments")( [B], #linebreak() [D_1], [D_2], [E_1], [E_2])$],
     [],
     [],
-    [$(f_i, g_i, C_i, F_(i,1), F_(i,2), G_(i,1), G_(i,2)) <- #linebreak() mono("dlog.partial_commitments")(k_i, A, B)$],
-    [$C <-mono("Shamir.Reconstruct")([C])$], math.attach($arrow.l$, t: $[C], [F_1], [F_2], [G_1], [G_2]$), [],
-    [$F_1 <-mono("Reconstruct")([F_1])$], [], [],
-    [$F_2 <-mono("Reconstruct")([F_2])$], [], [],
-    [$G_1 <-mono("Reconstruct")([G_1])$], [], [],
-    [$G_2 <-mono("Reconstruct")([G_2])$], math.attach($arrow.r$, t: $C, F_1, F_2, G_1, G_2, T$), [],
-    [], [], [$s_i <-mono("dlog.challenge")(k_i, f_i, g_i, #linebreak() A, B, C, D, F_1, F_2, G_1, G_2,T)$],
-    [$(e,s) <-mono("dlog.combine_proofs")(#linebreak()s_1, ..., s_t, A, B, C, D, F_1, G_1, F_2, G_2)$],
+    [], math.attach($arrow.r$, t: $B, D_1, D_2, E_1, E_2, T$), [],
+    [], [], [$s_i <-mono("dlog.challenge")(k_i, d_i, e_i, #linebreak() A, G, B, K, D_1, D_2, E_1, E_2, T)$],
+    [$(e,s) <-mono("dlog.combine_proofs")(#linebreak()s_1, ..., s_t, A, G, B, K, D_1, D_2, E_1, E_2, T)$],
     math.attach($arrow.l$, t: $[s]$),
     [],
-    [$n <- H_4(q, (beta^(-1) dot C))$], [], [],
-    [$pi_2 <-mono("prove")(sigma, A, #linebreak() mono("valid")(pk), mono("dlog.verify")(e,s), n)$], [], [],
-    [Output $(n, pi_2)$],
+    [$y <- H_2(x, (beta^(-1) dot B))$], [], [],
+    [$pi_"oprf" <-mono("prove_oprf")((y, com, K), #linebreak() (x, beta, r, e, s, B))$], [], [],
+    [Output $(y, com, pi_"oprf")$],
   )),
-  caption: [The verifiable threshold TwoHashDH based nullifier construction derived from @fig:twohashdh.],
+  caption: [The verifiable threshold TwoHashDH OPRF construction derived from @fig:twohashdh.],
   kind: "scheme",
   supplement: [Scheme],
 )
 <fig:full_protocol>
 
-=== Clients Zero-Knowledge Proofs <sec:ZK>
 
-We describe the ZK proofs $pi_1$ and $pi_2$ from @fig:full_protocol in this section.
+=== Client Side ZK Proof
 
-==== Query Proof $pi_1$
+The client, after executing the OPRF with the set of servers proves that the OPRF output $y$ is well-formed with respect to the input commitment $com$ and the OPRF public key $K$. This is achieved by proving the validity of a rank 1 constraint system (R1CS) that maps to @alg:prove_oprf.
 
-The goal of the query proof $pi_1$ is to convince the server that a client is authorized to send a request. Therefore, $mono("valid")(pk)$ is a core part of this zero-knowledge proof which shows that the used public key $pk$ is in some kind of allowlist. To prove knowledge of the corresponding private key $sk$ we opt to verify a signature $sigma <-mono("Sign")(sk, q)$ of the actual query $q$ inside the ZK proof to not have $sk$ as a private witness in the proof. This has the advantage that a client can securely outsource proof generation to, e.g., an MPC-based prover network, without having to secret-share its key $sk$ with them, minimizing damage in case of a privacy breach.
+#show: style-algorithm
+#algorithm-figure(
+  [Client Side OPRF proof $pi_"oprf"$],
+  stroke: black,
+  {
+    import algorithmic: *
 
-Finally, $pi_1$ binds everything together by proving the correct calculation of the query point $A$ from its parts.
+    Comment(
+      [With public inputs $(y, com, K)$ and private inputs $(x, beta, r, e, s, B)$],
+    )
+    Function(
+      "prove_oprf",
+      $(y, com, K), (x, beta, r, e, s, B)$,
+      {
+        Assign($com'$, $H_"com" (x, r)$)
+        Line($mono("assert") com' == com$)
+        Assign($Q$, $H_1(x)$)
+        Assign($A$, $beta dot Q$)
+        Line($mono("assert") mono("DLogEQ.Verify")(A,G,B,K,(e,s))$)
+        Assign($Q_2$, $beta^(-1) dot B$)
+        Assign($y'$, $H_2 (x, Q_2)$)
+        Line($mono("assert") y' == y$)
+      },
+    )
+    LineBreak
+  },
+)
+<alg:prove_oprf>
 
-In more details, proof $pi_1$ consists of the following statements:
-#figure(
-  box(stroke: black, inset: 1em)[
-    #align(left)[
-      *Proof $pi_1 <-mono("prove")(sigma, A,mono("valid")(pk))$:*
-      1. The query $q$ is computed as the hash $q <- H_1(uid, rpid, action)$ where we use Poseidon2 for $H_1$ due to its ZK friendliness.
-      2. The signature $sigma$ is a valid EdDSA signature of $q$ using some key $sk$. This is done by proving the EdDSA verifier inside the ZK proof, such that $sk$ is not part of the witness.
-      3. The public key $pk$ used to verify the signature $sigma$ is part of an allowlist. Concretely, this allowlist is currently implemented as a Merkle tree accumulator with the root node $m$ and a list of $t$ public keys at each leaf. Proving this statement is done by showing:
-        - The hash of the $t$ public keys is the actual leaf $pk'$ of a Merkle tree
-        - The prover knows a path from $pk'$ to the root node $m$. This path consists of the sibling nodes in each level of the tree, as well as the position of the leaf which is $uid$.
-        - $pk$ used for verifying the signature is at some index $i$ (known to the prover) in the list of all $t$ public keys.
-      4. Finally, the derivation of the query point $A$ is computed correctly by proving $A<-beta dot H_2(q)$ where $H_2(q)$ hashes $q$ onto the BabyJubJub curve and $beta$ is a blinding element.
-    ]],
-  caption: [The statements proven in $pi_1$.],
-)<fig:pi1>
+#linebreak()
+We will now go through @alg:prove_oprf line by line and explore the relative costs for performing these operations in a zk-SNARK.
+- Line 3: Recomputing the input commitment hash, instantiated using Poseidon2, about 240 R1CS constraints.
+- Line 5: Recomputing the `encode_to_curve` function, about 800 R1CS constraints.
+- Line 6: Recomputing the scalar multiplication with the blinding factor, about 2300 R1CS constraints.
+- Line 7: Verifying that the DLogEQ proof is correct, about 12000 R1CS constraints.
+- Line 8: Recomputing the scaler multiplication with the blinding factor, about 2300 R1CS constraints.
+- Line 9: Recomputing the OPRF output hash, instantiated using Poseidon2, about 260 R1CS constraints.
 
-The following elements need to be public inputs to $pi_1$:
-- $rpid$ needs to be a public input, such that the OPRF servers know which secret $k$ (which belongs to the specified RP) they need to use in their response.
-- $action$ is currently a public field element to bind the nullifier to a specific action publicly. If this is undesired, $action$ can also be made private with no downside since $action$ is part of the nullifier computation and can thus not be requested a second time.
-- The Merkle root $m$ is a public input to bind the validity check of $pk$ to a known allowlist.
-- The query point $A$ is public such that the OPRF servers can verify the requests by the client.
+#remark[On ZK optimizations and additional checks][We utilize various common optimizations in the above ZK circuit. For example, instead of having to compute the inverse of $beta$ in line 8, we inject $Q_2$ as an additional input and verify that $B = Q_2 dot beta$. However, additional care needs to be taken for such steps, as the co-factor of BabyJubJub is not 1. Therefore, we additionally need to check that $Q_2$ is a point in the prime-order subgroup of BabyJubJub, otherwise there might be combinations of $Q_2$ and $beta$ where multiple points $Q_2$ map to the same $B$, making the ZK proof malleable.]
 
-==== Nullifier Proof $pi_2$
+The input commitment $com$ can be used to proof additional properties of the actual input $x$ in separate zero-knowledge proofs. A prominent example would by tying $x$ to a public key or public address, proving knowledge of a secret key $sk$ that maps to a public key $pk$, which when encoded to a field element is equal to $x$.
 
-The role of $pi_2$ is having a proof of the full nullifier construction. Thus, it needs to prove the following statements:
-#figure(
-  box(stroke: black, inset: 1em)[
-    #align(left)[
-      *Proof $pi_2 <-mono("prove")(sigma, A,mono("valid")(pk), mono("dlog.verify")(e,s), n)$:*
-      1. All 4 statements of the query proof $pi_1$ from @fig:pi1 are proven.
-      2. The discrete logarithm equality proof from the OPRF servers is verified to show that the servers computed the response honestly. This is done by evaluating the verifier from @alg:prover inside the ZK proof, similar to proving the correct EdDSA signature.
-      3. The OPRF result is unblinded and hashed to get the OPRF output $n = H_4(q, beta^(-1)dot C)$. To avoid inverting $beta$ in the BabyJubJub scalarfield $bb(F)_q$ inside a ZK proof over a different prime field $bb(F)_p$ (the BabyJubJub basefield) we prove the unblinding step via injecting the result $C'= beta^(-1)dot C$, showing it is a valid BabyJubJub point and proving $C=beta dot C'$.
-      4. We allow a message $serif("msg") in bb(F)_p$ to be part of the proof. To disallow tampering of the proof, we add a constraint squaring the message (as is also done in a standard Semaphore proof).
-    ]],
-  caption: [The statements proven in $pi_2$.],
-)<fig:pi2>
+== Query Authentication Proofs
 
+A nice feature of the multi-party nature of the OPRF nodes is that we can use their existing non-collusion assumption to perform query authentication for OPRF requests. In addition to the blinded query point $A$, the client also sends additional, use-case dependent information $mono("auth")$ that the OPRF nodes validate before they answer the OPRF query.
+This additional authentication information can range from trivial standard authentication methods, such as having OPRF nodes check API keys for permissions to compute OPRFs, to more advanced ZK-based ones, proving properties of the input $x$ in addition to its correct encoding and blinding, resulting in the actual blinded query point $A$, which is a public output of the ZK circuit.
+Such ZK proofs can be used to restrict the allowed inputs to the OPRF protocol, even though the OPRF nodes do not learn those inputs.
 
-The following elements need to be public inputs to $pi_2$:
-- $rpid$ needs to be a public input, such that everyone can verify that the nullifier was computed for a specific RP.
-- $action$ is currently a public field element to bind the nullifier to a specific action publicly. If this is undesired, $action$ can also be made private with no downside since $action$ is part of the nullifier computation and can thus not be requested a second time.
-- The OPRF public key $K = k dot B$ to show that the correct key $k$ was used in the OPRF evaluation.
-- The Merkle root $m$ is a public input to bind the validity check of $pk$ to a known allowlist.
-- The message $serif("msg")$ which is also part of the proof.
-- The final nullifier $n$ is public to bind the nullifier to the proof.
+In our use case described in @sec:oprf_nullifier, we add more complex zero-knowledge proofs that show the input $x$ is a leaf in a Merkle tree, and the OPRF client is in possession of a secret key corresponding to a public key stored at this leaf index.
 
-=== Key Generation and Reshare
+== Key Generation and Reshare
 
 In this section, we discuss how to generate the Shamir-shared OPRF key $k$ and how it can be reshared with a potentially new set of key holders. This reshare protocol can also be used to refresh the existing shares by resharing to the same set of computing nodes. We begin by describing the maliciously secure distributed key generation with identifiable abort from @CritesKM21 (which is dubbed PedPoP) which allows to securely generate a fresh Shamir secret with any threshold of corrupted parties $t < n$. We refer to @sec:keygen for two proposals on how to translate this to a practical on-chain implementation.
 
@@ -603,16 +639,16 @@ The PedPoP protocol is an adaption of the protocol introduced in @KomloG20. It i
   box(stroke: black, inset: 1em)[
     #align(left)[
       - *Round1*:
-        1. Each party $P_i$ chooses a random polynomial $f_i (Z)$ over $bb(F)_p$ of degree $t$ $ f_i (Z) = a_(i,0) + a_(i,1) Z + dots + a_(i,t) Z^t $ and computes $A_(i,k) = G^(a_(i,k))$ for $k in[t]$. Denote $x_i= a_(i,0)$ and $X_i = A_(i,0)$. Each $P_i$ computes a proof of possession of $X_i$ as a Schnorr signature as follows. They sample $r_i arrowrl bb(F)_p$ and set $R_i arrow.l G^(r_i)$. They set $c_i arrow.l H(R_i, X_i)$ and set $z_i arrow.l r_i + c_i dot x_i$. They then derive a commitment $arrow(C)_i = (A_(i,0), dots, A_(i, t-1))$ and broadcast $((R_i, z_i), arrow(C)_i)$.
-        2. After receiving the commitment from all other parties, each participant verifies the Schnorr signature by computing $c'_j arrow.l H(R_j, A_(j, 0))$ and checking that $ R_j A_(j,0)^(c'_j) = G^(z_j). $ If any checks fail, they disqualify the corresponding participant; otherwise, they continue to the next step.
+        1. Each party $P_i$ chooses a random polynomial $f_i (Z)$ over $bb(F)_q$ of degree $t$ $ f_i (Z) = a_(i,0) + a_(i,1) Z + dots + a_(i,t) Z^t $ and computes $A_(i,k) = a_(i,k) dot G$ for $k in[t]$. Denote $x_i= a_(i,0)$ and $X_i = A_(i,0)$. Each $P_i$ computes a proof of possession of $X_i$ as a Schnorr signature as follows. They sample $r_i arrowrl bb(F)_p$ and set $R_i arrow.l r_i dot G$. They set $c_i arrow.l H(R_i, X_i)$ and set $z_i arrow.l r_i + c_i dot x_i$. They then derive a commitment $arrow(C)_i = (A_(i,0), dots, A_(i, t-1))$ and broadcast $((R_i, z_i), arrow(C)_i)$.
+        2. After receiving the commitment from all other parties, each participant verifies the Schnorr signature by computing $c'_j arrow.l H(R_j, A_(j, 0))$ and checking that $ R_j + c'_j dot A_(j,0) = z_j dot G. $ If any checks fail, they disqualify the corresponding participant; otherwise, they continue to the next step.
       - *Round2*:
         3. Each $P_i$ computes secret-shares $x_(i,j) = f_i (serif(id)_j)$ for $j = 1, dots, n$, where $serif(id)_j$ is the participant identifier, and sends $x_(i,j)$ secretly to party $P_j$.
-        4. Each party $P_j$ verifies the shares they received from the other parties by checking that $ G^(x_(i,j)) = product_(k=0)^(t)A_(i,k)^(serif(id)_j^k) $ If the check fails for an index $i$, then $P_j$ broadcasts a complaint against $P_i$.
+        4. Each party $P_j$ verifies the shares they received from the other parties by checking that $ x_(i,j) dot G = sum_(k=0)^(t)serif(id)_j^k dot A_(i,k) $ If the check fails for an index $i$, then $P_j$ broadcasts a complaint against $P_i$.
       - *Round3*:
         5. For each of the complaining parties $P_j$ against $P_i$, $P_i$ broadcasts the share $x_(i,j)$. If any of the revealed shares fails to satisfy the equation, or should $P_i$ not broadcast anything for a complaining player, then $P_i$ is disqualified. The share of a disqualified party $P_i$ is set to $0$.
       - *Output*:
         6. The secret-share for each $P_j$ is $s_j = sum_(i=1)^n x_(i,j)$.
-        7. If $X_i=X_j$ for any $i != j$, then abort. Else, the output is the joint public key $serif(pk)=product_(i=1)^n X_i$.
+        7. If $X_i=X_j$ for any $i != j$, then abort. Else, the output is the joint public key $serif(pk)=sum_(i=1)^n X_i$.
     ]],
   caption: [The PedPoP key generation protocol @CritesKM21.],
 )<scheme:pedpop>
@@ -625,29 +661,135 @@ After the pair $[serif(sk)], serif(pk)$ is generated, one can use a combined ver
   box(stroke: black, inset: 1em)[
     #align(left)[
       - *Round1*:
-        1. To reshare the share $x_i$ each party $P_i$ chooses a random polynomial $f_i (Z)$ over $bb(F)_p$ $ f_i (Z) = x_i + a_(i,1) Z + dots + a_(i,t) Z^t $ and computes $A_(i, k) = G^(a_(i, k))$ for $k in[t]$. Denote $X_i = A_(i, 0) = G^(x_i)$. Each $P_i$ computes a proof of possession of $X_i$ as a Schnorr signature as follows. They sample $r_i arrowrl bb(F)_p$ and set $R_i arrow.l G^(r_i)$. They set $c_i arrow.l H(R_i, X_i)$ and set $z_i arrow.l r_i + c_i dot x_i$. They then derive a commitment $arrow(C)_i = (A_(i, 0), dots, A_(i, t-1))$ and broadcast $((R_i, z_i), arrow(C)_i)$ to the new set of parties.
-        2. After receiving the commitment from all old parties, each participant of the new set of parties verifies the Schnorr signature by computing $c'_j arrow.l H(R_j, A_(j, 0))$ and checking that $ R_j A_(j,0)^(c'_j) = G^(z_j). $ Verify, that $A_(j,0)$ is equal to the commitment one receives by interpolating the commitments from Step 4 from the previous reshare round (in the exponent). If any checks fail, they accuse the corresponding participant and remove its contribution; otherwise, they continue to the next step.
+        1. To reshare the share $x_i$ each party $P_i$ chooses a random polynomial $f_i (Z)$ over $bb(F)_q$ $ f_i (Z) = x_i + a_(i,1) Z + dots + a_(i,t) Z^t $ and computes $A_(i, k) = a_(i, k) dot G$ for $k in[t]$. Denote $X_i = A_(i, 0) = x_i dot G$. Each $P_i$ computes a proof of possession of $X_i$ as a Schnorr signature as follows. They sample $r_i arrowrl bb(F)_p$ and set $R_i arrow.l r_i dot G$. They set $c_i arrow.l H(R_i, X_i)$ and set $z_i arrow.l r_i + c_i dot x_i$. They then derive a commitment $arrow(C)_i = (A_(i, 0), dots, A_(i, t-1))$ and broadcast $((R_i, z_i), arrow(C)_i)$ to the new set of parties.
+        2. After receiving the commitment from all old parties, each participant of the new set of parties verifies the Schnorr signature by computing $c'_j arrow.l H(R_j, A_(j, 0))$ and checking that $ R_j + c'_j dot A_(j,0) = z_j dot G. $ Verify, that $A_(j,0)$ is equal to the commitment one receives by interpolating the commitments from Step 4 from the previous reshare round (in the exponent). If any checks fail, they accuse the corresponding participant and remove its contribution; otherwise, they continue to the next step.
       - *Round2* (In parallel to Round 1):
         3. Each $P_i$ of the old set of parties computes secret-shares $x_(i,j) = f_i (serif(id)_j)$ for $j = 1, dots, n$, where $serif(id)_j$ is the participant identifier, and sends $x_(i,j)$ secretly to party $P_j$ of the new set.
         4. Each party $P_j$ of the new set verifies the shares they received from the old parties:
-          $ G^(x_(i,j)) = product_(k=0)^(t)A_(i,k)^(serif(id)_j^k) $
+          $ x_(i,j) dot G = sum_(k=0)^(t)serif(id)_j^k dot A_(i,k) $
           If the check fails for an index $i$, then $P_j$ broadcasts a complaint against $P_i$ from the old set.
       - *Round3*:
         5. For each of the complaining parties $P_j$ against $P_i$, $P_i$ broadcasts the share $x_(i,j)$. If any of the revealed shares fails to satisfy the equation, or should $P_i$ not broadcast anything for a complaining player, then $P_i$ is disqualified. The share of a disqualified party $P_i$ is ignored.
       - *Output*:
         6. The secret-share for each $P_j$ is $s_j = sum_(i=1)^n x_(i,j)lambda_i$, where $lambda_i$ is the corresponding lagrange coefficient.
-        7. Check, whether the output $product_(i=1)^n X_i^(lambda_i)$ is equal to the public key $serif(pk)$. This should always happen if there are at most $t$ cheating parties.
+        7. Check, whether the output $sum_(i=1)^n lambda_i dot X_i$ is equal to the public key $serif(pk)$. This should always happen if there are at most $t$ cheating parties.
     ]],
   caption: [The PedPoP reshare protocol.],
 )<scheme:pedpop_reshare>
 
-= Evaluation
 
-In this section we report some preliminary performance numbers of our proposed protocols.
+= Use Case: OPRF-Based Nullifier Protocol
+<sec:oprf_nullifier>
 
-== ZK Proofs: Circom
+Semaphore @semaphorev4 is a zero-knowledge protocol that allows users to cast a message (e.g., a vote) as a provable member of a predetermined group, without revealing their actual identity. Internally it also produces a nullifier, which can be stored and is used to prevent users from casting a message twice (e.g., prevent double voting). The basic workflow of Semaphore is as follows: Users first create an identity (a private/public keypair) and add a so-called identity commitment to a public Merkle tree. These Merkle trees are usually managed on-chain and define the group members, as all identities committed to in the leaves of the Merkle tree are part of a group. Finally, to send a message, a user creates a zero-knowledge proof that shows: (i) they hold the secret key for a given identity, (ii) the given identity is committed to in the Merkle tree corresponding to a given public root hash and (iii) the produced nullifier is computed correctly for the given message as $H(sk, "scope")$. Since the nullifier is enforced to be computed correctly in the ZK proof, it can be used to check that a given secret key is only used once for a given scope.
 
-We implemented the zero-knowledge proofs $pi_1$ and $pi_2$ from @sec:ZK in Circom and report on the number of R1CS constraints of parts and the full proofs in this Section. The numbers are reported in @tab:circom_constraints for a Merkle tree registry of depth $d=32$ which allows to hold $t=7$ public keys in its leaves.
+The Semaphore protocol is already in version 4 and audited implementations of the circuits and client SDK exist.#footnote[See https://docs.semaphore.pse.dev for more details.] However, for some especially long-running use-cases there exists some drawbacks as well: First, the standard Semaphore protocol equates a group member with a single identity. This lack of account abstraction makes multi-device support as well as recovery of group membership when losing a secret key difficult. Second, since the secret key of the identity is directly hashed as part of the nullifier, leakage of this secret key allows all entities to create nullifier hashes for any scopes. This obviously allows account takeover, but additionally also allows historical analysis of this accounts behavior, linking together nullifiers from different scopes.
+
+In this section we propose a nullifier protocol that tackles these aspects. First, as a minor change, the Merkle tree holding the accounts now has an additional layer that allows accounts to add a small number of identities in a single leaf, allowing for any of those identities to be used to create the nullifier. This introduces some problems, since now we can no longer use the secret key as part of the nullifier, since an account can now have multiple identities. To address this, we remove the secret key as part of the nullifier altogether, and use the index of the account in the Merkle tree instead. Just doing this naïvely breaks some privacy aspects of the nullifier, since now anyone could try to brute force the nullifier hash for some given index, and therefore trace actions of a specific account.
+
+To add another secret back into the nullifier calculation, we employ an OPRF, where the client inputs the index into the OPRF protocol and the OPRF server holding a key $k$ returns $F(k, i)$, without learning $i$. In this setup, there is now a secret $k$ that is part of the nullifier calculation, however, it is known to the OPRF server, which could still perform the above attack. To address this, the OPRF key is secret-shared between a set of nodes, and the threshold OPRF protocol presented in @sec:oprf is executed instead. This protects against a malicious server, but we also need to enforce that clients cannot query arbitrary OPRF inputs, as this would allow them to calculate nullifiers of other accounts. To this end, the clients also prove in zero-knowledge that they know a secret key for a given identity in the leaf that is queried in the OPRF.
+
+Finally, an important part of the original Semaphore protocol is the zero-knowledge proof attesting the correct calculation of the nullifier. We still require this property, but have to extend it with the correct calculation of the OPRF, making use of the verifiability of the OPRF protocol presented in @sec:oprf.
+
+We give the full verifiable OPRF based distributed nullifier service construction in @fig:full_protocol_use_case. For the description of the zero-knowledge proofs $pi_1$ and $pi_2$ we refer to @sec:oprf_nullifier:ZK.
+
+#figure(
+  rect(table(
+    columns: (2fr, 1fr, 2fr),
+    stroke: none,
+    table.header([Client($sk, pk, uid, rpid, action, K, sigma_"cred"$)], [], [$n$ Server($k_i, K = k dot G$)]),
+    table.hline(stroke: 0.05em),
+    [$beta arrowrl bb(Z)_q^*$], [], [],
+    [$q' <- H_(q') (uid, rpid, action)$], [], [],
+    [$sigma <-mono("Sign")(sk, q')$], [], [],
+    [$A <- beta dot H_1(q')$], [], [],
+    [$pi_1 <-mono("prove"_1)(sigma, A, mono("valid")(pk))$],
+    math.attach($arrow.r$, t: $A, pi_1, action, rpid$),
+    [if $mono("verify")(pi_1, A, action, rpid) = bot$ then abort],
+    [],
+    [],
+    [$((d_i, e_i), B_i, D_(i,1), D_(i,2), E_(i,1), E_(i,2)) <- #linebreak() mono("dlog.partial_commitments")(k_i, A, G)$],
+    [$T$ is the set of $t$ used parties], math.attach($arrow.l$, t: $[B], [D_1], [D_2], [E_1], [E_2]$), [],
+    [$(B, D_1, D_2, E_1, E_2) <-#linebreak() mono("dlog.recombine_commitments")( [B], #linebreak() [D_1], [D_2], [E_1], [E_2])$],
+    [],
+    [],
+    [], [], [$s_i <-mono("dlog.challenge")(k_i, d_i, e_i, #linebreak() A, G, B, K, D_1, D_2, E_1, E_2,T)$],
+    [$(e,s) <-mono("dlog.combine_proofs")(#linebreak()s_1, ..., s_t, A, G, B, K, D_1, D_2, E_1, E_2, T)$],
+    math.attach($arrow.l$, t: $[s]$),
+    [],
+    [$y <- H_2(q', (beta^(-1) dot C))$], [], [],
+    [$pi_2 <-mono("prove"_2)(sigma, sigma_"cred", A, #linebreak() mono("valid")(pk), mono("dlog.verify")(e,s), y)$],
+    [],
+    [],
+    [Output $(y, pi_2)$],
+  )),
+  caption: [The verifiable threshold TwoHashDH based nullifier construction based on @fig:full_protocol.],
+  kind: "scheme",
+  supplement: [Scheme],
+)
+<fig:full_protocol_use_case>
+
+== Clients Zero-Knowledge Proofs <sec:oprf_nullifier:ZK>
+
+We describe the ZK proofs $pi_1$ and $pi_2$ from @fig:full_protocol_use_case in this section.
+
+=== Query Proof $pi_1$
+
+The goal of the query proof $pi_1$ is to convince the server that a client is authorized to send a request. Therefore, $mono("valid")(pk)$ is a core part of this zero-knowledge proof which shows that the used public key $pk$ is in some kind of allowlist. To prove knowledge of the corresponding private key $sk$ we opt to verify a signature $sigma <-mono("Sign")(sk, q)$ of the actual query $q$ inside the ZK proof to not have $sk$ as a private witness in the proof. This has the advantage that a client can securely outsource proof generation to, e.g., an MPC-based prover network, without having to secret-share its key $sk$ with them, minimizing damage in case of a privacy breach.
+
+Finally, $pi_1$ binds everything together by proving the correct calculation of the query point $A$ from its parts.
+
+In more details, proof $pi_1$ consists of the following statements:
+#figure(
+  box(stroke: black, inset: 1em)[
+    #align(left)[
+      *Proof $pi_1 <-mono("prove")(sigma, A,mono("valid")(pk))$:*
+      1. The query $q'$ is computed as the hash $q' <- H_(q') (uid, rpid, action)$ where we use Poseidon2 for $H_(q')$ due to its ZK friendliness.
+      2. The signature $sigma$ is a valid EdDSA signature of $q'$ using some key $sk$. This is done by proving the EdDSA verifier inside the ZK proof, such that $sk$ is not part of the witness.
+      3. The public key $pk$ used to verify the signature $sigma$ is part of an allowlist. Concretely, this allowlist is implemented as a Merkle tree accumulator with the root node $m$ and a list of $t$ public keys at each leaf. Proving this statement is done by showing:
+        - The hash of the $t$ public keys is the actual leaf $pk'$ of a Merkle tree
+        - The prover knows a path from $pk'$ to the root node $m$. This path consists of the sibling nodes in each level of the tree, as well as the position of the leaf which is $uid$.
+        - $pk$ used for verifying the signature is at some index $i$ (known to the prover) in the list of all $t$ public keys.
+      4. Finally, the derivation of the query point $A$ is computed correctly by proving $A<-beta dot H_1(q')$ where $H_1(q')$ hashes $q'$ onto the BabyJubJub curve and $beta$ is a blinding element.
+    ]],
+  caption: [The statements proven in $pi_1$.],
+)<fig:pi1>
+
+The following elements need to be public inputs to $pi_1$:
+- $rpid$ needs to be a public input, such that the OPRF servers know which secret $k$ (which belongs to the specified RP) they need to use in their response.
+- $action$ is a public field element to bind the nullifier to a specific action publicly. If this is undesired, $action$ could also be made private with no downside since $action$ is part of the nullifier computation and can thus not be requested a second time.
+- The Merkle root $m$ is a public input to bind the validity check of $pk$ to a known allowlist.
+- The query point $A$ is public such that the OPRF servers can verify the requests by the client.
+
+=== Nullifier Proof $pi_2$
+
+The role of $pi_2$ is having a proof of the full nullifier construction. Thus, it needs to prove the following statements:
+#figure(
+  box(stroke: black, inset: 1em)[
+    #align(left)[
+      *Proof $pi_2 <-mono("prove")(sigma, sigma_"cred", A, mono("valid")(pk), pk_"cred", mono("dlog.verify")(e,s), y)$:*
+      1. All 4 statements of the query proof $pi_1$ from @fig:pi1 are proven.
+      2. The discrete logarithm equality proof from the OPRF servers is verified to show that the servers computed the response honestly. This is done by evaluating the verifier from @alg:prover inside the ZK proof, similar to proving the correct EdDSA signature.
+      3. The OPRF result is unblinded and hashed to get the OPRF output $y = H_2(q', beta^(-1)dot C)$. To avoid inverting $beta$ in the BabyJubJub scalarfield $bb(F)_q$ inside a ZK proof over a different prime field $bb(F)_p$ (the BabyJubJub basefield) we prove the unblinding step via injecting the result $C'= beta^(-1)dot C$, showing it is a valid BabyJubJub point and proving $C=beta dot C'$.
+      4. Credential verification: An additional EdDSA signature $sigma_"cred"$ is verified against a public key $pk_"cred"$, where the signed message is attesting to some properties of the underlying user id, signed by a known credential issuer.
+      5. We allow a message $serif("msg") in bb(F)_p$ to be part of the proof. To disallow tampering of the proof, we add a constraint squaring the message (as is also done in a standard Semaphore proof).
+    ]],
+  caption: [The statements proven in $pi_2$.],
+)<fig:pi2>
+
+
+The following elements need to be public inputs to $pi_2$:
+- $rpid$ needs to be a public input, such that everyone can verify that the nullifier was computed for a specific RP.
+- $action$ is currently a public field element to bind the nullifier to a specific action publicly. If this is undesired, $action$ can also be made private with no downside since $action$ is part of the nullifier computation and can thus not be requested a second time.
+- The OPRF public key $K = k dot B$ to show that the correct key $k$ was used in the OPRF evaluation.
+- The Merkle root $m$ is a public input to bind the validity check of $pk$ to a known allowlist.
+- The credential public key $pk_"cred"$ to verify the credential signature against.
+- The message $serif("msg")$ which is also part of the proof.
+- The final nullifier $y$ is public to bind the nullifier to the proof.
+
+=== Circom Proof Sizes
+
+We implemented the zero-knowledge proofs $pi_1$ and $pi_2$ from @sec:oprf_nullifier:ZK in Circom and report on the number of R1CS constraints of parts and the full proofs in this Section. The numbers are reported in @tab:circom_constraints for a Merkle tree registry of depth $d=30$ which allows to hold $t=7$ public keys in its leaves.
 
 #figure(
   table(
@@ -658,22 +800,26 @@ We implemented the zero-knowledge proofs $pi_1$ and $pi_2$ from @sec:ZK in Circo
     table.hline(stroke: 0.05em),
     [BabyJubJubScalarMulAny], [2310], [$s dot P$ for arbitrary $P$, 254 bit $s$.],
     [BabyJubJubScalarMulFix], [512], [$s dot P$, for fixed, public $P$, 254 bit $s$.],
+    [BabyJubJubSubGroupCheck], [2182], [$P$ is in the prime order subgroup of BabyJubJub.],
     [Poseidon2 (t=2)], [216], [Poseidon2 with statesize 2.],
     [Poseidon2 (t=3)], [240], [Poseidon2 with statesize 3.],
     [Poseidon2 (t=4)], [265], [Poseidon2 with statesize 4.],
     [Poseidon2 (t=8)], [363], [Poseidon2 with statesize 8.],
     [Poseidon2 (t=16)], [555], [Poseidon2 with statesize 16.],
-    [EdDSAPoseidon2Verifier], [5615], [EdDSA Verification on BabyJubJub, using Poseidon2 as a Hash.],
-    [EncodeToCurveBabyJubJub], [808], [Encoding an arbitrary field element into a random BabyJubJub Curve point.],
-    [DLogEqVerify], [12287], [Verification of a discrete logarithm equality proof over BabyJubJub.],
-    [BinaryMerkleTree (d=32)], [7875], [Binary Merkle Tree using Poseidon2 with state size 2, depth 32.],
+    [EdDSAPoseidon2Verifier], [6436], [EdDSA Verification on BabyJubJub, using Poseidon2 as a Hash.],
+    [EncodeToCurveBabyJubJub], [811], [Encoding an arbitrary field element into a random BabyJubJub Curve point.],
+    [DLogEqVerify], [13929], [Verification of a discrete logarithm equality proof over BabyJubJub.],
+    [BinaryMerkleTree (d=32)], [6693], [Binary Merkle Tree using Poseidon2 with state size 2, depth 30.],
     [Semaphore (d=32)], [9383], [Semaphore proof with MT depth 32.],
     table.hline(stroke: 0.05em),
-    [OprfQuery (d=32)], [17325], [Full OPRF query proof $pi_1$],
-    [OprfNullifier (d=32)], [32414], [Full OPRF nullifier proof $pi_2$],
+    [OprfQuery (d=30)], [17836], [Full OPRF query proof $pi_1$],
+    [OprfNullifier (d=30)], [44285], [Full OPRF nullifier proof $pi_2$],
   ),
   caption: [Constraint cost for various Circom ZK building blocks.],
 ) <tab:circom_constraints>
+
+
+#pagebreak()
 
 
 #bibliography("references.bib")
@@ -705,16 +851,16 @@ We implemented the zero-knowledge proofs $pi_1$ and $pi_2$ from @sec:ZK in Circo
       box(stroke: black, inset: 1em)[
         #align(left)[
           - *Round1*:
-            1. Each party $P_i$ chooses a random polynomial $f_i (Z)$ over $bb(F)_p$ of degree $t$ $ f_i (Z) = a_(i,0) + a_(i,1) Z + dots + a_(i,t) Z^t $ and computes $A_(i,k) = G^(a_(i,k))$ for $k in[t]$. Denote $x_i= a_(i,0)$ and $X_i = A_(i,0)$. Each $P_i$ computes a proof of possession of $X_i$ as a Schnorr signature as follows. They sample $r_i arrowrl bb(F)_p$ and set $R_i arrow.l G^(r_i)$. They set $c_i arrow.l H(R_i, X_i)$ and set $z_i arrow.l r_i + c_i dot x_i$. They then derive a commitment $arrow(C)_i = (A_(i,0), dots, A_(i, t-1))$ and post $((R_i, z_i), arrow(C)_i)$ on chain.
-            2. The smart contract verifies the Schnorr signature by computing $c'_j arrow.l H(R_j, A_(j, 0))$ and checking that $ R_j A_(j,0)^(c'_j) = G^(z_j). $ If no error was found, the smart contract stores the commitments $arrow(C)$.
+            1. Each party $P_i$ chooses a random polynomial $f_i (Z)$ over $bb(F)_q$ of degree $t$ $ f_i (Z) = a_(i,0) + a_(i,1) Z + dots + a_(i,t) Z^t $ and computes $A_(i,k) = a_(i,k) dot G$ for $k in[t]$. Denote $x_i= a_(i,0)$ and $X_i = A_(i,0)$. Each $P_i$ computes a proof of possession of $X_i$ as a Schnorr signature as follows. They sample $r_i arrowrl bb(F)_p$ and set $R_i arrow.l r_i dot G$. They set $c_i arrow.l H(R_i, X_i)$ and set $z_i arrow.l r_i + c_i dot x_i$. They then derive a commitment $arrow(C)_i = (A_(i,0), dots, A_(i, t-1))$ and post $((R_i, z_i), arrow(C)_i)$ on chain.
+            2. The smart contract verifies the Schnorr signature by computing $c'_j arrow.l H(R_j, A_(j, 0))$ and checking that $ R_j + c'_j dot A_(j,0) = z_j dot G. $ If no error was found, the smart contract stores the commitments $arrow(C)$.
           - *Round2*:
             3. Each $P_i$ computes secret-shares $x_(i,j) = f_i (serif(id)_j)$ for $j = 1, dots, n$, where $serif(id)_j$ is the participant identifier, and posts an encryption of $x_(i,j)$ using $P_j$'s public key on chain.
-            4. Each party $P_j$ reads the shares from the other parties from the chain and check that $ G^(x_(i,j)) = product_(k=0)^(t)A_(i,k)^(serif(id)_j^k). $  If the check fails for an index $i$, then $P_j$ posts a complaint against $P_i$ on chain.
+            4. Each party $P_j$ reads the shares from the other parties from the chain and check that $ x_(i,j) dot G = sum_(k=0)^(t)serif(id)_j^k dot A_(i,k). $  If the check fails for an index $i$, then $P_j$ posts a complaint against $P_i$ on chain.
           - *Round3*:
             5. Each party has a predefined amount of time to post complaints on chain. For each of the complaining parties $P_j$ against $P_i$, $P_i$ broadcasts the share $x_(i,j)$. If any of the revealed shares fails to satisfy the equation, or should $P_i$ not broadcast anything for a complaining player, then $P_i$ is slashed and the protocol aborts.
           - *Output*:
             6. The secret-share for each $P_j$ is $s_j = sum_(i=1)^n x_(i,j)$.
-            7. The smart contract checks if $X_i=X_j$ for any $i != j$ in which case it aborts. Otherwise, it computes the public key from the commitments $serif(pk)=product_(i=1)^n X_i$.
+            7. The smart contract checks if $X_i=X_j$ for any $i != j$ in which case it aborts. Otherwise, it computes the public key from the commitments $serif(pk)=sum_(i=1)^n X_i$.
         ]],
       caption: [Proposal 1 for key generation based on PedPoP @CritesKM21.],
     )<scheme:proposal1>
@@ -739,14 +885,14 @@ We implemented the zero-knowledge proofs $pi_1$ and $pi_2$ from @sec:ZK in Circo
       box(stroke: black, inset: 1em)[
         #align(left)[
           - *Round1*:
-            1. Each party $P_i$ chooses a random polynomial $f_i (Z)$ over $bb(F)_p$ of degree $t$ $ f_i (Z) = a_(i,0) + a_(i,1) Z + dots + a_(i,t) Z^t, $ computes $X_i = G^(a_(i,0))$ and $c = H(a_(i,1), dots, a_(i, t))$, and posts $X_i$ and $c$ on chain.
+            1. Each party $P_i$ chooses a random polynomial $f_i (Z)$ over $bb(F)_q$ of degree $t$ $ f_i (Z) = a_(i,0) + a_(i,1) Z + dots + a_(i,t) Z^t, $ computes $X_i = a_(i,0) dot G$ and $c = H(a_(i,1), dots, a_(i, t))$, and posts $X_i$ and $c$ on chain.
           - *Round2*:
-            2. Each $P_i$ computes secret-shares $x_(i,j) = f_i (serif(id)_j)$ for $j = 1, dots, n$, where $serif(id)_j$ is the participant identifier, and posts a commitment $X_(i,j) = G^(x_(i,j))$ and an encryption of $x_(i,j)$ using $P_j$'s public key on chain, alongside a ZK proof verifying correctness.
+            2. Each $P_i$ computes secret-shares $x_(i,j) = f_i (serif(id)_j)$ for $j = 1, dots, n$, where $serif(id)_j$ is the participant identifier, and posts a commitment $X_(i,j) = x_(i,j) dot G$ and an encryption of $x_(i,j)$ using $P_j$'s public key on chain, alongside a ZK proof verifying correctness.
             3. The smart contract verifies the ZK proof and accepts the encryptions of the shares if the proof is correct.
             4. Each party $P_j$ reads the shares from the other parties from the chain.
           - *Output*:
             6. The secret-share for each $P_j$ is $s_j = sum_(i=1)^n x_(i,j)$.
-            7. The smart contract checks if $X_i=X_j$ for any $i != j$ in which case it aborts. Otherwise, it computes the public key from the commitments $serif(pk)=product_(i=1)^n X_i$.
+            7. The smart contract checks if $X_i=X_j$ for any $i != j$ in which case it aborts. Otherwise, it computes the public key from the commitments $serif(pk)=sum_(i=1)^n X_i$.
         ]],
       caption: [Proposal 2 for key generation using ZK proofs.],
     )<scheme:proposal2>
