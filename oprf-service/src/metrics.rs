@@ -4,6 +4,10 @@
 //! provides a helper [`describe_metrics`] to set metadata for
 //! each metric using the `metrics` crate.
 
+/// Observed event for start of OprfRequest authentication.
+pub const METRICS_ID_NODE_REQUEST_AUTH_START: &str = "taceo.oprf.node.request_auth.start";
+/// Observed event for successful verification of OprfRequest authentication.
+pub const METRICS_ID_NODE_REQUEST_AUTH_VERIFIED: &str = "taceo.oprf.node.request_auth.verified";
 /// Metrics key for counting successful OPRF evaluations
 pub const METRICS_ID_NODE_OPRF_SUCCESS: &str = "taceo.oprf.node.success";
 /// Metrics key for counting currently running sessions.
@@ -34,6 +38,18 @@ pub const METRICS_ID_NODE_CANNOT_FETCH_KEY_MATERIAL: &str = "taceo.oprf.node.fet
 ///
 /// This calls the `describe_*` functions from the `metrics` crate to set metadata on the different metrics.
 pub fn describe_metrics() {
+    metrics::describe_counter!(
+        METRICS_ID_NODE_REQUEST_AUTH_START,
+        metrics::Unit::Count,
+        "Number of OPRF request authentication attempts started."
+    );
+
+    metrics::describe_counter!(
+        METRICS_ID_NODE_REQUEST_AUTH_VERIFIED,
+        metrics::Unit::Count,
+        "Number of OPRF request authentications successfully verified."
+    );
+
     metrics::describe_counter!(
         METRICS_ID_NODE_OPRF_SUCCESS,
         metrics::Unit::Count,

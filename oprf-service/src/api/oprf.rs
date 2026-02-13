@@ -2,7 +2,8 @@ use crate::api::errors::Error;
 use crate::metrics::{
     METRICS_ID_NODE_OPRF_SUCCESS, METRICS_ID_NODE_PART_1_DURATION, METRICS_ID_NODE_PART_1_FINISH,
     METRICS_ID_NODE_PART_1_START, METRICS_ID_NODE_PART_2_DURATION, METRICS_ID_NODE_PART_2_FINISH,
-    METRICS_ID_NODE_PART_2_START, METRICS_ID_NODE_REQUEST_VERIFY_DURATION,
+    METRICS_ID_NODE_PART_2_START, METRICS_ID_NODE_REQUEST_AUTH_START,
+    METRICS_ID_NODE_REQUEST_AUTH_VERIFIED, METRICS_ID_NODE_REQUEST_VERIFY_DURATION,
     METRICS_ID_NODE_SESSIONS_TIMEOUT,
 };
 use crate::oprf_key_material_store::OprfSession;
@@ -280,6 +281,7 @@ async fn init_session<
     }
 
     tracing::debug!("verifying request with auth service...");
+    ::metrics::counter!(METRICS_ID_NODE_REQUEST_AUTH_START).increment(1);
     let start_verify = Instant::now();
     let oprf_key_id = req_auth_service
         .authenticate(&init_request)
@@ -289,6 +291,7 @@ async fn init_session<
             Error::Auth(err.to_string())
         })?;
     let duration_verify = start_verify.elapsed();
+    ::metrics::counter!(METRICS_ID_NODE_REQUEST_AUTH_VERIFIED).increment(1);
     ::metrics::histogram!(METRICS_ID_NODE_REQUEST_VERIFY_DURATION)
         .record(duration_verify.as_millis() as f64);
 
