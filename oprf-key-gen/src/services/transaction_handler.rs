@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    f64,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -8,7 +9,6 @@ use std::{
 };
 
 use alloy::{
-    consensus::constants::ETH_TO_WEI,
     contract::{CallBuilder, CallDecoder},
     eips::BlockNumberOrTag,
     network::{Network, ReceiptResponse},
@@ -23,14 +23,14 @@ use futures::StreamExt as _;
 use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry, crypto::PartyId};
 use tokio::{sync::oneshot, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
+use tracing::instrument;
 
 use crate::{
     metrics::{
-        METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_BLOB_GAS_PRICE, METRICS_ID_GAS_PRICE,
-        METRICS_ID_KEY_GEN_ROUND1_GAS, METRICS_ID_KEY_GEN_ROUND3_GAS,
-        METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK, METRICS_ID_KEY_GEN_RPC_RETRY,
-        METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ID_RESHARE_ROUND1_GAS,
-        METRICS_ID_RESHARE_ROUND3_GAS, METRICS_ID_ROUND2_GAS,
+        METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_GAS_PRICE, METRICS_ID_KEY_GEN_ROUND1_GAS,
+        METRICS_ID_KEY_GEN_ROUND3_GAS, METRICS_ID_KEY_GEN_RPC_NULL_BUT_OK,
+        METRICS_ID_KEY_GEN_RPC_RETRY, METRICS_ID_KEY_GEN_WALLET_BALANCE,
+        METRICS_ID_RESHARE_ROUND1_GAS, METRICS_ID_RESHARE_ROUND3_GAS, METRICS_ID_ROUND2_GAS,
     },
     services::key_event_watcher::TransactionError,
 };
@@ -244,6 +244,7 @@ impl TransactionHandler {
     ///     .await?;
     /// ```
     /// This method will then attempt to send the transaction via the provided RPC.
+    #[instrument(level = "info", skip_all)]
     pub(crate) async fn attempt_transaction<P, D, N, F>(
         &self,
         transaction_identifier: TransactionIdentifier,
@@ -273,12 +274,10 @@ impl TransactionHandler {
                 .get_receipt()
                 .await;
             if let Ok(balance) = self.provider.get_balance(self.wallet_address).await {
-                tracing::debug!(
-                    "current wallet balance: {} ETH",
-                    alloy::primitives::utils::format_ether(balance)
-                );
+                let balance_eth = alloy::primitives::utils::format_ether(balance);
+                tracing::debug!("current wallet balance: {balance_eth} ETH",);
                 ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ATTRID_WALLET_ADDRESS => self.wallet_address.to_string())
-                    .set(f64::from(balance) / ETH_TO_WEI as f64);
+                    .set(balance_eth.parse::<f64>().unwrap_or(f64::NAN));
             } else {
                 tracing::warn!("could not fetch current wallet balance");
             }
@@ -391,35 +390,33 @@ fn handle_success_receipt<R: ReceiptResponse>(
     let gas_used_gwei = ParseUnits::from(receipt.gas_used())
         .format_units(Unit::GWEI)
         .parse::<f64>()
-        .expect("Is a float");
+        .unwrap_or(f64::NAN);
     let cost_eth = alloy::primitives::utils::format_ether(receipt.cost());
+    // we do this to_string -> parse hop to have easy way to call to NAN if too large
+    let gas_price_wei = receipt
+        .effective_gas_price()
+        .to_string()
+        .parse::<f64>()
+        .unwrap_or(f64::NAN);
     let gas_price_eth = alloy::primitives::utils::format_ether(receipt.effective_gas_price());
-    // we did it!
+    tracing::debug!("successfully sent transaction");
     tracing::debug!("gas used: {gas_used_gwei} GWEI");
     tracing::debug!("transaction cost: {cost_eth} ETH");
     tracing::debug!("transaction gas price: {gas_price_eth} ETH");
-    if let Some(blob_price) = receipt.blob_gas_price() {
-        let blob_price_eth = alloy::primitives::utils::format_ether(blob_price);
-        tracing::debug!("transaction blob gas price: {blob_price_eth} ETH");
-        metrics::histogram!(METRICS_ID_BLOB_GAS_PRICE)
-            .record(blob_price_eth.parse::<f64>().expect("Is a float"))
-    }
-    tracing::debug!("successfully sent transaction");
-    metrics::histogram!(METRICS_ID_GAS_PRICE)
-        .record(gas_price_eth.parse::<f64>().expect("Is a float"));
+    metrics::gauge!(METRICS_ID_GAS_PRICE).set(gas_price_wei);
     match transaction_identifier.round {
         TransactionType::Round1 if epoch.is_initial_epoch() => {
-            metrics::histogram!(METRICS_ID_KEY_GEN_ROUND1_GAS).record(gas_used_gwei)
+            metrics::gauge!(METRICS_ID_KEY_GEN_ROUND1_GAS).set(gas_used_gwei)
         }
         TransactionType::Round1 => {
-            metrics::histogram!(METRICS_ID_RESHARE_ROUND1_GAS).record(gas_used_gwei)
+            metrics::gauge!(METRICS_ID_RESHARE_ROUND1_GAS).set(gas_used_gwei)
         }
-        TransactionType::Round2 => metrics::histogram!(METRICS_ID_ROUND2_GAS).record(gas_used_gwei),
+        TransactionType::Round2 => metrics::gauge!(METRICS_ID_ROUND2_GAS).set(gas_used_gwei),
         TransactionType::Round3 if epoch.is_initial_epoch() => {
-            metrics::histogram!(METRICS_ID_KEY_GEN_ROUND3_GAS).record(gas_used_gwei)
+            metrics::gauge!(METRICS_ID_KEY_GEN_ROUND3_GAS).set(gas_used_gwei)
         }
         TransactionType::Round3 => {
-            metrics::histogram!(METRICS_ID_RESHARE_ROUND3_GAS).record(gas_used_gwei)
+            metrics::gauge!(METRICS_ID_RESHARE_ROUND3_GAS).set(gas_used_gwei)
         }
     }
 }

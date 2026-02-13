@@ -53,6 +53,7 @@ pub(crate) mod services;
 pub use nodes_common::StartedServices;
 pub use services::oprf_key_material_store;
 pub use services::secret_manager;
+use tracing::instrument;
 
 /// [`OprfServiceBuilder`] to initialize a `OprfService` with multiple [`OprfRequestAuthService`]s.
 pub struct OprfServiceBuilder {
@@ -138,16 +139,7 @@ impl OprfServiceBuilder {
                 interval.tick().await;
                 loop {
                     interval.tick().await;
-                    tracing::info!("Refreshing key-material store - loading from DB");
-                    match secret_manager.load_secrets().await {
-                        Ok(refreshed_key_material) => {
-                            oprf_key_material_store.reload(refreshed_key_material)
-                        }
-                        // In case we get an error from the secret-manager, we simply log the error - we can still serve OPRF requests, nothing wrong with that.
-                        Err(err) => tracing::error!(
-                            "Could not load key-material store from secret-manager: {err:?}"
-                        ),
-                    }
+                    refresh_oprf_secrets_task(&secret_manager, &oprf_key_material_store).await;
                 }
             }
         });
@@ -245,5 +237,20 @@ impl OprfServiceBuilder {
                 .layer(TraceLayer::new_for_http()),
             self.key_event_watcher,
         )
+    }
+}
+
+#[instrument(level = "info", skip_all)]
+async fn refresh_oprf_secrets_task(
+    secret_manager: &SecretManagerService,
+    oprf_key_material_store: &OprfKeyMaterialStore,
+) {
+    tracing::info!("Refreshing key-material store - loading from DB");
+    match secret_manager.load_secrets().await {
+        Ok(refreshed_key_material) => oprf_key_material_store.reload(refreshed_key_material),
+        // In case we get an error from the secret-manager, we simply log the error - we can still serve OPRF requests, nothing wrong with that.
+        Err(err) => {
+            tracing::error!("Could not load key-material store from secret-manager: {err:?}")
+        }
     }
 }
