@@ -1,6 +1,6 @@
 [package]
 name = "taceo-oprf-types"
-version = "0.8.0"
+version = "0.8.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "Types for TACEO:OPRF"

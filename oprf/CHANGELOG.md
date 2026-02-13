@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.5.0...taceo-oprf-v0.6.0)
+
+### 🚜 Refactor
+
+
+- [**breaking**] Feature gate oprf-core and oprf-types in parent crate ([#462](https://github.com/TaceoLabs/oprf-service/pull/462)) - ([c72cf75](https://github.com/TaceoLabs/oprf-service/commit/c72cf7523cabfdd1b97ca3520680f311da01cf6d))
+
+
 ## [0.5.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.4.0...taceo-oprf-v0.5.0)
 
 ### ⚙️ Miscellaneous Tasks

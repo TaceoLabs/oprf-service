@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.4.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.4.1...taceo-oprf-dev-client-v0.4.2)
+
+### Build
+
+
+- *(deps)* Disable default-features for oprf-test-utils in oprf-dev-client ([#460](https://github.com/TaceoLabs/oprf-service/pull/460)) - ([7365cfa](https://github.com/TaceoLabs/oprf-service/commit/7365cfaa9d041581f41c97b92235fdd9ae422948))
+
+
 ## [0.4.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.4.0...taceo-oprf-dev-client-v0.4.1)
 
 ### ⚙️ Miscellaneous Tasks

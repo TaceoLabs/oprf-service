@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.4.1...taceo-oprf-key-gen-v0.5.0)
+
+### 🚜 Refactor
+
+
+- [**breaking**] Update env vars of key-gen config to all have same prefix, cleanup some field names ([#458](https://github.com/TaceoLabs/oprf-service/pull/458)) - ([adbc321](https://github.com/TaceoLabs/oprf-service/commit/adbc321b920e870907d7455bde427e0261504257))
+
+
 ## [0.4.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.4.0...taceo-oprf-key-gen-v0.4.1)
 
 ### 🐛 Bug Fixes
