@@ -1,4 +1,4 @@
-use std::{path::PathBuf, str::FromStr as _, time::Duration};
+use std::{path::PathBuf, str::FromStr as _};
 
 use crate::{
     PEER_ADDRESSES, PEER_PRIVATE_KEYS, TACEO_ADMIN_ADDRESS, deploy_anvil::TACEO_ADMIN_PRIVATE_KEY,
@@ -19,11 +19,6 @@ use itertools::Itertools;
 use oprf_types::{OprfKeyId, ShareEpoch};
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
-
-#[cfg(feature = "ci")]
-pub const TEST_TIMEOUT: Duration = Duration::from_secs(120);
-#[cfg(not(feature = "ci"))]
-pub const TEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeploySetup {
@@ -154,7 +149,7 @@ impl TestSetup {
                 _ = stream.next() => {
                     let _ = tx.send(());
                 }
-                _ = tokio::time::sleep(TEST_TIMEOUT) => {
+                _ = tokio::time::sleep(crate::TEST_TIMEOUT) => {
 
                 }
             }

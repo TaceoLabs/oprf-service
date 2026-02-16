@@ -1,6 +1,9 @@
 use alloy::{primitives::Address, providers::DynProvider};
-use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
+#[cfg(feature = "deploy-anvil")]
+use oprf_types::ShareEpoch;
+use oprf_types::{OprfKeyId, chain::OprfKeyRegistry};
 
+#[cfg(feature = "deploy-anvil")]
 use crate::TestOprfKeyRegistry;
 
 pub async fn register_oprf_nodes(
@@ -111,6 +114,7 @@ pub async fn delete_oprf_key_material(
     Ok(())
 }
 
+#[cfg(feature = "deploy-anvil")]
 pub async fn emit_delete_event(
     provider: DynProvider,
     oprf_key_registry: Address,
@@ -129,6 +133,7 @@ pub async fn emit_delete_event(
     Ok(())
 }
 
+#[cfg(feature = "deploy-anvil")]
 pub async fn emit_secret_gen_finalize(
     provider: DynProvider,
     oprf_key_registry: Address,
