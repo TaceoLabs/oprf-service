@@ -61,4 +61,4 @@ zeroize = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 axum-test = { workspace = true, features = ["ws"] }
-oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.5" }
+oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.6" }

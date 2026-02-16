@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.5.0...taceo-oprf-test-utils-v0.6.0)
+
+### 🐛 Bug Fixes
+
+
+- Correct some combination of features not building ([#465](https://github.com/TaceoLabs/oprf-service/pull/465)) - ([5ff3b85](https://github.com/TaceoLabs/oprf-service/commit/5ff3b8549bd2b526bedc069549538a348d7b47b2))
+
+
 ## [0.5.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.4.0...taceo-oprf-test-utils-v0.5.0)
 
 ### 🐛 Bug Fixes
