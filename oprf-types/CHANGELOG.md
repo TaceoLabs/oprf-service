@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.8.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.8.0...taceo-oprf-types-v0.8.1)
+
+### 🧪 Testing
+
+
+- Add exhaustive tests for node ([#456](https://github.com/TaceoLabs/oprf-service/pull/456)) - ([cb42ef9](https://github.com/TaceoLabs/oprf-service/commit/cb42ef99722da5a56944ced275fde42ae508776e))
+
+
 ## [0.8.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.7.1...taceo-oprf-types-v0.8.0)
 
 ### 🐛 Bug Fixes

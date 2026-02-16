@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.4.1...taceo-oprf-key-gen-v0.5.0)
+
+### 🚜 Refactor
+
+
+- Some more tracing cleanup in key_event_watchers - ([84a73ce](https://github.com/TaceoLabs/oprf-service/commit/84a73ce89d11586c44a06c39964e7860b4b9ae22))
+- Tracing clarity restructure - ([22c4c68](https://github.com/TaceoLabs/oprf-service/commit/22c4c68c183db344bc590bb7f0be6fe2bdcfc6eb))
+- [**breaking**] Update env vars of key-gen config to all have same prefix, cleanup some field names ([#458](https://github.com/TaceoLabs/oprf-service/pull/458)) - ([adbc321](https://github.com/TaceoLabs/oprf-service/commit/adbc321b920e870907d7455bde427e0261504257))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Removed blob_gas_price metric as always null - ([b097aeb](https://github.com/TaceoLabs/oprf-service/commit/b097aeb6b94bdd10af1e52e0d7607bf95fac0abd))
+
+
 ## [0.4.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.4.0...taceo-oprf-key-gen-v0.4.1)
 
 ### 🐛 Bug Fixes

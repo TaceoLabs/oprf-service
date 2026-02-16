@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.4.0...taceo-oprf-test-utils-v0.5.0)
+
+### 🐛 Bug Fixes
+
+
+- [**breaking**] Dont rely on caller of secret_manager impl macros to have its external deps, use different mod names for both ([#461](https://github.com/TaceoLabs/oprf-service/pull/461)) - ([d9c3241](https://github.com/TaceoLabs/oprf-service/commit/d9c3241d80c61dafcd555aaa294d260518ea2a2e))
+
+### 🧪 Testing
+
+
+- Add exhaustive tests for node ([#456](https://github.com/TaceoLabs/oprf-service/pull/456)) - ([cb42ef9](https://github.com/TaceoLabs/oprf-service/commit/cb42ef99722da5a56944ced275fde42ae508776e))
+
+
 ## [0.4.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.3.0...taceo-oprf-test-utils-v0.4.0)
 
 ### 🐛 Bug Fixes
