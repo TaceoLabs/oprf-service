@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.6.1...taceo-oprf-client-v0.7.0)
+
+### ⛰️ Features
+
+
+- [**breaking**] Add additional Error information to the case where not enough servers respond ([#464](https://github.com/TaceoLabs/oprf-service/pull/464)) - ([831928b](https://github.com/TaceoLabs/oprf-service/commit/831928bbce1e8b6356a56830d5aae3dde6e3cf4d))
+
+
 ## [0.6.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.6.0...taceo-oprf-client-v0.6.1)
 
 ### ⚙️ Miscellaneous Tasks

@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.7.1...taceo-oprf-service-v0.8.0)
+
+### 🚜 Refactor
+
+
+- [**breaking**] Removed region from config + endpoint - ([f3bb057](https://github.com/TaceoLabs/oprf-service/commit/f3bb057784d415baf575c8991be295e4f5176924))
+- Some more tracing cleanup in key_event_watchers - ([84a73ce](https://github.com/TaceoLabs/oprf-service/commit/84a73ce89d11586c44a06c39964e7860b4b9ae22))
+- Tracing clarity restructure - ([22c4c68](https://github.com/TaceoLabs/oprf-service/commit/22c4c68c183db344bc590bb7f0be6fe2bdcfc6eb))
+
+### 🧪 Testing
+
+
+- Add exhaustive tests for node ([#456](https://github.com/TaceoLabs/oprf-service/pull/456)) - ([cb42ef9](https://github.com/TaceoLabs/oprf-service/commit/cb42ef99722da5a56944ced275fde42ae508776e))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Added auth counter metric from other repo - ([0c8def2](https://github.com/TaceoLabs/oprf-service/commit/0c8def2a0815f5634251b420b3b31edc18997447))
+- Created span for refresh task - ([1d69f80](https://github.com/TaceoLabs/oprf-service/commit/1d69f8020667638f5b1e5eeba3fd2a73f3462014))
+
+
 ## [0.7.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.7.0...taceo-oprf-service-v0.7.1)
 
 ### 🚜 Refactor
