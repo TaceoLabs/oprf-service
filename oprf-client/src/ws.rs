@@ -37,8 +37,7 @@ impl WebSocketSession {
         connector: Connector,
     ) -> Result<Self, Error> {
         let endpoint = format!("{service}/api/{module}/oprf")
-            .replace("https", "wss")
-            .replace("http", "ws")
+            .replacen("http", "ws", 1)
             .parse()?;
         let version = env!("CARGO_PKG_VERSION");
         tracing::trace!("> sending request to {endpoint}..");
