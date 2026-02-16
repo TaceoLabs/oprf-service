@@ -164,11 +164,7 @@ impl OprfServiceBuilder {
         tracing::info!("init oprf-service...");
         let root = Router::new()
             .merge(api::health::routes(started_services.clone()))
-            .merge(api::info::routes(
-                oprf_key_material_store.clone(),
-                address,
-                config.region.clone(),
-            ));
+            .merge(api::info::routes(oprf_key_material_store.clone(), address));
 
         Ok(Self {
             config,

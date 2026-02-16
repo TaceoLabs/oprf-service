@@ -122,7 +122,6 @@ impl TestNode {
             get_oprf_key_material_timeout: Duration::from_secs(60),
             start_block: None,
             version_req: "1.0.0".parse().unwrap(),
-            region: "EU".to_owned(),
             db_connection_string: SecretString::from("connection-string"),
             db_max_connections: 1.try_into().unwrap(),
             db_schema: "schema".to_owned(),
