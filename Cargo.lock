@@ -6651,8 +6651,11 @@ name = "taceo-oprf-client"
 version = "0.7.0"
 dependencies = [
  "ark-ec",
+ "axum",
+ "axum-test",
  "ciborium",
  "futures",
+ "rand 0.8.5",
  "serde",
  "taceo-ark-babyjubjub",
  "taceo-oprf-core",

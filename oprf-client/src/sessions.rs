@@ -220,3 +220,109 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
         session_errors,
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::{
+        Router,
+        extract::{WebSocketUpgrade, ws::WebSocket},
+        response::IntoResponse,
+        routing::any,
+    };
+    use axum_test::{TestServer, TestServerBuilder};
+    use oprf_core::ddlog_equality::shamir::{DLogSessionShamir, DLogShareShamir};
+    use oprf_types::{
+        ShareEpoch,
+        api::{OprfPublicKeyWithEpoch, OprfResponse},
+        crypto::{OprfPublicKey, PartyId},
+    };
+
+    use crate::{OprfSessions, ws::WebSocketSession};
+
+    async fn ws_handler<C, Fut>(ws: WebSocketUpgrade, callback: C) -> impl IntoResponse
+    where
+        C: FnOnce(WebSocket) -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        ws.on_upgrade(callback)
+    }
+
+    async fn panic_on_message(mut socket: WebSocket) {
+        let _ = socket.recv().await;
+        panic!("Should not be called")
+    }
+
+    async fn mock_server<C, Fut>(callback: C) -> (TestServer, String)
+    where
+        C: FnOnce(WebSocket) -> Fut + Send + Sync + 'static + Clone,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        let test_server = TestServerBuilder::new()
+            .http_transport()
+            .build(Router::new().route(
+                "/api/test/oprf",
+                any(move |webscoket_upgrade| ws_handler(webscoket_upgrade, callback)),
+            ))
+            .expect("Can build test-server");
+        let address = test_server
+            .server_address()
+            .expect("Must be there")
+            .to_string()
+            .replacen("http", "ws", 1);
+        // remove trailing '/'
+        let address = if let Some(prefix) = address.strip_suffix("/") {
+            prefix.to_string()
+        } else {
+            address
+        };
+        (test_server, address)
+    }
+
+    fn oprf_response_with_party_id(id: u16) -> OprfResponse {
+        OprfResponse {
+            commitments: DLogSessionShamir::partial_commitments(
+                rand::random(),
+                DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>()),
+                &mut rand::thread_rng(),
+            )
+            .1,
+            party_id: PartyId::from(id),
+            oprf_pub_key_with_epoch: OprfPublicKeyWithEpoch {
+                key: OprfPublicKey::from(rand::random::<ark_babyjubjub::EdwardsAffine>()),
+                epoch: ShareEpoch::default(),
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn test_reject_duplicate_party_id() {
+        let (_test_server, should_address) = mock_server(panic_on_message).await;
+
+        let websocket_session0 = WebSocketSession::new(
+            should_address.clone(),
+            "test".to_owned(),
+            tokio_tungstenite::Connector::Plain,
+        )
+        .await
+        .expect("Can open websocket-session");
+
+        let websocket_session1 = WebSocketSession::new(
+            should_address.clone(),
+            "test".to_owned(),
+            tokio_tungstenite::Connector::Plain,
+        )
+        .await
+        .expect("Can open websocket-session");
+
+        let mut oprf_sessions = OprfSessions::with_capacity(ShareEpoch::default(), 2);
+
+        oprf_sessions
+            .push(websocket_session0, oprf_response_with_party_id(0))
+            .expect("Should work");
+
+        let is_address = oprf_sessions
+            .push(websocket_session1, oprf_response_with_party_id(0))
+            .expect_err("Should not work");
+        assert_eq!(is_address, should_address)
+    }
+}
