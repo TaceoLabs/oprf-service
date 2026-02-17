@@ -1,6 +1,6 @@
 [package]
 name = "taceo-oprf-test-utils"
-version = "0.6.0"
+version = "0.6.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "Utilities for testing TACEO:OPRF based services."

@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.7.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.7.0...taceo-oprf-client-v0.7.1)
+
+### 🐛 Bug Fixes
+
+
+- Only replace http once in client when building ws - ([7f73745](https://github.com/TaceoLabs/oprf-service/commit/7f73745bfd14ba1845d87db4f371023b321ac613))
+
+### 🧪 Testing
+
+
+- Add test-setup in oprf-client + dupl party id check - ([d15e566](https://github.com/TaceoLabs/oprf-service/commit/d15e5660bbcfe3a65e35e1f68054bac18832172f))
+
+
 ## [0.7.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.6.1...taceo-oprf-client-v0.7.0)
 
 ### ⛰️ Features
