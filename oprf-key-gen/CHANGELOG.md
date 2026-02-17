@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.5.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.5.0...taceo-oprf-key-gen-v0.5.1)
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Updated some metrics for clarity ([#473](https://github.com/TaceoLabs/oprf-service/pull/473)) - ([0da12ff](https://github.com/TaceoLabs/oprf-service/commit/0da12ff12258304718af0df9d05f995c15948c44))
+
+
 ## [0.5.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.4.1...taceo-oprf-key-gen-v0.5.0)
 
 ### 🚜 Refactor
