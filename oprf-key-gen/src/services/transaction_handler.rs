@@ -12,10 +12,7 @@ use alloy::{
     contract::{CallBuilder, CallDecoder},
     eips::BlockNumberOrTag,
     network::{Network, ReceiptResponse},
-    primitives::{
-        Address, B256,
-        utils::{ParseUnits, Unit},
-    },
+    primitives::{Address, B256},
     providers::{DynProvider, PendingTransactionError, Provider},
 };
 use eyre::Context as _;
@@ -387,8 +384,9 @@ fn handle_success_receipt<R: ReceiptResponse>(
     receipt: R,
 ) {
     let epoch = transaction_identifier.epoch;
-    let gas_used_gwei = ParseUnits::from(receipt.gas_used())
-        .format_units(Unit::GWEI)
+    let gas_used = receipt
+        .gas_used()
+        .to_string()
         .parse::<f64>()
         .unwrap_or(f64::NAN);
     let cost_eth = alloy::primitives::utils::format_ether(receipt.cost());
@@ -400,23 +398,19 @@ fn handle_success_receipt<R: ReceiptResponse>(
         .unwrap_or(f64::NAN);
     let gas_price_eth = alloy::primitives::utils::format_ether(receipt.effective_gas_price());
     tracing::debug!("successfully sent transaction");
-    tracing::debug!("gas used: {gas_used_gwei} GWEI");
+    tracing::debug!("gas used: {gas_used}");
     tracing::debug!("transaction cost: {cost_eth} ETH");
     tracing::debug!("transaction gas price: {gas_price_eth} ETH");
     metrics::gauge!(METRICS_ID_GAS_PRICE).set(gas_price_wei);
     match transaction_identifier.round {
         TransactionType::Round1 if epoch.is_initial_epoch() => {
-            metrics::gauge!(METRICS_ID_KEY_GEN_ROUND1_GAS).set(gas_used_gwei)
+            metrics::gauge!(METRICS_ID_KEY_GEN_ROUND1_GAS).set(gas_used)
         }
-        TransactionType::Round1 => {
-            metrics::gauge!(METRICS_ID_RESHARE_ROUND1_GAS).set(gas_used_gwei)
-        }
-        TransactionType::Round2 => metrics::gauge!(METRICS_ID_ROUND2_GAS).set(gas_used_gwei),
+        TransactionType::Round1 => metrics::gauge!(METRICS_ID_RESHARE_ROUND1_GAS).set(gas_used),
+        TransactionType::Round2 => metrics::gauge!(METRICS_ID_ROUND2_GAS).set(gas_used),
         TransactionType::Round3 if epoch.is_initial_epoch() => {
-            metrics::gauge!(METRICS_ID_KEY_GEN_ROUND3_GAS).set(gas_used_gwei)
+            metrics::gauge!(METRICS_ID_KEY_GEN_ROUND3_GAS).set(gas_used)
         }
-        TransactionType::Round3 => {
-            metrics::gauge!(METRICS_ID_RESHARE_ROUND3_GAS).set(gas_used_gwei)
-        }
+        TransactionType::Round3 => metrics::gauge!(METRICS_ID_RESHARE_ROUND3_GAS).set(gas_used),
     }
 }

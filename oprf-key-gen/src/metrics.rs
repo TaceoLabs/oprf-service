@@ -73,7 +73,7 @@ pub const METRICS_ID_RESHARE_ROUND3_GAS: &str =
     "taceo.oprf.key_gen.transaction.cost.round3.reshare";
 
 /// Gas price from the transactions
-pub const METRICS_ID_GAS_PRICE: &str = "taceo.oprf.key_gen.transaction.cost.price";
+pub const METRICS_ID_GAS_PRICE: &str = "taceo.oprf.key_gen.transaction.cost.gas_price";
 
 /// Describe all metrics used by the service.
 ///
@@ -152,27 +152,27 @@ pub fn describe_metrics() {
     metrics::describe_gauge!(
         METRICS_ID_KEY_GEN_ROUND1_GAS,
         metrics::Unit::Count,
-        "Gas used by a single transaction in key-gen round 1 in GWEI"
+        "Gas used by a single transaction in key-gen round 1"
     );
     metrics::describe_gauge!(
         METRICS_ID_RESHARE_ROUND1_GAS,
         metrics::Unit::Count,
-        "Gas used by a single transaction in reshare round 1 in GWEI"
+        "Gas used by a single transaction in reshare round 1"
     );
     metrics::describe_gauge!(
         METRICS_ID_ROUND2_GAS,
         metrics::Unit::Count,
-        "Gas used by a single transaction in key-gen/reshare round 2 in GWEI"
+        "Gas used by a single transaction in key-gen/reshare round 2"
     );
     metrics::describe_gauge!(
         METRICS_ID_KEY_GEN_ROUND3_GAS,
         metrics::Unit::Count,
-        "Gas used by a single transaction in key-gen round 3 in GWEI"
+        "Gas used by a single transaction in key-gen round 3"
     );
     metrics::describe_gauge!(
         METRICS_ID_RESHARE_ROUND3_GAS,
         metrics::Unit::Count,
-        "Gas used by a single transaction in reshare round 3 in GWEI"
+        "Gas used by a single transaction in reshare round 3"
     );
     metrics::describe_gauge!(
         METRICS_ID_GAS_PRICE,
