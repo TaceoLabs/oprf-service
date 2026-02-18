@@ -57,7 +57,7 @@ In this paper, we explore this setting in more detail and optimize various aspec
 
 == Notation
 
-In the rest of the manuscript, if not described otherwise, we refer to the prime describing the scalar field of the BN254 curve (which is also the base field of the BabyJubJub curve) as $p$ and refer to the prime describing the scalar field of the BabyJubJub curve as $q$. Furthermore, we denote field elements $in bb(F)$ with small letters, whereas elliptic curve points are denoted by capital letters. To denote a secret sharing of a value $x$ or $X$ we use a bracket notation $[x]$ and $[X]$, and using a value $[x]$ in an algorithm usually implies all parties operating on their share $x_i$.
+In the rest of the manuscript, if not described otherwise, we refer to the prime describing the scalar field of the BN254 curve (which is also the base field of the BabyJubJub curve) as $p$ and refer to the prime describing the scalar field of the BabyJubJub curve as $q$. Furthermore, we denote field elements $in bb(F)$ with small letters, whereas elliptic curve points are denoted by capital letters. To denote a secret sharing of a value $x$ or $X$ we use a bracket notation $[x]$ and $[X]$, and using a value $[x]$ in an algorithm usually implies that party $i$ operates on its share $x^(\(i\))$ using MPC protocols.
 
 == BabyJubJub <sec:babyjubjub>
 
@@ -284,20 +284,20 @@ Translating @fig:twohashdh from a single-server OPRF to a threshold OPRF is simp
 
 == Standard Ways to achieve Verifiability
 
-A verifiable OPRF protocol allows the OPRF client to ensure that the OPRF servers have correctly evaluated the OPRF function on the client's input. In the single-server setting, this can be achieved by having the server publish a public key $K = k dot G$ and proving that the same $k$ was used in the OPRF evaluation via a discrete logarithm equality (DLogEq) proof @ChaumP92, as described in @alg:prover. This method was originally proposed by @JareckiKK14. In the multi-server setting, we can trivially achieve verifiability by having each server publish a public key share $K_i = k_i dot G$ and then proving that the same $k_i$ was used in the OPRF evaluation using one DLogEq proof per party. We show this below in @fig:twohashdh_mpc_dlog.
+A verifiable OPRF protocol allows the OPRF client to ensure that the OPRF servers have correctly evaluated the OPRF function on the client's input. In the single-server setting, this can be achieved by having the server publish a public key $K = k dot G$ and proving that the same $k$ was used in the OPRF evaluation via a discrete logarithm equality (DLogEq) proof @ChaumP92, as described in @alg:prover. This method was originally proposed by @JareckiKK14. In the multi-server setting, we can trivially achieve verifiability by having each server publish a public key share $K^(\(i\)) = k^(\(i\)) dot G$ and then proving that the same $k^(\(i\))$ was used in the OPRF evaluation using one DLogEq proof per party. We show this below in @fig:twohashdh_mpc_dlog.
 
 #figure(
   rect(table(
     columns: (2fr, 1fr, 2fr),
     stroke: none,
-    table.header([Client($x$)], [], [$n$ Servers($[k]$)]),
+    table.header([Client($x$)], [], [$n$ Servers($k^(\(i\))$, $K^(\(i\)) = k^(\(i\)) dot G$)]),
     table.hline(stroke: 0.05em),
     [$beta arrowrl bb(Z)_q^*$], [], [],
-    [$A <- beta dot H_1(x)$], math.attach($arrow.r$, t: $A$), [$B_i <- k_i dot A$],
-    [], [], [$pi_i <- mono("DLogEq.Proof")(k_i, A, G)$],
-    [], math.attach($arrow.l$, t: $B_i, pi_i$), [],
+    [$A <- beta dot H_1(x)$], math.attach($arrow.r$, t: $A$), [$B^(\(i\)) <- k^(\(i\)) dot A$],
+    [], [], [$pi_i <- mono("DLogEq.Proof")(k^(\(i\)), A, G)$],
+    [], math.attach($arrow.l$, t: $B^(\(i\)), pi_i$), [],
     [$B <-mono("Reconstruct")([B])$], [], [],
-    [$forall i: mono("DLogEq.Verify")(A, G, B_i, K_i, pi_i)$], [], [],
+    [$forall i: mono("DLogEq.Verify")(A, G, B^(\(i\)), K^(\(i\)), pi_i)$], [], [],
     [Output $H_2(x, (beta^(-1) dot B))$],
   )),
   caption: [The distributed TwoHashDH OPRF construction derived from @fig:twohashdh_mpc, with added verifiability.],
@@ -306,7 +306,7 @@ A verifiable OPRF protocol allows the OPRF client to ensure that the OPRF server
 )
 <fig:twohashdh_mpc_dlog>
 
-This keeps the single request-response flow of the OPRF protocol, but adds a drawback: The client needs to verify a number of DLogEq proofs that scales with the set of servers participating in the OPRF protocol (or more concretely, the threshold used in the secret sharing scheme). Looking ahead, we want to recursively proof correct execution of the OPRF protocol in a zk-SNARK, and having this part be dependent on the threshold has two problems: (i) the ZK circuit is different for different configurations of thresholds and number of parties. Consequently, zk-SNARKs with a circuit-dependent setup phase have to perform that setup phase for each threshold that will be used; (ii) the cost of the zk-SNARK prover scales with the number of constraints in the system, and going to a large set of parties ($30+$) dominates other parts in the ZK circuit making it prohibitively expensive.
+This keeps the single request-response flow of the OPRF protocol, but adds a drawback: The client needs to verify a number of DLogEq proofs that scales with the set of servers participating in the OPRF protocol (or more concretely, the threshold used in the secret sharing scheme). Looking ahead, we want to recursively prove correct execution of the OPRF protocol in a zk-SNARK, and having this part be dependent on the threshold has two problems: (i) the ZK circuit is different for different configurations of thresholds and number of parties. Consequently, zk-SNARKs with a circuit-dependent setup phase have to perform that setup phase for each threshold that will be used; (ii) the cost of the zk-SNARK prover scales with the number of constraints in the system, and going to a large set of parties ($30+$) dominates other parts in the ZK circuit making it prohibitively expensive.
 
 == Distributed Discrete Logarithm Equality Proof
 
@@ -314,10 +314,10 @@ To address the issues described in the previous section, we present a way to dis
 
 === Additively Shared Discrete Logarithm Equality Proof
 
-In this section we describe how to distribute @alg:prover to multiple provers, where each prover has an additive secret-share of the value $k$. To reduce communication complexity, we introduce an accumulator party which reconstructs public values and computes challenges. Thus, each prover only has to communicate with the accumulating party, which in practice can be the verifier.
+In this section we describe how to distribute @alg:prover to multiple provers, where each prover has an additive secret-share of the value $k$. To reduce communication complexity, we introduce an accumulator party which reconstructs public values and computes challenges. Thus, each prover only has to communicate with the accumulating party, which in practice can be the verifier. In the next section we discuss the general approach, before preventing the clients to choose malicious challenges in the following ones.
 
 ==== Additively Shared Insecure Trivial Variant
-We start with a trivial solution to highlight the general approach, before making it secure in the next section. We depict the protocol in @alg:add_prover_insecure.
+We start with a trivial, insecure solution to highlight the general approach, before making it secure in the next section. We depict the protocol in @alg:add_prover_insecure.
 
 #show: style-algorithm
 #algorithm-figure(
@@ -328,24 +328,24 @@ We start with a trivial solution to highlight the general approach, before makin
     Comment([Each server $i$:])
     Function(
       "partial_commitments",
-      $k_i, A, G$,
+      $k^(\(i\)), A, G$,
       {
-        LineComment(Assign[$r_i$][$bb(F)_q$], [Sample random share $r_i$])
-        Assign[$R_(i,1)$][$r_i dot A$]
-        Assign[$R_(i,2)$][$r_i dot G$]
-        Assign[$B_i$][$k_i dot A$]
-        Return[$r_i, B_i, R_(i,1), R_(i,2)$]
+        LineComment(Assign[$r^(\(i\))$][$bb(F)_q$], [Sample random share $r^(\(i\))$])
+        Assign[$R^(\(i\))_(1)$][$r^(\(i\)) dot A$]
+        Assign[$R^(\(i\))_(2)$][$r^(\(i\)) dot G$]
+        Assign[$B^(\(i\))$][$k^(\(i\)) dot A$]
+        Return[$r^(\(i\)), B^(\(i\)), R^(\(i\))_(1), R^(\(i\))_(2)$]
       },
     )
     LineBreak
     Comment([The accumulator with input from all $n$ servers:])
     Function(
       "create_challenge",
-      $A, G, K, (B_1, R_(1,1), R_(1,2)), dots, (B_n, R_(n,1), R_(n,2))$,
+      $A, G, K, (B^(\(1\)), R^(\(1\))_(1), R^(\(1\))_(2)), dots, (B^(\(n\)), R^(\(n\))_(1), R^(\(n\))_(2))$,
       {
-        Assign[$R_1$][$R_(1,1) + dots + R_(n, 1)$]
-        Assign[$R_2$][$R_(1,2) + dots + R_(n, 2)$]
-        Assign[$B$][$B_1 + dots + B_n$]
+        Assign[$R_1$][$R^(\(1\))_(1) + dots + R^(\(n\))_(1)$]
+        Assign[$R_2$][$R^(\(1\))_(2) + dots + R^(\(n\))_(2)$]
+        Assign[$B$][$B^(\(1\)) + dots + B^(\(n\))$]
         Assign[$e$][$H(A,G, B,K,R_1, R_2) in bb(F)_q$]
         Return[$e$]
       },
@@ -354,19 +354,19 @@ We start with a trivial solution to highlight the general approach, before makin
     Comment([Each server $i$ on input $e$ from the client:])
     Function(
       "challenge",
-      $k_i, r_i, e$,
+      $k^(\(i\)), r^(\(i\)), e$,
       {
-        Assign[$s_i$][$r_i + e dot k_i$]
-        Return[$s_i$]
+        Assign[$s^(\(i\))$][$r^(\(i\)) + e dot k^(\(i\))$]
+        Return[$s^(\(i\))$]
       },
     )
     LineBreak
     Comment([The accumulator with input from all $n$ servers:])
     Function(
       "combine_proofs",
-      $e, s_1, ..., s_n$,
+      $e, s^(\(1\)), ..., s^(\(n\))$,
       {
-        Assign[$s$][$s_1 + dots + s_n$]
+        Assign[$s$][$s^(\(1\)) + dots + s^(\(n\))$]
         Return[$e, s$]
       },
     )
@@ -375,7 +375,7 @@ We start with a trivial solution to highlight the general approach, before makin
 
 @alg:add_prover_insecure requires two communication rounds between each server and the accumulator, but the servers do not need to communicate with any other server. Thereby, each random share of the server is protected by the discrete logarithm hardness assumption, preventing the accumulator from learning anything about the secrets $k, r$, and their shares.
 
-In essence, @alg:add_prover rewrites the non-interactive prove back to its interactive version. Thus, the accumulator would not need to sample the random value $e$ via the Fiat-Shamir random oracle. However, keeping the same verifier as in the non-distributed version and keeping public verifiability (i.e., proving on chain the proof was not simulated) requires the usage of the random oracle. Since the provers do not chose the challenge via Fiat-Shamir themselves, each server should only respond at most once to a challenge for an existing random share $r_i$.
+In essence, @alg:add_prover rewrites the non-interactive prove back to its interactive version. Thus, the accumulator would not need to sample the random value $e$ via the Fiat-Shamir random oracle. However, keeping the same verifier as in the non-distributed version and keeping public verifiability (i.e., proving on chain the proof was not simulated) requires the usage of the random oracle. Since the provers do not chose the challenge via Fiat-Shamir themselves, each server should only respond at most once to a challenge for an existing random share $r^(\(i\))$.
 
 ==== ROS Attacks
 
@@ -394,29 +394,29 @@ We now present our secure variant of the threshold discrete logarithm equality p
     Comment([Each server $i$:])
     Function(
       "partial_commitments",
-      $k_i, A, G$,
+      $k^(\(i\)), A, G$,
       {
-        LineComment(Assign[$d_i$][$bb(F)_q$], [Sample random share $d_i$])
-        LineComment(Assign[$e_i$][$bb(F)_q$], [Sample random share $e_i$])
-        Assign[$D_(i,1)$][$d_i dot A$]
-        Assign[$D_(i,2)$][$d_i dot G$]
-        Assign[$E_(i,1)$][$e_i dot A$]
-        Assign[$E_(i,2)$][$e_i dot G$]
-        Assign[$B_i$][$k_i dot A$]
-        Return[$(d_i, e_i), B_i, D_(i,1), D_(i,2), E_(i,1), E_(i,2)$]
+        LineComment(Assign[$d^(\(i\))$][$bb(F)_q$], [Sample random share $d^(\(i\))$])
+        LineComment(Assign[$e^(\(i\))$][$bb(F)_q$], [Sample random share $e^(\(i\))$])
+        Assign[$D^(\(i\))_(1)$][$d^(\(i\)) dot A$]
+        Assign[$D^(\(i\))_(2)$][$d^(\(i\)) dot G$]
+        Assign[$E^(\(i\))_(1)$][$e^(\(i\)) dot A$]
+        Assign[$E^(\(i\))_(2)$][$e^(\(i\)) dot G$]
+        Assign[$B^(\(i\))$][$k^(\(i\)) dot A$]
+        Return[$(d^(\(i\)), e^(\(i\))), B^(\(i\)), D^(\(i\))_(1), D^(\(i\))_(2), E^(\(i\))_(1), E^(\(i\))_(2)$]
       },
     )
     LineBreak
     Comment([The accumulator with input from all $n$ servers:])
     Function(
       "recombine_commitments",
-      $(B_1, D_(1,1), D_(1,2), E_(1,1), E_(1,2)), dots, (B_n, D_(n,1), D_(n,2), E_(n,1), E_(n,2))$,
+      $(B^(\(1\)), D^(\(1\))_(1), D^(\(1\))_(2), E^(\(1\))_(1), E^(\(1\))_(2)), dots, (B^(\(n\)), D^(\(n\))_(1), D^(\(n\))_(2), E^(\(n\))_(1), E^(\(n\))_(2))$,
       {
-        Assign[$D_1$][$D_(1,1) + dots + D_(n, 1)$]
-        Assign[$D_2$][$D_(1,2) + dots + D_(n, 2)$]
-        Assign[$E_1$][$E_(1,1) + dots + E_(n, 1)$]
-        Assign[$E_2$][$E_(1,2) + dots + E_(n, 2)$]
-        Assign[$B$][$B_1 + dots + B_n$]
+        Assign[$D_1$][$D^(\(1\))_(1) + dots + D^(\(n\))_(1)$]
+        Assign[$D_2$][$D^(\(1\))_(2) + dots + D^(\(n\))_(2)$]
+        Assign[$E_1$][$E^(\(1\))_(1) + dots + E^(\(n\))_(1)$]
+        Assign[$E_2$][$E^(\(1\))_(2) + dots + E^(\(n\))_(2)$]
+        Assign[$B$][$B^(\(1\)) + dots + B^(\(n\))$]
         Return[$D_1,D_2,E_1,E_2,B$]
       },
     )
@@ -424,28 +424,28 @@ We now present our secure variant of the threshold discrete logarithm equality p
     Comment([Each server $i$ on input $(D_1,D_2,E_1,E_2,B)$ from the client:])
     Function(
       "challenge",
-      $k_i, d_i, e_i, A, G, B, K, D_1, D_2, E_1, E_2$,
+      $k^(\(i\)), d^(\(i\)), e^(\(i\)), A, G, B, K, D_1, D_2, E_1, E_2$,
       {
         Assign[$b$][$H_b (B, K, D_1, D_2, E_1, E_2) in bb(F)_q$]
         Assign[$R_1$][$D_1+ b dot E_1$]
         Assign[$R_2$][$D_2+ b dot E_2$]
         Assign[$e$][$H(A,G, B, K, G, R_1, R_2) in bb(F)_q$]
-        Assign[$s_i$][$d_i + b dot e_i + e dot k_i$]
-        Return[$s_i$]
+        Assign[$s^(\(i\))$][$d^(\(i\)) + b dot e^(\(i\)) + e dot k^(\(i\))$]
+        Return[$s^(\(i\))$]
       },
     )
     LineBreak
     Comment([The accumulator with input from all $n$ servers:])
     Function(
       "combine_proofs",
-      $s_1, ..., s_n, A, G,B,K, D_1, D_2, E_1, E_2$,
+      $s^(\(1\)), ..., s^(\(n\)), A, G,B,K, D_1, D_2, E_1, E_2$,
       {
         Assign[$b$][$H_b (B, K, D_1, D_2, E_1, E_2) in bb(F)_q$]
         Assign[$R_1$][$D_1+ b dot E_1$]
         Assign[$R_2$][$D_2+ b dot E_2$]
         Assign[$e$][$H(A, G, B, K,
           R_1, R_2) in bb(F)_q$]
-        Assign[$s$][$s_1 + dots + s_n$]
+        Assign[$s$][$s^(\(1\)) + dots + s^(\(n\))$]
         Return[$e, s$]
       },
     )
@@ -456,7 +456,7 @@ The main differences to @alg:add_prover_insecure are that i) each server respond
 
 === Shamir Shared Discrete Logarithm Equality Proof
 
-In order to rewrite @alg:add_prover from additive to Shamir secret-sharing, we have to make the following changes. First, the share $k_i$ needs to be a valid Shamir share. Second, reconstructions of elements involving $k_i$ (i.e., $B$ from all $B_i$, and $s$ from $s_i$) require lagrange interpolation. The latter requires the client to chose $d+1$ servers (where $d$ is the chosen degree of the underlying sharing polynomial) as a signing set $T$. We further include $T$ in the random oracle choosing $b$ as well. We depict the final protocol in @alg:shamir_prover, highlighting the changes to @alg:add_prover in blue.
+In order to rewrite @alg:add_prover from additive to Shamir secret-sharing, we have to make the following changes. First, the share $k^(\(i\))$ needs to be a valid Shamir share. Second, reconstructions of elements involving $k^(\(i\))$ (i.e., $B$ from all $B^(\(i\))$, and $s$ from $s^(\(i\))$) require lagrange interpolation. The latter requires the client to chose $d+1$ servers (where $d$ is the chosen degree of the underlying sharing polynomial) as a signing set $T$. We further include $T$ in the random oracle choosing $b$ as well. We depict the final protocol in @alg:shamir_prover, highlighting the changes to @alg:add_prover in blue.
 
 #show: style-algorithm
 #algorithm-figure(
@@ -467,29 +467,29 @@ In order to rewrite @alg:add_prover from additive to Shamir secret-sharing, we h
     Comment([Each server $i$:])
     Function(
       "partial_commitments",
-      $k_i, A, G$,
+      $k^(\(i\)), A, G$,
       {
-        LineComment(Assign[$d_i$][$bb(F)_q$], [Sample random share $d_i$])
-        LineComment(Assign[$e_i$][$bb(F)_q$], [Sample random share $e_i$])
-        Assign[$D_(i,1)$][$d_i dot A$]
-        Assign[$D_(i,2)$][$d_i dot G$]
-        Assign[$E_(i,1)$][$e_i dot A$]
-        Assign[$E_(i,2)$][$e_i dot G$]
-        Assign[$B_i$][$k_i dot A$]
-        Return[$(d_i, e_i), B_i, D_(i,1), D_(i,2), E_(i,1), E_(i,2)$]
+        LineComment(Assign[$d^(\(i\))$][$bb(F)_q$], [Sample random share $d^(\(i\))$])
+        LineComment(Assign[$e^(\(i\))$][$bb(F)_q$], [Sample random share $e^(\(i\))$])
+        Assign[$D^(\(i\))_(1)$][$d^(\(i\)) dot A$]
+        Assign[$D^(\(i\))_(2)$][$d^(\(i\)) dot G$]
+        Assign[$E^(\(i\))_(1)$][$e^(\(i\)) dot A$]
+        Assign[$E^(\(i\))_(2)$][$e^(\(i\)) dot G$]
+        Assign[$B^(\(i\))$][$k^(\(i\)) dot A$]
+        Return[$(d^(\(i\)), e^(\(i\))), B^(\(i\)), D^(\(i\))_(1), D^(\(i\))_(2), E^(\(i\))_(1), E^(\(i\))_(2)$]
       },
     )
     LineBreak
     Comment([The accumulator with input from $t = d+1$ out of $n$ servers:])
     Function(
       "recombine_commitments",
-      $(B_1, D_(1,1), D_(1,2), E_(1,1), E_(1,2)), dots, (B_t, D_(t,1), D_(t,2), E_(t,1), E_(t,2))$,
+      $(B^(\(1\)), D^(\(1\))_(1), D^(\(1\))_(2), E^(\(1\))_(1), E^(\(1\))_(2)), dots, (B^(\(t\)), D^(\(t\))_(1), D^(\(t\))_(2), E^(\(t\))_(1), E^(\(t\))_(2))$,
       {
-        Assign[$D_1$][$D_(1,1) + dots + D_(t, 1)$]
-        Assign[$D_2$][$D_(1,2) + dots + D_(t, 2)$]
-        Assign[$E_1$][$E_(1,1) + dots + E_(t, 1)$]
-        Assign[$E_2$][$E_(1,2) + dots + E_(t, 2)$]
-        Assign[$B$][$#emph(text(blue)[$lambda_1$])dot B_1 + dots + #emph(text(blue)[$lambda_t$])dot B_t$]
+        Assign[$D_1$][$D^(\(1\))_(1) + dots + D^(\(t\))_(1)$]
+        Assign[$D_2$][$D^(\(1\))_(2) + dots + D^(\(t\))_(2)$]
+        Assign[$E_1$][$E^(\(1\))_(1) + dots + E^(\(t\))_(1)$]
+        Assign[$E_2$][$E^(\(1\))_(2) + dots + E^(\(t\))_(2)$]
+        Assign[$B$][$#emph(text(blue)[$lambda_1$])dot B^(\(1\)) + dots + #emph(text(blue)[$lambda_t$])dot B^(\(t\))$]
         Return[$D_1,D_2,E_1,E_2,B$]
       },
     )
@@ -499,27 +499,27 @@ In order to rewrite @alg:add_prover from additive to Shamir secret-sharing, we h
     )
     Function(
       "challenge",
-      $k_i, d_i, e_i, A, G, B, K, D_1, D_2, E_1, E_2, #emph(text(blue)[$T$]))$,
+      $k^(\(i\)), d^(\(i\)), e^(\(i\)), A, G, B, K, D_1, D_2, E_1, E_2, #emph(text(blue)[$T$]))$,
       {
         Assign[$b$][$H_b (#emph(text(blue)[$T$]), B, K, D_1, D_2, E_1, E_2) in bb(F)_q$]
         Assign[$R_1$][$D_1+ b dot E_1$]
         Assign[$R_2$][$D_2+ b dot E_2$]
         Assign[$e$][$H(A, G, B, K,R_1, R_2) in bb(F)_q$]
-        Assign[$s_i$][$d_i + b dot e_i + e dot k_i dot #emph(text(blue)[$lambda_i$])$]
-        Return[$s_i$]
+        Assign[$s^(\(i\))$][$d^(\(i\)) + b dot e^(\(i\)) + e dot k^(\(i\)) dot #emph(text(blue)[$lambda_i$])$]
+        Return[$s^(\(i\))$]
       },
     )
     LineBreak
     Comment([The accumulator with input from $t = d+1$ out of $n$ servers:])
     Function(
       "combine_proofs",
-      $s_1, ..., s_t, A, G, B, K, D_1, D_2, E_1, E_2, #emph(text(blue)[$T$])$,
+      $s^(\(1\)), ..., s^(\(t\)), A, G, B, K, D_1, D_2, E_1, E_2, #emph(text(blue)[$T$])$,
       {
         Assign[$b$][$H_b ( #emph(text(blue)[$T$]), B, K, D_1, D_2, E_1, E_2) in bb(F)_q$]
         Assign[$R_1$][$D_1+ b dot E_1$]
         Assign[$R_2$][$D_2+ b dot E_2$]
         Assign[$e$][$H(A, G, B, K, R_1, R_2) in bb(F)_q$]
-        Assign[$s$][$s_1 + dots + s_t$]
+        Assign[$s$][$s^(\(1\)) + dots + s^(\(t\))$]
         Return[$e, s$]
       },
     )
@@ -544,7 +544,7 @@ In this section, we present the full threshold OPRF protocol with additions to m
   rect(table(
     columns: (2fr, 1fr, 2fr),
     stroke: none,
-    table.header([Client($x, K, G$)], [], [$n$ Servers($k_i, K = k dot G$)]),
+    table.header([Client($x, K, G$)], [], [$n$ Servers($k^(\(i\)), K = k dot G$)]),
     table.hline(stroke: 0.05em),
     [$beta arrowrl bb(Z)_q^*$], [], [],
     [$r arrowrl bb(Z)_p$], [], [],
@@ -553,14 +553,16 @@ In this section, we present the full threshold OPRF protocol with additions to m
     [],
     math.attach($arrow.r$, t: $A$),
     [], [], [],
-    [$((d_i, e_i), B_i, D_(i,1), D_(i,2), E_(i,1), E_(i,2)) <- #linebreak() mono("dlog.partial_commitments")(k_i, A, G)$],
+    [$((d^(\(i\)), e^(\(i\))), B^(\(i\)), D^(\(i\))_(1), D^(\(i\))_(2), E^(\(i\))_(1), E^(\(i\))_(2)) <- #linebreak() mono("dlog.partial_commitments")(k^(\(i\)), A, G)$],
     [$T$ is the set of $t$ used parties], math.attach($arrow.l$, t: $[B], [D_1], [D_2], [E_1], [E_2]$), [],
     [$(B, D_1, D_2, E_1, E_2) <-#linebreak() mono("dlog.recombine_commitments")( [B], #linebreak() [D_1], [D_2], [E_1], [E_2])$],
     [],
     [],
     [], math.attach($arrow.r$, t: $B, D_1, D_2, E_1, E_2, T$), [],
-    [], [], [$s_i <-mono("dlog.challenge")(k_i, d_i, e_i, #linebreak() A, G, B, K, D_1, D_2, E_1, E_2, T)$],
-    [$(e,s) <-mono("dlog.combine_proofs")(#linebreak()s_1, ..., s_t, A, G, B, K, D_1, D_2, E_1, E_2, T)$],
+    [],
+    [],
+    [$s^(\(i\)) <-mono("dlog.challenge")(k^(\(i\)), d^(\(i\)), e^(\(i\)), #linebreak() A, G, B, K, D_1, D_2, E_1, E_2, T)$],
+    [$(e,s) <-mono("dlog.combine_proofs")(s^(\(1\)), ...,#linebreak() s^(\(t\)), A, G, B, K, D_1, D_2, E_1, E_2, T)$],
     math.attach($arrow.l$, t: $[s]$),
     [],
     [$y <- H_2(x, (beta^(-1) dot B))$], [], [],
@@ -697,7 +699,7 @@ We give the full verifiable OPRF based distributed nullifier service constructio
   rect(table(
     columns: (2fr, 1fr, 2fr),
     stroke: none,
-    table.header([Client($sk, pk, uid, rpid, action, K, sigma_"cred"$)], [], [$n$ Server($k_i, K = k dot G$)]),
+    table.header([Client($sk, pk, uid, rpid, action, K, sigma_"cred"$)], [], [$n$ Server($k^(\(i\)), K = k dot G$)]),
     table.hline(stroke: 0.05em),
     [$beta arrowrl bb(Z)_q^*$], [], [],
     [$q' <- H_(q') (uid, rpid, action)$], [], [],
@@ -708,13 +710,16 @@ We give the full verifiable OPRF based distributed nullifier service constructio
     [if $mono("verify")(pi_1, A, action, rpid) = bot$ then abort],
     [],
     [],
-    [$((d_i, e_i), B_i, D_(i,1), D_(i,2), E_(i,1), E_(i,2)) <- #linebreak() mono("dlog.partial_commitments")(k_i, A, G)$],
+    [$((d^(\(i\)), e^(\(i\))), B^(\(i\)), D^(\(i\))_(1), D^(\(i\))_(2), E^(\(i\))_(1), E^(\(i\))_(2)) <- #linebreak() mono("dlog.partial_commitments")(k^(\(i\)), A, G)$],
     [$T$ is the set of $t$ used parties], math.attach($arrow.l$, t: $[B], [D_1], [D_2], [E_1], [E_2]$), [],
     [$(B, D_1, D_2, E_1, E_2) <-#linebreak() mono("dlog.recombine_commitments")( [B], #linebreak() [D_1], [D_2], [E_1], [E_2])$],
     [],
     [],
-    [], [], [$s_i <-mono("dlog.challenge")(k_i, d_i, e_i, #linebreak() A, G, B, K, D_1, D_2, E_1, E_2,T)$],
-    [$(e,s) <-mono("dlog.combine_proofs")(#linebreak()s_1, ..., s_t, A, G, B, K, D_1, D_2, E_1, E_2, T)$],
+    [], math.attach($arrow.r$, t: $B, D_1, D_2, E_1, E_2, T$), [],
+    [],
+    [],
+    [$s^(\(i\)) <-mono("dlog.challenge")(k^(\(i\)), d^(\(i\)), e^(\(i\)), #linebreak() A, G, B, K, D_1, D_2, E_1, E_2,T)$],
+    [$(e,s) <-mono("dlog.combine_proofs")(s^(\(1\)), ...,#linebreak() s^(\(t\)), A, G, B, K, D_1, D_2, E_1, E_2, T)$],
     math.attach($arrow.l$, t: $[s]$),
     [],
     [$y <- H_2(q', (beta^(-1) dot C))$], [], [],
