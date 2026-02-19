@@ -4,6 +4,9 @@
 //! provides a helper [`describe_metrics`] to set metadata for
 //! each metric using the `metrics` crate.
 
+/// Event signaling that the node is alive
+pub const METRICS_ID_I_AM_ALIVE: &str = "taceo.oprf.node.i.am.alive";
+
 /// Observed event for start of OprfRequest authentication.
 pub const METRICS_ID_NODE_REQUEST_AUTH_START: &str = "taceo.oprf.node.request_auth.start";
 /// Observed event for successful verification of OprfRequest authentication.
@@ -38,6 +41,11 @@ pub const METRICS_ID_NODE_CANNOT_FETCH_KEY_MATERIAL: &str = "taceo.oprf.node.fet
 ///
 /// This calls the `describe_*` functions from the `metrics` crate to set metadata on the different metrics.
 pub fn describe_metrics() {
+    metrics::describe_counter!(
+        METRICS_ID_I_AM_ALIVE,
+        metrics::Unit::Count,
+        "I am alive metric. Used to measure liveness in datadog"
+    );
     metrics::describe_counter!(
         METRICS_ID_NODE_REQUEST_AUTH_START,
         metrics::Unit::Count,
