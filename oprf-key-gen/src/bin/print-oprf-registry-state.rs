@@ -23,7 +23,11 @@ use oprf_types::chain::OprfKeyRegistry::{self, OprfKeyRegistryInstance};
 #[command(name = "print-oprf-registry-state")]
 struct Args {
     /// RPC URL (e.g. http://127.0.0.1:8545 for local anvil).
-    #[arg(long, env = "OPRF_REGISTRY_RPC_URL", default_value = "http://127.0.0.1:8545")]
+    #[arg(
+        long,
+        env = "OPRF_REGISTRY_RPC_URL",
+        default_value = "http://127.0.0.1:8545"
+    )]
     rpc_url: String,
 
     /// OprfKeyRegistry contract address.
@@ -154,8 +158,10 @@ fn replay_events(
                 row.generated_epoch = decoded.inner.data.epoch;
             }
         } else if *topic0 == OprfKeyRegistry::SecretGenFinalize::SIGNATURE_HASH {
-            let decoded: alloy::rpc::types::Log<OprfKeyRegistry::SecretGenFinalize> =
-                log.clone().log_decode().context("decode SecretGenFinalize")?;
+            let decoded: alloy::rpc::types::Log<OprfKeyRegistry::SecretGenFinalize> = log
+                .clone()
+                .log_decode()
+                .context("decode SecretGenFinalize")?;
             let oprf_key_id = decoded.inner.data.oprfKeyId;
             let epoch = decoded.inner.data.epoch;
             if let Some(row) = running_key_gens.get_mut(&oprf_key_id) {
@@ -178,8 +184,10 @@ fn replay_events(
             }
             registered.remove(&oprf_key_id);
         } else if *topic0 == OprfKeyRegistry::NotEnoughProducers::SIGNATURE_HASH {
-            let decoded: alloy::rpc::types::Log<OprfKeyRegistry::NotEnoughProducers> =
-                log.clone().log_decode().context("decode NotEnoughProducers")?;
+            let decoded: alloy::rpc::types::Log<OprfKeyRegistry::NotEnoughProducers> = log
+                .clone()
+                .log_decode()
+                .context("decode NotEnoughProducers")?;
             let oprf_key_id = decoded.inner.data.oprfKeyId;
             if let Some(row) = running_key_gens.get_mut(&oprf_key_id) {
                 row.round = Round::Stuck;
@@ -202,19 +210,14 @@ fn main() -> eyre::Result<()> {
 
 async fn run(args: &Args) -> eyre::Result<()> {
     let rpc_url = reqwest::Url::parse(&args.rpc_url).context("invalid rpc_url")?;
-    let provider = ProviderBuilder::new()
-        .connect_http(rpc_url)
-        .erased();
+    let provider = ProviderBuilder::new().connect_http(rpc_url).erased();
 
     let contract_address = args.contract_address;
     let from_block = args.from_block;
 
     let filter = key_gen_log_filter(contract_address, from_block);
 
-    let logs = provider
-        .get_logs(&filter)
-        .await
-        .context("get_logs")?;
+    let logs = provider.get_logs(&filter).await.context("get_logs")?;
 
     let key_gen_topic0 = [
         OprfKeyRegistry::SecretGenRound1::SIGNATURE_HASH,
@@ -229,9 +232,7 @@ async fn run(args: &Args) -> eyre::Result<()> {
     ];
     let mut sorted: Vec<(u64, u64, Log<LogData>)> = logs
         .into_iter()
-        .filter(|log| {
-            log.topic0().map_or(false, |t| key_gen_topic0.iter().any(|sig| *t == *sig))
-        })
+        .filter(|log| log.topic0().is_some_and(|t| key_gen_topic0.contains(t)))
         .map(|log| {
             let block = log.block_number.unwrap_or(0);
             let idx = log.log_index.unwrap_or(0);
@@ -241,7 +242,9 @@ async fn run(args: &Args) -> eyre::Result<()> {
     sorted.sort_by_key(|(block, idx, _)| (*block, *idx));
 
     if sorted.is_empty() {
-        eprintln!("No key-gen events found for contract {contract_address} from block {from_block}. Check address and RPC.");
+        eprintln!(
+            "No key-gen events found for contract {contract_address} from block {from_block}. Check address and RPC."
+        );
         return Ok(());
     }
 
@@ -261,7 +264,10 @@ async fn run(args: &Args) -> eyre::Result<()> {
         "{:<W_ID$} {:>W_ROUND$} {:>W_EPOCH$} {:>W_KIND$}",
         "oprfKeyId", "round", "epoch", "kind"
     );
-    println!("{}", "-".repeat(W_ID + 1 + W_ROUND + 1 + W_EPOCH + 1 + W_KIND));
+    println!(
+        "{}",
+        "-".repeat(W_ID + 1 + W_ROUND + 1 + W_EPOCH + 1 + W_KIND)
+    );
     for (id, row) in &running_key_gens {
         if !args.show_not_started && row.round == Round::NotStarted {
             continue;
