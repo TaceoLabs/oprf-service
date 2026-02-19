@@ -123,4 +123,13 @@ pub struct OprfNodeConfig {
     /// The max retries for backoff strategy in db. With default acquire_timeout and retry delay, this is ~40min.
     #[clap(long, env = "OPRF_NODE_DB_MAX_RETRIES", default_value = "20")]
     pub db_max_retries: NonZeroUsize,
+
+    /// Interval in which we emit "I am alive" metric
+    #[clap(
+        long,
+        env = "OPRF_NODE_I_AM_ALIVE_INTERVAL",
+        default_value = "1min",
+        value_parser=humantime::parse_duration
+    )]
+    pub i_am_alive_interval: Duration,
 }

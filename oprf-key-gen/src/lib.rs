@@ -10,7 +10,9 @@
 
 use crate::{
     config::OprfKeyGenConfig,
-    metrics::{METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_KEY_GEN_WALLET_BALANCE},
+    metrics::{
+        METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_I_AM_ALIVE, METRICS_ID_KEY_GEN_WALLET_BALANCE,
+    },
     services::{
         key_event_watcher::KeyEventWatcherTaskConfig,
         secret_gen::DLogSecretGenService,
@@ -50,7 +52,7 @@ impl KeyGenTasks {
     /// Consumes the task by joining every registered `JoinHandle`.
     pub async fn join(self) -> eyre::Result<()> {
         let (transaction_handler_result, key_event_watcher_result) =
-            tokio::join!(self.transaction_handler, self.key_event_watcher);
+            tokio::join!(self.transaction_handler, self.key_event_watcher,);
         transaction_handler_result??;
         key_event_watcher_result??;
         Ok(())
@@ -158,7 +160,29 @@ pub async fn start(
         })
     });
 
-    let key_gen_router = api::routes(address, started_services);
+    let key_gen_router = api::routes(address, started_services.clone());
+
+    tokio::task::spawn({
+        let cancellation_token = cancellation_token.clone();
+        let mut interval = tokio::time::interval(config.i_am_alive_interval);
+        async move {
+            tracing::info!("starting i am alive task");
+            loop {
+                tokio::select! {
+                   _ = interval.tick() => {
+                        if started_services.all_started() {
+                            ::metrics::counter!(METRICS_ID_I_AM_ALIVE).increment(1);
+                        }
+                   },
+                   _ = cancellation_token.cancelled() => {
+                       break;
+                   }
+                }
+            }
+            tracing::info!("shutting down i am alive task");
+        }
+    });
+
     Ok((
         key_gen_router,
         KeyGenTasks {

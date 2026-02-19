@@ -21,6 +21,9 @@ pub const METRICS_ATTRVAL_PROTOCOL_KEY_GEN: &str = "key_gen";
 /// Attribute value for PROTOCOL describing reshare
 pub const METRICS_ATTRVAL_PROTOCOL_RESHARE: &str = "reshare";
 
+/// Event signaling that the key-gen is alive
+pub const METRICS_ID_I_AM_ALIVE: &str = "taceo.oprf.key_gen.i.am.alive";
+
 /// Observed event for start of round 1
 pub const METRICS_ID_KEY_GEN_ROUND_1_START: &str = "taceo.oprf.key_gen.round_1.start";
 /// Finished processing round 1 on our side
@@ -79,6 +82,11 @@ pub const METRICS_ID_GAS_PRICE: &str = "taceo.oprf.key_gen.transaction.cost.gas_
 ///
 /// This calls the `describe_*` functions from the `metrics` crate to set metadata on the different metrics.
 pub fn describe_metrics() {
+    metrics::describe_counter!(
+        METRICS_ID_I_AM_ALIVE,
+        metrics::Unit::Count,
+        "I am alive metric. Used to measure liveness in datadog"
+    );
     metrics::describe_counter!(
         METRICS_ID_KEY_GEN_ROUND_1_START,
         metrics::Unit::Count,

@@ -29,7 +29,7 @@
 //! If you want to enable HTTP/2.0, you either have to do it by hand or by calling `axum::serve`, which enabled HTTP/2.0 by default. Have a look at [Axum's HTTP2.0 example](https://github.com/tokio-rs/axum/blob/aeff16e91af6fa76efffdee8f3e5f464b458785b/examples/websockets-http2/src/main.rs#L57).
 
 use crate::api::oprf::OprfArgs;
-use crate::metrics::METRICS_ID_NODE_SESSIONS_OPEN;
+use crate::metrics::{METRICS_ID_I_AM_ALIVE, METRICS_ID_NODE_SESSIONS_OPEN};
 use crate::services::key_event_watcher::KeyEventWatcherTaskArgs;
 use crate::services::open_sessions::OpenSessions;
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
@@ -165,6 +165,27 @@ impl OprfServiceBuilder {
         let root = Router::new()
             .merge(api::health::routes(started_services.clone()))
             .merge(api::info::routes(oprf_key_material_store.clone(), address));
+
+        tokio::task::spawn({
+            let cancellation_token = cancellation_token.clone();
+            let mut interval = tokio::time::interval(config.i_am_alive_interval);
+            async move {
+                tracing::info!("starting i am alive task");
+                loop {
+                    tokio::select! {
+                       _ = interval.tick() => {
+                            if started_services.all_started() {
+                                ::metrics::counter!(METRICS_ID_I_AM_ALIVE).increment(1);
+                            }
+                       },
+                       _ = cancellation_token.cancelled() => {
+                           break;
+                       }
+                    }
+                }
+                tracing::info!("shutting down i am alive task");
+            }
+        });
 
         Ok(Self {
             config,

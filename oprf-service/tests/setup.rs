@@ -128,6 +128,7 @@ impl TestNode {
             db_acquire_timeout: Duration::from_secs(2),
             db_retry_delay: Duration::from_secs(1),
             db_max_retries: 30.try_into().expect("Is non zero"),
+            i_am_alive_interval: Duration::from_secs(60),
         };
 
         let child_token = cancellation_token.child_token();

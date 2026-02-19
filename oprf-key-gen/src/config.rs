@@ -143,4 +143,13 @@ pub struct OprfKeyGenConfig {
         default_value = "5"
     )]
     pub confirmations_for_transaction: u64,
+
+    /// Interval in which we emit "I am alive" metric
+    #[clap(
+        long,
+        env = "OPRF_KEY_GEN_I_AM_ALIVE_INTERVAL",
+        default_value = "1min",
+        value_parser=humantime::parse_duration
+    )]
+    pub i_am_alive_interval: Duration,
 }
