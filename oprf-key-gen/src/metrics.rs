@@ -58,22 +58,22 @@ pub const METRICS_ID_KEY_GEN_WALLET_BALANCE: &str = "taceo.oprf.key_gen.wallet_b
 
 /// Gas used by a single transaction in key-gen round 1
 pub const METRICS_ID_KEY_GEN_ROUND1_GAS: &str =
-    "taceo.oprf.key_gen.transaction.cost.round1.key_gen";
+    "taceo.oprf.key_gen.transaction.cost.gas_used.round1.key_gen";
 
 /// Gas used by a single transaction in reshare round 1
 pub const METRICS_ID_RESHARE_ROUND1_GAS: &str =
-    "taceo.oprf.key_gen.transaction.cost.round1.reshare";
+    "taceo.oprf.key_gen.transaction.cost.gas_used.round1.reshare";
 
 /// Gas used by a single transaction in key-gen/reshare round 2
-pub const METRICS_ID_ROUND2_GAS: &str = "taceo.oprf.key_gen.transaction.cost.round2";
+pub const METRICS_ID_ROUND2_GAS: &str = "taceo.oprf.key_gen.transaction.cost.gas_used.round2";
 
 /// Gas used by a single transaction in key-gen round 3
 pub const METRICS_ID_KEY_GEN_ROUND3_GAS: &str =
-    "taceo.oprf.key_gen.transaction.cost.round3.key_gen";
+    "taceo.oprf.key_gen.transaction.cost.gas_used.round3.key_gen";
 
 /// Gas used by a single transaction in reshare round 3
 pub const METRICS_ID_RESHARE_ROUND3_GAS: &str =
-    "taceo.oprf.key_gen.transaction.cost.round3.reshare";
+    "taceo.oprf.key_gen.transaction.cost.gas_used.round3.reshare";
 
 /// Gas price from the transactions
 pub const METRICS_ID_GAS_PRICE: &str = "taceo.oprf.key_gen.transaction.cost.gas_price";
