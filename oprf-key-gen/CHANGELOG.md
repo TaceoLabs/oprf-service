@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.5.1...taceo-oprf-key-gen-v0.6.0)
+
+### ⛰️ Features
+
+
+- Emit I-am-alive metrics for key-gen and service ([#476](https://github.com/TaceoLabs/oprf-service/pull/476)) - ([382c923](https://github.com/TaceoLabs/oprf-service/commit/382c92394feeef30ca926c54d003913239f11c78))
+
+### 🐛 Bug Fixes
+
+
+- Rename metrics to support ingestion at Datadog after switching metric type from distribution to gauge ([#478](https://github.com/TaceoLabs/oprf-service/pull/478)) - ([5b25d94](https://github.com/TaceoLabs/oprf-service/commit/5b25d9424b7b8fbb874c8a496652cfeb973c6d94))
+
+
 ## [0.5.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.5.0...taceo-oprf-key-gen-v0.5.1)
 
 ### ⚙️ Miscellaneous Tasks
