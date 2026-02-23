@@ -255,6 +255,19 @@
   },
   {
     "type": "function",
+    "name": "changeVerifierContract",
+    "inputs": [
+      {
+        "name": "newKeyGenVerifier",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "checkIsParticipantAndReturnRound2Ciphers",
     "inputs": [
       {
@@ -1019,6 +1032,25 @@
     "inputs": [
       {
         "name": "implementation",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "VerifierContractChanged",
+    "inputs": [
+      {
+        "name": "oldContract",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newContract",
         "type": "address",
         "indexed": true,
         "internalType": "address"
