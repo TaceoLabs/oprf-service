@@ -92,7 +92,7 @@ start_keygen() {
         local db_port=$((5432 + i))
         local db_conn="postgres://postgres:postgres@localhost:$db_port/postgres"
 
-        RUST_LOG="taceo_oprf_key_gen=trace,warn" \
+        RUST_LOG="oprf_key_gen=trace,taceo_oprf_key_gen=trace,warn" \
         ./target/release/oprf-key-gen \
             --bind-addr 127.0.0.1:$port \
             --environment dev \
