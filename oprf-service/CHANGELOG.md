@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.8.0...taceo-oprf-service-v0.9.0)
+
+### ⛰️ Features
+
+
+- Emit I-am-alive metrics for key-gen and service ([#476](https://github.com/TaceoLabs/oprf-service/pull/476)) - ([382c923](https://github.com/TaceoLabs/oprf-service/commit/382c92394feeef30ca926c54d003913239f11c78))
+
+
 ## [0.8.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.7.1...taceo-oprf-service-v0.8.0)
 
 ### 🚜 Refactor

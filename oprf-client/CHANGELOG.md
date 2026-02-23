@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.7.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.7.1...taceo-oprf-client-v0.7.2)
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Updated the following local packages: taceo-oprf-types - ([0000000](https://github.com/TaceoLabs/oprf-service/commit/0000000))
+
+
 ## [0.7.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.7.0...taceo-oprf-client-v0.7.1)
 
 ### 🐛 Bug Fixes

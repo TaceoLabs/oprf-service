@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.8.1...taceo-oprf-types-v0.9.0)
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Update to zkeys from trusted setup ceremony ([#480](https://github.com/TaceoLabs/oprf-service/pull/480)) - ([c63bf1c](https://github.com/TaceoLabs/oprf-service/commit/c63bf1c1e3afe6ea8770073e4a72966549fee483))
+
+
 ## [0.8.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.8.0...taceo-oprf-types-v0.8.1)
 
 ### 🧪 Testing

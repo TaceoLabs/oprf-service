@@ -6637,7 +6637,7 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "taceo-oprf-client",
  "taceo-oprf-core",
@@ -6648,7 +6648,7 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf-client"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "ark-ec",
  "axum",
@@ -6695,7 +6695,7 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf-dev-client"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "alloy",
  "ark-ec",
@@ -6722,7 +6722,7 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf-key-gen"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "alloy",
  "ark-bn254",
@@ -6765,7 +6765,7 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf-service"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "alloy",
  "ark-ff 0.5.0",
@@ -6812,7 +6812,7 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf-test-utils"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "alloy",
  "ark-bn254",
@@ -6846,7 +6846,7 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf-types"
-version = "0.8.1"
+version = "0.9.0"
 dependencies = [
  "alloy",
  "ark-ff 0.5.0",
