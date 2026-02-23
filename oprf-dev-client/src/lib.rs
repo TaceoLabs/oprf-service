@@ -1,76 +1,73 @@
 use std::{
     collections::HashMap,
-    sync::Arc,
+    str::FromStr as _,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
 use alloy::{
+    network::EthereumWallet,
     primitives::{Address, U160},
-    providers::DynProvider,
+    providers::{DynProvider, Provider as _, ProviderBuilder},
+    signers::local::PrivateKeySigner,
 };
-use ark_ff::{PrimeField as _, UniformRand as _};
-use clap::{Parser, Subcommand};
 use eyre::Context;
 use oprf_client::{Connector, OprfSessions};
 use oprf_core::{
     ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir},
-    oprf::BlindingFactor,
+    oprf::BlindedOprfRequest,
 };
 use oprf_test_utils::health_checks;
 use oprf_types::{OprfKeyId, ShareEpoch, api::OprfRequest, crypto::OprfPublicKey};
+use rand::{CryptoRng, Rng, SeedableRng};
 use rustls::{ClientConfig, RootCertStore};
+use secrecy::ExposeSecret as _;
 use serde::Serialize;
-use tokio::task::JoinSet;
+use tokio::{sync::mpsc, task::JoinSet};
 use uuid::Uuid;
 
 pub use oprf_test_utils;
 
-#[derive(Clone, Parser, Debug)]
-pub struct StressTestOprfCommand {
-    /// The amount of OPRF runs
-    #[clap(long, env = "OPRF_DEV_CLIENT_RUNS", default_value = "10")]
-    pub runs: usize,
+pub(crate) mod config;
+pub use config::*;
+pub use oprf_types::async_trait;
 
-    /// Send requests sequentially instead of concurrently
-    #[clap(long, env = "OPRF_DEV_CLIENT_SEQUENTIAL")]
-    pub sequential: bool,
+#[async_trait::async_trait]
+pub trait DevClient: Send + Sync + 'static {
+    type Setup: Send + Sync + 'static + Clone;
+    type RequestAuth: Clone + Serialize + Send + 'static;
 
-    /// Send requests sequentially instead of concurrently
-    #[clap(long, env = "OPRF_DEV_CLIENT_SKIP_CHECKS")]
-    pub skip_checks: bool,
+    async fn setup_oprf_test(
+        &self,
+        config: &DevClientConfig,
+        provider: DynProvider,
+    ) -> eyre::Result<Self::Setup>;
+
+    async fn run_oprf(
+        &self,
+        config: &DevClientConfig,
+        setup: Self::Setup,
+        connector: Connector,
+    ) -> eyre::Result<ShareEpoch>;
+
+    async fn prepare_stress_test_item<R: Rng + CryptoRng + Send>(
+        &self,
+        setup: &Self::Setup,
+        rng: &mut R,
+    ) -> eyre::Result<StressTestItem<Self::RequestAuth>>;
+
+    fn get_oprf_key(&self, setup: &Self::Setup) -> OprfPublicKey;
+    fn get_oprf_key_id(&self, setup: &Self::Setup) -> OprfKeyId;
+    fn auth_module(&self) -> String;
 }
 
-#[derive(Clone, Parser, Debug)]
-pub struct StressTestKeyGenCommand {
-    /// The amount of OPRF runs
-    #[clap(long, env = "OPRF_DEV_CLIENT_RUNS", default_value = "10")]
-    pub runs: usize,
-}
-
-#[derive(Clone, Parser, Debug)]
-pub struct ReshareTest {
-    /// The amount of requests we need to observe to accept the new epoch
-    #[clap(long, env = "OPRF_DEV_CLIENT_ACCEPTANCE_NUM", default_value = "50")]
-    pub acceptance_num: usize,
-}
-
-#[derive(Clone, Debug, Subcommand)]
-pub enum Command {
-    Test,
-    DeleteTest,
-    StressTestOprf(StressTestOprfCommand),
-    StressTestKeyGen(StressTestKeyGenCommand),
-    ReshareTest(ReshareTest),
-}
-
-pub struct DeleteTestArgs {
-    pub nodes: Vec<String>,
-    pub module: String,
-    pub threshold: usize,
-    pub oprf_key_registry: Address,
-    pub provider: DynProvider,
-    pub max_wait_time: Duration,
-    pub connector: Connector,
+pub struct StressTestItem<OprfRequestAuth> {
+    pub request_id: Uuid,
+    pub blinded_query: BlindedOprfRequest,
+    pub init_request: OprfRequest<OprfRequestAuth>,
 }
 
 fn avg(durations: &[Duration]) -> Duration {
@@ -92,66 +89,25 @@ pub fn setup_connector() -> Connector {
     Connector::Rustls(Arc::new(rustls_config))
 }
 
-pub async fn delete_test<OprfRequestAuth, F>(
-    delete_test: DeleteTestArgs,
-    auth: F,
-) -> eyre::Result<()>
-where
-    OprfRequestAuth: Clone + Serialize + Send + 'static,
-    F: Fn(OprfKeyId) -> OprfRequestAuth,
-{
-    let DeleteTestArgs {
-        nodes,
-        module,
-        threshold,
-        oprf_key_registry,
-        provider,
-        max_wait_time,
-        connector,
-    } = delete_test;
-    tracing::info!("creating new key do delete afterwards");
-    let (oprf_key_id, _) =
-        init_key_gen(&nodes, oprf_key_registry, provider.clone(), max_wait_time).await?;
-    tracing::info!("created key: {oprf_key_id}");
-    tracing::info!("running one distributed oprf...");
-    let mut rng = rand::thread_rng();
-    let action = ark_babyjubjub::Fq::rand(&mut rng);
-    let blinding_factor = BlindingFactor::rand(&mut rng);
-    let domain_separator = ark_babyjubjub::Fq::from_be_bytes_mod_order(b"OPRF");
-    oprf_client::distributed_oprf(
-        &nodes,
-        &module,
-        threshold,
-        action,
-        blinding_factor.clone(),
-        domain_separator,
-        auth(oprf_key_id),
-        connector.clone(),
+pub async fn delete_test(config: DevClientConfig, provider: DynProvider) -> eyre::Result<()> {
+    tracing::info!("creating new key to delete afterwards");
+    let (oprf_key_id, _) = init_key_gen(
+        &config.nodes,
+        config.oprf_key_registry_contract,
+        provider.clone(),
+        config.max_wait_time,
     )
     .await?;
-    tracing::info!("successfully ran distributed oprf - now deleting key");
-
-    oprf_test_utils::delete_oprf_key_material(provider, oprf_key_registry, oprf_key_id).await?;
-    tracing::info!("sent delete event - ping nodes to check this works");
-    health_checks::assert_key_id_unknown(oprf_key_id, &nodes, max_wait_time).await?;
-    tracing::info!("successfully deleted key-material - check that we get an error now");
-    let result = oprf_client::distributed_oprf(
-        &nodes,
-        &module,
-        threshold,
-        action,
-        blinding_factor,
-        domain_separator,
-        auth(oprf_key_id),
-        connector,
+    tracing::info!("created the key - now delete it..");
+    oprf_test_utils::delete_oprf_key_material(
+        provider,
+        config.oprf_key_registry_contract,
+        oprf_key_id,
     )
-    .await;
-    if result.is_err() {
-        tracing::info!("Could not create oprf after delete - success");
-    } else {
-        eyre::bail!("still possible to create OPRF after delete!");
-    }
-
+    .await?;
+    tracing::info!("sent delete event - ping nodes to check this works");
+    health_checks::assert_key_id_unknown(oprf_key_id, &config.nodes, config.max_wait_time).await?;
+    tracing::info!("successfully deleted key-material");
     Ok(())
 }
 
@@ -289,4 +245,307 @@ pub async fn init_key_gen(
     .await?;
     tracing::info!("key-gen successful");
     Ok((oprf_key_id, oprf_public_key))
+}
+
+async fn stress_test_key_gen(
+    cmd: StressTestKeyGenCommand,
+    nodes: &[String],
+    oprf_key_registry: Address,
+    provider: DynProvider,
+    max_wait_time: Duration,
+) -> eyre::Result<()> {
+    // initiate key-gens and reshares
+    let mut key_gens = JoinSet::new();
+    for _ in 0..cmd.runs {
+        let oprf_key_id_u32: u32 = rand::random();
+        let oprf_key_id = OprfKeyId::new(U160::from(oprf_key_id_u32));
+        tracing::debug!("init OPRF key gen with: {oprf_key_id}");
+        oprf_test_utils::init_key_gen(provider.clone(), oprf_key_registry, oprf_key_id).await?;
+        key_gens.spawn({
+            let nodes = nodes.to_vec();
+            async move {
+                health_checks::oprf_public_key_from_services(
+                    oprf_key_id,
+                    ShareEpoch::default(),
+                    &nodes,
+                    max_wait_time,
+                )
+                .await?;
+                eyre::Ok(oprf_key_id)
+            }
+        });
+    }
+    tracing::info!("finished init key-gens, now starting reshares");
+    let mut reshares = JoinSet::new();
+    while let Some(key_gen_result) = key_gens.join_next().await {
+        let key_id = key_gen_result
+            .expect("Can join")
+            .context("Could not fetch oprf-key-gen")?;
+        tracing::debug!("init OPRF reshare for {key_id}");
+        oprf_test_utils::init_reshare(provider.clone(), oprf_key_registry, key_id).await?;
+        // do an oprf to check if correct
+        reshares.spawn({
+            let nodes = nodes.to_vec();
+            async move {
+                health_checks::oprf_public_key_from_services(
+                    key_id,
+                    ShareEpoch::default().next(),
+                    &nodes,
+                    max_wait_time,
+                )
+                .await?;
+                eyre::Ok(())
+            }
+        });
+    }
+    tracing::info!(
+        "started {} key-gens + reshare - waiting to finish",
+        cmd.runs
+    );
+    reshares
+        .join_all()
+        .await
+        .into_iter()
+        .collect::<eyre::Result<Vec<_>>>()
+        .context("cannot finish reshares")?;
+    Ok(())
+}
+
+async fn stress_test<T: DevClient>(
+    dev_client: T,
+    config: DevClientConfig,
+    cmd: StressTestOprfCommand,
+    setup: T::Setup,
+    connector: Connector,
+) -> eyre::Result<()> {
+    let mut rng = rand_chacha::ChaCha12Rng::from_rng(rand::thread_rng())?;
+    let StressTestOprfCommand {
+        runs,
+        sequential,
+        skip_checks,
+    } = cmd;
+
+    let mut blinded_requests = HashMap::with_capacity(cmd.runs);
+    let mut init_requests = HashMap::with_capacity(cmd.runs);
+    for _ in 0..runs {
+        let StressTestItem {
+            request_id,
+            blinded_query,
+            init_request,
+        } = dev_client
+            .prepare_stress_test_item(&setup, &mut rng)
+            .await?;
+        blinded_requests.insert(request_id, blinded_query);
+        init_requests.insert(request_id, init_request);
+    }
+    tracing::info!("sending init requests..");
+    let (sessions, finish_requests) = send_init_requests(
+        &config.nodes,
+        &dev_client.auth_module(),
+        config.threshold,
+        connector,
+        sequential,
+        init_requests,
+    )
+    .await?;
+    tracing::info!("sending finish requests..");
+    let responses = send_finish_requests(sessions, cmd.sequential, finish_requests.clone()).await?;
+
+    if !skip_checks {
+        tracing::info!("checking OPRF + proofs");
+        for (id, res) in responses {
+            let blinded_req = blinded_requests.get(&id).expect("is there").to_owned();
+            let finish_req = finish_requests.get(&id).expect("is there").to_owned();
+            let _dlog_proof = oprf_client::verify_dlog_equality(
+                id,
+                dev_client.get_oprf_key(&setup),
+                &blinded_req,
+                res,
+                finish_req,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+async fn reshare_test<T: DevClient>(
+    dev_client: T,
+    acceptance_num: usize,
+    config: DevClientConfig,
+    setup: T::Setup,
+    provider: DynProvider,
+    connector: Connector,
+) -> eyre::Result<()> {
+    let oprf_key_id = dev_client.get_oprf_key_id(&setup);
+    tracing::info!("running OPRF to get current epoch..");
+    let current_epoch = dev_client
+        .run_oprf(&config, setup.clone(), connector.clone())
+        .await?;
+    tracing::info!("current epoch: {current_epoch}");
+
+    tracing::info!("start OPRF client task");
+    let (tx, mut rx) = mpsc::channel(32);
+    // we need this so that we don't get random warnings when we kill the task abruptly
+    let shutdown_signal = Arc::new(AtomicBool::new(false));
+    let oprf_client_task = tokio::task::spawn({
+        let config = config.clone();
+        let connector = connector.clone();
+        let shutdown_signal = Arc::clone(&shutdown_signal);
+        let setup = setup.clone();
+        async move {
+            let mut counter = 0;
+            loop {
+                if shutdown_signal.load(Ordering::Relaxed) {
+                    break;
+                }
+                let result = dev_client
+                    .run_oprf(&config, setup.clone(), connector.clone())
+                    .await;
+                counter += 1;
+                if counter % 50 == 0 {
+                    tracing::debug!("send OPRF: {}", counter);
+                }
+                if tx.send(result).await.is_err() {
+                    break;
+                }
+            }
+        }
+    });
+
+    tracing::info!("Doing reshare!");
+    oprf_test_utils::init_reshare(
+        provider.clone(),
+        config.oprf_key_registry_contract,
+        oprf_key_id,
+    )
+    .await?;
+    tokio::time::timeout(
+        config.max_wait_time,
+        wait_for_epoch(&mut rx, acceptance_num, current_epoch.next()),
+    )
+    .await??;
+
+    tracing::info!("Doing reshare!");
+    oprf_test_utils::init_reshare(
+        provider.clone(),
+        config.oprf_key_registry_contract,
+        oprf_key_id,
+    )
+    .await?;
+    tokio::time::timeout(
+        config.max_wait_time,
+        wait_for_epoch(&mut rx, acceptance_num, current_epoch.next().next()),
+    )
+    .await??;
+    shutdown_signal.store(true, Ordering::Relaxed);
+
+    if tokio::time::timeout(Duration::from_secs(5), oprf_client_task)
+        .await
+        .is_err()
+    {
+        tracing::warn!("test succeeded but could not finish client tasks in 5 seconds?")
+    };
+    Ok(())
+}
+
+async fn wait_for_epoch(
+    rx: &mut mpsc::Receiver<Result<ShareEpoch, eyre::Report>>,
+    acceptance_num: usize,
+    target_epoch: ShareEpoch,
+) -> eyre::Result<()> {
+    let mut new_epoch_found = 0;
+    while let Some(result) = rx.recv().await {
+        match result {
+            Ok(epoch) if epoch == target_epoch => {
+                new_epoch_found += 1;
+                if new_epoch_found == acceptance_num {
+                    tracing::info!(
+                        "successfully used new epoch {} {acceptance_num} times!",
+                        target_epoch
+                    );
+                    return Ok(());
+                }
+            }
+            Ok(_) => continue,
+            Err(err) => {
+                return Err(err);
+            }
+        }
+    }
+    eyre::bail!("Channel closed without getting {acceptance_num}");
+}
+
+pub async fn run<T: DevClient>(config: DevClientConfig, dev_client: T) -> eyre::Result<()> {
+    tracing::info!("health check for all nodes...");
+    health_checks::services_health_check(&config.nodes, Duration::from_secs(5))
+        .await
+        .context("while doing health checks")?;
+
+    tracing::info!("everyone online..");
+
+    let private_key = PrivateKeySigner::from_str(config.taceo_private_key.expose_secret())?;
+    let wallet = EthereumWallet::from(private_key.clone());
+
+    tracing::info!("init rpc provider..");
+    let provider = ProviderBuilder::new()
+        .wallet(wallet)
+        .connect(config.chain_rpc_url.expose_secret())
+        .await
+        .context("while connecting to RPC")?
+        .erased();
+    let connector = setup_connector();
+
+    match config.command.clone() {
+        Command::Test => {
+            tracing::info!("running oprf-test");
+            let setup = dev_client
+                .setup_oprf_test(&config, provider.clone())
+                .await?;
+            tracing::info!("starting oprf computation");
+            dev_client.run_oprf(&config, setup, connector).await?;
+            tracing::info!("oprf-test successful");
+        }
+        Command::DeleteTest => {
+            tracing::info!("running delete-test");
+            delete_test(config, provider).await?;
+            tracing::info!("oprf delete test successful");
+        }
+        Command::StressTestOprf(cmd) => {
+            tracing::info!("running oprf stress-test");
+            let setup = dev_client
+                .setup_oprf_test(&config, provider.clone())
+                .await?;
+            stress_test(dev_client, config, cmd, setup, connector).await?;
+            tracing::info!("stress-test successful");
+        }
+        Command::StressTestKeyGen(cmd) => {
+            tracing::info!("running key-gen stress-test");
+            stress_test_key_gen(
+                cmd,
+                &config.nodes,
+                config.oprf_key_registry_contract,
+                provider,
+                config.max_wait_time,
+            )
+            .await?;
+            tracing::info!("stress-test successful");
+        }
+        Command::ReshareTest(ReshareTest { acceptance_num }) => {
+            tracing::info!("running reshare-test");
+            let setup = dev_client
+                .setup_oprf_test(&config, provider.clone())
+                .await?;
+            reshare_test(
+                dev_client,
+                acceptance_num,
+                config,
+                setup,
+                provider,
+                connector,
+            )
+            .await?;
+            tracing::info!("reshare-test successful");
+        }
+    }
+    Ok(())
 }

@@ -17,12 +17,15 @@ ark-babyjubjub.workspace = true
 ark-ff.workspace = true
 clap = { workspace = true, features = ["derive", "env"] }
 eyre.workspace = true
+humantime.workspace = true
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.7" }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.4" }
 oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.6", default-features = false }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.8" }
 rand.workspace = true
+rand_chacha.workspace = true
 rustls.workspace = true
+secrecy.workspace = true
 serde.workspace = true
 tokio = { workspace = true, features = [
   "net",

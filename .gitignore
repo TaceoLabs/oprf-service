@@ -16,3 +16,4 @@ contracts/broadcast/
 contracts/lib/
 soljson-latest.js
 *.env
+environments/
