@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.4.2...taceo-oprf-dev-client-v0.5.0)
+
+### ⛰️ Features
+
+
+- [**breaking**] Rewrote dev-client to be a trait ([#479](https://github.com/TaceoLabs/oprf-service/pull/479)) - ([52948f3](https://github.com/TaceoLabs/oprf-service/commit/52948f3da7d34ab1db2bef4b0d7bded0f66b45ee))
+
+
 ## [0.4.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.4.1...taceo-oprf-dev-client-v0.4.2)
 
 ### Build
