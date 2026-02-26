@@ -11,13 +11,18 @@ use std::collections::{BTreeMap, BTreeSet};
 use alloy::{
     eips::BlockNumberOrTag,
     primitives::{Address, LogData, U160},
-    providers::{Provider, ProviderBuilder},
+    providers::{DynProvider, Provider, ProviderBuilder},
     rpc::types::{Filter, Log},
     sol_types::SolEvent as _,
 };
 use clap::Parser;
 use eyre::Context;
 use oprf_types::chain::OprfKeyRegistry::{self, OprfKeyRegistryInstance};
+
+const W_ID: usize = 22;
+const W_ROUND: usize = 12;
+const W_EPOCH: usize = 8;
+const W_KIND: usize = 10;
 
 #[derive(Parser, Debug)]
 #[command(name = "print-oprf-registry-state")]
@@ -41,6 +46,10 @@ struct Args {
     /// Include keygens in NOT_STARTED state in the runningKeyGens table (default: exclude them).
     #[arg(long, default_value_t = false)]
     show_not_started: bool,
+
+    /// Print all registered OPRF-keys with their x- and y-coordinates.
+    #[arg(long, default_value_t = false)]
+    verbose: bool,
 }
 
 /// Round as inferred from events (matches OprfKeyGen.Round).
@@ -256,32 +265,51 @@ async fn run(args: &Args) -> eyre::Result<()> {
 
     // ---- Table 1: runningKeyGens ----
     println!("\n=== runningKeyGens (from events) ===\n");
-    const W_ID: usize = 22;
-    const W_ROUND: usize = 12;
-    const W_EPOCH: usize = 8;
-    const W_KIND: usize = 10;
-    println!(
-        "{:<W_ID$} {:>W_ROUND$} {:>W_EPOCH$} {:>W_KIND$}",
-        "oprfKeyId", "round", "epoch", "kind"
-    );
-    println!(
-        "{}",
-        "-".repeat(W_ID + 1 + W_ROUND + 1 + W_EPOCH + 1 + W_KIND)
-    );
-    for (id, row) in &running_key_gens {
-        if !args.show_not_started && row.round == Round::NotStarted {
-            continue;
-        }
+    if !args.show_not_started {
+        running_key_gens.retain(|_, row| row.round != Round::NotStarted);
+    }
+    if running_key_gens.is_empty() {
+        println!("currently no running key-gens! Good Job!");
+    } else {
         println!(
             "{:<W_ID$} {:>W_ROUND$} {:>W_EPOCH$} {:>W_KIND$}",
-            id.to_string(),
-            row.round.to_string(),
-            row.generated_epoch,
-            row.kind.to_string()
+            "oprfKeyId", "round", "epoch", "kind"
         );
+        println!(
+            "{}",
+            "-".repeat(W_ID + 1 + W_ROUND + 1 + W_EPOCH + 1 + W_KIND)
+        );
+        for (id, row) in &running_key_gens {
+            if !args.show_not_started && row.round == Round::NotStarted {
+                continue;
+            }
+            println!(
+                "{:<W_ID$} {:>W_ROUND$} {:>W_EPOCH$} {:>W_KIND$}",
+                id.to_string(),
+                row.round.to_string(),
+                row.generated_epoch,
+                row.kind.to_string()
+            );
+        }
     }
 
     // ---- Table 2: oprfKeyRegistry ----
+    if args.verbose {
+        print_keys_verbose(contract, &registered).await;
+    } else {
+        println!(
+            "\n=== oprfKeyRegistry has {} registered keys ===",
+            registered.len()
+        );
+    }
+
+    Ok(())
+}
+
+async fn print_keys_verbose(
+    contract: OprfKeyRegistryInstance<DynProvider>,
+    registered: &BTreeMap<U160, u32>,
+) {
     println!("\n=== oprfKeyRegistry (registered keys) ===\n");
     const W_X: usize = 78;
     const W_Y: usize = 78;
@@ -315,10 +343,7 @@ async fn run(args: &Args) -> eyre::Result<()> {
             }
         }
     }
-
     if registered_ids.is_empty() {
         println!("(no registered keys)");
     }
-
-    Ok(())
 }
