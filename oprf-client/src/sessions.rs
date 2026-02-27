@@ -16,10 +16,11 @@ use oprf_types::{
     api::{OprfRequest, OprfResponse},
     crypto::{OprfPublicKey, PartyId},
 };
+use futures::stream::{FuturesUnordered, StreamExt};
 use serde::Serialize;
-use tokio::task::JoinSet;
-use tokio_tungstenite::Connector;
 use tracing::instrument;
+
+use crate::Connector;
 
 /// Holds the active OPRF sessions with multiple nodes.
 #[derive(Default)]
@@ -149,13 +150,13 @@ pub async fn finish_sessions(
 ///
 /// Returns a [`OprfSessions`] ready to be finalized with [`finish_sessions`].
 #[instrument(level = "debug", skip_all)]
-pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
+pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + 'static>(
     oprf_services: &[Uri],
     threshold: usize,
     req: OprfRequest<OprfRequestAuth>,
     connector: Connector,
 ) -> Result<OprfSessions, Vec<NodeError>> {
-    let mut join_set = oprf_services
+    let mut futures: FuturesUnordered<_> = oprf_services
         .iter()
         .map(|service| {
             let connector = connector.clone();
@@ -167,12 +168,12 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
                     .map_err(|err| (service, err))
             }
         })
-        .collect::<JoinSet<_>>();
+        .collect();
     let mut epoch_session_map = HashMap::new();
     let mut session_errors = Vec::new();
-    while let Some(session_handle) = join_set.join_next().await {
-        match session_handle {
-            Ok(Ok((session, resp))) => {
+    while let Some(result) = futures.next().await {
+        match result {
+            Ok((session, resp)) => {
                 let epoch = resp.oprf_pub_key_with_epoch.epoch;
                 let epoch_session = epoch_session_map
                     .entry(epoch)
@@ -194,7 +195,7 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
                     return Ok(chosen_sessions);
                 }
             }
-            Ok(Err((service, err))) => {
+            Err((service, err)) => {
                 // we very much expect certain services to return an error therefore we do not log at warn/error level.
                 tracing::debug!(
                     "Got error response from {:?}: {err:?}",
@@ -203,9 +204,6 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
                         .map_or_else(|| "unknown service".to_owned(), ToString::to_string)
                 );
                 session_errors.push(err);
-            }
-            Err(_) => {
-                tracing::warn!("Could not join init_session task");
             }
         }
     }

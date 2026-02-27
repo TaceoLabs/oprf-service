@@ -45,7 +45,20 @@ pub use http::uri::InvalidUri;
 pub use sessions::OprfSessions;
 pub use sessions::finish_sessions;
 pub use sessions::init_sessions;
+
+/// WebSocket connector configuration.
+///
+/// On native targets this re-exports [`tokio_tungstenite::Connector`] (Plain,
+/// Rustls, etc.). On WASM, TLS is handled by the browser so this is a no-op
+/// placeholder — it exists only so that [`distributed_oprf`] has the same
+/// signature on all platforms.
+#[cfg(not(target_arch = "wasm32"))]
 pub use tokio_tungstenite::Connector;
+
+/// See the [native documentation](Connector) — on WASM this is a no-op.
+#[cfg(target_arch = "wasm32")]
+#[derive(Debug, Clone)]
+pub struct Connector;
 
 /// Builds a WebSocket OPRF [`Uri`] for a given service base URL and authentication module.
 ///
@@ -342,7 +355,7 @@ pub async fn distributed_oprf<OprfRequestAuth>(
     connector: Connector,
 ) -> Result<VerifiableOprfOutput, Error>
 where
-    OprfRequestAuth: Clone + Serialize + Send + 'static,
+    OprfRequestAuth: Clone + Serialize + 'static,
 {
     tracing::trace!(
         "starting distributed oprf. my version: {}",
