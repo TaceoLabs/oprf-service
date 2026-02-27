@@ -12,7 +12,6 @@ use oprf_core::{
 };
 use oprf_types::{ShareEpoch, api::OprfRequest, crypto::OprfPublicKey};
 use serde::Serialize;
-use tokio_tungstenite::tungstenite::{self, http::uri::InvalidUri};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -22,39 +21,62 @@ mod ws;
 pub use sessions::OprfSessions;
 pub use sessions::finish_sessions;
 pub use sessions::init_sessions;
+
+/// WebSocket connector configuration.
+///
+/// On native targets this re-exports [`tokio_tungstenite::Connector`] (Plain,
+/// Rustls, etc.). On WASM, TLS is handled by the browser so this is a no-op
+/// placeholder — it exists only so that [`distributed_oprf`] has the same
+/// signature on all platforms.
+#[cfg(not(target_arch = "wasm32"))]
 pub use tokio_tungstenite::Connector;
+
+/// See the [native documentation](Connector) — on WASM this is a no-op.
+#[cfg(target_arch = "wasm32")]
+#[derive(Debug, Clone)]
+pub struct Connector;
+
+#[cfg(not(target_arch = "wasm32"))]
+use tokio_tungstenite::tungstenite::{self, http::uri::InvalidUri};
 
 /// Errors returned by the distributed OPRF protocol.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// Services must be unique
+    /// Services must be unique.
     #[error("Services must be unique")]
     NonUniqueServices,
-    /// The server send an unexpected message (either message type or a frame that is not `Binary`/`Close`).
+    /// The server sent an unexpected message (wrong type or not a `Binary`/`Close` frame).
     #[error("Unexpected msg")]
     UnexpectedMsg,
-    /// The server send a close frame with an error message.
+    /// The server sent a close frame with an error message.
     #[error("Server returned an error: {0}")]
     ServerError(String),
-    /// Server did close the connection.
+    /// The server closed the connection.
     #[error("Endpoint closed connection")]
     Eof,
     /// Not enough OPRF responses received to satisfy the required threshold.
-    /// The second field contains any errors from the individual OPRF responses.
     #[error("Could not reach {0} responses")]
     NotEnoughOprfResponses(usize, HashMap<String, Error>),
     /// The DLog equality proof failed verification.
     #[error("DLog proof could not be verified")]
     InvalidDLogProof,
-    /// The used service is not a valid URI
-    #[error(transparent)]
-    InvalidUri(#[from] InvalidUri),
-    /// Wrapping inner tungstenite error
-    #[error(transparent)]
-    WsError(#[from] tungstenite::Error),
-    /// OPRF nodes returned different public keys
+    /// OPRF nodes returned different public keys.
     #[error("OPRF nodes returned different public keys")]
     InconsistentOprfPublicKeys,
+
+    // -- transport errors (platform-specific) ---------------------------------
+    /// The service URL is not a valid URI.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[error(transparent)]
+    InvalidUri(#[from] InvalidUri),
+    /// WebSocket transport error (tungstenite).
+    #[cfg(not(target_arch = "wasm32"))]
+    #[error(transparent)]
+    WsError(#[from] tungstenite::Error),
+    /// WebSocket transport error (browser).
+    #[cfg(target_arch = "wasm32")]
+    #[error("websocket error: {0}")]
+    WsError(String),
 }
 
 /// The result of the distributed OPRF protocol.
@@ -105,7 +127,7 @@ pub async fn distributed_oprf<OprfRequestAuth>(
     connector: Connector,
 ) -> Result<VerifiableOprfOutput, Error>
 where
-    OprfRequestAuth: Clone + Serialize + Send + 'static,
+    OprfRequestAuth: Clone + Serialize + 'static,
 {
     tracing::trace!(
         "starting distributed oprf. my version: {}",
