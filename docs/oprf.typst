@@ -620,6 +620,62 @@ We will now go through @alg:prove_oprf line by line and explore the relative cos
 
 The input commitment $com$ can be used to proof additional properties of the actual input $x$ in separate zero-knowledge proofs. A prominent example would by tying $x$ to a public key or public address, proving knowledge of a secret key $sk$ that maps to a public key $pk$, which when encoded to a field element is equal to $x$.
 
+=== Performance Benchmarks
+
+In @tab:oprf_bench, we give some benchmarks for different OPRF settings. The benchmarks were executed on a machine with an AMD Ryzen 9 9950X processor, all of the OPRF benchmarks were executed using a single thread.
+The used curve for all of the benchmarks below is BabyJubJub, and the used hash function is Poseidon2. The single-server OPRF setting is the one from @fig:twohashdh, the single-server VOPRF setting is the one from @fig:twohashdh_mpc_dlog, but with a single server only, adding the DlogEq proof. As a note to the DLogEQ verification, due to BabyJubJub having a non-1 cofactor, we also validate that every point is valid and in the correct prime-order subgroup, which adds additional overhead, especially for the verification. The Threshold ORPF setting is the one from @fig:twohashdh_mpc, which has identical per-server work to the normal single-server OPRF, except for the additional reconstruction step in the client. The threshold VOPRF setting is the one from @fig:twohashdh_mpc_dlog, which has identical per-server wort to the normal single-server OPRF, while the client has to verify $t$ DLogEq proofs. Finally, the setting from @fig:full_protocol combines the computation for the first two messages for the client in the "Client Query" time, and the computation for the two server responses in the "Server Answer" time. The "Client Finalize" time includes the computation to recombine the distributed DLogEQ proof, as well as its verification. We can see that due to the single DLogEQ proof in @fig:full_protocol, the overall client verification time does not scale with $t$, and the overall amount of work that does scale with $t$ is just recombination of field elements and curve points. As @tab:oprf_bench only measures compute times, the overall time for the OPRF invocation needs to consider the latency between the client and the OPRF nodes as well, where we can see the tradeoff of @fig:full_protocol having 2 total round-trips between client and servers, while traditional TwoHashDH only needs a single round-trip. In the standard setting where the OPRF evaluation does not need to be proven publicly, the compute savings from @fig:full_protocol only beat the traditional Threshold OPRF in settings with a large number of parties and low-latency connections. (e.g., the total compute savings for $t=30$ amount to 25 ms, so the RTT needs to be less than for the overall protocol to be overall faster.)
+
+#figure(
+  table(
+    columns: 5,
+    align: (left, right, right, right, right),
+    stroke: none,
+    table.header([Setting], [Client Query], [Server Answer], [Client Finalize], [Messages]),
+    table.hline(stroke: 0.1em),
+    [Single-server OPRF], [$128 mu s$], [$90 mu s$], [$99 mu s$], [2],
+    [Single-server VOPRF], [$128 mu s$], [$468 mu s$], [$974 mu s$], [2],
+    table.hline(stroke: 0.05em),
+    [Threshold OPRF ($t=3$)], [$128 mu s$], [$90 mu s$], [$105 mu s$], [2],
+    [Threshold OPRF ($t=5$)], [$128 mu s$], [$468 mu s$], [$105 mu s$], [2],
+    [Threshold OPRF ($t=10$)], [$128 mu s$], [$468 mu s$], [$106 mu s$], [2],
+    [Threshold OPRF ($t=30$)], [$128 mu s$], [$468 mu s$], [$108 mu s$], [2],
+    [Threshold VOPRF ($t=3$)], [$128 mu s$], [$90 mu s$], [$2730 mu s$], [2],
+    [Threshold VOPRF ($t=5$)], [$128 mu s$], [$468 mu s$], [$4480 mu s$], [2],
+    [Threshold VOPRF ($t=10$)], [$128 mu s$], [$468 mu s$], [$8856 mu s$], [2],
+    [Threshold VOPRF ($t=30$)], [$128 mu s$], [$468 mu s$], [$26358 mu s$], [2],
+    table.hline(stroke: 0.05em),
+    [@fig:full_protocol ($t=3$)], [$147 mu s$], [$653 mu s$], [$1175 mu s$], [4],
+    [@fig:full_protocol ($t=5$)], [$149 mu s$], [$653 mu s$], [$1175 mu s$], [4],
+    [@fig:full_protocol ($t=10$)], [$153 mu s$], [$653 mu s$], [$1175 mu s$], [4],
+    [@fig:full_protocol ($t=30$)], [$171 mu s$], [$653 mu s$], [$1175 mu s$], [4],
+  ),
+  caption: [Compute cost microbenchmarks for various OPRF operations.],
+) <tab:oprf_bench>
+
+
+However, this changes if the client proves the correct evaluation of the OPRF in a zkSNARK. In @tab:oprf_proof, we show the R1CS sizes for the circuits proving the correct evaluation of the (threshold) ORPF, as well as the single and multithreaded proving and verification times of the resulting zkSNARKs.
+We use the Groth16 @Groth16 prove system, with ZK circuits written in Circom, using the Groth16 prover from the arkworks ecosystem #footnote([https://github.com/arkworks-rs/groth16]). Note that while in the traditional threshold VOPRF, the circuit size and therefore proof time increases with the number of parties, the ZK circuit for @fig:full_protocol is equivalent to the single-server VOPRF case, which now means it is more performant in many scenarios. In addition, the size of the public proving key and memory required for the prover also scales linearly with the R1CS size. The difference in proving times would even be more noticeable if the used primitives are not ZK-friendly, like evaluating the OPRF using `secp256r1` curves. For all proofs, the succinctness property of Groth16 means that the verification time is essentially constant regardless of the proof size.
+
+#figure(
+  table(
+    columns: 5,
+    align: (left, right, right, right, right),
+    stroke: none,
+    table.header([Setting], [R1CS size], [Proving (ST)], [Proving (MT)], [Verification]),
+    table.hline(stroke: 0.1em),
+    [Single-server VOPRF], [$22771$], [$249.34 m s$], [$31.57 m s$], [$1.20 m s$],
+    table.hline(stroke: 0.05em),
+    [Threshold VOPRF ($t=3$)], [$60079$], [$489.21 m s$], [$55.06 m s$], [$1.21 m s$],
+    [Threshold VOPRF ($t=5$)], [$97387$], [$925.75 m s$], [$96.51 m s$], [$1.23 m s$],
+    [Threshold VOPRF ($t=10$)], [$190657$], [$1805.11 m s$], [$187.52 m s$], [$1.23 m s$],
+    [Threshold VOPRF ($t=30$)], [$563737$], [$6663.13 m s$], [$712.54 m s$], [$1.25 m s$],
+    table.hline(stroke: 0.05em),
+    [@fig:full_protocol (any $t$)], [$22771$], [$249.34 m s$], [$31.57 m s$], [$1.20 m s$],
+  ),
+  caption: [Benchmarks for proving OPRF evaluation in the Groth16 proof system.],
+) <tab:oprf_proof>
+
+
 == Query Authentication Proofs
 
 A nice feature of the multi-party nature of the OPRF nodes is that we can use their existing non-collusion assumption to perform query authentication for OPRF requests. In addition to the blinded query point $A$, the client also sends additional, use-case dependent information $mono("auth")$ that the OPRF nodes validate before they answer the OPRF query.
