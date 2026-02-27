@@ -4,21 +4,18 @@
 
 use std::collections::HashMap;
 
-use crate::ws::WebSocketSession;
-
-use super::Error;
-use oprf_core::ddlog_equality::shamir::DLogCommitmentsShamir;
-use oprf_core::ddlog_equality::shamir::DLogProofShareShamir;
-use oprf_core::ddlog_equality::shamir::PartialDLogCommitmentsShamir;
+use futures::stream::{FuturesUnordered, StreamExt};
+use oprf_core::ddlog_equality::shamir::{
+    DLogCommitmentsShamir, DLogProofShareShamir, PartialDLogCommitmentsShamir,
+};
 use oprf_types::ShareEpoch;
-use oprf_types::api::OprfRequest;
-use oprf_types::api::OprfResponse;
-use oprf_types::crypto::OprfPublicKey;
-use oprf_types::crypto::PartyId;
+use oprf_types::api::{OprfRequest, OprfResponse};
+use oprf_types::crypto::{OprfPublicKey, PartyId};
 use serde::Serialize;
-use tokio::task::JoinSet;
-use tokio_tungstenite::Connector;
 use tracing::instrument;
+
+use crate::ws::WebSocketSession;
+use crate::{Connector, Error};
 
 /// Holds the active OPRF sessions with multiple nodes.
 #[derive(Default)]
@@ -149,14 +146,14 @@ pub async fn finish_sessions(
 ///
 /// Returns a [`OprfSessions`] ready to be finalized with [`finish_sessions`].
 #[instrument(level = "debug", skip_all)]
-pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
+pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + 'static>(
     oprf_services: &[String],
     module: &str,
     threshold: usize,
     req: OprfRequest<OprfRequestAuth>,
     connector: Connector,
 ) -> Result<OprfSessions, super::Error> {
-    let mut join_set = oprf_services
+    let mut futures: FuturesUnordered<_> = oprf_services
         .iter()
         .map(|service| {
             let connector = connector.clone();
@@ -169,12 +166,12 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
                     .map_err(|err| (service, err))
             }
         })
-        .collect::<JoinSet<_>>();
+        .collect();
     let mut epoch_session_map = HashMap::new();
     let mut session_errors = HashMap::new();
-    while let Some(session_handle) = join_set.join_next().await {
-        match session_handle {
-            Ok(Ok((session, resp))) => {
+    while let Some(result) = futures.next().await {
+        match result {
+            Ok((session, resp)) => {
                 let epoch = resp.oprf_pub_key_with_epoch.epoch;
                 let epoch_session = epoch_session_map
                     .entry(epoch)
@@ -196,13 +193,10 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
                     return Ok(chosen_sessions);
                 }
             }
-            Ok(Err((service, err))) => {
+            Err((service, err)) => {
                 // we very much expect certain services to return an error therefore we do not log at warn/error level.
                 tracing::debug!("Got error response from {service}: {err:?}");
                 session_errors.insert(service, err);
-            }
-            Err(_) => {
-                tracing::warn!("Could not join init_session task")
             }
         }
     }
