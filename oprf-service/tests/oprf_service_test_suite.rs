@@ -177,6 +177,53 @@ async fn wrong_client_version_query() -> eyre::Result<()> {
 }
 
 #[tokio::test]
+async fn corrupt_client_version_header() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let node = TestNode::start(0, &setup).await?;
+    let response = node
+        .server
+        .get_websocket("/api/test/oprf")
+        .add_header(
+            oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
+            "abc",
+        )
+        .await;
+    assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
+    response.assert_text("invalid HTTP header (x-taceo-oprf-protocol-version)");
+    Ok(())
+}
+
+#[tokio::test]
+async fn corrupt_client_version_query() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let node = TestNode::start(0, &setup).await?;
+    let response = node
+        .server
+        .get_websocket("/api/test/oprf?version=abc")
+        .add_header(
+            oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
+            TEST_PROTOCOL_VERSION,
+        )
+        .await;
+    assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
+    response.assert_text("Failed to deserialize query string: version: expected semver version");
+    Ok(())
+}
+
+#[tokio::test]
+async fn init_with_version_query_but_header_good() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let node = TestNode::start(0, &setup).await?;
+    let response = node
+        .server
+        .get_websocket("/api/test/oprf?version=abc")
+        .await;
+    assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
+    response.assert_text("Failed to deserialize query string: version: expected semver version");
+    Ok(())
+}
+
+#[tokio::test]
 async fn init_with_version_query() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let node = TestNode::start(0, &setup).await?;

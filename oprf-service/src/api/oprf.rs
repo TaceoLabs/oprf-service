@@ -88,7 +88,7 @@ enum HumanReadable {
 /// - via the custom HTTP header [`oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER`], or
 /// - as a query parameter of the request URL.
 ///
-/// If both mechanisms are present, the HTTP header takes precedence over the query parameter.
+/// If both mechanisms are present and valid, the HTTP header takes precedence over the query parameter. If either of the versions is corrupted, it will reject the request.
 ///
 /// Connections that do not provide a valid protocol version are rejected before the web-socket session is established.
 ///
@@ -393,7 +393,7 @@ async fn write_response<Msg: Serialize>(
 
 /// Tries to determine the client version of the request by checking the http header and query parameters. At least one of those must be present. The header takes precedence.
 ///
-/// Returns an error if none of those are present.
+/// Returns `None` if none of those are present.
 fn parse_client_header(
     header_version: Option<TypedHeader<ProtocolVersion>>,
     Query(query_version): Query<ProtocolVersionQuery>,
