@@ -28,7 +28,7 @@
 //!
 //! If you want to enable HTTP/2.0, you either have to do it by hand or by calling `axum::serve`, which enabled HTTP/2.0 by default. Have a look at [Axum's HTTP2.0 example](https://github.com/tokio-rs/axum/blob/aeff16e91af6fa76efffdee8f3e5f464b458785b/examples/websockets-http2/src/main.rs#L57).
 
-use crate::api::oprf::OprfArgs;
+use crate::api::oprf::OprfModuleState;
 use crate::metrics::{METRICS_ID_I_AM_ALIVE, METRICS_ID_NODE_SESSIONS_OPEN};
 use crate::services::key_event_watcher::KeyEventWatcherTaskArgs;
 use crate::services::open_sessions::OpenSessions;
@@ -218,7 +218,7 @@ impl OprfServiceBuilder {
     ) -> Self {
         let args = Router::new().merge(self.api).nest(
             path,
-            api::oprf::routes(OprfArgs {
+            api::oprf::routes(OprfModuleState {
                 party_id: self.party_id,
                 threshold: self.threshold,
                 oprf_material_store: self.oprf_key_material_store.clone(),

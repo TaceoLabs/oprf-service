@@ -1,4 +1,5 @@
 use crate::api::errors::Error;
+use crate::api::version_header::{ProtocolVersion, ProtocolVersionQuery};
 use crate::metrics::{
     METRICS_ID_NODE_OPRF_SUCCESS, METRICS_ID_NODE_PART_1_DURATION, METRICS_ID_NODE_PART_1_FINISH,
     METRICS_ID_NODE_PART_1_START, METRICS_ID_NODE_PART_2_DURATION, METRICS_ID_NODE_PART_2_FINISH,
@@ -9,6 +10,7 @@ use crate::metrics::{
 use crate::oprf_key_material_store::OprfSession;
 use crate::services::open_sessions::OpenSessions;
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
+use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use axum::{
     Router,
@@ -18,9 +20,8 @@ use axum::{
     },
     routing::any,
 };
-use axum_extra::headers::Header;
-use axum_extra::{TypedHeader, headers};
-use http::{HeaderValue, StatusCode};
+use axum_extra::TypedHeader;
+use http::StatusCode;
 use oprf_core::ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir};
 use oprf_types::api::OprfRequestAuthService;
 use oprf_types::{
@@ -30,54 +31,12 @@ use oprf_types::{
 use semver::VersionReq;
 use serde::Deserialize;
 use serde::Serialize;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use tracing::{Instrument, instrument};
 
-/// A custom header that clients need to send to OPRF servers to indicate their version.
-#[derive(Debug, Clone)]
-pub(crate) struct ProtocolVersion(semver::Version);
-
-impl Header for ProtocolVersion {
-    fn name() -> &'static http::HeaderName {
-        &oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER
-    }
-
-    fn decode<'i, I>(values: &mut I) -> Result<Self, axum_extra::headers::Error>
-    where
-        Self: Sized,
-        I: Iterator<Item = &'i http::HeaderValue>,
-    {
-        let version_req = values
-            .next()
-            .ok_or_else(headers::Error::invalid)?
-            .to_str()
-            .map_err(|err| {
-                tracing::trace!("could not convert header to string: {err:?}");
-
-                headers::Error::invalid()
-            })?;
-        if values.next().is_some() {
-            Err(headers::Error::invalid())
-        } else {
-            let version = semver::Version::parse(version_req).map_err(|err| {
-                tracing::trace!("could not parse header version: {err:?}");
-                headers::Error::invalid()
-            })?;
-            Ok(ProtocolVersion(version))
-        }
-    }
-
-    fn encode<E: Extend<http::HeaderValue>>(&self, values: &mut E) {
-        let encoded = HeaderValue::from_bytes(self.0.to_string().as_bytes())
-            .expect("Cannot encode header version");
-        values.extend(std::iter::once(encoded));
-    }
-}
-
-pub(crate) struct OprfArgs<ReqAuth, ReqAuthError> {
+pub(crate) struct OprfModuleState<ReqAuth, ReqAuthError> {
     pub(crate) party_id: PartyId,
     pub(crate) threshold: usize,
     pub(crate) oprf_material_store: OprfKeyMaterialStore,
@@ -88,19 +47,19 @@ pub(crate) struct OprfArgs<ReqAuth, ReqAuthError> {
     pub(crate) max_connection_lifetime: Duration,
 }
 
-struct WsArgs<ReqAuth, ReqAuthError> {
-    party_id: PartyId,
-    threshold: usize,
-    oprf_material_store: OprfKeyMaterialStore,
-    open_sessions: OpenSessions,
-    req_auth_service: OprfRequestAuthService<ReqAuth, ReqAuthError>,
-    version_req: VersionReq,
-    max_message_size: usize,
-    max_connection_lifetime: Duration,
-
-    // axum extracted values
-    ws: WebSocketUpgrade,
-    client_version: semver::Version,
+impl<ReqAuth, ReqAuthError> Clone for OprfModuleState<ReqAuth, ReqAuthError> {
+    fn clone(&self) -> Self {
+        Self {
+            party_id: self.party_id,
+            threshold: self.threshold,
+            oprf_material_store: self.oprf_material_store.clone(),
+            open_sessions: self.open_sessions.clone(),
+            req_auth_service: self.req_auth_service.clone(),
+            version_req: self.version_req.clone(),
+            max_message_size: self.max_message_size,
+            max_connection_lifetime: self.max_connection_lifetime,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -109,45 +68,80 @@ enum HumanReadable {
     No,
 }
 
-/// Web-socket handler.
+/// # Web-socket Handler
 ///
-/// Sets the `max_message_size` for the web-socket to the provided value. Implementations are encouraged to use a very conservative value here. We only expect exactly two kinds of messages, and those are very small (of course depending on your authentication request), therefore we can reject larger requests pretty handily.
+/// Handles the creation and lifecycle of a web-socket session for OPRF requests.
 ///
-/// The created web-socket connection holds all the information bound to the session. At the very start of the session, tries to lock the requested session-id with the [`OpenSessions`] service, as no two sessions with the same id must be handled at the same time.
+/// ## Max Message Size
 ///
-/// The generated randomness (which is not allowed to be used twice and shall not leak) only lives in the created task and is consumed when the session finishes (also releases the session-id lock).
+/// Sets the `max_message_size` for the web-socket to the provided value. Implementations are encouraged to use a very conservative value here. We only expect exactly two kinds of messages, and those are very small (depending on your authentication request), therefore we can reject larger requests efficiently.
 ///
-/// Furthermore, every web-socket only live for `max_connection_lifetime`. As soon as the upgrade finishes, we start the timer. If a sessions takes longer than this defined amount, the server will send a `Close` frame and deconstructs the session (also deleting all cryptographic material bound to the session).
+/// ## Session Locking
+///
+/// The created web-socket connection holds all the information bound to the session. At the very start of the session, it tries to lock the requested session-id with the [`OpenSessions`] service, as no two sessions with the same id must be handled at the same time.
+///
+/// ## Client Protocol Version Requirement
+///
+/// Clients are required to announce the protocol version they implement using [Semantic Versioning (semver)].
+///
+/// The version must be provided either:
+/// - via the custom HTTP header [`oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER`], or
+/// - as a query parameter of the request URL.
+///
+/// If both mechanisms are present and valid, the HTTP header takes precedence over the query parameter. If either of the versions is corrupted, it will reject the request.
+///
+/// Connections that do not provide a valid protocol version are rejected before the web-socket session is established.
+///
+/// ## Randomness & Session Data
+///
+/// The generated randomness (which is not allowed to be used twice and shall not leak) only lives in the created task and is consumed when the session finishes (also releasing the session-id lock).
+///
+/// ## Connection Lifetime
+///
+/// Every web-socket only lives for `max_connection_lifetime`. As soon as the upgrade finishes, the timer starts. If a session takes longer than this defined amount, the server will send a `Close` frame and deconstructs the session (also deleting all cryptographic material bound to the session).
+///
+/// ## Error Handling
 ///
 /// Adds a `failed_upgrade` handler that logs the error.
 ///
-/// See [`partial_oprf`] for the flow of the web-socket connection. If the session finishes successfully, encounters an error, the user closes the connection, or we run into a timeout, the implementation will try to initiate a graceful shutdown of the web-socket connection (closing handshake). We do this at a best-effort basis but are very restrictive on what we expect. We close any session that sends invalid requests/authentication. If the sending of the `Close` frame fails, we simply ignore the error and destruct everything associated with the session.
-#[instrument(level = "debug", skip_all,name="request", fields(client=%args.client_version))]
-async fn ws<
+/// ## Session Flow
+///
+/// See [`partial_oprf`] for the flow of the web-socket connection. If the session finishes successfully, encounters an error, the user closes the connection, or we run into a timeout, the implementation will try to initiate a graceful shutdown of the web-socket connection (closing handshake). We do this on a best-effort basis but are very restrictive on what we expect. We close any session that sends invalid requests/authentication. If sending the `Close` frame fails, we simply ignore the error and destruct everything associated with the session.
+#[instrument(level = "debug", skip_all,name="request", fields(client_version=tracing::field::Empty))]
+async fn oprf_ws_handler<
     ReqAuth: for<'de> Deserialize<'de> + Send + 'static,
     ReqAuthError: Send + 'static + std::error::Error,
 >(
-    args: WsArgs<ReqAuth, ReqAuthError>,
+    State(state): State<OprfModuleState<ReqAuth, ReqAuthError>>,
+    websocket_upgrade: WebSocketUpgrade,
+    header_version: Option<TypedHeader<ProtocolVersion>>,
+    query_version: Query<ProtocolVersionQuery>,
 ) -> axum::response::Response {
-    tracing::trace!("checking version header: {}", args.client_version);
+    let client_version =
+        if let Some(client_version) = parse_client_header(header_version, query_version) {
+            client_version
+        } else {
+            return (StatusCode::BAD_REQUEST, "missing client version").into_response();
+        };
     let parent_span = tracing::Span::current();
-    if args.version_req.matches(&args.client_version) {
-        args.ws
-            .max_message_size(args.max_message_size)
+    parent_span.record("client_version", format!("{client_version}"));
+    if state.version_req.matches(&client_version) {
+        websocket_upgrade
+            .max_message_size(state.max_message_size)
             .on_failed_upgrade(|err| {
                 tracing::warn!("could not establish websocket connection: {err:?}");
             })
             .on_upgrade(move |mut ws| {
                 async move {
                     let close_frame = match tokio::time::timeout(
-                        args.max_connection_lifetime,
+                        state.max_connection_lifetime,
                         partial_oprf::<ReqAuth, ReqAuthError>(
                             &mut ws,
-                            args.party_id,
-                            args.threshold,
-                            args.open_sessions,
-                            args.oprf_material_store,
-                            args.req_auth_service,
+                            state.party_id,
+                            state.threshold,
+                            state.open_sessions,
+                            state.oprf_material_store,
+                            state.req_auth_service,
                         ),
                     )
                     .await
@@ -180,7 +174,7 @@ async fn ws<
         tracing::trace!("rejecting because version mismatch");
         (
             StatusCode::BAD_REQUEST,
-            format!("invalid version, expected: {}", args.version_req),
+            format!("invalid version, expected: {}", state.version_req),
         )
             .into_response()
     }
@@ -397,6 +391,23 @@ async fn write_response<Msg: Serialize>(
     Ok(())
 }
 
+/// Tries to determine the client version of the request by checking the http header and query parameters. At least one of those must be present. The header takes precedence.
+///
+/// Returns `None` if none of those are present.
+fn parse_client_header(
+    header_version: Option<TypedHeader<ProtocolVersion>>,
+    Query(query_version): Query<ProtocolVersionQuery>,
+) -> Option<semver::Version> {
+    // http header has precedence
+    if let Some(TypedHeader(ProtocolVersion(client_version))) = header_version {
+        Some(client_version)
+    } else if let Some(ProtocolVersion(client_version)) = query_version.version {
+        Some(client_version)
+    } else {
+        None
+    }
+}
+
 /// Creates a `Router` with a single `/oprf` route.
 ///
 /// The clients will upgrade their connection via the web-socket upgrade protocol. Axum basically supports HTTP/1.1 and HTTP/2.0 web-socket connections, therefore we accept connections with `any`.
@@ -406,34 +417,9 @@ pub fn routes<
     ReqAuth: for<'de> Deserialize<'de> + Send + 'static,
     ReqAuthError: Send + 'static + std::error::Error,
 >(
-    args: OprfArgs<ReqAuth, ReqAuthError>,
+    args: OprfModuleState<ReqAuth, ReqAuthError>,
 ) -> Router {
-    let OprfArgs {
-        party_id,
-        threshold,
-        oprf_material_store,
-        open_sessions,
-        req_auth_service,
-        version_req,
-        max_message_size,
-        max_connection_lifetime,
-    } = args;
-    Router::new().route(
-        "/oprf",
-        any(move |websocket_upgrade, version_header| {
-            let TypedHeader(ProtocolVersion(client_version)) = version_header;
-            ws::<ReqAuth, ReqAuthError>(WsArgs {
-                party_id,
-                threshold,
-                oprf_material_store: oprf_material_store.clone(),
-                open_sessions: open_sessions.clone(),
-                req_auth_service: Arc::clone(&req_auth_service),
-                version_req: version_req.clone(),
-                max_message_size,
-                max_connection_lifetime,
-                ws: websocket_upgrade,
-                client_version,
-            })
-        }),
-    )
+    Router::new()
+        .route("/oprf", any(oprf_ws_handler))
+        .with_state(args)
 }

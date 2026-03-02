@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use tungstenite::protocol::CloseFrame;
 use uuid::Uuid;
 
-use crate::setup::{TestNode, WireFormat};
+use crate::setup::{TEST_PROTOCOL_VERSION, TestNode, WireFormat};
 
 mod setup;
 
@@ -147,7 +147,7 @@ async fn not_a_participant() -> eyre::Result<()> {
 }
 
 #[tokio::test]
-async fn wrong_client_version() -> eyre::Result<()> {
+async fn wrong_client_version_header() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let node = TestNode::start(0, &setup).await?;
     let response = node
@@ -164,15 +164,120 @@ async fn wrong_client_version() -> eyre::Result<()> {
 }
 
 #[tokio::test]
+async fn wrong_client_version_query() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let node = TestNode::start(0, &setup).await?;
+    let response = node
+        .server
+        .get_websocket("/api/test/oprf?version=2.0.0")
+        .await;
+    assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
+    response.assert_text("invalid version, expected: ^1.0.0");
+    Ok(())
+}
+
+#[tokio::test]
+async fn corrupt_client_version_header() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let node = TestNode::start(0, &setup).await?;
+    let response = node
+        .server
+        .get_websocket("/api/test/oprf")
+        .add_header(
+            oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
+            "abc",
+        )
+        .await;
+    assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
+    response.assert_text("invalid HTTP header (x-taceo-oprf-protocol-version)");
+    Ok(())
+}
+
+#[tokio::test]
+async fn corrupt_client_version_query() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let node = TestNode::start(0, &setup).await?;
+    let response = node
+        .server
+        .get_websocket("/api/test/oprf?version=abc")
+        .add_header(
+            oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
+            TEST_PROTOCOL_VERSION,
+        )
+        .await;
+    assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
+    response.assert_text("Failed to deserialize query string: version: expected semver version");
+    Ok(())
+}
+
+#[tokio::test]
+async fn init_with_version_query_but_header_good() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let node = TestNode::start(0, &setup).await?;
+    let response = node
+        .server
+        .get_websocket("/api/test/oprf?version=abc")
+        .await;
+    assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
+    response.assert_text("Failed to deserialize query string: version: expected semver version");
+    Ok(())
+}
+
+#[tokio::test]
+async fn init_with_version_query() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let node = TestNode::start(0, &setup).await?;
+    let mut ws = node
+        .server
+        .get_websocket(&format!("/api/test/oprf?version={TEST_PROTOCOL_VERSION}"))
+        .await
+        .into_websocket()
+        .await;
+    // check that the init request works
+    setup::ws_send(
+        &mut ws,
+        &setup::request(&mut rand::thread_rng()),
+        WireFormat::Json,
+    )
+    .await;
+
+    let _response = setup::ws_recv::<OprfResponse>(&mut ws, WireFormat::Json).await;
+    Ok(())
+}
+
+#[tokio::test]
+async fn client_version_header_precedence() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let node = TestNode::start(0, &setup).await?;
+    let mut ws = node
+        .server
+        .get_websocket("/api/test/oprf?version=2.0.0")
+        .add_header(
+            oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
+            TEST_PROTOCOL_VERSION,
+        )
+        .await
+        .into_websocket()
+        .await;
+    // check that the init request works even if query header is wrong
+    setup::ws_send(
+        &mut ws,
+        &setup::request(&mut rand::thread_rng()),
+        WireFormat::Json,
+    )
+    .await;
+
+    let _response = setup::ws_recv::<OprfResponse>(&mut ws, WireFormat::Json).await;
+    Ok(())
+}
+
+#[tokio::test]
 async fn no_protocol_version() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let node = TestNode::start(0, &setup).await?;
     let response = node.server.get_websocket("/api/test/oprf").await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
-    response.assert_text(format!(
-        "Header of type `{}` was missing",
-        oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER
-    ));
+    response.assert_text("missing client version");
     Ok(())
 }
 
