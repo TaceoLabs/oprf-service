@@ -89,8 +89,7 @@ start_keygen() {
     for i in 0 1 2; do
         local port=$((20000 + i))
         local prefix="n$i"
-        local db_port=$((5432 + i))
-        local db_conn="postgres://postgres:postgres@localhost:$db_port/postgres"
+        local db_conn="postgres://postgres:postgres@localhost:5432/postgres"
 
         RUST_LOG="oprf_key_gen=trace,taceo_oprf_key_gen=trace,warn" \
         ./target/release/oprf-key-gen \
@@ -102,7 +101,7 @@ start_keygen() {
             --oprf-key-registry-contract $oprf_key_registry \
             --confirmations-for-transaction 1 \
             --db-connection-string $db_conn \
-            --db-schema oprf \
+            --db-schema oprf$i \
             > logs/key-gen$i.log 2>&1 &
         keygen_pids+=($!)
         echo "started key-gen$i with PID ${keygen_pids[$i]}"
@@ -125,8 +124,7 @@ start_nodes() {
             1) wallet=0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f ;;
             2) wallet=0xa0Ee7A142d267C1f36714E4a8F75612F20a79720 ;;
         esac
-        local db_port=$((5432 + i))
-        local db_conn="postgres://postgres:postgres@localhost:$db_port/postgres"
+        local db_conn="postgres://postgres:postgres@localhost:5432/postgres"
 
         RUST_LOG="taceo_oprf_service=trace,taceo_oprf_service_example=trace,oprf_service_example=trace,warn" \
         ./target/release/examples/oprf-service-example \
@@ -135,7 +133,7 @@ start_nodes() {
             --version-req ">=0.0.0" \
             --oprf-key-registry-contract $oprf_key_registry \
             --db-connection-string $db_conn \
-            --db-schema oprf \
+            --db-schema oprf$i \
             > logs/node$i.log 2>&1 &
         nodes_pids+=($!)
         echo "started node$i with PID ${nodes_pids[$i]}"
@@ -147,7 +145,7 @@ start_nodes() {
 # -------------------------
 main() {
     rm -rf logs/*
-    docker compose -f ./oprf-service/examples/deploy/docker-compose.yml up -d localstack anvil postgres0 postgres1 postgres2
+    docker compose -f ./oprf-service/examples/deploy/docker-compose.yml up -d localstack anvil postgres
 
     # centralized teardown
     teardown() {
