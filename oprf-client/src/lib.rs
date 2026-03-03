@@ -107,7 +107,7 @@ pub enum NodeError {
     ServiceError(#[from] ServiceError),
     /// Generic WebSocket error like connection lost or cannot reach host. For the Rust impl will wraps tungstenite-errors.
     #[error("Error during WebSocket connection: {0}")]
-    WsError(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
+    WsError(#[source] Box<dyn core::error::Error + Send + Sync + 'static>),
     /// The server send an invalid/unexpected message
     #[error("Server sent unexpected message: {reason}")]
     UnexpectedMessage {
@@ -118,7 +118,7 @@ pub enum NodeError {
     ///
     /// Primarily included for forward compatibility and future-proofing.
     #[error("Unknown error: {0}")]
-    Unknown(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
+    Unknown(#[source] Box<dyn core::error::Error + Send + Sync + 'static>),
 }
 
 impl PartialEq for NodeError {
@@ -168,12 +168,12 @@ pub enum Error {
     /// OPRF nodes returned different public keys
     #[error("OPRF nodes returned different public keys")]
     InconsistentOprfPublicKeys,
-    /// Threshold many OPRF nodes sent back this error
+    /// Threshold many OPRF nodes sent back this [`ServiceError`].
     #[error("Threshold nodes sent back error: {0}")]
     ThresholdServiceError(ServiceError),
     /// Threshold many OPRF nodes reported networking problems
     #[error("Threshold many nodes reported networking problems")]
-    Networking(Vec<Box<dyn std::error::Error + Send + Sync + 'static>>),
+    Networking(Vec<Box<dyn core::error::Error + Send + Sync + 'static>>),
     /// Threshold many OPRF nodes sent an unexpected message. This most likely indicates a client version problem
     #[error("Received an unexpected message from threshold many nodes: {reason}")]
     UnexpectedMessage {
@@ -190,7 +190,7 @@ pub enum Error {
     ///
     /// Primarily included for forward compatibility and future-proofing.
     #[error("Unknown error: {0}")]
-    Unknown(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
+    Unknown(#[source] Box<dyn core::error::Error + Send + Sync + 'static>),
 }
 
 /// Aggregates errors returned by nodes.
