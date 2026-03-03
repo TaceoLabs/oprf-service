@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.9.0...taceo-oprf-service-v0.10.0)
+
+### ⛰️ Features
+
+
+- [**breaking**] Added possibility to send client version as query param ([#490](https://github.com/TaceoLabs/oprf-service/pull/490)) - ([7f807f2](https://github.com/TaceoLabs/oprf-service/commit/7f807f20c55a25afad167d58c332e1b1b05fd7e3))
+
+### 📚 Documentation
+
+
+- Update Readme to reflect state of repository. ([#494](https://github.com/TaceoLabs/oprf-service/pull/494)) - ([4cb63b0](https://github.com/TaceoLabs/oprf-service/commit/4cb63b02f4615bdb1c3a7cf90d61828b5daf439e))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Removed three postgres instances from e2e-test ([#486](https://github.com/TaceoLabs/oprf-service/pull/486)) - ([ffd8f81](https://github.com/TaceoLabs/oprf-service/commit/ffd8f8133a03ee288f039566490e6bca21681395))
+
+
 ## [0.9.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.8.0...taceo-oprf-service-v0.9.0)
 
 ### ⛰️ Features

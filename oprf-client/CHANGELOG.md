@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.7.2...taceo-oprf-client-v0.8.0)
+
+### 🚜 Refactor
+
+
+- Added deny clippy::pedantic and some other lints ([#496](https://github.com/TaceoLabs/oprf-service/pull/496)) - ([f71433e](https://github.com/TaceoLabs/oprf-service/commit/f71433ec4b3b90b2018495e035fc925710e5d66c))
+- [**breaking**] Rewrite error handling for oprf-client ([#495](https://github.com/TaceoLabs/oprf-service/pull/495)) - ([008c619](https://github.com/TaceoLabs/oprf-service/commit/008c6194031a00d0aa9a5410f3a23b38067ee835))
+
+### 📚 Documentation
+
+
+- Update Readme to reflect state of repository. ([#494](https://github.com/TaceoLabs/oprf-service/pull/494)) - ([4cb63b0](https://github.com/TaceoLabs/oprf-service/commit/4cb63b02f4615bdb1c3a7cf90d61828b5daf439e))
+
+
 ## [0.7.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.7.1...taceo-oprf-client-v0.7.2)
 
 ### ⚙️ Miscellaneous Tasks
