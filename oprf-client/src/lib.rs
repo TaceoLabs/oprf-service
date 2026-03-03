@@ -26,7 +26,7 @@ pub use sessions::finish_sessions;
 pub use sessions::init_sessions;
 pub use tokio_tungstenite::Connector;
 
-/// Builds a WebSocket OPRF [`Uri`] for a given service base URL and authentication namespace.
+/// Builds a WebSocket OPRF [`Uri`] for a given service base URL and authentication module.
 ///
 /// This function:
 /// - Converts the scheme: `http://` → `ws://`, `https://` → `wss://`
@@ -35,7 +35,7 @@ pub use tokio_tungstenite::Connector;
 ///
 /// # Arguments
 /// - `service`: Base URL of the service (e.g., `"https://example.com"`)
-/// - `auth`: Authentication segment (e.g., `"issuer"`)
+/// - `auth`: Authentication module (e.g., `"issuer"`)
 ///
 /// # Returns
 /// `Result<Uri, InvalidUri>`
@@ -70,7 +70,7 @@ pub fn to_oprf_uri<Auth: fmt::Display>(service: &str, auth: Auth) -> Result<Uri,
 ///
 /// # Arguments
 /// - `services`: Iterable of service base URLs
-/// - `auth`: Authentication segment
+/// - `auth`: Authentication module
 ///
 /// # Returns
 /// `Result<Vec<Uri>, InvalidUri>`
@@ -287,6 +287,15 @@ pub struct VerifiableOprfOutput {
 /// # Returns
 /// The final [`VerifiableOprfOutput`] containing the OPRF output, the DLog equality proof, the blinded and unblinded responses.
 ///
+/// # Arguments
+/// - `services`: List of WebSocket URIs of the OPRF nodes to contact (must be unique). See the helper functions [`to_oprf_uri`] and [`to_oprf_uri_many`].
+/// - `threshold`: Number of nodes required to complete the protocol
+/// - `query`: The OPRF input value to evaluate
+/// - `blinding_factor`: The blinding factor used to blind the query
+/// - `domain_separator`: Domain separator used in the final Poseidon hash to derive the output
+/// - `auth`: Implementation specific authentication request forwarded to each OPRF node as part of the request
+/// - `connector`: TLS connector configuration for the WebSocket connections
+///
 /// # Errors
 /// See the [`Error`] enum for all potential errors of this function.
 #[instrument(level = "debug", skip_all, fields(request_id = tracing::field::Empty))]
@@ -388,6 +397,13 @@ where
 /// Combines the [`DLogProofShareShamir`]s of the OPRF nodes and computes the final [`DLogEqualityProof`].
 ///
 /// Verifies the proof and returns an [`Error`] iff the proof is invalid.
+///
+/// # Arguments
+/// - `request_id`: The UUID of the OPRF request
+/// - `oprf_public_key`: The public key of the OPRF, must be consistent across all nodes
+/// - `blinded_request`: The blinded query sent to the OPRF nodes
+/// - `proofs`: The proof shares collected from each node
+/// - `challenge`: The combined DLog commitments used to generate the challenge
 #[instrument(level = "debug", skip_all, fields(request_id = %request_id))]
 pub fn verify_dlog_equality(
     request_id: Uuid,
@@ -415,6 +431,9 @@ pub fn verify_dlog_equality(
 }
 
 /// Generates the [`DLogCommitmentsShamir`] for the OPRF nodes used for the second step of the distributed OPRF protocol, respecting the returned set of sessions.
+///
+/// # Arguments
+/// - `sessions`: The active OPRF sessions returned by [`init_sessions`]
 #[instrument(level = "debug", skip(sessions))]
 pub fn generate_challenge_request(sessions: &OprfSessions) -> DLogCommitmentsShamir {
     let contributing_parties = sessions
