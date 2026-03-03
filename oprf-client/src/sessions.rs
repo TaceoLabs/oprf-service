@@ -214,6 +214,10 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
         tracing::debug!("could not get a single session!");
     } else {
         tracing::debug!("could not get enough sessions. I got the following sessions:");
+        #[allow(
+            clippy::iter_over_hash_type,
+            reason = "HashMap iter only used for logging"
+        )]
         for (epoch, sessions) in epoch_session_map {
             tracing::debug!("got for epoch {epoch} {} sessions", sessions.len());
         }

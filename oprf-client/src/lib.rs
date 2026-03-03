@@ -1,14 +1,24 @@
 #![deny(missing_docs)]
 #![deny(clippy::all, clippy::pedantic)]
 #![deny(
-    clippy::let_underscore_must_use,
-    clippy::unwrap_used,
+    clippy::allow_attributes_without_reason,
     clippy::assertions_on_result_states,
     clippy::dbg_macro,
     clippy::decimal_literal_representation,
-    clippy::if_then_some_else_none
+    clippy::exhaustive_enums,
+    clippy::iter_over_hash_type,
+    clippy::let_underscore_must_use,
+    clippy::missing_assert_message,
+    clippy::print_stderr,
+    clippy::print_stdout,
+    clippy::undocumented_unsafe_blocks,
+    clippy::unnecessary_safety_comment,
+    clippy::unwrap_used
 )]
-#![allow(clippy::missing_errors_doc, clippy::missing_panics_doc)]
+#![allow(
+    clippy::missing_errors_doc,
+    reason = "We allow missing error sections in this crate"
+)]
 
 //! This crate provides utility functions for clients of the distributed OPRF protocol.
 //!
@@ -51,6 +61,9 @@ pub use tokio_tungstenite::Connector;
 /// # Returns
 /// `Result<Uri, InvalidUri>`
 ///
+/// # Errors
+/// Returns `InvalidUri` when it is not possible to convert to URI.
+///
 /// # Example
 /// ```
 /// # use http::Uri;
@@ -85,6 +98,9 @@ pub fn to_oprf_uri<Auth: fmt::Display>(service: &str, auth: Auth) -> Result<Uri,
 ///
 /// # Returns
 /// `Result<Vec<Uri>, InvalidUri>`
+///
+/// # Errors
+/// Returns `InvalidUri` when one of the service cannot be converted to URI.
 ///
 /// # Example
 /// ```
@@ -312,6 +328,10 @@ pub struct VerifiableOprfOutput {
 /// # Errors
 /// See the [`Error`] enum for all potential errors of this function.
 #[instrument(level = "debug", skip_all, fields(request_id = tracing::field::Empty))]
+#[allow(
+    clippy::missing_panics_doc,
+    reason = "Can't really panic due to promises from called method"
+)]
 pub async fn distributed_oprf<OprfRequestAuth>(
     services: &[Uri],
     threshold: usize,
