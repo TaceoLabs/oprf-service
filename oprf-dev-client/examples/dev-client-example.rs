@@ -1,6 +1,7 @@
 use alloy::{primitives::U160, providers::DynProvider};
 use ark_ff::{PrimeField as _, UniformRand as _};
 use clap::Parser;
+use eyre::Context;
 use oprf_client::Connector;
 use oprf_core::oprf::BlindingFactor;
 use oprf_test_utils::health_checks;
@@ -100,9 +101,11 @@ impl DevClient for ExampleDevClient {
         let domain_separator = ark_babyjubjub::Fq::from_be_bytes_mod_order(b"OPRF");
         let auth = ExampleOprfRequestAuth(setup.oprf_key_id);
 
+        let services = oprf_client::to_oprf_uri_many(&config.nodes, self.auth_module())
+            .context("while building URIs")?;
+
         let verifiable_oprf_output = oprf_client::distributed_oprf(
-            &config.nodes,
-            &self.auth_module(),
+            &services,
             config.threshold,
             query,
             blinding_factor,

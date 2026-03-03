@@ -4,17 +4,18 @@
 
 use std::collections::HashMap;
 
+use crate::NodeError;
 use crate::ws::WebSocketSession;
 
-use super::Error;
-use oprf_core::ddlog_equality::shamir::DLogCommitmentsShamir;
-use oprf_core::ddlog_equality::shamir::DLogProofShareShamir;
-use oprf_core::ddlog_equality::shamir::PartialDLogCommitmentsShamir;
-use oprf_types::ShareEpoch;
-use oprf_types::api::OprfRequest;
-use oprf_types::api::OprfResponse;
-use oprf_types::crypto::OprfPublicKey;
-use oprf_types::crypto::PartyId;
+use http::Uri;
+use oprf_core::ddlog_equality::shamir::{
+    DLogCommitmentsShamir, DLogProofShareShamir, PartialDLogCommitmentsShamir,
+};
+use oprf_types::{
+    ShareEpoch,
+    api::{OprfRequest, OprfResponse},
+    crypto::{OprfPublicKey, PartyId},
+};
 use serde::Serialize;
 use tokio::task::JoinSet;
 use tokio_tungstenite::Connector;
@@ -96,12 +97,11 @@ impl OprfSessions {
 /// Returns the [`WebSocketSession`] and the response on success.
 #[instrument(level = "trace", skip(req, connector))]
 async fn init_session<Auth: Serialize>(
-    service: String,
-    module: String,
+    service: Uri,
     req: OprfRequest<Auth>,
     connector: Connector,
-) -> Result<(WebSocketSession, OprfResponse), super::Error> {
-    let mut session = WebSocketSession::new(service, module, connector).await?;
+) -> Result<(WebSocketSession, OprfResponse), NodeError> {
+    let mut session = WebSocketSession::new(service, connector).await?;
     session.send(req).await?;
     let response = session.read::<OprfResponse>().await?;
     Ok((session, response))
@@ -114,7 +114,7 @@ async fn init_session<Auth: Serialize>(
 async fn finish_session(
     mut session: WebSocketSession,
     req: DLogCommitmentsShamir,
-) -> Result<DLogProofShareShamir, Error> {
+) -> Result<DLogProofShareShamir, NodeError> {
     session.send(req).await?;
     let resp = session.read().await?;
     session.graceful_close().await;
@@ -133,7 +133,7 @@ async fn finish_session(
 pub async fn finish_sessions(
     sessions: OprfSessions,
     req: DLogCommitmentsShamir,
-) -> Result<Vec<DLogProofShareShamir>, super::Error> {
+) -> Result<Vec<DLogProofShareShamir>, NodeError> {
     futures::future::try_join_all(
         sessions
             .ws
@@ -150,28 +150,26 @@ pub async fn finish_sessions(
 /// Returns a [`OprfSessions`] ready to be finalized with [`finish_sessions`].
 #[instrument(level = "debug", skip_all)]
 pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
-    oprf_services: &[String],
-    module: &str,
+    oprf_services: &[Uri],
     threshold: usize,
     req: OprfRequest<OprfRequestAuth>,
     connector: Connector,
-) -> Result<OprfSessions, super::Error> {
+) -> Result<OprfSessions, Vec<NodeError>> {
     let mut join_set = oprf_services
         .iter()
         .map(|service| {
             let connector = connector.clone();
-            let module = module.to_owned();
             let req = req.clone();
             let service = service.to_owned();
             async move {
-                init_session(service.clone(), module, req, connector)
+                init_session(service.clone(), req, connector)
                     .await
                     .map_err(|err| (service, err))
             }
         })
         .collect::<JoinSet<_>>();
     let mut epoch_session_map = HashMap::new();
-    let mut session_errors = HashMap::new();
+    let mut session_errors = Vec::new();
     while let Some(session_handle) = join_set.join_next().await {
         match session_handle {
             Ok(Ok((session, resp))) => {
@@ -198,8 +196,14 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
             }
             Ok(Err((service, err))) => {
                 // we very much expect certain services to return an error therefore we do not log at warn/error level.
-                tracing::debug!("Got error response from {service}: {err:?}");
-                session_errors.insert(service, err);
+                tracing::debug!(
+                    "Got error response from {:?}: {err:?}",
+                    service
+                        .authority()
+                        .map(ToString::to_string)
+                        .unwrap_or("unknown service".to_owned())
+                );
+                session_errors.push(err);
             }
             Err(_) => {
                 tracing::warn!("Could not join init_session task")
@@ -215,10 +219,7 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
             tracing::debug!("got for epoch {epoch} {} sessions", sessions.len())
         }
     }
-    Err(super::Error::NotEnoughOprfResponses(
-        threshold,
-        session_errors,
-    ))
+    Err(session_errors)
 }
 
 #[cfg(test)]
@@ -230,6 +231,7 @@ mod tests {
         routing::any,
     };
     use axum_test::{TestServer, TestServerBuilder};
+    use http::Uri;
     use oprf_core::ddlog_equality::shamir::{DLogSessionShamir, DLogShareShamir};
     use oprf_types::{
         ShareEpoch,
@@ -252,7 +254,7 @@ mod tests {
         panic!("Should not be called")
     }
 
-    async fn mock_server<C, Fut>(callback: C) -> (TestServer, String)
+    async fn mock_server<C, Fut>(callback: C) -> (TestServer, Uri)
     where
         C: FnOnce(WebSocket) -> Fut + Send + Sync + 'static + Clone,
         Fut: Future<Output = ()> + Send + 'static,
@@ -275,7 +277,12 @@ mod tests {
         } else {
             address
         };
-        (test_server, address)
+        (
+            test_server,
+            format!("{address}/api/test/oprf")
+                .parse()
+                .expect("Is valid URI"),
+        )
     }
 
     fn oprf_response_with_party_id(id: u16) -> OprfResponse {
@@ -298,21 +305,15 @@ mod tests {
     async fn test_reject_duplicate_party_id() {
         let (_test_server, should_address) = mock_server(panic_on_message).await;
 
-        let websocket_session0 = WebSocketSession::new(
-            should_address.clone(),
-            "test".to_owned(),
-            tokio_tungstenite::Connector::Plain,
-        )
-        .await
-        .expect("Can open websocket-session");
+        let websocket_session0 =
+            WebSocketSession::new(should_address.clone(), tokio_tungstenite::Connector::Plain)
+                .await
+                .expect("Can open websocket-session");
 
-        let websocket_session1 = WebSocketSession::new(
-            should_address.clone(),
-            "test".to_owned(),
-            tokio_tungstenite::Connector::Plain,
-        )
-        .await
-        .expect("Can open websocket-session");
+        let websocket_session1 =
+            WebSocketSession::new(should_address.clone(), tokio_tungstenite::Connector::Plain)
+                .await
+                .expect("Can open websocket-session");
 
         let mut oprf_sessions = OprfSessions::with_capacity(ShareEpoch::default(), 2);
 
@@ -323,6 +324,12 @@ mod tests {
         let is_address = oprf_sessions
             .push(websocket_session1, oprf_response_with_party_id(0))
             .expect_err("Should not work");
-        assert_eq!(is_address, should_address)
+        assert_eq!(
+            is_address,
+            should_address
+                .authority()
+                .expect("Has an authority")
+                .to_string()
+        )
     }
 }

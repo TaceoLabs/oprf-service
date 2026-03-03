@@ -6643,6 +6643,7 @@ dependencies = [
  "axum-test",
  "ciborium",
  "futures",
+ "http 1.4.0",
  "rand 0.8.5",
  "serde",
  "taceo-ark-babyjubjub",
