@@ -171,8 +171,8 @@ pub enum Error {
     /// Threshold many OPRF nodes sent back this [`ServiceError`].
     #[error("Threshold nodes sent back error: {0}")]
     ThresholdServiceError(ServiceError),
-    /// Threshold many OPRF nodes reported networking problems
-    #[error("Threshold many nodes reported networking problems")]
+    /// Unable to reach threshold many nodes due to networking issues
+    #[error("Unable to reach threshold many nodes due to networking issues")]
     Networking(Vec<Box<dyn core::error::Error + Send + Sync + 'static>>),
     /// Threshold many OPRF nodes sent an unexpected message. This most likely indicates a client version problem
     #[error("Received an unexpected message from threshold many nodes: {reason}")]
@@ -447,6 +447,9 @@ pub fn generate_challenge_request(sessions: &OprfSessions) -> DLogCommitmentsSha
 
 #[cfg(test)]
 mod tests {
+    use ark_ec::AdditiveGroup;
+    use rand::Rng;
+
     use super::*;
     #[test]
     fn test_threshold_service_error() {
@@ -566,5 +569,34 @@ mod tests {
         } else {
             panic!("Expected NodeErrorDisagreement since unknowns are ignored");
         }
+    }
+
+    #[tokio::test]
+    async fn test_services_dedup() {
+        let mut rng = rand::thread_rng();
+
+        let uri1: Uri = "https://example.com/api/issuer/oprf"
+            .parse()
+            .expect("Is a valid URI");
+        let uri2: Uri = "https://example1.com/api/issuer/oprf"
+            .parse()
+            .expect("Is a valid URI"); // duplicate
+
+        let services = &[uri1, uri2.clone(), uri2];
+        let is_error = super::distributed_oprf(
+            services,
+            2,
+            rng.r#gen(),
+            BlindingFactor::rand(&mut rng),
+            ark_babyjubjub::Fq::ZERO,
+            (),
+            Connector::Plain,
+        )
+        .await
+        .expect_err("Should be an error");
+        assert!(
+            matches!(is_error, super::Error::NonUniqueServices),
+            "Should be Error::NonUniqueServices"
+        );
     }
 }
