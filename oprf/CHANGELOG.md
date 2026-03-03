@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.7.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.7.0...taceo-oprf-v0.7.1)
+
+### 📚 Documentation
+
+
+- Update Readme to reflect state of repository. ([#494](https://github.com/TaceoLabs/oprf-service/pull/494)) - ([4cb63b0](https://github.com/TaceoLabs/oprf-service/commit/4cb63b02f4615bdb1c3a7cf90d61828b5daf439e))
+
+
 ## [0.7.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.6.0...taceo-oprf-v0.7.0)
 
 ### ⚙️ Miscellaneous Tasks
