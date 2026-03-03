@@ -183,7 +183,9 @@ pub enum Error {
     /// One of the OPRF nodes returned an error during finalize (2nd round of the protocol).
     #[error("One of the nodes failed during finalize: {0}")]
     CannotFinishSession(#[source] NodeError),
-    /// Nodes could not agree on an error.
+    /// Represents a disagreement between nodes: no error reached the required threshold for consensus.
+    ///
+    /// The order of errors in the contained `Vec<NodeError>` does **not** reflect the order of URIs passed to [`distributed_oprf`].
     #[error("Nodes could not agree on error")]
     NodeErrorDisagreement(Vec<NodeError>),
     /// Represents an unknown or unexpected error.
