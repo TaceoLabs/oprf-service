@@ -2,7 +2,8 @@
 //! This crate provides utility functions for clients of the distributed OPRF protocol.
 //!
 //! Most implementations will only need the [`distributed_oprf`] method. For more fine-grained workflows, we expose all necessary functions.
-use std::collections::HashMap;
+use core::fmt;
+use std::collections::{HashMap, HashSet};
 
 use ark_ec::AffineRepr as _;
 use oprf_core::{
@@ -12,49 +13,245 @@ use oprf_core::{
 };
 use oprf_types::{ShareEpoch, api::OprfRequest, crypto::OprfPublicKey};
 use serde::Serialize;
-use tokio_tungstenite::tungstenite::{self, http::uri::InvalidUri};
 use tracing::instrument;
 use uuid::Uuid;
 
 mod sessions;
 mod ws;
 
+pub use http::Uri;
+pub use http::uri::InvalidUri;
 pub use sessions::OprfSessions;
 pub use sessions::finish_sessions;
 pub use sessions::init_sessions;
 pub use tokio_tungstenite::Connector;
 
+/// Builds a WebSocket OPRF [`Uri`] for a given service base URL and authentication namespace.
+///
+/// This function:
+/// - Converts the scheme: `http://` → `ws://`, `https://` → `wss://`
+/// - Normalizes trailing slashes
+/// - Appends `/api/{auth}/oprf`
+///
+/// # Arguments
+/// - `service`: Base URL of the service (e.g., `"https://example.com"`)
+/// - `auth`: Authentication segment (e.g., `"issuer"`)
+///
+/// # Returns
+/// `Result<Uri, InvalidUri>`
+///
+/// # Example
+/// ```
+/// # use http::Uri;
+/// # use http::uri::InvalidUri;
+/// # use taceo_oprf_client::to_oprf_uri;
+/// let uri = to_oprf_uri("https://example.com", "issuer")?;
+/// assert_eq!(uri.to_string(), "wss://example.com/api/issuer/oprf");
+/// # Ok::<(), InvalidUri>(())
+/// ```
+pub fn to_oprf_uri<Auth: fmt::Display>(service: &str, auth: Auth) -> Result<Uri, InvalidUri> {
+    // Determine ws/wss scheme
+    let ws_base = if service.starts_with("http") {
+        service.replacen("http", "ws", 1)
+    } else {
+        service.to_string()
+    };
+
+    // Remove trailing slash if any
+    let ws_base = ws_base.trim_end_matches('/');
+
+    let uri_str = format!("{}/api/{}/oprf", ws_base, auth);
+    uri_str.parse::<Uri>()
+}
+
+/// Builds WebSocket OPRF [`Uri`]s for multiple services.
+///
+/// Calls [`to_oprf_uri`] for each service and collects the results. Returns the first encountered error if any service URL is invalid.
+///
+/// # Arguments
+/// - `services`: Iterable of service base URLs
+/// - `auth`: Authentication segment
+///
+/// # Returns
+/// `Result<Vec<Uri>, InvalidUri>`
+///
+/// # Example
+/// ```
+/// # use http::Uri;
+/// # use http::uri::InvalidUri;
+/// # use taceo_oprf_client::to_oprf_uri_many;
+/// let services = vec!["https://a.example.com", "https://b.example.com"];
+/// let uris = to_oprf_uri_many(services, "issuer")?;
+/// assert_eq!(uris.len(), 2);
+/// # Ok::<(), InvalidUri>(())
+/// ```
+pub fn to_oprf_uri_many<S, I, A>(services: I, auth: A) -> Result<Vec<Uri>, InvalidUri>
+where
+    S: AsRef<str>,
+    I: IntoIterator<Item = S>,
+    A: fmt::Display,
+{
+    let auth = auth.to_string();
+    services
+        .into_iter()
+        .map(|s| to_oprf_uri(s.as_ref(), &auth))
+        .collect()
+}
+
+/// The error of a single node.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum NodeError {
+    /// Application level error. Contains a [`ServiceError`].
+    #[error(transparent)]
+    ServiceError(#[from] ServiceError),
+    /// Generic WebSocket error like connection lost or cannot reach host. For the Rust impl will wraps tungstenite-errors.
+    #[error("Error during WebSocket connection: {0}")]
+    WsError(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
+    /// The server send an invalid/unexpected message
+    #[error("Server sent unexpected message: {reason}")]
+    UnexpectedMessage {
+        /// Reason for closing websocket from our side
+        reason: String,
+    },
+    /// Represents an unknown or unexpected error.
+    ///
+    /// Primarily included for forward compatibility and future-proofing.
+    #[error("Unknown error: {0}")]
+    Unknown(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
+}
+
+impl PartialEq for NodeError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::ServiceError(lhs), Self::ServiceError(rhs)) => lhs == rhs,
+            (Self::UnexpectedMessage { reason: lhs }, Self::UnexpectedMessage { reason: rhs }) => {
+                lhs == rhs
+            }
+            _ => false,
+        }
+    }
+}
+
+/// The application level error from a node. We expect callsite to understand the provided `error_code`.
+/// The `msg` is for debugging purposes. It should not be shown to the user.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct ServiceError {
+    /// The `close_code` recorded from the close frame.
+    pub error_code: u16,
+    /// An optional message recorded from the close frame. Intended for debugging and not to show to the user.
+    pub msg: Option<String>,
+}
+
+impl core::error::Error for ServiceError {}
+
+impl fmt::Display for ServiceError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.msg {
+            Some(m) => write!(f, "error code: {} with message: {}", self.error_code, m),
+            None => write!(f, "error code: {} (no message)", self.error_code),
+        }
+    }
+}
+
 /// Errors returned by the distributed OPRF protocol.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
     /// Services must be unique
     #[error("Services must be unique")]
     NonUniqueServices,
-    /// The server send an unexpected message (either message type or a frame that is not `Binary`/`Close`).
-    #[error("Unexpected msg")]
-    UnexpectedMsg,
-    /// The server send a close frame with an error message.
-    #[error("Server returned an error: {0}")]
-    ServerError(String),
-    /// Server did close the connection.
-    #[error("Endpoint closed connection")]
-    Eof,
-    /// Not enough OPRF responses received to satisfy the required threshold.
-    /// The second field contains any errors from the individual OPRF responses.
-    #[error("Could not reach {0} responses")]
-    NotEnoughOprfResponses(usize, HashMap<String, Error>),
     /// The DLog equality proof failed verification.
     #[error("DLog proof could not be verified")]
     InvalidDLogProof,
-    /// The used service is not a valid URI
-    #[error(transparent)]
-    InvalidUri(#[from] InvalidUri),
-    /// Wrapping inner tungstenite error
-    #[error(transparent)]
-    WsError(#[from] tungstenite::Error),
     /// OPRF nodes returned different public keys
     #[error("OPRF nodes returned different public keys")]
     InconsistentOprfPublicKeys,
+    /// Threshold many OPRF nodes sent back this error
+    #[error("Threshold nodes sent back error: {0}")]
+    ThresholdServiceError(ServiceError),
+    /// Threshold many OPRF nodes reported networking problems
+    #[error("Threshold many nodes reported networking problems")]
+    Networking(Vec<Box<dyn std::error::Error + Send + Sync + 'static>>),
+    /// Threshold many OPRF nodes sent an unexpected message. This most likely indicates a client version problem
+    #[error("Received an unexpected message from threshold many nodes: {reason}")]
+    UnexpectedMessage {
+        /// A human-readable explanation why the client rejected the message
+        reason: String,
+    },
+    /// One of the OPRF nodes returned an error during finalize (2nd round of the protocol).
+    #[error("One of the nodes failed during finalize: {0}")]
+    CannotFinishSession(#[source] NodeError),
+    /// Nodes could not agree on an error.
+    #[error("Nodes could not agree on error")]
+    NodeErrorDisagreement(Vec<NodeError>),
+    /// Represents an unknown or unexpected error.
+    ///
+    /// Primarily included for forward compatibility and future-proofing.
+    #[error("Unknown error: {0}")]
+    Unknown(#[source] Box<dyn std::error::Error + Send + Sync + 'static>),
+}
+
+/// Aggregates errors returned by nodes.
+///
+/// - If `threshold` nodes returned the same `ServiceError`, returns a consensus service error.
+/// - If `threshold` nodes returned the same `UnexpectedMessage`, returns that consensus.
+/// - If `threshold` nodes returned `WsError`s, collects them into a networking error.
+/// - Otherwise, returns `NodeErrorDisagreement`.
+///
+/// Internal use only.
+fn aggregate_error(threshold: usize, errors: Vec<NodeError>) -> Error {
+    let mut service_errors = HashMap::new();
+    let mut ws_errors_counters = 0;
+    let mut unexpected_message = HashMap::new();
+
+    for err in errors.iter() {
+        match err {
+            NodeError::ServiceError(service_error) => {
+                let count = service_errors.entry(service_error).or_insert(0);
+                *count += 1;
+                if *count >= threshold {
+                    return Error::ThresholdServiceError(service_error.to_owned());
+                }
+            }
+            NodeError::WsError(_) => {
+                // can't check generic error for equality therefore we just collect them
+                ws_errors_counters += 1;
+                if ws_errors_counters >= threshold {
+                    break;
+                }
+            }
+            NodeError::UnexpectedMessage { reason } => {
+                let count = unexpected_message.entry(reason).or_insert(0);
+                *count += 1;
+                if *count >= threshold {
+                    return Error::UnexpectedMessage {
+                        reason: reason.to_owned(),
+                    };
+                }
+            }
+            // we ignore unknown for aggregation
+            _ => {}
+        }
+    }
+
+    if ws_errors_counters >= threshold {
+        return Error::Networking(
+            errors
+                .into_iter()
+                .filter_map(|err| {
+                    if let NodeError::WsError(error) = err {
+                        Some(error)
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+        );
+    }
+
+    Error::NodeErrorDisagreement(errors.into_iter().collect())
 }
 
 /// The result of the distributed OPRF protocol.
@@ -93,10 +290,8 @@ pub struct VerifiableOprfOutput {
 /// # Errors
 /// See the [`Error`] enum for all potential errors of this function.
 #[instrument(level = "debug", skip_all, fields(request_id = tracing::field::Empty))]
-#[expect(clippy::too_many_arguments)]
 pub async fn distributed_oprf<OprfRequestAuth>(
-    services: &[String],
-    module: &str,
+    services: &[Uri],
     threshold: usize,
     query: ark_babyjubjub::Fq,
     blinding_factor: BlindingFactor,
@@ -111,9 +306,7 @@ where
         "starting distributed oprf. my version: {}",
         env!("CARGO_PKG_VERSION")
     );
-    let mut services_dedup = services.to_vec();
-    services_dedup.sort();
-    services_dedup.dedup();
+    let services_dedup = services.iter().collect::<HashSet<_>>();
     if services_dedup.len() != services.len() {
         return Err(Error::NonUniqueServices);
     }
@@ -131,8 +324,9 @@ where
     };
 
     tracing::debug!("initializing sessions at {} services", services.len());
-    let sessions =
-        sessions::init_sessions(services, module, threshold, oprf_req, connector).await?;
+    let sessions = sessions::init_sessions(services, threshold, oprf_req, connector)
+        .await
+        .map_err(|errors| aggregate_error(threshold, errors))?;
 
     let oprf_public_key = sessions
         .oprf_public_keys
@@ -154,7 +348,9 @@ where
     let challenge = generate_challenge_request(&sessions);
 
     tracing::debug!("finishing the sessions at the remaining services..");
-    let responses = sessions::finish_sessions(sessions, challenge.clone()).await?;
+    let responses = sessions::finish_sessions(sessions, challenge.clone())
+        .await
+        .map_err(Error::CannotFinishSession)?;
 
     let dlog_proof = verify_dlog_equality(
         request_id,

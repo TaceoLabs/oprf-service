@@ -15,7 +15,7 @@ use alloy::{
     signers::local::PrivateKeySigner,
 };
 use eyre::Context;
-use oprf_client::{Connector, OprfSessions};
+use oprf_client::{Connector, OprfSessions, Uri};
 use oprf_core::{
     ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir},
     oprf::BlindedOprfRequest,
@@ -112,8 +112,7 @@ pub async fn delete_test(config: DevClientConfig, provider: DynProvider) -> eyre
 }
 
 pub async fn send_init_requests<OprfRequestAuth: Clone + Serialize + Send + 'static>(
-    nodes: &[String],
-    module: &str,
+    nodes: &[Uri],
     threshold: usize,
     connector: Connector,
     sequential: bool,
@@ -129,13 +128,12 @@ pub async fn send_init_requests<OprfRequestAuth: Clone + Serialize + Send + 'sta
 
     for (id, req) in requests.into_iter() {
         let nodes = nodes.to_vec();
-        let module = module.to_owned();
         let connector = connector.clone();
         init_results.spawn(async move {
             let init_start = Instant::now();
-            let sessions = oprf_client::init_sessions(&nodes, &module, threshold, req, connector)
+            let sessions = oprf_client::init_sessions(&nodes, threshold, req, connector)
                 .await
-                .context(format!("while handling session-id: {id}"))?;
+                .map_err(|_| eyre::eyre!("Error during init-sessions for session-id: {id}"))?;
             let init_duration = init_start.elapsed();
             eyre::Ok((id, sessions, init_duration))
         });
@@ -339,9 +337,11 @@ async fn stress_test<T: DevClient>(
         init_requests.insert(request_id, init_request);
     }
     tracing::info!("sending init requests..");
+    let services = oprf_client::to_oprf_uri_many(&config.nodes, dev_client.auth_module())
+        .context("while building URIs")?;
+
     let (sessions, finish_requests) = send_init_requests(
-        &config.nodes,
-        &dev_client.auth_module(),
+        &services,
         config.threshold,
         connector,
         sequential,
