@@ -425,3 +425,127 @@ pub fn generate_challenge_request(sessions: &OprfSessions) -> DLogCommitmentsSha
     // Combine commitments from all sessions and create a single challenge
     DLogCommitmentsShamir::combine_commitments(&sessions.commitments, contributing_parties)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_threshold_service_error() {
+        let err_a1 = NodeError::ServiceError(ServiceError {
+            error_code: 1,
+            msg: Some("A".into()),
+        });
+        let err_a2 = NodeError::ServiceError(ServiceError {
+            error_code: 1,
+            msg: Some("A".into()),
+        });
+        let err_b = NodeError::ServiceError(ServiceError {
+            error_code: 2,
+            msg: Some("B".into()),
+        });
+
+        let errors = vec![err_a1, err_a2, err_b];
+        if let Error::ThresholdServiceError(ServiceError { error_code, msg }) =
+            aggregate_error(2, errors)
+        {
+            assert_eq!(error_code, 1);
+            assert_eq!(msg.expect("Should have a message"), "A");
+        } else {
+            panic!("did not receive service error but expected it");
+        }
+    }
+
+    #[test]
+    fn test_threshold_unexpected_message() {
+        let errors = vec![
+            NodeError::UnexpectedMessage {
+                reason: "oops1".into(),
+            },
+            NodeError::UnexpectedMessage {
+                reason: "oops1".into(),
+            },
+            NodeError::UnexpectedMessage {
+                reason: "oops2".into(),
+            },
+        ];
+
+        if let Error::UnexpectedMessage { reason } = aggregate_error(2, errors) {
+            assert_eq!(reason, "oops1");
+        } else {
+            panic!("Expected UnexpectedMessage");
+        }
+    }
+
+    #[test]
+    fn test_threshold_ws_error() {
+        let ws1: Box<dyn core::error::Error + Send + Sync> = Box::new(std::io::Error::other("ws1"));
+        let ws2: Box<dyn core::error::Error + Send + Sync> = Box::new(std::io::Error::other("ws2"));
+        let ws3: Box<dyn core::error::Error + Send + Sync> = Box::new(std::io::Error::other("ws3"));
+
+        let errors = vec![
+            NodeError::WsError(ws1),
+            NodeError::ServiceError(ServiceError {
+                error_code: 1,
+                msg: Some("A".into()),
+            }),
+            NodeError::WsError(ws2),
+            NodeError::UnexpectedMessage {
+                reason: "oops".into(),
+            },
+            NodeError::WsError(ws3),
+        ];
+
+        let res = aggregate_error(3, errors);
+        if let Error::Networking(ws_errors) = res {
+            assert!(
+                ws_errors.len() >= 3,
+                "Expected at least 3 ws errors collected"
+            );
+        } else {
+            panic!("Expected Networking error");
+        }
+    }
+
+    #[test]
+    fn test_node_error_disagreement() {
+        let errors = vec![
+            NodeError::ServiceError(ServiceError {
+                error_code: 1,
+                msg: Some("A".into()),
+            }),
+            NodeError::ServiceError(ServiceError {
+                error_code: 2,
+                msg: Some("B".into()),
+            }),
+            NodeError::UnexpectedMessage {
+                reason: "oops".into(),
+            },
+            NodeError::WsError(Box::new(std::io::Error::other("ws"))),
+            NodeError::Unknown(Box::new(std::io::Error::other("unknown"))),
+        ];
+        let len = errors.len();
+
+        let res = aggregate_error(3, errors);
+        if let Error::NodeErrorDisagreement(all) = res {
+            assert_eq!(all.len(), len, "All errors should be returned");
+        } else {
+            panic!("Expected NodeErrorDisagreement");
+        }
+    }
+
+    #[test]
+    fn test_unknown_ignored() {
+        let errors = vec![
+            NodeError::Unknown(Box::new(std::io::Error::other("unknown1"))),
+            NodeError::Unknown(Box::new(std::io::Error::other("unknown2"))),
+        ];
+        let len = errors.len();
+
+        let res = aggregate_error(1, errors);
+        if let Error::NodeErrorDisagreement(all) = res {
+            assert_eq!(all.len(), len);
+        } else {
+            panic!("Expected NodeErrorDisagreement since unknowns are ignored");
+        }
+    }
+}
