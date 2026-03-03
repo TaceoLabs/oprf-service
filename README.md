@@ -1,8 +1,5 @@
 # OPRF Service
 
-> [!WARNING]
-> This repository is heavy WIP and may contain incomplete, insecure and unaudited protocols. Do not use this in production!
-
 This is a monorepo containing:
 
 * `circom`: A collection of Circom circuits and test vectors for them.
