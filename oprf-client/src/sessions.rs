@@ -200,13 +200,12 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
                     "Got error response from {:?}: {err:?}",
                     service
                         .authority()
-                        .map(ToString::to_string)
-                        .unwrap_or("unknown service".to_owned())
+                        .map_or_else(|| "unknown service".to_owned(), ToString::to_string)
                 );
                 session_errors.push(err);
             }
             Err(_) => {
-                tracing::warn!("Could not join init_session task")
+                tracing::warn!("Could not join init_session task");
             }
         }
     }
@@ -216,7 +215,7 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + Send + 'static>(
     } else {
         tracing::debug!("could not get enough sessions. I got the following sessions:");
         for (epoch, sessions) in epoch_session_map {
-            tracing::debug!("got for epoch {epoch} {} sessions", sessions.len())
+            tracing::debug!("got for epoch {epoch} {} sessions", sessions.len());
         }
     }
     Err(session_errors)
@@ -241,7 +240,7 @@ mod tests {
 
     use crate::{OprfSessions, ws::WebSocketSession};
 
-    async fn ws_handler<C, Fut>(ws: WebSocketUpgrade, callback: C) -> impl IntoResponse
+    fn ws_handler<C, Fut>(ws: WebSocketUpgrade, callback: C) -> impl IntoResponse
     where
         C: FnOnce(WebSocket) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
@@ -254,7 +253,7 @@ mod tests {
         panic!("Should not be called")
     }
 
-    async fn mock_server<C, Fut>(callback: C) -> (TestServer, Uri)
+    fn mock_server<C, Fut>(callback: C) -> (TestServer, Uri)
     where
         C: FnOnce(WebSocket) -> Fut + Send + Sync + 'static + Clone,
         Fut: Future<Output = ()> + Send + 'static,
@@ -263,7 +262,9 @@ mod tests {
             .http_transport()
             .build(Router::new().route(
                 "/api/test/oprf",
-                any(move |webscoket_upgrade| ws_handler(webscoket_upgrade, callback)),
+                any(
+                    move |webscoket_upgrade| async move { ws_handler(webscoket_upgrade, callback) },
+                ),
             ))
             .expect("Can build test-server");
         let address = test_server
@@ -303,7 +304,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_reject_duplicate_party_id() {
-        let (_test_server, should_address) = mock_server(panic_on_message).await;
+        let (_test_server, should_address) = mock_server(panic_on_message);
 
         let websocket_session0 =
             WebSocketSession::new(should_address.clone(), tokio_tungstenite::Connector::Plain)
@@ -330,6 +331,6 @@ mod tests {
                 .authority()
                 .expect("Has an authority")
                 .to_string()
-        )
+        );
     }
 }

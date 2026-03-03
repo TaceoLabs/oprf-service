@@ -37,13 +37,19 @@ pub(crate) struct WebSocketSession {
 impl WebSocketSession {
     /// Tries to close the websocket on a best effort basis by sending a close-frame to the server and initiating tear down.
     async fn best_effort_close(&mut self, code: CloseCode, reason: impl Into<String>) {
-        let _ = self
+        if let Err(err) = self
             .inner
             .close(Some(CloseFrame {
                 code,
                 reason: reason.into().into(),
             }))
-            .await;
+            .await
+        {
+            tracing::trace!(
+                "Received an error when trying to best effort close {}: {err:?}",
+                self.service
+            );
+        }
     }
 
     /// Calls [`Self::best_effort_close`] and returns an [`NodeError::UnexpectedMessage`] with the provided reason.
@@ -62,8 +68,7 @@ impl WebSocketSession {
         let version = env!("CARGO_PKG_VERSION");
         let service = endpoint
             .authority()
-            .map(ToString::to_string)
-            .unwrap_or("unknown authority".to_string());
+            .map_or_else(|| "unknown authority".to_string(), ToString::to_string);
         tracing::trace!("> sending request to {service}..");
         let request = ClientRequestBuilder::new(endpoint)
             .with_header(OPRF_PROTOCOL_VERSION_HEADER.as_str(), version);
@@ -139,13 +144,6 @@ impl WebSocketSession {
 
     /// Gracefully closes the web-socket by sending a `Close` frame with `CloseCode::Normal`.
     pub(crate) async fn graceful_close(mut self) {
-        // we close the websocket on best-effort basis
-        let _ = self
-            .inner
-            .close(Some(CloseFrame {
-                code: CloseCode::Normal,
-                reason: "success".into(),
-            }))
-            .await;
+        self.best_effort_close(CloseCode::Normal, "success").await;
     }
 }

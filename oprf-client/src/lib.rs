@@ -1,4 +1,15 @@
-#![deny(missing_docs, clippy::unwrap_used)]
+#![deny(missing_docs)]
+#![deny(clippy::all, clippy::pedantic)]
+#![deny(
+    clippy::let_underscore_must_use,
+    clippy::unwrap_used,
+    clippy::assertions_on_result_states,
+    clippy::dbg_macro,
+    clippy::decimal_literal_representation,
+    clippy::if_then_some_else_none
+)]
+#![allow(clippy::missing_errors_doc, clippy::missing_panics_doc)]
+
 //! This crate provides utility functions for clients of the distributed OPRF protocol.
 //!
 //! Most implementations will only need the [`distributed_oprf`] method. For more fine-grained workflows, we expose all necessary functions.
@@ -60,7 +71,7 @@ pub fn to_oprf_uri<Auth: fmt::Display>(service: &str, auth: Auth) -> Result<Uri,
     // Remove trailing slash if any
     let ws_base = ws_base.trim_end_matches('/');
 
-    let uri_str = format!("{}/api/{}/oprf", ws_base, auth);
+    let uri_str = format!("{ws_base}/api/{auth}/oprf");
     uri_str.parse::<Uri>()
 }
 
@@ -162,7 +173,7 @@ pub enum Error {
     /// Services must be unique
     #[error("Services must be unique")]
     NonUniqueServices,
-    /// The DLog equality proof failed verification.
+    /// The `DLog` equality proof failed verification.
     #[error("DLog proof could not be verified")]
     InvalidDLogProof,
     /// OPRF nodes returned different public keys
@@ -208,7 +219,7 @@ fn aggregate_error(threshold: usize, errors: Vec<NodeError>) -> Error {
     let mut ws_errors_counters = 0;
     let mut unexpected_message = HashMap::new();
 
-    for err in errors.iter() {
+    for err in &errors {
         match err {
             NodeError::ServiceError(service_error) => {
                 let count = service_errors.entry(service_error).or_insert(0);
@@ -261,7 +272,7 @@ fn aggregate_error(threshold: usize, errors: Vec<NodeError>) -> Error {
 pub struct VerifiableOprfOutput {
     /// The generated OPRF output.
     pub output: ark_babyjubjub::Fq,
-    /// The DLog equality proof.
+    /// The `DLog` equality proof.
     pub dlog_proof: DLogEqualityProof,
     /// The blinded OPRF request.
     pub blinded_request: ark_babyjubjub::EdwardsAffine,
@@ -280,14 +291,14 @@ pub struct VerifiableOprfOutput {
 /// This function performs the full client-side workflow of the distributed OPRF protocol:
 /// 1. Blinds the input query using the provided blinding factor.
 /// 2. Initializes sessions with the specified OPRF services, sending the blinded query and authentication information.
-/// 3. Generates the DLog equality challenge based on the commitments received from the services.
+/// 3. Generates the `DLog` equality challenge based on the commitments received from the services.
 /// 4. Finishes the sessions by sending the challenge to the services and collecting their responses
-/// 5. Verifies the combined DLog equality proof from the services.
+/// 5. Verifies the combined `DLog` equality proof from the services.
 /// 6. Unblinds the combined OPRF response using the blinding factor.
 /// 7. Computes the final OPRF output by hashing the original query and the unblinded response.
 ///
 /// # Returns
-/// The final [`VerifiableOprfOutput`] containing the OPRF output, the DLog equality proof, the blinded and unblinded responses.
+/// The final [`VerifiableOprfOutput`] containing the OPRF output, the `DLog` equality proof, the blinded and unblinded responses.
 ///
 /// # Arguments
 /// - `services`: List of WebSocket URIs of the OPRF nodes to contact (must be unique). See the helper functions [`to_oprf_uri`] and [`to_oprf_uri_many`].
@@ -367,7 +378,7 @@ where
         request_id,
         oprf_public_key,
         &blinded_request,
-        responses,
+        &responses,
         challenge.clone(),
     )?;
 
@@ -405,19 +416,19 @@ where
 /// - `oprf_public_key`: The public key of the OPRF, must be consistent across all nodes
 /// - `blinded_request`: The blinded query sent to the OPRF nodes
 /// - `proofs`: The proof shares collected from each node
-/// - `challenge`: The combined DLog commitments used to generate the challenge
+/// - `challenge`: The combined `DLog` commitments used to generate the challenge
 #[instrument(level = "debug", skip_all, fields(request_id = %request_id))]
 pub fn verify_dlog_equality(
     request_id: Uuid,
     oprf_public_key: OprfPublicKey,
     blinded_request: &BlindedOprfRequest,
-    proofs: Vec<DLogProofShareShamir>,
+    proofs: &[DLogProofShareShamir],
     challenge: DLogCommitmentsShamir,
 ) -> Result<DLogEqualityProof, Error> {
     let blinded_response = challenge.blinded_response();
     let dlog_proof = challenge.combine_proofs(
         request_id,
-        &proofs,
+        proofs,
         oprf_public_key.inner(),
         blinded_request.blinded_query(),
     );

@@ -360,7 +360,7 @@ async fn stress_test<T: DevClient>(
                 id,
                 dev_client.get_oprf_key(&setup),
                 &blinded_req,
-                res,
+                &res,
                 finish_req,
             )?;
         }
