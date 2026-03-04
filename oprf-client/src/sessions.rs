@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use crate::NodeError;
 use crate::ws::WebSocketSession;
 
+use futures::stream::{FuturesUnordered, StreamExt};
 use http::Uri;
 use oprf_core::ddlog_equality::shamir::{
     DLogCommitmentsShamir, DLogProofShareShamir, PartialDLogCommitmentsShamir,
@@ -16,7 +17,6 @@ use oprf_types::{
     api::{OprfRequest, OprfResponse},
     crypto::{OprfPublicKey, PartyId},
 };
-use futures::stream::{FuturesUnordered, StreamExt};
 use serde::Serialize;
 use tracing::instrument;
 

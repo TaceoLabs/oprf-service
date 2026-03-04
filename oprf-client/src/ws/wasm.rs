@@ -45,8 +45,11 @@ impl WebSocketSession {
         let service = endpoint.clone();
         tracing::trace!("> sending request to {service}..");
 
-        let ws = WebSocket::open(&endpoint)
-            .map_err(|e| NodeError::WsError(Box::new(std::io::Error::other(format!("failed to open {endpoint}: {e:?}")))))?;
+        let ws = WebSocket::open(&endpoint).map_err(|e| {
+            NodeError::WsError(Box::new(std::io::Error::other(format!(
+                "failed to open {endpoint}: {e:?}"
+            ))))
+        })?;
         let (write, read) = ws.split();
 
         Ok(Self {
@@ -61,7 +64,9 @@ impl WebSocketSession {
         let mut buf = Vec::new();
         ciborium::into_writer(&msg, &mut buf).expect("Can serialize msg");
         self.write.send(Message::Bytes(buf)).await.map_err(|e| {
-            NodeError::WsError(Box::new(std::io::Error::other(format!("send failed: {e:?}"))))
+            NodeError::WsError(Box::new(std::io::Error::other(format!(
+                "send failed: {e:?}"
+            ))))
         })?;
         Ok(())
     }
