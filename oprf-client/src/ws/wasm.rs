@@ -32,14 +32,15 @@ pub(crate) struct WebSocketSession {
 
 impl WebSocketSession {
     /// Creates a new session at the provided endpoint.
+    ///
+    /// Expects a valid `ws://` or `wss://` URI  
     pub(crate) async fn new(endpoint: Uri, _connector: Connector) -> Result<Self, NodeError> {
         let version = env!("CARGO_PKG_VERSION");
-        let mut endpoint = endpoint.to_string().replacen("http", "ws", 1);
-        if endpoint.contains('?') {
-            endpoint.push_str("&version=");
-        } else {
-            endpoint.push_str("?version=");
-        }
+        let has_query = endpoint.query().is_some();
+        let mut endpoint = endpoint.to_string();
+
+        endpoint.push(if has_query { '&' } else { '?' });
+        endpoint.push_str("version=");
         endpoint.push_str(version);
 
         let service = endpoint.clone();
