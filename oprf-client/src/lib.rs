@@ -46,16 +46,21 @@ pub use sessions::OprfSessions;
 pub use sessions::finish_sessions;
 pub use sessions::init_sessions;
 
-/// WebSocket connector configuration.
+/// WebSocket connector configuration for native targets.
 ///
-/// On native targets this re-exports [`tokio_tungstenite::Connector`] (Plain,
-/// Rustls, etc.). On WASM, TLS is handled by the browser so this is a no-op
-/// placeholder — it exists only so that [`distributed_oprf`] has the same
-/// signature on all platforms.
+/// Re-exports [`tokio_tungstenite::Connector`] (e.g. `Plain`, `Rustls`) used
+/// to configure transport/TLS behavior for native WebSocket connections.
 #[cfg(not(target_arch = "wasm32"))]
 pub use tokio_tungstenite::Connector;
 
-/// See the [native documentation](Connector) — on WASM this is a no-op.
+/// No-op WebSocket connector used on `wasm32` targets.
+///
+/// In browsers, TLS and socket configuration are controlled by the WebSocket
+/// implementation provided by the runtime, so there is no equivalent to
+/// `tokio_tungstenite::Connector`.
+///
+/// This type exists only to keep a cross-platform API shape for
+/// [`distributed_oprf`]. The value is ignored by the WASM transport.
 #[cfg(target_arch = "wasm32")]
 #[derive(Debug, Clone)]
 pub struct Connector;
