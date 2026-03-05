@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.6.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.6.1...taceo-oprf-key-gen-v0.6.2)
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Update Cargo.lock dependencies - ([0000000](https://github.com/TaceoLabs/oprf-service/commit/0000000))
+
+
 ## [0.6.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.6.0...taceo-oprf-key-gen-v0.6.1)
 
 ### 📚 Documentation
