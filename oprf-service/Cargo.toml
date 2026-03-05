@@ -1,6 +1,6 @@
 [package]
 name = "taceo-oprf-service"
-version = "0.9.1"
+version = "0.9.2"
 edition.workspace = true
 rust-version.workspace = true
 description = "Main service for nodes of TACEO:OPRF"
