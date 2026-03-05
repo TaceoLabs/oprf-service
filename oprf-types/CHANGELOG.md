@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.9.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.9.1...taceo-oprf-types-v0.9.2)
+
+### ⛰️ Features
+
+
+- *(oprf-client)* Add WASM WebSocket support via gloo-net ([#488](https://github.com/TaceoLabs/oprf-service/pull/488)) - ([7fa5961](https://github.com/TaceoLabs/oprf-service/commit/7fa59613fca491f1ea96b2d2b0836772a1ccde31))
+
+
 ## [0.9.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.9.0...taceo-oprf-types-v0.9.1)
 
 ### 📚 Documentation
