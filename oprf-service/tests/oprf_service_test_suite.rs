@@ -189,7 +189,7 @@ async fn corrupt_client_version_header() -> eyre::Result<()> {
         )
         .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
-    response.assert_text("invalid HTTP header (x-taceo-oprf-protocol-version)");
+    response.assert_text("invalid HTTP header (version)");
     Ok(())
 }
 
