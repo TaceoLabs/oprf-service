@@ -92,17 +92,17 @@ start_keygen() {
         local db_conn="postgres://postgres:postgres@localhost:5432/postgres"
 
         RUST_LOG="oprf_key_gen=trace,taceo_oprf_key_gen=trace,warn" \
-        ./target/release/oprf-key-gen \
-            --bind-addr 127.0.0.1:$port \
-            --environment dev \
-            --wallet-private-key-secret-id oprf/eth/$prefix \
-            --zkey-path ./circom/main/key-gen/OPRFKeyGen.13.arks.zkey \
-            --witness-graph-path ./circom/main/key-gen/OPRFKeyGenGraph.13.bin \
-            --oprf-key-registry-contract $oprf_key_registry \
-            --confirmations-for-transaction 1 \
-            --db-connection-string $db_conn \
-            --db-schema oprf$i \
-            > logs/key-gen$i.log 2>&1 &
+        TACEO_OPRF_KEY_GEN__WALLET_PRIVATE_KEY_SECRET_ID=oprf/eth/$prefix \
+        TACEO_OPRF_KEY_GEN__BIND_ADDR=127.0.0.1:$port \
+        TACEO_OPRF_KEY_GEN__SERVICE__ENVIRONMENT=test \
+        TACEO_OPRF_KEY_GEN__SERVICE__ZKEY_PATH=./circom/main/key-gen/OPRFKeyGen.13.arks.zkey \
+        TACEO_OPRF_KEY_GEN__SERVICE__WITNESS_GRAPH_PATH=./circom/main/key-gen/OPRFKeyGenGraph.13.bin \
+        TACEO_OPRF_KEY_GEN__SERVICE__OPRF_KEY_REGISTRY_CONTRACT=$oprf_key_registry \
+        TACEO_OPRF_KEY_GEN__SERVICE__CONFIRMATIONS_FOR_TRANSACTION=1 \
+        TACEO_OPRF_KEY_GEN__SERVICE__CHAIN_WS_RPC_URL=ws://127.0.0.1:8545 \
+        TACEO_OPRF_KEY_GEN__POSTGRES__CONNECTION_STRING=$db_conn \
+        TACEO_OPRF_KEY_GEN__POSTGRES__SCHEMA=oprf$i \
+        ./target/release/oprf-key-gen > logs/key-gen$i.log 2>&1 &
         keygen_pids+=($!)
         echo "started key-gen$i with PID ${keygen_pids[$i]}"
     done
@@ -127,14 +127,15 @@ start_nodes() {
         local db_conn="postgres://postgres:postgres@localhost:5432/postgres"
 
         RUST_LOG="taceo_oprf_service=trace,taceo_oprf_service_example=trace,oprf_service_example=trace,warn" \
-        ./target/release/examples/oprf-service-example \
-            --bind-addr 127.0.0.1:$port \
-            --environment dev \
-            --version-req ">=0.0.0" \
-            --oprf-key-registry-contract $oprf_key_registry \
-            --db-connection-string $db_conn \
-            --db-schema oprf$i \
-            > logs/node$i.log 2>&1 &
+        TACEO_OPRF_NODE__POSTGRES__CONNECTION_STRING=$db_conn \
+        TACEO_OPRF_NODE__POSTGRES__SCHEMA=oprf$i \
+        TACEO_OPRF_NODE__SERVICE__ENVIRONMENT=test \
+        TACEO_OPRF_NODE__SERVICE__OPRF_KEY_REGISTRY_CONTRACT=$oprf_key_registry \
+        TACEO_OPRF_NODE__SERVICE__CHAIN_WS_RPC_URL=ws://127.0.0.1:8545 \
+        TACEO_OPRF_NODE__SERVICE__VERSION_REQ=">=0.0.0" \
+        TACEO_OPRF_NODE__SERVICE__WS_MAX_MESSAGE_SIZE="1024" \
+        TACEO_OPRF_EXAMPLE__BIND_ADDR=127.0.0.1:$port \
+        ./target/release/examples/oprf-service-example > logs/node$i.log 2>&1 &
         nodes_pids+=($!)
         echo "started node$i with PID ${nodes_pids[$i]}"
     done

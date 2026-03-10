@@ -9,7 +9,7 @@
 //! For details on the OPRF protocol, see the [design document](https://github.com/TaceoLabs/nullifier-oracle-service/blob/491416de204dcad8d46ee1296d59b58b5be54ed9/docs/oprf.pdf).
 
 use crate::{
-    config::OprfKeyGenConfig,
+    config::OprfKeyGenServiceConfig,
     metrics::{
         METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_I_AM_ALIVE, METRICS_ID_KEY_GEN_WALLET_BALANCE,
     },
@@ -68,7 +68,7 @@ impl KeyGenTasks {
 /// - `key_event_watcher`: subscribes to configured chain and executes the key-gen/reshare protocol
 /// - `transaction_handler`: task that subscribes to same contract as `key_event_watcher` and waits for `KeyGenConfirmation` events from chain in case of errors with the RPC provider.
 pub async fn start(
-    config: OprfKeyGenConfig,
+    config: OprfKeyGenServiceConfig,
     secret_manager: SecretManagerService,
     started_services: StartedServices,
     cancellation_token: CancellationToken,
@@ -131,7 +131,7 @@ pub async fn start(
             max_wait_time: config.max_wait_time_transaction_confirmation,
             max_gas_per_transaction: config.max_gas_per_transaction,
             confirmations_for_transaction: config.confirmations_for_transaction,
-            attempts: config.max_transaction_attempts,
+            attempts: config.max_transaction_attempts.get(),
             party_id,
             contract_address: config.oprf_key_registry_contract,
             provider: provider.clone(),

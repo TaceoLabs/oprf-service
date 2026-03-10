@@ -12,7 +12,12 @@ keywords = ["cryptography", "mpc", "oprf"]
 publish = true
 
 [dependencies]
-alloy = { workspace = true, features = ["full", "rpc", "rpc-client-ws", "reqwest"] }
+alloy = { workspace = true, features = [
+  "full",
+  "reqwest",
+  "rpc",
+  "rpc-client-ws"
+] }
 ark-babyjubjub = { workspace = true }
 ark-bn254.workspace = true
 ark-ec.workspace = true
@@ -23,15 +28,21 @@ aws-config = { workspace = true, features = ["behavior-version-latest"] }
 aws-sdk-secretsmanager = { workspace = true }
 axum = { workspace = true }
 backon = { workspace = true, features = ["std", "tokio-sleep"] }
-clap = { workspace = true, features = ["derive", "env"] }
+config = { workspace = true }
 eyre.workspace = true
 futures = { workspace = true }
 groth16-material = { workspace = true, features = ["circom"] }
 humantime.workspace = true
+humantime-serde = { workspace = true }
 itertools = { workspace = true }
 k256 = { workspace = true, features = ["ecdsa", "serde"] }
 metrics = { workspace = true }
-nodes-common = { workspace = true }
+nodes-common = { workspace = true, features = [
+  "api",
+  "aws",
+  "postgres",
+  "serde"
+] }
 nodes-observability = { workspace = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.4" }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.9" }
@@ -39,6 +50,7 @@ rand.workspace = true
 reqwest = { workspace = true, features = ["json"] }
 rustls = { workspace = true }
 secrecy = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sqlx = { workspace = true, features = [
   "migrate",

@@ -3,7 +3,7 @@
 //! If the EVM private-key doesn't exist at the requested `secret-id`, it will create a new one and store it. Additionally, will store the associated address in the DB so that the accompanying OPRF-nodes can fetch the address from there.
 
 use std::num::NonZeroUsize;
-use std::{num::NonZeroU32, time::Duration};
+use std::time::Duration;
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
@@ -14,10 +14,10 @@ use backon::ConstantBackoff;
 use backon::ConstantBuilder;
 use backon::Retryable;
 use eyre::Context;
+use nodes_common::postgres::{CreateSchema, PostgresConfig};
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
-use secrecy::{ExposeSecret, SecretString};
-use sqlx::{Executor as _, PgPool, postgres::PgPoolOptions};
+use sqlx::PgPool;
 use tracing::instrument;
 
 use crate::secret_manager::{self, SecretManager};
@@ -32,96 +32,17 @@ pub struct PostgresSecretManager {
     retry_delay: Duration,
 }
 
-/// The arguments for the [`PostgresSecretManager`].
-pub struct PostgresSecretManagerArgs {
-    /// Connection string for the database. Treat this as a secret.
-    pub connection_string: SecretString,
-    /// Database schema to use. If it does not exist yet, the secret manager will create the schema automatically.
-    pub schema: String,
-    /// Maximum number of connections in the connection pool.
-    pub max_connections: NonZeroU32,
-    /// Timeout for acquiring a new connection from the pool. If a connection is not established within this duration, a linear backoff strategy is started.
-    pub acquire_timeout: Duration,
-    /// The retries during the backoff strategy. DB is considered down, if cannot get connection after this amount of retries.
-    pub max_retries: NonZeroUsize,
-    /// Sleep duration between retries when connection acquisition from the pool times out.
-    pub retry_delay: Duration,
-    /// AWS SDK configuration used by the secret manager to load or create the Ethereum private key.
-    pub aws_config: aws_config::SdkConfig,
-    /// Secret ID used by the secret manager to fetch the Ethereum private key, or to store it if it does not already exist.
-    pub wallet_private_key_secret_id: String,
-}
-
-fn sanitize_identifier(input: &str) -> eyre::Result<()> {
-    eyre::ensure!(!input.is_empty(), "Empty schema is not allowed");
-    if input
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
-    {
-        Ok(())
-    } else {
-        Err(eyre::eyre!("Invalid SQL identifier"))
-    }
-}
-
-fn schema_connect(schema: &str) -> eyre::Result<String> {
-    sanitize_identifier(schema)?;
-    Ok(format!(
-        r#"
-            CREATE SCHEMA IF NOT EXISTS "{schema}";
-            SET search_path TO "{schema}";
-        "#
-    ))
-}
-
 impl PostgresSecretManager {
     /// Initializes a `PostgresSecretManager` and potentially runs migrations if necessary.
     #[instrument(level = "info", skip_all)]
-    pub async fn init(args: PostgresSecretManagerArgs) -> eyre::Result<Self> {
-        let PostgresSecretManagerArgs {
-            connection_string,
-            schema,
-            max_connections,
-            acquire_timeout,
-            max_retries,
-            retry_delay,
-            aws_config,
-            wallet_private_key_secret_id,
-        } = args;
-        tracing::info!("using schema: {schema}");
-        let schema_connect = schema_connect(&schema).context("while building schema string")?;
-        let backoff_strategy = ConstantBuilder::new()
-            .with_delay(retry_delay)
-            .with_max_times(max_retries.get())
-            .build();
-        let pg_pool_options = PgPoolOptions::new()
-            .max_connections(max_connections.get())
-            .acquire_timeout(acquire_timeout)
-            .after_connect(move |conn, _| {
-                let schema_connect = schema_connect.clone();
-                Box::pin(async move {
-                    if let Err(e) = conn.execute(schema_connect.as_ref()).await {
-                        tracing::error!("error in after_connect: {:?}", e);
-                        return Err(e);
-                    }
-                    Ok(())
-                })
-            });
-        // connect with constant backoff strategy
-        let pool = (|| {
-            pg_pool_options
-                .clone()
-                .connect(connection_string.expose_secret())
-        })
-        .retry(backoff_strategy)
-        .sleep(tokio::time::sleep)
-        .when(is_retryable_error)
-        .notify(|e, duration| {
-            tracing::warn!("Timeout while creating pool: {e:?} Retry after {duration:?}")
-        })
-        .await
-        .context("while connecting to postgres DB")?;
-        tracing::info!("running migrations...");
+    pub async fn init(
+        db_config: &PostgresConfig,
+        aws_config: aws_config::SdkConfig,
+        wallet_private_key_secret_id: &str,
+    ) -> eyre::Result<Self> {
+        let pool = nodes_common::postgres::pg_pool_with_schema(db_config, CreateSchema::Yes)
+            .await
+            .context("while creating pool")?;
         // if we just got a fresh db pool, we have a valid connection, as we don't have connect_lazy, therefore this should not run into timeouts.
         sqlx::migrate!("./migrations")
             .run(&pool)
@@ -131,8 +52,8 @@ impl PostgresSecretManager {
             pool,
             wallet_private_key_secret_id: wallet_private_key_secret_id.to_owned(),
             aws_config,
-            max_retries,
-            retry_delay,
+            max_retries: db_config.max_retries,
+            retry_delay: db_config.retry_delay,
         })
     }
 }

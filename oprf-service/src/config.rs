@@ -1,135 +1,103 @@
-//! Configuration types and CLI/environment parsing for a TACEO:OPRF node.
-//!
-//! Concrete implementations may have a more detailed config and can use the exposed [`OprfNodeConfig`] and flatten it with `#[clap(flatten)]`.
-//!
-//! Additionally this module defines the [`Environment`] to assert dev-only code.
+//! Configuration types for a TACEO:OPRF node.
 
-use std::{
-    num::{NonZeroU32, NonZeroUsize},
-    time::Duration,
-};
+use std::time::Duration;
 
 use alloy::primitives::Address;
-use clap::{Parser, ValueEnum};
+use nodes_common::Environment;
 use secrecy::SecretString;
 use semver::VersionReq;
-
-/// The environment the service is running in.
-///
-/// Main usage for the `Environment` is to call
-/// [`Environment::assert_is_dev`]. Services that are intended
-/// for `dev` only (like local secret-manager,...)
-/// shall assert that they are called from the `dev` environment.
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum Environment {
-    /// Production environment.
-    Prod,
-    /// Development environment.
-    Dev,
-}
-
-impl Environment {
-    /// Asserts that `Environment` is `dev`. Panics if not the case.
-    pub fn assert_is_dev(&self) {
-        assert!(matches!(self, Environment::Dev), "Is not dev environment")
-    }
-}
+use serde::{
+    Deserialize,
+    de::{self},
+};
 
 /// The configuration for TACEO:OPRF core functionality.
-///
-/// It can be configured via environment variables or command line arguments using `clap`.
-#[derive(Parser, Debug)]
-pub struct OprfNodeConfig {
-    /// The environment of OPRF-service (either `prod` or `dev`).
-    #[clap(long, env = "OPRF_NODE_ENVIRONMENT", default_value = "prod")]
+#[derive(Debug, Clone, Deserialize)]
+#[non_exhaustive]
+pub struct OprfNodeServiceConfig {
+    /// The environment of the OPRF-node.
     pub environment: Environment,
+    /// The Address of the OprfKeyRegistry contract.
+    pub oprf_key_registry_contract: Address,
+    /// The websocket rpc url of the chain
+    pub chain_ws_rpc_url: SecretString,
+    /// Accepted SemVer versions of clients.
+    #[serde(deserialize_with = "deserialize_version_req")]
+    pub version_req: VersionReq,
 
+    /// The block number to start listening for events from the OprfKeyRegistry contract.
     /// Max message size the websocket connection accepts.
-    ///
-    /// Default value: 8 kilobytes
-    #[clap(long, env = "OPRF_NODE_MAX_MESSAGE_SIZE", default_value = "8192")]
+    #[serde(default = "OprfNodeServiceConfig::default_ws_max_message_size")]
     pub ws_max_message_size: usize,
-
     /// Max time a created session is valid.
     ///
     /// This interval specifies how long a websocket connection is kept alive after a user initiates a session.
-    #[clap(
-        long,
-        env = "OPRF_NODE_SESSION_LIFETIME",
-        default_value="5min",
-        value_parser = humantime::parse_duration
-    )]
+    #[serde(default = "OprfNodeServiceConfig::default_session_lifetime")]
+    #[serde(with = "humantime_serde")]
     pub session_lifetime: Duration,
-
-    /// The Address of the OprfKeyRegistry contract.
-    #[clap(long, env = "OPRF_NODE_OPRF_KEY_REGISTRY_CONTRACT")]
-    pub oprf_key_registry_contract: Address,
-
-    /// The websocket rpc url of the chain
-    #[clap(
-        long,
-        env = "OPRF_NODE_CHAIN_WS_RPC_URL",
-        default_value = "ws://127.0.0.1:8545"
-    )]
-    pub chain_ws_rpc_url: SecretString,
-
     /// Interval for which the node reloads all oprf-secrets from the secret-manager. Can be a rather long and only acts as fail-safe.
-    #[clap(
-        long,
-        env = "OPRF_NODE_RELOAD_KEY_MATERIAL_INTERVAL",
-        default_value="1day",
-        value_parser = humantime::parse_duration
-    )]
+    #[serde(default = "OprfNodeServiceConfig::default_reload_key_material_interval")]
+    #[serde(with = "humantime_serde")]
     pub reload_key_material_interval: Duration,
-
     /// Max time to wait for oprf key material secret retrieval from secret manager during key-event processing.
-    #[clap(
-        long,
-        env = "OPRF_NODE_GET_OPRF_KEY_MATERIAL_TIMEOUT",
-        default_value="10min",
-        value_parser = humantime::parse_duration
-    )]
+    #[serde(default = "OprfNodeServiceConfig::default_get_oprf_key_material_timeout")]
+    #[serde(with = "humantime_serde")]
     pub get_oprf_key_material_timeout: Duration,
-
-    /// The block number to start listening for events from the OprfKeyRegistry contract.
     /// If not set, will start from the latest block.
-    #[clap(long, env = "OPRF_NODE_START_BLOCK")]
     pub start_block: Option<u64>,
-
-    /// Accepted SemVer versions of clients.
-    #[clap(long, env = "OPRF_NODE_ACCEPTED_VERSIONS", value_parser=VersionReq::parse)]
-    pub version_req: VersionReq,
-
-    /// The connection string for the Postgres DB
-    #[clap(long, env = "OPRF_NODE_DB_CONNECTION_STRING")]
-    pub db_connection_string: SecretString,
-
-    /// The schema we use for the DB
-    #[clap(long, env = "OPRF_NODE_DB_SCHEMA")]
-    pub db_schema: String,
-
-    /// The connection string for the Postgres DB
-    #[clap(long, env = "OPRF_NODE_DB_MAX_CONNECTIONS", default_value = "4")]
-    pub db_max_connections: NonZeroU32,
-
-    /// The max time we wait for a DB connection
-    #[clap(long, env = "OPRF_NODE_DB_ACQUIRE_TIMEOUT", value_parser=humantime::parse_duration, default_value="2min")]
-    pub db_acquire_timeout: Duration,
-
-    /// The delay between retires for db backoff.
-    #[clap(long, env = "OPRF_NODE_DB_RETRY_DELAY", value_parser=humantime::parse_duration, default_value="5s")]
-    pub db_retry_delay: Duration,
-
-    /// The max retries for backoff strategy in db. With default acquire_timeout and retry delay, this is ~40min.
-    #[clap(long, env = "OPRF_NODE_DB_MAX_RETRIES", default_value = "20")]
-    pub db_max_retries: NonZeroUsize,
-
     /// Interval in which we emit "I am alive" metric
-    #[clap(
-        long,
-        env = "OPRF_NODE_I_AM_ALIVE_INTERVAL",
-        default_value = "1min",
-        value_parser=humantime::parse_duration
-    )]
+    #[serde(default = "OprfNodeServiceConfig::default_i_am_alive_interval")]
+    #[serde(with = "humantime_serde")]
     pub i_am_alive_interval: Duration,
+}
+
+fn deserialize_version_req<'de, D>(deserializer: D) -> Result<VersionReq, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    VersionReq::parse(&s).map_err(de::Error::custom)
+}
+
+impl OprfNodeServiceConfig {
+    fn default_ws_max_message_size() -> usize {
+        1024
+    }
+
+    fn default_session_lifetime() -> Duration {
+        Duration::from_secs(10)
+    }
+
+    fn default_reload_key_material_interval() -> Duration {
+        Duration::from_secs(24 * 60 * 60)
+    }
+
+    fn default_get_oprf_key_material_timeout() -> Duration {
+        Duration::from_secs(10 * 60)
+    }
+
+    fn default_i_am_alive_interval() -> Duration {
+        Duration::from_secs(60)
+    }
+
+    /// Construct with all default values except required fields.
+    pub fn with_default_values(
+        environment: Environment,
+        oprf_key_registry_contract: Address,
+        chain_ws_rpc_url: SecretString,
+        version_req: VersionReq,
+    ) -> Self {
+        Self {
+            environment,
+            oprf_key_registry_contract,
+            chain_ws_rpc_url,
+            version_req,
+            ws_max_message_size: Self::default_ws_max_message_size(),
+            session_lifetime: Self::default_session_lifetime(),
+            reload_key_material_interval: Self::default_reload_key_material_interval(),
+            get_oprf_key_material_timeout: Self::default_get_oprf_key_material_timeout(),
+            start_block: None,
+            i_am_alive_interval: Self::default_i_am_alive_interval(),
+        }
+    }
 }
