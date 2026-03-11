@@ -43,11 +43,9 @@ pub trait SecretManager {
     /// Certain secret-managers might not be able to immediately delete the secret. In that case it shall mark the secret for deletion.
     async fn remove_oprf_key_material(&self, oprf_key_id: OprfKeyId) -> eyre::Result<()>;
 
-    /// Stores an OPRF secret with at the secret-manager with the provided epoch.
+    /// Stores an OPRF secret with with the provided epoch.
     ///
-    /// If epoch is zero or if the secret-manager does not contain a secret with this [`OprfKeyId`], calls `create_secret`.
-    ///
-    /// Otherwise, loads the existing secret, moves the current epoch to previous and stores the new share as the current epoch.
+    /// This method SHOULD overwrite/delete the old epoch, if it already existed.
     async fn store_dlog_share(
         &self,
         oprf_key_id: OprfKeyId,
