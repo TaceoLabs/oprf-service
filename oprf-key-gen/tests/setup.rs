@@ -3,7 +3,7 @@ use std::{fmt, sync::Arc};
 use axum_test::TestServer;
 use nodes_common::{Environment, StartedServices};
 use oprf_test_utils::test_secret_manager::TestSecretManager;
-use oprf_test_utils::{PEER_PRIVATE_KEYS, TestSetup, key_gen_test_secret_manager};
+use oprf_test_utils::{DeploySetup, PEER_PRIVATE_KEYS, TestSetup, key_gen_test_secret_manager};
 use taceo_oprf_key_gen::KeyGenTasks;
 use taceo_oprf_key_gen::config::OprfKeyGenServiceConfig;
 use tokio_util::sync::CancellationToken;
@@ -45,6 +45,10 @@ impl TestKeyGen {
         let child_token = cancellation_token.child_token();
         let secret_manager = Arc::new(TestSecretManager::new(private_key));
         let keygen_secret_manager = Arc::new(KeyGenTestSecretManager(Arc::clone(&secret_manager)));
+        let (expected_threshold, expected_num_peers) = match test_setup.setup {
+            DeploySetup::TwoThree => (2, 3),
+            DeploySetup::ThreeFive => (3, 5),
+        };
 
         let mut config = OprfKeyGenServiceConfig::with_default_values(
             Environment::Dev,
@@ -52,6 +56,8 @@ impl TestKeyGen {
             anvil.ws_endpoint().into(),
             setup.key_gen_path(),
             setup.witness_path(),
+            expected_threshold.try_into().expect("Is non-zero"),
+            expected_num_peers.try_into().expect("Is non-zero"),
         );
 
         // anvil doesn't work with confirmations

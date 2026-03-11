@@ -174,6 +174,18 @@ async fn test_not_a_participant() -> eyre::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_invalid_threshold() -> eyre::Result<()> {
+    let mut setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    setup.setup = DeploySetup::ThreeFive;
+    let is_error = TestKeyGen::start(0, &setup).await.expect_err("Should fail");
+    assert_eq!(
+        is_error.to_string(),
+        "Expected threshold 3 but contract reported 2"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_health_route() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gen = TestKeyGen::start(0, &setup).await?;
