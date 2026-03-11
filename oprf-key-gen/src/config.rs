@@ -21,6 +21,7 @@
 //! | `confirmations_for_transaction`          | 5           |
 //! | `i_am_alive_interval`                    | 60 s        |
 
+use std::num::NonZeroU16;
 use std::{path::PathBuf, time::Duration};
 
 use alloy::primitives::Address;
@@ -28,7 +29,6 @@ use nodes_common::{
     Environment,
     web3::{self, RpcProviderConfig},
 };
-use reqwest::Url;
 use secrecy::SecretString;
 use serde::Deserialize;
 
@@ -50,6 +50,12 @@ pub struct OprfKeyGenServiceConfig {
 
     /// The location of the graph binary for the key-gen witness extension
     pub witness_graph_path: PathBuf,
+
+    /// The expected num peers stored at the contract.
+    pub expected_num_peers: NonZeroU16,
+
+    /// The expected threshold stored at the contract.
+    pub expected_threshold: NonZeroU16,
 
     /// The blockchain RPC config
     #[serde(rename = "rpc")]
@@ -89,6 +95,48 @@ pub struct OprfKeyGenServiceConfig {
     pub i_am_alive_interval: Duration,
 }
 
+/// Subset of [`OprfKeyGenServiceConfig`] containing all values that must be
+/// explicitly provided by the caller.
+///
+/// This struct represents the minimal configuration required to start the
+/// OPRF key generation service. All fields are mandatory and are typically
+/// validated and extracted from the full config before initialization.
+#[allow(
+    clippy::exhaustive_structs,
+    reason = "Having a new mandatory configuration is a breaking change"
+)]
+pub struct OprfKeyGenServiceConfigMandatoryValues {
+    /// Target environment (e.g. dev, staging, production).
+    pub environment: Environment,
+
+    /// Address of the `OprfKeyRegistry` contract.
+    pub oprf_key_registry_contract: Address,
+
+    /// Hex-encoded private key used to sign transactions.
+    ///
+    /// Accepts values with or without `0x` prefix.
+    pub wallet_private_key: SecretString,
+
+    /// Path to the `.zkey` file used for generating the round-2 proof.
+    pub zkey_path: PathBuf,
+
+    /// Path to the witness graph binary used during witness generation.
+    pub witness_graph_path: PathBuf,
+
+    /// Expected threshold as defined in the on-chain contract.
+    ///
+    /// Must match the contract value to ensure protocol correctness.
+    pub expected_threshold: NonZeroU16,
+
+    /// Expected total number of peers as defined in the contract.
+    ///
+    /// Must match the contract value to ensure correct participation.
+    pub expected_num_peers: NonZeroU16,
+
+    /// Blockchain RPC configuration used for contract interaction.
+    pub rpc_provider_config: RpcProviderConfig,
+}
+
 impl OprfKeyGenServiceConfig {
     /// Default max wait time for transaction confirmation (`300 s`).
     fn default_max_wait_time_transaction_confirmation() -> Duration {
@@ -112,22 +160,26 @@ impl OprfKeyGenServiceConfig {
 
     /// Construct with all default values except required fields.
     #[must_use]
-    pub fn with_default_values(
-        environment: Environment,
-        oprf_key_registry_contract: Address,
-        wallet_private_key: SecretString,
-        zkey_path: PathBuf,
-        witness_graph_path: PathBuf,
-        http_urls: Vec<Url>,
-        ws_url: Url,
-    ) -> Self {
+    pub fn with_default_values(args: OprfKeyGenServiceConfigMandatoryValues) -> Self {
+        let OprfKeyGenServiceConfigMandatoryValues {
+            environment,
+            oprf_key_registry_contract,
+            wallet_private_key,
+            zkey_path,
+            witness_graph_path,
+            expected_threshold,
+            expected_num_peers,
+            rpc_provider_config,
+        } = args;
         Self {
             environment,
             oprf_key_registry_contract,
             wallet_private_key,
             zkey_path,
             witness_graph_path,
-            rpc_provider_config: RpcProviderConfig::with_default_values(http_urls, ws_url),
+            expected_num_peers,
+            expected_threshold,
+            rpc_provider_config,
             max_wait_time_transaction_confirmation:
                 Self::default_max_wait_time_transaction_confirmation(),
             start_block: None,

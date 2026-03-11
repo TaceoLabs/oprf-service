@@ -1,11 +1,12 @@
 use std::{fmt, sync::Arc};
 
 use axum_test::TestServer;
+use nodes_common::web3::RpcProviderConfig;
 use nodes_common::{Environment, StartedServices};
 use oprf_test_utils::test_secret_manager::TestSecretManager;
-use oprf_test_utils::{PEER_PRIVATE_KEYS, TestSetup, key_gen_test_secret_manager};
+use oprf_test_utils::{DeploySetup, PEER_PRIVATE_KEYS, TestSetup, key_gen_test_secret_manager};
 use taceo_oprf_key_gen::KeyGenTasks;
-use taceo_oprf_key_gen::config::OprfKeyGenServiceConfig;
+use taceo_oprf_key_gen::config::{OprfKeyGenServiceConfig, OprfKeyGenServiceConfigMandatoryValues};
 use tokio_util::sync::CancellationToken;
 
 pub struct TestKeyGen {
@@ -45,16 +46,25 @@ impl TestKeyGen {
         let child_token = cancellation_token.child_token();
         let secret_manager = Arc::new(TestSecretManager::new(private_key));
         let keygen_secret_manager = Arc::new(KeyGenTestSecretManager(Arc::clone(&secret_manager)));
+        let (expected_threshold, expected_num_peers) = match test_setup.setup {
+            DeploySetup::TwoThree => (2, 3),
+            DeploySetup::ThreeFive => (3, 5),
+        };
 
-        let mut config = OprfKeyGenServiceConfig::with_default_values(
-            Environment::Dev,
-            *oprf_key_registry,
-            private_key.into(),
-            setup.key_gen_path(),
-            setup.witness_path(),
-            vec![anvil.endpoint_url()],
-            anvil.ws_endpoint_url(),
-        );
+        let mut config =
+            OprfKeyGenServiceConfig::with_default_values(OprfKeyGenServiceConfigMandatoryValues {
+                environment: Environment::Dev,
+                oprf_key_registry_contract: *oprf_key_registry,
+                wallet_private_key: private_key.into(),
+                zkey_path: setup.key_gen_path(),
+                witness_graph_path: setup.witness_path(),
+                expected_threshold: expected_threshold.try_into().expect("Is non-zero"),
+                expected_num_peers: expected_num_peers.try_into().expect("Is non-zero"),
+                rpc_provider_config: RpcProviderConfig::with_default_values(
+                    vec![anvil.endpoint_url()],
+                    anvil.ws_endpoint_url(),
+                ),
+            });
 
         // anvil doesn't work with confirmations
         config.confirmations_for_transaction = 0;

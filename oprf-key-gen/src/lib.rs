@@ -38,11 +38,12 @@ use crate::{
     },
 };
 use alloy::{
-    consensus::constants::ETH_TO_WEI, network::EthereumWallet, providers::Provider as _,
-    signers::local::PrivateKeySigner,
+    consensus::constants::ETH_TO_WEI, network::EthereumWallet, primitives::Address,
+    providers::Provider as _, signers::local::PrivateKeySigner,
 };
 use eyre::Context as _;
 use groth16_material::circom::CircomGroth16MaterialBuilder;
+use nodes_common::web3::RpcProvider;
 use oprf_types::{chain::OprfKeyRegistry, crypto::PartyId};
 
 pub(crate) mod api;
@@ -70,6 +71,48 @@ impl KeyGenTasks {
         self.key_event_watcher.await??;
         Ok(())
     }
+}
+
+async fn contract_sanity_checks(
+    rpc_provider: &RpcProvider,
+    key_gen_wallet_address: Address,
+    config: &OprfKeyGenServiceConfig,
+) -> eyre::Result<()> {
+    tracing::info!(
+        "loading party id and checking if numPeers and threshold match. Expect {}/{}",
+        config.expected_threshold,
+        config.expected_num_peers
+    );
+    let contract = OprfKeyRegistry::new(config.oprf_key_registry_contract, rpc_provider.http());
+    // Fetch the party ID and log it.
+    // This call verifies whether we are registered at the contract as participant and serves as early failing point if not
+    let get_party_id_call = contract.getPartyIdForParticipant(key_gen_wallet_address);
+    let threshold_call = contract.threshold();
+    let num_peers_call = contract.numPeers();
+    let (party_id_contract, threshold_contract, num_peers_contract) = tokio::join!(
+        get_party_id_call.call(),
+        threshold_call.call(),
+        num_peers_call.call(),
+    );
+    let party_id = PartyId(
+        party_id_contract
+            .context("while loading party id")?
+            .try_into()?,
+    );
+    let threshold_contract = threshold_contract.context("while loading threshold")?;
+    let num_peers_contract = num_peers_contract.context("while loading num peers")?;
+    eyre::ensure!(
+        threshold_contract == config.expected_threshold.get(),
+        "Expected threshold {} but contract reported {threshold_contract}",
+        config.expected_threshold
+    );
+    eyre::ensure!(
+        num_peers_contract == config.expected_num_peers.get(),
+        "Expected num_peers {} but contract reported {num_peers_contract}",
+        config.expected_num_peers
+    );
+    tracing::info!("we are party id: {party_id}. Threshold/NumPeers also match");
+    Ok(())
 }
 
 /// Starts the OPRF key generation service and spawns all required background tasks.
@@ -149,19 +192,9 @@ pub async fn start(
     ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ATTRID_WALLET_ADDRESS => address.to_string())
         .set(f64::from(balance) / ETH_TO_WEI as f64);
 
-    tracing::info!("loading party id..");
-    let contract = OprfKeyRegistry::new(config.oprf_key_registry_contract, rpc_provider.http());
-    // Fetch the party ID and log it.
-    // This call verifies whether we are registered at the contract as participant and serves as early failing point if not
-    let party_id = PartyId(
-        contract
-            .getPartyIdForParticipant(address)
-            .call()
-            .await
-            .context("while loading party id")?
-            .try_into()?,
-    );
-    tracing::info!("we are party id: {party_id}");
+    contract_sanity_checks(&rpc_provider, address, &config)
+        .await
+        .context("while doing sanity checks")?;
 
     let key_gen_material = tokio::task::spawn_blocking(move || {
         CircomGroth16MaterialBuilder::new()
