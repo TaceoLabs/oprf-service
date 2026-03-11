@@ -222,6 +222,16 @@ pub enum Error {
     /// Services must be unique
     #[error("Services must be unique")]
     NonUniqueServices,
+    /// Invalid threshold for provided URIs.
+    #[error(
+        "Invalid combination num_peers {num_peers} and {threshold}. Must be 0 < threshold <= num_peers"
+    )]
+    InvalidTreshold {
+        /// The number of peers (URIs) provided
+        num_peers: usize,
+        /// The requested threshold
+        threshold: usize,
+    },
     /// The `DLog` equality proof failed verification.
     #[error("DLog proof could not be verified")]
     InvalidDLogProof,
@@ -381,6 +391,12 @@ where
         "starting distributed oprf. my version: {}",
         env!("CARGO_PKG_VERSION")
     );
+    if threshold == 0 || threshold > services.len() {
+        return Err(Error::InvalidTreshold {
+            num_peers: services.len(),
+            threshold,
+        });
+    }
     let services_dedup = services.iter().collect::<HashSet<_>>();
     if services_dedup.len() != services.len() {
         return Err(Error::NonUniqueServices);
