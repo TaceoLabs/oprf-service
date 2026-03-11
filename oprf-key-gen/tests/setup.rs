@@ -47,7 +47,7 @@ impl TestKeyGen {
         let keygen_secret_manager = Arc::new(KeyGenTestSecretManager(Arc::clone(&secret_manager)));
 
         let mut config = OprfKeyGenServiceConfig::with_default_values(
-            Environment::Test,
+            Environment::Dev,
             *oprf_key_registry,
             anvil.ws_endpoint().into(),
             setup.key_gen_path(),

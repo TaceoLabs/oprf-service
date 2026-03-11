@@ -6812,9 +6812,9 @@ dependencies = [
 
 [[package]]
 name = "taceo-nodes-common"
-version = "0.3.1"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "025ff80283c2496ff3d918815632a5988471e01f43ebd04dba94dfa6f6a1626b"
+checksum = "22c72d71f43190cf92bc189b72f5f5be94aca907db51b1e564cc15d034591d89"
 dependencies = [
  "aws-config",
  "aws-sdk-secretsmanager",

@@ -109,7 +109,7 @@ impl TestNode {
         assert!(party_id < 5, "can only spawn 5 nodes");
 
         let config = OprfNodeServiceConfig::with_default_values(
-            Environment::Test,
+            Environment::Dev,
             *oprf_key_registry,
             anvil.ws_endpoint().into(),
             "1.0.0".parse().expect("Valid VersionReq"),

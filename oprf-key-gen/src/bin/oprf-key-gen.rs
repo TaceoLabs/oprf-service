@@ -65,7 +65,7 @@ async fn run() -> eyre::Result<()> {
     let config = load_key_gen_config().context("while loading config")?;
     tracing::info!("starting oprf-key-gen with config: {config:#?}");
 
-    let aws_config = if config.key_gen_config.environment.is_test() {
+    let aws_config = if config.key_gen_config.environment.is_dev() {
         nodes_common::localstack_aws_config().await
     } else {
         aws_config::load_from_env().await

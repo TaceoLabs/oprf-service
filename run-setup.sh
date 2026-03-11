@@ -94,7 +94,7 @@ start_keygen() {
         RUST_LOG="oprf_key_gen=trace,taceo_oprf_key_gen=trace,warn" \
         TACEO_OPRF_KEY_GEN__WALLET_PRIVATE_KEY_SECRET_ID=oprf/eth/$prefix \
         TACEO_OPRF_KEY_GEN__BIND_ADDR=127.0.0.1:$port \
-        TACEO_OPRF_KEY_GEN__SERVICE__ENVIRONMENT=test \
+        TACEO_OPRF_KEY_GEN__SERVICE__ENVIRONMENT=dev \
         TACEO_OPRF_KEY_GEN__SERVICE__ZKEY_PATH=./circom/main/key-gen/OPRFKeyGen.13.arks.zkey \
         TACEO_OPRF_KEY_GEN__SERVICE__WITNESS_GRAPH_PATH=./circom/main/key-gen/OPRFKeyGenGraph.13.bin \
         TACEO_OPRF_KEY_GEN__SERVICE__OPRF_KEY_REGISTRY_CONTRACT=$oprf_key_registry \
@@ -129,7 +129,7 @@ start_nodes() {
         RUST_LOG="taceo_oprf_service=trace,taceo_oprf_service_example=trace,oprf_service_example=trace,warn" \
         TACEO_OPRF_NODE__POSTGRES__CONNECTION_STRING=$db_conn \
         TACEO_OPRF_NODE__POSTGRES__SCHEMA=oprf$i \
-        TACEO_OPRF_NODE__SERVICE__ENVIRONMENT=test \
+        TACEO_OPRF_NODE__SERVICE__ENVIRONMENT=dev \
         TACEO_OPRF_NODE__SERVICE__OPRF_KEY_REGISTRY_CONTRACT=$oprf_key_registry \
         TACEO_OPRF_NODE__SERVICE__CHAIN_WS_RPC_URL=ws://127.0.0.1:8545 \
         TACEO_OPRF_NODE__SERVICE__VERSION_REQ=">=0.0.0" \
