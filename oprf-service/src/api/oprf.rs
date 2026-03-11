@@ -232,9 +232,13 @@ async fn partial_oprf<
         .await?;
     ::metrics::counter!(METRICS_ID_NODE_PART_1_FINISH).increment(1);
 
-    let (challenge_request, _) = read_request::<DLogCommitmentsShamir>(socket)
+    let (challenge_request, still_human_readable) = read_request::<DLogCommitmentsShamir>(socket)
         .instrument(tracing::debug_span!("read_challenge_request"))
         .await?;
+    if still_human_readable != human_readable {
+        tracing::debug!("user switched encoding between round 1 and round 2. Will reject");
+        return Err(Error::UnexpectedMessage);
+    }
     ::metrics::counter!(METRICS_ID_NODE_PART_2_START).increment(1);
 
     let proof_share = challenge(
