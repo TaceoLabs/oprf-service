@@ -1,4 +1,23 @@
 //! Configuration types for a TACEO:OPRF key-gen instance.
+//!
+//! This module provides [`OprfKeyGenServiceConfig`], which contains the
+//! arguments required to run a TACEO:OPRF key-gen instance.
+//!
+//! The struct supports:
+//! - Required fields: `environment`, `oprf_key_registry_contract`,
+//!   `chain_ws_rpc_url`, `zkey_path`, and `witness_graph_path`.
+//! - Optional fields with sensible defaults (see below).
+//! - Serde deserialization (with [`humantime_serde`] for durations).
+//!
+//! # Defaults
+//!
+//! | Field                                    | Default     |
+//! |------------------------------------------|-------------|
+//! | `max_wait_time_transaction_confirmation` | 300 s       |
+//! | `max_transaction_attempts`               | 3           |
+//! | `max_gas_per_transaction`                | 8 000 000   |
+//! | `confirmations_for_transaction`          | 5           |
+//! | `i_am_alive_interval`                    | 60 s        |
 
 use std::{num::NonZeroUsize, path::PathBuf, time::Duration};
 
@@ -29,6 +48,8 @@ pub struct OprfKeyGenServiceConfig {
     /// Max time we wait for a transaction confirmation event until we assume the transaction didn't go through.
     ///
     /// We need this because RPCs are not very reliable, so we need to verify whether a transaction did get through or not.
+    ///
+    /// Defaults to `300 s`.
     #[serde(default = "OprfKeyGenServiceConfig::default_max_wait_time_transaction_confirmation")]
     #[serde(with = "humantime_serde")]
     pub max_wait_time_transaction_confirmation: Duration,
@@ -36,6 +57,8 @@ pub struct OprfKeyGenServiceConfig {
     /// Max attempts for sending a transaction when we get null response from RPC.
     ///
     /// We need this because RPCs are not very reliable, so we potentially need to resend a transaction did get through or not.
+    ///
+    /// Defaults to `3`.
     #[serde(default = "OprfKeyGenServiceConfig::default_max_transaction_attempts")]
     pub max_transaction_attempts: NonZeroUsize,
 
@@ -45,37 +68,48 @@ pub struct OprfKeyGenServiceConfig {
 
     /// Maximum amount of gas a single transaction is allowed to consume.
     /// This acts as a safety limit to prevent transactions from exceeding expected execution costs. The default value is set to approximately 2× the average gas used by a round-2 transaction, which is currently the most gas-intensive round.
+    ///
+    /// Defaults to `8_000_000`.
     #[serde(default = "OprfKeyGenServiceConfig::default_max_gas_per_transaction")]
     pub max_gas_per_transaction: u64,
 
     /// Number of block confirmations required before a transaction is
     /// considered successful.
+    ///
+    /// Defaults to `5`.
     #[serde(default = "OprfKeyGenServiceConfig::default_confirmations_for_transaction")]
     pub confirmations_for_transaction: u64,
 
-    /// Interval in which we emit "I am alive" metric
+    /// Interval in which we emit "I am alive" metric.
+    ///
+    /// Defaults to `60 s`.
     #[serde(default = "OprfKeyGenServiceConfig::default_i_am_alive_interval")]
     #[serde(with = "humantime_serde")]
     pub i_am_alive_interval: Duration,
 }
 
 impl OprfKeyGenServiceConfig {
+    /// Default max wait time for transaction confirmation (`300 s`).
     fn default_max_wait_time_transaction_confirmation() -> Duration {
         Duration::from_secs(300) // 5min
     }
 
+    /// Default max transaction attempts (`3`).
     fn default_max_transaction_attempts() -> NonZeroUsize {
         3.try_into().expect("Is non-zero")
     }
 
+    /// Default max gas per transaction (`8_000_000`).
     fn default_max_gas_per_transaction() -> u64 {
         8_000_000
     }
 
+    /// Default confirmations for transaction (`5`).
     fn default_confirmations_for_transaction() -> u64 {
         5
     }
 
+    /// Default I-am-alive interval (`60 s`).
     fn default_i_am_alive_interval() -> Duration {
         Duration::from_secs(60)
     }

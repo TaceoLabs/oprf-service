@@ -133,7 +133,6 @@ start_nodes() {
         TACEO_OPRF_NODE__SERVICE__OPRF_KEY_REGISTRY_CONTRACT=$oprf_key_registry \
         TACEO_OPRF_NODE__SERVICE__CHAIN_WS_RPC_URL=ws://127.0.0.1:8545 \
         TACEO_OPRF_NODE__SERVICE__VERSION_REQ=">=0.0.0" \
-        TACEO_OPRF_NODE__SERVICE__WS_MAX_MESSAGE_SIZE="1024" \
         TACEO_OPRF_EXAMPLE__BIND_ADDR=127.0.0.1:$port \
         ./target/release/examples/oprf-service-example > logs/node$i.log 2>&1 &
         nodes_pids+=($!)
