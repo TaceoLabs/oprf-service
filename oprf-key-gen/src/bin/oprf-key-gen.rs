@@ -31,7 +31,7 @@ struct OprfKeyGenConfig {
     #[serde(with = "humantime_serde")]
     pub max_wait_time_shutdown: Duration,
 
-    /// The OPRF key-gen config
+    /// The OPRF key-gen service config
     #[serde(rename = "service")]
     pub key_gen_config: OprfKeyGenServiceConfig,
 
@@ -49,8 +49,13 @@ fn default_max_wait_shutdown() -> Duration {
 }
 
 fn load_key_gen_config() -> eyre::Result<OprfKeyGenConfig> {
-    let cfg = Config::builder()
-        .add_source(config::Environment::with_prefix("TACEO_OPRF_KEY_GEN").separator("__"));
+    let cfg = Config::builder().add_source(
+        config::Environment::with_prefix("TACEO_OPRF_KEY_GEN")
+            .separator("__")
+            .list_separator(",")
+            .with_list_parse_key("service.rpc.http_urls")
+            .try_parsing(true),
+    );
 
     cfg.build()
         .context("while building from config")?

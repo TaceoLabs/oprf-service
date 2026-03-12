@@ -49,13 +49,15 @@ impl TestKeyGen {
         let mut config = OprfKeyGenServiceConfig::with_default_values(
             Environment::Dev,
             *oprf_key_registry,
-            anvil.ws_endpoint().into(),
             setup.key_gen_path(),
             setup.witness_path(),
+            vec![anvil.endpoint_url()],
+            anvil.ws_endpoint_url(),
         );
 
         // anvil doesn't work with confirmations
         config.confirmations_for_transaction = 0;
+        config.rpc_provider_config.chain_id = Some(31_337);
 
         let started_services = StartedServices::new();
 
