@@ -68,7 +68,7 @@ async fn run() -> eyre::Result<()> {
     tracing::info!("{}", nodes_common::version_info!());
 
     let config = load_key_gen_config().context("while loading config")?;
-    tracing::info!("starting oprf-key-gen with config: {config:#?}");
+    tracing::info!("starting taceo-oprf-key-gen with config: {config:#?}");
 
     // Load AWS config from environment
     let aws_config = aws_config::load_from_env().await;

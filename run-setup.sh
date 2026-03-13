@@ -91,7 +91,7 @@ start_keygen() {
         local prefix="n$i"
         local db_conn="postgres://postgres:postgres@localhost:5432/postgres"
 
-        RUST_LOG="oprf_key_gen=trace,taceo_oprf_key_gen=trace,warn" \
+        RUST_LOG="taceo=trace,warn" \
         AWS_REGION="us-east-1" \
         AWS_ACCESS_KEY_ID=test \
         AWS_SECRET_ACCESS_KEY=test \
@@ -108,7 +108,7 @@ start_keygen() {
         TACEO_OPRF_KEY_GEN__SERVICE__RPC__CHAIN_ID=31337 \
         TACEO_OPRF_KEY_GEN__POSTGRES__CONNECTION_STRING=$db_conn \
         TACEO_OPRF_KEY_GEN__POSTGRES__SCHEMA=oprf$i \
-        ./target/release/oprf-key-gen > logs/key-gen$i.log 2>&1 &
+        ./target/release/taceo-oprf-key-gen > logs/key-gen$i.log 2>&1 &
         keygen_pids+=($!)
         echo "started key-gen$i with PID ${keygen_pids[$i]}"
     done
@@ -132,7 +132,7 @@ start_nodes() {
         esac
         local db_conn="postgres://postgres:postgres@localhost:5432/postgres"
 
-        RUST_LOG="taceo_oprf_service=trace,taceo_oprf_service_example=trace,oprf_service_example=trace,warn" \
+        RUST_LOG="taceo=trace,warn" \
         TACEO_OPRF_NODE__POSTGRES__CONNECTION_STRING=$db_conn \
         TACEO_OPRF_NODE__POSTGRES__SCHEMA=oprf$i \
         TACEO_OPRF_NODE__SERVICE__ENVIRONMENT=dev \
@@ -185,4 +185,3 @@ main() {
 }
 
 main "$@"
-
