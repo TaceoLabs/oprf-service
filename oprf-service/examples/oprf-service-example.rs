@@ -37,7 +37,7 @@ pub struct ExampleOprfNodeConfig {
     #[serde(rename = "service")]
     pub node_config: OprfNodeServiceConfig,
 
-    /// The OPRF service config
+    /// The postgres config for the secret-manager
     #[serde(rename = "postgres")]
     pub postgres_config: PostgresConfig,
 }
@@ -51,9 +51,8 @@ fn default_max_wait_shutdown() -> Duration {
 }
 
 pub fn load_example_config() -> eyre::Result<ExampleOprfNodeConfig> {
-    let cfg = Config::builder()
-        .add_source(Environment::with_prefix("TACEO_OPRF_EXAMPLE").prefix_separator("__"))
-        .add_source(Environment::with_prefix("TACEO_OPRF_NODE").separator("__"));
+    let cfg =
+        Config::builder().add_source(Environment::with_prefix("TACEO_OPRF_NODE").separator("__"));
 
     cfg.build()
         .context("while building from config")?

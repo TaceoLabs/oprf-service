@@ -92,6 +92,10 @@ start_keygen() {
         local db_conn="postgres://postgres:postgres@localhost:5432/postgres"
 
         RUST_LOG="oprf_key_gen=trace,taceo_oprf_key_gen=trace,warn" \
+        AWS_REGION="us-east-1" \
+        AWS_ACCESS_KEY_ID=test \
+        AWS_SECRET_ACCESS_KEY=test \
+        AWS_ENDPOINT_URL="http://localhost:4566" \
         TACEO_OPRF_KEY_GEN__WALLET_PRIVATE_KEY_SECRET_ID=oprf/eth/$prefix \
         TACEO_OPRF_KEY_GEN__BIND_ADDR=127.0.0.1:$port \
         TACEO_OPRF_KEY_GEN__SERVICE__ENVIRONMENT=dev \
@@ -133,7 +137,7 @@ start_nodes() {
         TACEO_OPRF_NODE__SERVICE__OPRF_KEY_REGISTRY_CONTRACT=$oprf_key_registry \
         TACEO_OPRF_NODE__SERVICE__CHAIN_WS_RPC_URL=ws://127.0.0.1:8545 \
         TACEO_OPRF_NODE__SERVICE__VERSION_REQ=">=0.0.0" \
-        TACEO_OPRF_EXAMPLE__BIND_ADDR=127.0.0.1:$port \
+        TACEO_OPRF_NODE__BIND_ADDR=127.0.0.1:$port \
         ./target/release/examples/oprf-service-example > logs/node$i.log 2>&1 &
         nodes_pids+=($!)
         echo "started node$i with PID ${nodes_pids[$i]}"

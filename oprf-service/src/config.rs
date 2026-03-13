@@ -14,7 +14,7 @@
 //! | Field                            | Default    |
 //! |----------------------------------|------------|
 //! | `ws_max_message_size`            | 1024 bytes |
-//! | `session_lifetime`               | 10 s       |
+//! | `session_lifetime`               | 30 s       |
 //! | `reload_key_material_interval`   | 24 h       |
 //! | `get_oprf_key_material_timeout`  | 10 min     |
 //! | `i_am_alive_interval`            | 60 s       |
@@ -94,9 +94,9 @@ impl OprfNodeServiceConfig {
         1024
     }
 
-    /// Default session lifetime (`10 s`).
+    /// Default session lifetime (`30 s`).
     fn default_session_lifetime() -> Duration {
-        Duration::from_secs(10)
+        Duration::from_secs(30)
     }
 
     /// Default reload key material interval (`24 h`).

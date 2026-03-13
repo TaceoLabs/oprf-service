@@ -108,12 +108,13 @@ impl TestNode {
         } = setup;
         assert!(party_id < 5, "can only spawn 5 nodes");
 
-        let config = OprfNodeServiceConfig::with_default_values(
+        let mut config = OprfNodeServiceConfig::with_default_values(
             Environment::Dev,
             *oprf_key_registry,
             anvil.ws_endpoint().into(),
             "1.0.0".parse().expect("Valid VersionReq"),
         );
+        config.session_lifetime = Duration::from_secs(10);
 
         let child_token = cancellation_token.child_token();
 

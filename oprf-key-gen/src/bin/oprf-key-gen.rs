@@ -18,8 +18,8 @@ use taceo_oprf_key_gen::{
 ///
 /// Configured via environment variables using the `TACEO_OPRF_KEY_GEN__` prefix and `__` as separator.
 #[derive(Clone, Debug, Deserialize)]
-pub struct OprfKeyGenConfig {
-    /// The bind addr of the AXUM server
+struct OprfKeyGenConfig {
+    /// Secret Id of the wallet private key.
     pub wallet_private_key_secret_id: String,
 
     /// The bind addr of the AXUM server
@@ -31,11 +31,11 @@ pub struct OprfKeyGenConfig {
     #[serde(with = "humantime_serde")]
     pub max_wait_time_shutdown: Duration,
 
-    /// The OPRF service config
+    /// The OPRF key-gen config
     #[serde(rename = "service")]
     pub key_gen_config: OprfKeyGenServiceConfig,
 
-    /// The OPRF service config
+    /// The postgres config for the secret-manager
     #[serde(rename = "postgres")]
     pub postgres_config: PostgresConfig,
 }
@@ -48,7 +48,7 @@ fn default_max_wait_shutdown() -> Duration {
     Duration::from_secs(10)
 }
 
-pub fn load_key_gen_config() -> eyre::Result<OprfKeyGenConfig> {
+fn load_key_gen_config() -> eyre::Result<OprfKeyGenConfig> {
     let cfg = Config::builder()
         .add_source(config::Environment::with_prefix("TACEO_OPRF_KEY_GEN").separator("__"));
 
@@ -65,11 +65,8 @@ async fn run() -> eyre::Result<()> {
     let config = load_key_gen_config().context("while loading config")?;
     tracing::info!("starting oprf-key-gen with config: {config:#?}");
 
-    let aws_config = if config.key_gen_config.environment.is_dev() {
-        nodes_common::localstack_aws_config().await
-    } else {
-        aws_config::load_from_env().await
-    };
+    // Load AWS config from environment
+    let aws_config = aws_config::load_from_env().await;
 
     // Load the Postgres secret manager.
     let secret_manager = Arc::new(
