@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+## [0.9.3](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.9.2...taceo-oprf-types-v0.9.3)
+
+
 ## [0.9.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.9.1...taceo-oprf-types-v0.9.2)
 
 ### ⛰️ Features

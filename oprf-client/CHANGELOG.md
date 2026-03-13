@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+## [0.8.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.8.1...taceo-oprf-client-v0.8.2)
+
+
 ## [0.8.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.8.0...taceo-oprf-client-v0.8.1)
 
 ### ⛰️ Features

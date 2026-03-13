@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.6.1...taceo-oprf-key-gen-v0.7.0)
+
+
 ## [0.6.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.6.0...taceo-oprf-key-gen-v0.6.1)
 
 ### 📚 Documentation

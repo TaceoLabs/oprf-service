@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.4.4](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-core-v0.4.3...taceo-oprf-core-v0.4.4)
+
+### 📚 Documentation
+
+
+- Add performance benchmark section ([#489](https://github.com/TaceoLabs/oprf-service/pull/489)) - ([1269558](https://github.com/TaceoLabs/oprf-service/commit/12695583c783b0d373055e6147f48d06d4ad9ae3))
+
+
 ## [0.4.3](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-core-v0.4.2...taceo-oprf-core-v0.4.3)
 
 ### 📚 Documentation

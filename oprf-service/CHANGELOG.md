@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.9.2...taceo-oprf-service-v0.10.0)
+
+
 ## [0.9.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.9.1...taceo-oprf-service-v0.9.2)
 
 ### ⛰️ Features
