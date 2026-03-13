@@ -6816,9 +6816,9 @@ dependencies = [
 
 [[package]]
 name = "taceo-nodes-common"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c8aeabbd4a6e3597547ac2c555355298f687d727f2120299a03e2d0e9ca2afe"
+checksum = "7ce478e3e2e236ffed0607375e654611b7ac27905973b4610f39d7154f2cdf29"
 dependencies = [
  "alloy",
  "aws-config",
