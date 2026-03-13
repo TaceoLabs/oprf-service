@@ -103,10 +103,15 @@ pub async fn start(
     tracing::info!("we are party id: {party_id}");
 
     tracing::info!("init dlog secret gen service..");
-    let key_gen_material = CircomGroth16MaterialBuilder::new()
-        .bbf_inv()
-        .bbf_num_2_bits_helper()
-        .build_from_paths(config.zkey_path, config.witness_graph_path)?;
+    let key_gen_material = tokio::task::spawn_blocking(move || {
+        CircomGroth16MaterialBuilder::new()
+            .bbf_inv()
+            .bbf_num_2_bits_helper()
+            .build_from_paths(config.zkey_path, config.witness_graph_path)
+    })
+    .await
+    .context("while joining build groth16 task")?
+    .context("while building groth16 material")?;
     let dlog_secret_gen_service = DLogSecretGenService::init(key_gen_material);
     let transaction_handler = TransactionHandler::new(
         config.max_wait_time_transaction_confirmation,
