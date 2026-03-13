@@ -5,7 +5,7 @@ use ark_ff::UniformRand as _;
 use async_trait::async_trait;
 use axum_test::{TestServer, TestWebSocket};
 use http::StatusCode;
-use nodes_common::StartedServices;
+use nodes_common::{Environment, StartedServices};
 use oprf_core::ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir};
 use oprf_core::oprf::BlindingFactor;
 use oprf_test_utils::{
@@ -18,12 +18,8 @@ use oprf_types::{
     crypto::OprfPublicKey,
 };
 use rand::{CryptoRng, Rng};
-use secrecy::SecretString;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use taceo_oprf_service::{
-    OprfServiceBuilder,
-    config::{Environment, OprfNodeConfig},
-};
+use taceo_oprf_service::{OprfServiceBuilder, config::OprfNodeServiceConfig};
 use tokio_util::sync::CancellationToken;
 use tungstenite::protocol::CloseFrame;
 use uuid::Uuid;
@@ -112,24 +108,13 @@ impl TestNode {
         } = setup;
         assert!(party_id < 5, "can only spawn 5 nodes");
 
-        let config = OprfNodeConfig {
-            environment: Environment::Dev,
-            oprf_key_registry_contract: *oprf_key_registry,
-            chain_ws_rpc_url: anvil.ws_endpoint().into(),
-            ws_max_message_size: 1024 * 1024,
-            session_lifetime: Duration::from_secs(10),
-            reload_key_material_interval: Duration::from_secs(3600),
-            get_oprf_key_material_timeout: Duration::from_secs(60),
-            start_block: None,
-            version_req: "1.0.0".parse().unwrap(),
-            db_connection_string: SecretString::from("connection-string"),
-            db_max_connections: 1.try_into().unwrap(),
-            db_schema: "schema".to_owned(),
-            db_acquire_timeout: Duration::from_secs(2),
-            db_retry_delay: Duration::from_secs(1),
-            db_max_retries: 30.try_into().expect("Is non zero"),
-            i_am_alive_interval: Duration::from_secs(60),
-        };
+        let mut config = OprfNodeServiceConfig::with_default_values(
+            Environment::Dev,
+            *oprf_key_registry,
+            anvil.ws_endpoint().into(),
+            "1.0.0".parse().expect("Valid VersionReq"),
+        );
+        config.session_lifetime = Duration::from_secs(10);
 
         let child_token = cancellation_token.child_token();
 

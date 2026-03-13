@@ -33,7 +33,7 @@ use crate::metrics::{METRICS_ID_I_AM_ALIVE, METRICS_ID_NODE_SESSIONS_OPEN};
 use crate::services::key_event_watcher::KeyEventWatcherTaskArgs;
 use crate::services::open_sessions::OpenSessions;
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
-use crate::{config::OprfNodeConfig, services::secret_manager::SecretManagerService};
+use crate::{config::OprfNodeServiceConfig, services::secret_manager::SecretManagerService};
 use alloy::providers::{Provider as _, ProviderBuilder, WsConnect};
 use axum::Router;
 use eyre::Context as _;
@@ -50,6 +50,7 @@ pub mod config;
 pub mod metrics;
 pub(crate) mod services;
 
+pub use nodes_common::Environment;
 pub use nodes_common::StartedServices;
 pub use services::oprf_key_material_store;
 pub use services::secret_manager;
@@ -57,7 +58,7 @@ use tracing::instrument;
 
 /// [`OprfServiceBuilder`] to initialize a `OprfService` with multiple [`OprfRequestAuthService`]s.
 pub struct OprfServiceBuilder {
-    config: OprfNodeConfig,
+    config: OprfNodeServiceConfig,
     root: Router,
     api: Router,
     key_event_watcher: tokio::task::JoinHandle<Result<(), eyre::Error>>,
@@ -82,7 +83,7 @@ impl OprfServiceBuilder {
     /// 7. Initializes the OPRF service, to which multiple OPRF modules can be added.
     /// 8. Sets up the Axum-based REST API routes for the OPRF service.
     pub async fn init(
-        config: OprfNodeConfig,
+        config: OprfNodeServiceConfig,
         secret_manager: SecretManagerService,
         started_services: StartedServices,
         cancellation_token: CancellationToken,

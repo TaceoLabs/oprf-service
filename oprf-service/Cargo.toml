@@ -22,18 +22,18 @@ axum = { workspace = true, features = ["ws"] }
 axum-extra = { workspace = true, features = ["typed-header"] }
 backon = { workspace = true, features = ["std", "tokio-sleep"] }
 ciborium = { workspace = true }
-clap = { workspace = true, features = ["derive", "env"] }
 eyre.workspace = true
 futures = { workspace = true }
 http = { workspace = true }
 humantime.workspace = true
+humantime-serde = { workspace = true }
 metrics = { workspace = true }
-nodes-common = { workspace = true }
+nodes-common = { workspace = true, features = ["api", "postgres", "serde"] }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.4" }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.9" }
 parking_lot = { workspace = true }
 rand.workspace = true
-secrecy = { workspace = true }
+secrecy = { workspace = true, features = ["serde"] }
 semver.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
@@ -61,6 +61,7 @@ zeroize.workspace = true
 [dev-dependencies]
 ark-ff = { workspace = true }
 axum-test = { workspace = true, features = ["ws"] }
+config = { workspace = true }
 itertools = { workspace = true }
 nodes-observability = { workspace = true }
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.8" }

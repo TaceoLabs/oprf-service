@@ -146,14 +146,12 @@ pub struct TestTranscriptConfig {
     /// The seed to generate the kats
     #[clap(long, env = "TEST_TRANSCRIPT_SEED", default_value = "42")]
     pub seed: u64,
-
-    /// The bind addr of the AXUM server
+    /// The location of the zkey for the key-gen proof in round 2 of KeyGen
     #[clap(long, env = "TEST_TRANSCRIPT_ZKEY")]
     pub key_gen_zkey_path: PathBuf,
-    /// The location of the zkey for the key-gen proof in round 2 of KeyGen
+    /// The location of the witness graph for the key-gen proof in round 2 of KeyGen
     #[clap(long, env = "TEST_TRANSCRIPT_GRAPH")]
     pub key_gen_witness_graph_path: PathBuf,
-
     /// Where to write the created contract
     #[clap(long, env = "TEST_TRANSCRIPT_OUT")]
     pub output: PathBuf,
