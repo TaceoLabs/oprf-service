@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.6.1...taceo-oprf-key-gen-v0.7.0)
+
+### 🚜 Refactor
+
+
+- Refactor!(key-gen): Removed transaction handler task and use RPC provider from nodes-common ([#509](https://github.com/TaceoLabs/oprf-service/pull/509)) - ([7cd3b75](https://github.com/TaceoLabs/oprf-service/commit/7cd3b750a673405f2bf029af4cbd5176ed6b7956))
+- [**breaking**] Move from clap to config [TAC-475] ([#506](https://github.com/TaceoLabs/oprf-service/pull/506)) - ([d33a65b](https://github.com/TaceoLabs/oprf-service/commit/d33a65bdce4d3dcc7c2f4067be52313b8f470447))
+
+
 ## [0.6.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.6.0...taceo-oprf-key-gen-v0.6.1)
 
 ### 📚 Documentation
