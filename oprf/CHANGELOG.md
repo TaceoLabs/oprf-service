@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.7.1...taceo-oprf-v0.8.0)
+
+### 🚜 Refactor
+
+
+- [**breaking**] Move from clap to config [TAC-475] ([#506](https://github.com/TaceoLabs/oprf-service/pull/506)) - ([d33a65b](https://github.com/TaceoLabs/oprf-service/commit/d33a65bdce4d3dcc7c2f4067be52313b8f470447))
+
+
 ## [0.7.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.7.0...taceo-oprf-v0.7.1)
 
 ### 📚 Documentation
