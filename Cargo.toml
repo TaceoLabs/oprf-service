@@ -40,6 +40,7 @@ blake3 = "1"
 ciborium = "0.2"
 circom-types = { package = "taceo-circom-types", version = "0.2.2", default-features = false }
 clap = "4"
+config = "0.15"
 criterion = "0.8"
 eyre = { version = "0.6" }
 futures = "0.3"
@@ -47,10 +48,11 @@ groth16-material = { package = "taceo-groth16-material", version = "0.2", defaul
 groth16-sol = { package = "taceo-groth16-sol", version = "0.2" }
 http = "1"
 humantime = "2"
+humantime-serde = "1.1.1"
 itertools = "0.14"
 k256 = "0.13"
 metrics = "0.24"
-nodes-common = { package = "taceo-nodes-common", version = ">=0.2.1" }
+nodes-common = { package = "taceo-nodes-common", version = "0.4", default-features = false }
 nodes-observability = { package = "taceo-nodes-observability", version = "0.1" }
 num-bigint = "0.4"
 parking_lot = "0.12"

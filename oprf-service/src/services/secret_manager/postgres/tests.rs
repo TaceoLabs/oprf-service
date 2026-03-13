@@ -1,10 +1,9 @@
-use std::time::Duration;
-
 use crate::secret_manager::{
     GetOprfKeyMaterialError, SecretManager, postgres::PostgresSecretManager,
 };
 use alloy::primitives::U160;
 use ark_serialize::CanonicalSerialize;
+use nodes_common::postgres::PostgresConfig;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_test_utils::{OPRF_PEER_ADDRESS_0, TEST_SCHEMA};
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
@@ -24,14 +23,10 @@ async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<Postgr
     sqlx::migrate!("../oprf-key-gen/migrations")
         .run(&mut pg_connection)
         .await?;
-    PostgresSecretManager::init(
-        &SecretString::from(connection_string.to_owned()),
-        TEST_SCHEMA,
-        1.try_into().unwrap(),
-        Duration::from_secs(2),
-        30.try_into().expect("Is NonZero"),
-        Duration::from_secs(1),
-    )
+    PostgresSecretManager::init(&PostgresConfig::with_default_values(
+        SecretString::from(connection_string),
+        TEST_SCHEMA.parse().expect("Is a valid schema"),
+    ))
     .await
 }
 
@@ -93,23 +88,6 @@ async fn test_load_all_secret_empty() -> eyre::Result<()> {
     let secret_manager = postgres_secret_manager(&connection_string).await?;
     let key_material_store = secret_manager.load_secrets().await?;
     assert!(key_material_store.is_empty());
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_empty_schema_name() -> eyre::Result<()> {
-    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
-    let should_error = PostgresSecretManager::init(
-        &SecretString::from(connection_string.to_owned()),
-        "",
-        1.try_into().unwrap(),
-        Duration::from_secs(2),
-        30.try_into().expect("Is NonZero"),
-        Duration::from_secs(1),
-    )
-    .await
-    .expect_err("Should fail");
-    assert_eq!("while building schema string", should_error.to_string());
     Ok(())
 }
 

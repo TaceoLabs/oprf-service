@@ -2,44 +2,24 @@
 //!
 //! Additionally, fetches the node-provider's Ethereum address from the DB.
 
-use std::{
-    collections::HashMap,
-    num::{NonZeroU32, NonZeroUsize},
-    time::Duration,
-};
+use std::{collections::HashMap, num::NonZeroUsize, time::Duration};
 
 use alloy::primitives::Address;
 use ark_serialize::CanonicalDeserialize;
 use async_trait::async_trait;
 use backon::{BackoffBuilder as _, ConstantBackoff, ConstantBuilder, Retryable as _};
 use eyre::Context as _;
+use nodes_common::postgres::{CreateSchema, PostgresConfig};
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     crypto::{OprfKeyMaterial, OprfPublicKey},
 };
-use secrecy::{ExposeSecret as _, SecretString, zeroize::ZeroizeOnDrop};
-use sqlx::{Executor, PgPool, postgres::PgPoolOptions};
+use secrecy::zeroize::ZeroizeOnDrop;
+use sqlx::PgPool;
 use tracing::instrument;
 
 use crate::secret_manager::{GetOprfKeyMaterialError, SecretManager};
-
-fn sanitize_identifier(input: &str) -> eyre::Result<()> {
-    eyre::ensure!(!input.is_empty(), "Empty schema is not allowed");
-    if input
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
-    {
-        Ok(())
-    } else {
-        Err(eyre::eyre!("Invalid SQL identifier"))
-    }
-}
-
-fn schema_connect(schema: &str) -> eyre::Result<String> {
-    sanitize_identifier(schema)?;
-    Ok(format!("SET search_path TO \"{schema}\";"))
-}
 
 /// The postgres secret manager wrapping a `PgPool`.
 #[derive(Debug)]
@@ -66,54 +46,16 @@ impl From<ShareRow> for (OprfKeyId, OprfKeyMaterial) {
 impl PostgresSecretManager {
     /// Initializes a `PostgresSecretManager` by connecting to the provided `connection_string`.
     #[instrument(level = "info", skip_all)]
-    pub async fn init(
-        connection_string: &SecretString,
-        schema: &str,
-        max_connections: NonZeroU32,
-        acquire_timeout: Duration,
-        max_retries: NonZeroUsize,
-        retry_delay: Duration,
-    ) -> eyre::Result<Self> {
-        // we only need one connection but as this will be used behind an Arc, we can't use PgConnection, as this needs a mutable reference to execute queries.
-        tracing::info!("connecting to DB...");
-        let schema_connect = schema_connect(schema).context("while building schema string")?;
-        tracing::debug!("{schema_connect}");
-        let backoff_strategy = ConstantBuilder::new()
-            .with_delay(retry_delay)
-            .with_max_times(max_retries.get())
-            .build();
-        let pg_pool_options = PgPoolOptions::new()
-            .max_connections(max_connections.get())
-            .acquire_timeout(acquire_timeout)
-            .after_connect(move |conn, _| {
-                let schema_connect = schema_connect.clone();
-                Box::pin(async move {
-                    if let Err(e) = conn.execute(schema_connect.as_ref()).await {
-                        tracing::error!("error in after_connect: {:?}", e);
-                        return Err(e);
-                    }
-                    Ok(())
-                })
-            });
-        let pool = (|| {
-            pg_pool_options
-                .clone()
-                .connect(connection_string.expose_secret())
-        })
-        .retry(backoff_strategy)
-        .sleep(tokio::time::sleep)
-        .when(is_retryable_error)
-        .notify(|e, duration| {
-            tracing::warn!("Timeout while creating pool: {e:?} Retry after {duration:?}")
-        })
-        .await
-        .context("while connecting to postgres DB")?;
+    pub async fn init(config: &PostgresConfig) -> eyre::Result<Self> {
+        let pool = nodes_common::postgres::pg_pool_with_schema(config, CreateSchema::Yes)
+            .await
+            .context("while connecting to postgres DB")?;
         // we don't run migrations, we just read
         // TODO do we need to check version of the DB to fast crash if migrations don't match?
         Ok(Self {
             pool,
-            max_retries,
-            retry_delay,
+            max_retries: config.max_retries,
+            retry_delay: config.retry_delay,
         })
     }
 }

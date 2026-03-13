@@ -1,11 +1,11 @@
-use std::{fmt, sync::Arc, time::Duration};
+use std::{fmt, sync::Arc};
 
 use axum_test::TestServer;
-use nodes_common::StartedServices;
+use nodes_common::{Environment, StartedServices};
 use oprf_test_utils::test_secret_manager::TestSecretManager;
 use oprf_test_utils::{PEER_PRIVATE_KEYS, TestSetup, key_gen_test_secret_manager};
 use taceo_oprf_key_gen::KeyGenTasks;
-use taceo_oprf_key_gen::config::{Environment, OprfKeyGenConfig};
+use taceo_oprf_key_gen::config::OprfKeyGenServiceConfig;
 use tokio_util::sync::CancellationToken;
 
 pub struct TestKeyGen {
@@ -46,29 +46,16 @@ impl TestKeyGen {
         let secret_manager = Arc::new(TestSecretManager::new(private_key));
         let keygen_secret_manager = Arc::new(KeyGenTestSecretManager(Arc::clone(&secret_manager)));
 
-        let config = OprfKeyGenConfig {
-            environment: Environment::Dev,
-            // not used
-            bind_addr: "0.0.0.0:10000".parse().unwrap(),
-            oprf_key_registry_contract: *oprf_key_registry,
-            chain_ws_rpc_url: anvil.ws_endpoint().into(),
-            wallet_private_key_secret_id: "wallet/privatekey".to_owned(),
-            zkey_path: setup.key_gen_path(),
-            witness_graph_path: setup.witness_path(),
-            max_wait_time_shutdown: Duration::from_secs(10),
-            start_block: None,
-            max_wait_time_transaction_confirmation: Duration::from_secs(30),
-            max_transaction_attempts: 3,
-            max_gas_per_transaction: 10_000_000,
-            confirmations_for_transaction: 1,
-            db_connection_string: "not used".into(),
-            db_schema: "test".to_owned(),
-            db_max_connections: 1.try_into().expect("Is nonZero"),
-            db_acquire_timeout: Duration::from_secs(2),
-            db_retry_delay: Duration::from_secs(1),
-            db_max_retries: 30.try_into().expect("Is non zero"),
-            i_am_alive_interval: Duration::from_secs(60),
-        };
+        let mut config = OprfKeyGenServiceConfig::with_default_values(
+            Environment::Dev,
+            *oprf_key_registry,
+            anvil.ws_endpoint().into(),
+            setup.key_gen_path(),
+            setup.witness_path(),
+        );
+
+        // anvil doesn't work with confirmations
+        config.confirmations_for_transaction = 0;
 
         let started_services = StartedServices::new();
 

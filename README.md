@@ -70,8 +70,8 @@ The OPRF service supports two secret manager backends for storing OPRF key share
 The Postgres backend stores OPRF key shares in a PostgreSQL database while using AWS Secrets Manager only for the wallet private key. This is the recommended approach for production deployments, especially when managing many OPRF keys.
 
 **Required environment variables:**
-- `OPRF_NODE_DB_CONNECTION_STRING` – PostgreSQL connection string (e.g., `postgres://user:password@host:5432/dbname`)
-- `OPRF_NODE_WALLET_PRIVATE_KEY_SECRET_ID` – Secret ID for the wallet private key (stored in AWS)
+- `TACEO_OPRF_NODE__POSTGRES__CONNECTION_STRING` – PostgreSQL connection string (e.g., `postgres://user:password@host:5432/dbname`)
+- `TACEO_OPRF_NODE__POSTGRES__SCHEMA` – Database schema to use
 - Standard AWS credentials (for wallet key retrieval)
 
 **Database setup:**
@@ -91,6 +91,4 @@ The Postgres secret manager automatically runs migrations on startup to create t
 For simpler deployments with a small number of OPRF keys, you can use AWS Secrets Manager to store all secrets.
 
 **Required environment variables:**
-- `OPRF_NODE_RP_SECRET_ID_PREFIX` – Prefix for OPRF secret names
-- `OPRF_NODE_WALLET_PRIVATE_KEY_SECRET_ID` – Secret ID for the wallet private key
 - Standard AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`)
