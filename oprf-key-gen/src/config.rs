@@ -19,7 +19,11 @@
 //! | `confirmations_for_transaction`          | 5           |
 //! | `i_am_alive_interval`                    | 60 s        |
 
-use std::{num::NonZeroUsize, path::PathBuf, time::Duration};
+use std::{
+    num::{NonZeroU16, NonZeroUsize},
+    path::PathBuf,
+    time::Duration,
+};
 
 use alloy::primitives::Address;
 use nodes_common::Environment;
@@ -44,6 +48,12 @@ pub struct OprfKeyGenServiceConfig {
 
     /// The location of the graph binary for the key-gen witness extension
     pub witness_graph_path: PathBuf,
+
+    /// The expected num peers stored at the contract.
+    pub expected_num_peers: NonZeroU16,
+
+    /// The expected threshold stored at the contract.
+    pub expected_threshold: NonZeroU16,
 
     /// Max time we wait for a transaction confirmation event until we assume the transaction didn't go through.
     ///
@@ -121,6 +131,8 @@ impl OprfKeyGenServiceConfig {
         chain_ws_rpc_url: SecretString,
         zkey_path: PathBuf,
         witness_graph_path: PathBuf,
+        expected_threshold: NonZeroU16,
+        expected_num_peers: NonZeroU16,
     ) -> Self {
         Self {
             environment,
@@ -128,6 +140,8 @@ impl OprfKeyGenServiceConfig {
             chain_ws_rpc_url,
             zkey_path,
             witness_graph_path,
+            expected_num_peers,
+            expected_threshold,
             max_wait_time_transaction_confirmation:
                 Self::default_max_wait_time_transaction_confirmation(),
             max_transaction_attempts: Self::default_max_transaction_attempts(),

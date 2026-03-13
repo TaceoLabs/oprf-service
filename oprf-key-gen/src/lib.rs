@@ -107,17 +107,38 @@ pub async fn start(
     ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ATTRID_WALLET_ADDRESS => address.to_string())
         .set(f64::from(balance) / ETH_TO_WEI as f64);
 
-    tracing::info!("loading party id..");
+    tracing::info!(
+        "loading party id and checking if numPeers and threshold match. Expect {}/{}",
+        config.expected_threshold,
+        config.expected_num_peers
+    );
     let contract = OprfKeyRegistry::new(config.oprf_key_registry_contract, provider.clone());
+    let get_party_id_call = contract.getPartyIdForParticipant(address);
+    let threshold_call = contract.threshold();
+    let num_peers_call = contract.numPeers();
+    let (party_id_contract, threshold_contract, num_peers_contract) = tokio::join!(
+        get_party_id_call.call(),
+        threshold_call.call(),
+        num_peers_call.call(),
+    );
     let party_id = PartyId(
-        contract
-            .getPartyIdForParticipant(address)
-            .call()
-            .await
+        party_id_contract
             .context("while loading party id")?
             .try_into()?,
     );
-    tracing::info!("we are party id: {party_id}");
+    let threshold_contract = threshold_contract.context("while loading threshold")?;
+    let num_peers_contract = num_peers_contract.context("while loading num peers")?;
+    eyre::ensure!(
+        threshold_contract == config.expected_threshold.get(),
+        "Expected threshold {} but contract reported {threshold_contract}",
+        config.expected_threshold
+    );
+    eyre::ensure!(
+        num_peers_contract == config.expected_num_peers.get(),
+        "Expected num_peers {} but contract reported {num_peers_contract}",
+        config.expected_num_peers
+    );
+    tracing::info!("we are party id: {party_id}. Threshold/NumPeers also match");
 
     tracing::info!("init dlog secret gen service..");
     let key_gen_material = CircomGroth16MaterialBuilder::new()
