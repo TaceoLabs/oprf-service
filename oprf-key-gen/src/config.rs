@@ -38,10 +38,10 @@ pub struct OprfKeyGenServiceConfig {
     /// The environment of OPRF key-gen.
     pub environment: Environment,
 
-    /// The Address of the OprfKeyRegistry contract.
+    /// The Address of the `OprfKeyRegistry` contract.
     pub oprf_key_registry_contract: Address,
 
-    /// The location of the zkey for the key-gen proof in round 2 of KeyGen
+    /// The location of the zkey for the key-gen proof in round 2 of `KeyGen`
     pub zkey_path: PathBuf,
 
     /// The location of the graph binary for the key-gen witness extension
@@ -59,7 +59,7 @@ pub struct OprfKeyGenServiceConfig {
     #[serde(with = "humantime_serde")]
     pub max_wait_time_transaction_confirmation: Duration,
 
-    /// The block number to start listening for events from the OprfKeyRegistry contract.
+    /// The block number to start listening for events from the `OprfKeyRegistry` contract.
     /// If not set, will start from the latest block.
     pub start_block: Option<u64>,
 
@@ -107,6 +107,7 @@ impl OprfKeyGenServiceConfig {
     }
 
     /// Construct with all default values except required fields.
+    #[must_use]
     pub fn with_default_values(
         environment: Environment,
         oprf_key_registry_contract: Address,

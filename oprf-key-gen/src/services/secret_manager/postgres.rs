@@ -33,7 +33,12 @@ pub struct PostgresSecretManager {
 }
 
 impl PostgresSecretManager {
-    /// Initializes a `PostgresSecretManager` and potentially runs migrations if necessary.
+    /// Initializes the `PostgresSecretManager`.
+    ///
+    /// Creates the Postgres connection pool, ensures the configured schema exists, and runs all pending database migrations. Stores the AWS SDK configuration and the secret identifier used to load or store the wallet private key.
+    ///
+    /// # Errors
+    /// Returns an error if creating the database pool fails or if running the migrations fails.
     #[instrument(level = "info", skip_all)]
     pub async fn init(
         db_config: &PostgresConfig,
@@ -73,12 +78,12 @@ impl SecretManager for PostgresSecretManager {
         // insert address into postgres DB
         (|| {
             sqlx::query(
-                r#"
+                "
                     INSERT INTO evm_address (id, address)
                     VALUES (TRUE, $1)
                     ON CONFLICT (id)
                     DO UPDATE SET address = EXCLUDED.address
-                "#,
+                ",
             )
             .bind(private_key.address().to_string())
             .execute(&self.pool)
@@ -87,7 +92,7 @@ impl SecretManager for PostgresSecretManager {
         .sleep(tokio::time::sleep)
         .when(is_retryable_error)
         .notify(|e, duration| {
-            tracing::warn!("Retrying load or insert db: {e:?} after {duration:?}")
+            tracing::warn!("Retrying load or insert db: {e:?} after {duration:?}");
         })
         .await
         .context("while storing address into DB")?;
@@ -112,11 +117,11 @@ impl SecretManager for PostgresSecretManager {
         tracing::debug!("loading share...");
         let maybe_share_bytes: Option<Vec<u8>> = (|| {
             sqlx::query_scalar(
-                r#"
+                "
                     SELECT share
                     FROM shares
                     WHERE id = $1 AND epoch = $2 AND deleted = false
-                "#,
+                ",
             )
             .bind(oprf_key_id.to_le_bytes())
             .bind(i64::from(epoch))
@@ -128,7 +133,7 @@ impl SecretManager for PostgresSecretManager {
         .notify(|e, duration| {
             tracing::warn!(
                 "Retrying get_share_epoch {oprf_key_id} because timeout from db: {e:?} after {duration:?}"
-            )
+            );
         })
         .await
         .with_context(||format!("while fetching share {oprf_key_id} with epoch {epoch}"))?;
@@ -149,13 +154,13 @@ impl SecretManager for PostgresSecretManager {
         tracing::debug!("trying to delete key-material..");
         let rows_deleted = (|| {
             sqlx::query(
-                r#"
+                "
                     UPDATE shares
                     SET
                         share = NULL,
                         deleted = true
                     WHERE id = $1
-                "#,
+                ",
             )
             .bind(oprf_key_id.to_le_bytes())
             .execute(&self.pool)
@@ -164,7 +169,7 @@ impl SecretManager for PostgresSecretManager {
         .sleep(tokio::time::sleep)
         .when(is_retryable_error)
         .notify(|e, duration| {
-            tracing::warn!("Retrying remove {oprf_key_id} in db: {e:?} after {duration:?}")
+            tracing::warn!("Retrying remove {oprf_key_id} in db: {e:?} after {duration:?}");
         })
         .await
         .with_context(|| format!("while deleting key-share {oprf_key_id}"))?
@@ -186,7 +191,7 @@ impl SecretManager for PostgresSecretManager {
 
         let success = (|| {
             sqlx::query(
-                r#"
+                "
                     INSERT INTO shares (id, share, epoch, public_key)
                     VALUES ($1, $2, $3, $4)
                     ON CONFLICT (id)
@@ -197,26 +202,28 @@ impl SecretManager for PostgresSecretManager {
                     WHERE
                         shares.epoch < EXCLUDED.epoch AND
                         shares.deleted = false;
-                "#,
+                ",
             )
             .bind(oprf_key_id.to_le_bytes())
-            .bind(to_db_ark_serialize_uncompressed(share.clone()))
+            .bind(to_db_ark_serialize_uncompressed(&share))
             .bind(i64::from(epoch.into_inner())) // convert to larger i64 to preserve sign of epoch, we compare share.epoch and if we flip the sign this might break something
-            .bind(to_db_ark_serialize_uncompressed(public_key))
+            .bind(to_db_ark_serialize_uncompressed(&public_key))
             .execute(&self.pool)
         })
         .retry(self.backoff_strategy())
         .sleep(tokio::time::sleep)
         .when(is_retryable_error)
         .notify(|e, duration| {
-            tracing::warn!("Retrying store DLogShare {oprf_key_id} in db: {e:?} after {duration:?}")
+            tracing::warn!(
+                "Retrying store DLogShare {oprf_key_id} in db: {e:?} after {duration:?}"
+            );
         })
         .await
         .with_context(|| format!("while storing DLogShare {oprf_key_id}"))?;
         if success.rows_affected() == 0 {
             tracing::warn!(
                 "Did not insert anything, maybe someone else stored something with later epoch?"
-            )
+            );
         } else {
             tracing::info!("successfully stored {oprf_key_id}");
         }
@@ -248,7 +255,7 @@ fn is_retryable_error(e: &sqlx::Error) -> bool {
 }
 
 #[inline]
-fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: T) -> Vec<u8> {
+fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: &T) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(t.uncompressed_size());
     t.serialize_uncompressed(&mut bytes).expect("Can serialize");
     bytes

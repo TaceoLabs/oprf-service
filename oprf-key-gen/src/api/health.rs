@@ -21,7 +21,10 @@ use tower_http::set_header::SetResponseHeaderLayer;
 /// All endpoints have `Cache-Control: no-cache` set.
 pub(crate) fn routes(started_services: StartedServices) -> Router {
     Router::new()
-        .route("/health", get(move || health(started_services)))
+        .route(
+            "/health",
+            get(move || async move { health(started_services) }),
+        )
         .layer(SetResponseHeaderLayer::overriding(
             header::CACHE_CONTROL,
             HeaderValue::from_static("no-cache"),
@@ -32,7 +35,11 @@ pub(crate) fn routes(started_services: StartedServices) -> Router {
 ///
 /// Returns `200 OK` with a plain `"healthy"` response if all services already started.
 /// Returns `503 Service Unavailable` with a plain `"starting"`response if one of the services did not start yet.
-async fn health(started_services: StartedServices) -> impl IntoResponse {
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "axum needs to have 'static bound"
+)]
+fn health(started_services: StartedServices) -> impl IntoResponse {
     if started_services.all_started() {
         (StatusCode::OK, "healthy")
     } else {

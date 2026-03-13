@@ -9,9 +9,8 @@ async fn load_eth_wallet_empty() -> eyre::Result<()> {
     let (_localstack_container, localstack_url) =
         oprf_test_utils::localstack_testcontainer().await?;
     let (client, config) = oprf_test_utils::localstack_client(&localstack_url).await;
-    let secret_manager =
-        AwsSecretManager::init(config, OPRF_SECRET_ID_PREFIX, WALLET_SECRET_ID).await;
-    let _ = oprf_test_utils::load_secret(client.clone(), WALLET_SECRET_ID)
+    let secret_manager = AwsSecretManager::init(&config, OPRF_SECRET_ID_PREFIX, WALLET_SECRET_ID);
+    let _reason = oprf_test_utils::load_secret(client.clone(), WALLET_SECRET_ID)
         .await
         .expect_err("should not be there");
 

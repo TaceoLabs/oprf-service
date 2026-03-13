@@ -95,7 +95,7 @@ impl From<EphemeralEncryptionPrivateKey> for ToxicWasteRound2 {
 }
 
 impl EphemeralEncryptionPrivateKey {
-    /// Generates a fresh private-key to be used in a single DLog generation.
+    /// Generates a fresh private-key to be used in a single `DLog` generation.
     /// **Note**: do not reuse this key.
     fn generate<R: Rng + CryptoRng>(r: &mut R) -> Self {
         Self(ark_babyjubjub::Fr::rand(r))
@@ -161,7 +161,7 @@ impl ToxicWasteRound1 {
 }
 
 impl DLogSecretGenService {
-    /// Initializes a new DLog secret generation service.
+    /// Initializes a new `DLog` secret generation service.
     pub(crate) fn init(key_gen_material: CircomGroth16Material) -> Self {
         Self {
             toxic_waste_round1: HashMap::new(),
@@ -183,13 +183,6 @@ impl DLogSecretGenService {
         self.toxic_waste_round2.contains_key(&oprf_key_id)
     }
 
-    /// Returns `true` iff contains a finished share associated with the [`OprfKeyId`].
-    #[cfg(test)]
-    #[expect(unused)]
-    pub(crate) fn has_finished_share(&self, oprf_key_id: OprfKeyId) -> bool {
-        self.finished_shares.contains_key(&oprf_key_id)
-    }
-
     /// Deletes all material associated with the [`OprfKeyId`].
     /// This includes:
     /// * [`ToxicWasteRound1`]
@@ -198,13 +191,13 @@ impl DLogSecretGenService {
     pub(crate) fn delete_oprf_key_material(&mut self, oprf_key_id: OprfKeyId) {
         if self.toxic_waste_round1.remove(&oprf_key_id).is_some() {
             tracing::debug!("removed {oprf_key_id:?} toxic waste round 1");
-        };
+        }
         if self.toxic_waste_round2.remove(&oprf_key_id).is_some() {
             tracing::debug!("removed {oprf_key_id:?} toxic waste round 2");
-        };
+        }
         if self.finished_shares.remove(&oprf_key_id).is_some() {
             tracing::debug!("removed {oprf_key_id:?} finished share");
-        };
+        }
     }
 
     /// Executes round 1 of the key-gen protocol.
@@ -240,15 +233,18 @@ impl DLogSecretGenService {
     pub(crate) fn producer_round2(
         &mut self,
         oprf_key_id: OprfKeyId,
-        pks: Vec<EphemeralEncryptionPublicKey>,
+        pks: &[EphemeralEncryptionPublicKey],
     ) -> eyre::Result<SecretGenRound2Contribution> {
-        let toxic_waste_r1 = self
+        let toxic_waste_keys_and_commitments = self
             .toxic_waste_round1
             .remove(&oprf_key_id)
             .context("Did not have round 1 toxic waste stored")?;
-        let (contribution, toxix_waste_r2) =
-            compute_keygen_proof(&self.key_gen_material, toxic_waste_r1, pks)
-                .context("while computing proof for round2")?;
+        let (contribution, toxix_waste_r2) = compute_keygen_proof(
+            &self.key_gen_material,
+            toxic_waste_keys_and_commitments,
+            pks,
+        )
+        .context("while computing proof for round2")?;
         self.toxic_waste_round2.insert(oprf_key_id, toxix_waste_r2);
         Ok(SecretGenRound2Contribution {
             oprf_key_id,
@@ -269,7 +265,7 @@ impl DLogSecretGenService {
         oprf_key_id: OprfKeyId,
         ciphers: Vec<SecretGenCiphertext>,
         sharing_type: Contributions,
-        pks: Vec<EphemeralEncryptionPublicKey>,
+        pks: &[EphemeralEncryptionPublicKey],
     ) -> eyre::Result<SecretGenRound3Contribution> {
         tracing::info!("calling round3 with {}", ciphers.len());
         let toxic_waste_r2 = self
@@ -383,7 +379,7 @@ fn decrypt_key_gen_ciphertexts(
     ciphers: Vec<SecretGenCiphertext>,
     toxic_waste: ToxicWasteRound2,
     sharing_type: Contributions,
-    pks: Vec<EphemeralEncryptionPublicKey>,
+    pks: &[EphemeralEncryptionPublicKey],
 ) -> eyre::Result<DLogShareShamir> {
     let ToxicWasteRound2 { sk } = toxic_waste;
     // In some later version, we maybe need some meaningful way
@@ -428,15 +424,15 @@ fn decrypt_key_gen_ciphertexts(
 /// Executes the `KeyGen` circom circuit
 ///
 /// ## Security Considerations
-/// This method expects that the parameter `pks` contains exactly three [`EphemeralEncryptionPublicKey`]s that encapsulate valid BabyJubJub points on the correct subgroup.
+/// This method expects that the parameter `pks` contains exactly three [`EphemeralEncryptionPublicKey`]s that encapsulate valid `BabyJubJub` points on the correct subgroup.
 ///
 /// If `pks` were constructed without [`EphemeralEncryptionPublicKey::new_unchecked`], the points are on curve and the correct subgroup.
 ///
-/// This method consumes an instance of [`ToxicWasteRound1`] and, on success, produces an instance of [`ToxicWasteRound2`]. This enforces that the toxic waste from round 1 is in fact dropped when continuing with the KeyGen protocol.
+/// This method consumes an instance of [`ToxicWasteRound1`] and, on success, produces an instance of [`ToxicWasteRound2`]. This enforces that the toxic waste from round 1 is in fact dropped when continuing with the `KeyGen` protocol.
 fn compute_keygen_proof(
     key_gen_material: &CircomGroth16Material,
     toxic_waste: ToxicWasteRound1,
-    pks: Vec<EphemeralEncryptionPublicKey>,
+    pks: &[EphemeralEncryptionPublicKey],
 ) -> eyre::Result<(SecretGenCiphertexts, ToxicWasteRound2)> {
     // compute the nonces for every party
     let num_parties = pks.len();
@@ -457,7 +453,7 @@ fn compute_keygen_proof(
         .poly
         .coeffs()
         .iter()
-        .map(|coeff| coeff.into())
+        .map(Into::into)
         .collect::<Vec<U256>>();
 
     // build the input for the graph
@@ -471,7 +467,7 @@ fn compute_keygen_proof(
     inputs.insert(String::from("poly"), coeffs);
     inputs.insert(
         String::from("nonces"),
-        nonces.iter().map(|n| n.into()).collect_vec(),
+        nonces.iter().map(Into::into).collect_vec(),
     );
     let (proof, public_inputs) = key_gen_material
         .generate_proof(&inputs, &mut rand::thread_rng())

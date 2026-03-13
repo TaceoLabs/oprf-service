@@ -7,26 +7,19 @@
 use std::path::PathBuf;
 
 use ark_ec::{CurveGroup as _, PrimeGroup};
-use groth16_material::circom::{CircomGroth16Material, CircomGroth16MaterialBuilder, Validate};
+use groth16_material::circom::{CircomGroth16MaterialBuilder, Validate};
 use itertools::Itertools;
 use oprf_types::crypto::{EphemeralEncryptionPublicKey, SecretGenCiphertexts};
 use rand::Rng;
 
 use super::*;
 
-async fn dlog_secret_gen(
-    key_gen_material: CircomGroth16Material,
-) -> eyre::Result<DLogSecretGenService> {
-    let dlog_secret_gen = DLogSecretGenService::init(key_gen_material);
-    Ok(dlog_secret_gen)
-}
-
 fn build_public_inputs(
     degree: u16,
     pk: EphemeralEncryptionPublicKey,
     contribution: &SecretGenCiphertexts,
     flattened_pks: &[ark_bn254::Fr],
-    commitments: SecretGenCommitment,
+    commitments: &SecretGenCommitment,
 ) -> Vec<ark_babyjubjub::Fq> {
     // public input is:
     // 1) PublicKey from sender (Affine Point Babyjubjub)
@@ -40,7 +33,7 @@ fn build_public_inputs(
     let mut ciphers = Vec::with_capacity(3);
     let mut comm_ciphers = Vec::with_capacity(3);
     let mut nonces = Vec::with_capacity(3);
-    for cipher in contribution.ciphers.iter() {
+    for cipher in &contribution.ciphers {
         ciphers.push(cipher.cipher);
         comm_ciphers.push(cipher.commitment.x);
         comm_ciphers.push(cipher.commitment.y);
@@ -61,6 +54,7 @@ fn build_public_inputs(
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines, reason = "is ok for test")]
 async fn test_secret_gen() -> eyre::Result<()> {
     let mut rng = rand::thread_rng();
     let oprf_key_id = OprfKeyId::new(rng.r#gen());
@@ -77,9 +71,9 @@ async fn test_secret_gen() -> eyre::Result<()> {
         .bbf_num_2_bits_helper()
         .build_from_bytes(&key_gen_zkey, &graph)?;
 
-    let mut dlog_secret_gen0 = dlog_secret_gen(key_gen_material.clone()).await?;
-    let mut dlog_secret_gen1 = dlog_secret_gen(key_gen_material.clone()).await?;
-    let mut dlog_secret_gen2 = dlog_secret_gen(key_gen_material.clone()).await?;
+    let mut dlog_secret_gen0 = DLogSecretGenService::init(key_gen_material.clone());
+    let mut dlog_secret_gen1 = DLogSecretGenService::init(key_gen_material.clone());
+    let mut dlog_secret_gen2 = DLogSecretGenService::init(key_gen_material.clone());
 
     let dlog_secret_gen0_round1 = dlog_secret_gen0.key_gen_round1(oprf_key_id, threshold);
     let dlog_secret_gen1_round1 = dlog_secret_gen1.key_gen_round1(oprf_key_id, threshold);
@@ -110,13 +104,13 @@ async fn test_secret_gen() -> eyre::Result<()> {
         .collect_vec();
 
     let dlog_secret_gen0_round2 = dlog_secret_gen0
-        .producer_round2(oprf_key_id, pks.to_vec())
+        .producer_round2(oprf_key_id, &pks)
         .context("while doing round2")?;
     let dlog_secret_gen1_round2 = dlog_secret_gen1
-        .producer_round2(oprf_key_id, pks.to_vec())
+        .producer_round2(oprf_key_id, &pks)
         .context("while doing round2")?;
     let dlog_secret_gen2_round2 = dlog_secret_gen2
-        .producer_round2(oprf_key_id, pks.to_vec())
+        .producer_round2(oprf_key_id, &pks)
         .context("while doing round2")?;
 
     assert_eq!(dlog_secret_gen0_round2.oprf_key_id, oprf_key_id);
@@ -130,21 +124,21 @@ async fn test_secret_gen() -> eyre::Result<()> {
         pk0,
         &dlog_secret_gen0_round2.contribution,
         &flattened_pks,
-        commitments0,
+        &commitments0,
     );
     let public_inputs1 = build_public_inputs(
         threshold - 1,
         pk1,
         &dlog_secret_gen1_round2.contribution,
         &flattened_pks,
-        commitments1,
+        &commitments1,
     );
     let public_inputs2 = build_public_inputs(
         threshold - 1,
         pk2,
         &dlog_secret_gen2_round2.contribution,
         &flattened_pks,
-        commitments2,
+        &commitments2,
     );
     let proof0 = dlog_secret_gen0_round2.contribution.proof;
     let proof1 = dlog_secret_gen1_round2.contribution.proof;
@@ -164,11 +158,11 @@ async fn test_secret_gen() -> eyre::Result<()> {
         .collect_vec();
     let [ciphers0, ciphers1, ciphers2] = ciphers.try_into().expect("len is 3");
     let dlog_secret_gen0_round3 =
-        dlog_secret_gen0.round3(oprf_key_id, ciphers0, Contributions::Full, pks.to_vec())?;
+        dlog_secret_gen0.round3(oprf_key_id, ciphers0, Contributions::Full, &pks)?;
     let dlog_secret_gen1_round3 =
-        dlog_secret_gen1.round3(oprf_key_id, ciphers1, Contributions::Full, pks.to_vec())?;
+        dlog_secret_gen1.round3(oprf_key_id, ciphers1, Contributions::Full, &pks)?;
     let dlog_secret_gen2_round3 =
-        dlog_secret_gen2.round3(oprf_key_id, ciphers2, Contributions::Full, pks.to_vec())?;
+        dlog_secret_gen2.round3(oprf_key_id, ciphers2, Contributions::Full, &pks)?;
     assert_eq!(dlog_secret_gen0_round3.oprf_key_id, oprf_key_id);
     assert_eq!(dlog_secret_gen1_round3.oprf_key_id, oprf_key_id);
     assert_eq!(dlog_secret_gen2_round3.oprf_key_id, oprf_key_id);

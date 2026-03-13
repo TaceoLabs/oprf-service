@@ -1,6 +1,6 @@
 //! Alloy-based Key Generation Event Watcher
 //!
-//! This module provides [`key_event_watcher_task`], an task than can be spawned to monitor an on-chain OprfKeyRegistry contract for key generation events.
+//! This module provides [`key_event_watcher_task`], an task than can be spawned to monitor an on-chain `OprfKeyRegistry` contract for key generation events.
 //!
 //! The watcher subscribes to various key generation events and reports contributions back to the contract.
 
@@ -101,7 +101,7 @@ pub(crate) async fn key_event_watcher_task(args: KeyEventWatcherTaskConfig) -> e
     tracing::info!("start handling events");
     let result = handle_events(args).await;
     match result.as_ref() {
-        Ok(_) => tracing::info!("stopped key event watcher without error"),
+        Ok(()) => tracing::info!("stopped key event watcher without error"),
         Err(err) => tracing::warn!("key event watcher encountered an error: {err:?}"),
     }
     result
@@ -166,7 +166,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
             .await
             .context("while handling past log")?;
         }
-    };
+    }
 
     let mut stream = sub.into_stream();
     start_signal.store(true, Ordering::Relaxed);
@@ -176,7 +176,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
             log = stream.next() => {
                 log.ok_or_else(||eyre::eyre!("logs subscribe stream was closed"))?
             }
-            _ = cancellation_token.cancelled() => {
+            () = cancellation_token.cancelled() => {
                 break;
             }
         };
@@ -278,7 +278,7 @@ async fn key_gen_event(
         }
     };
     match result {
-        Ok(_) => Ok(()),
+        Ok(()) => Ok(()),
         Err(TransactionError::Revert(RevertError::OprfKeyRegistry(
             OprfKeyRegistryErrors::WrongRound(WrongRound(round)),
         ))) => {
@@ -380,7 +380,7 @@ async fn handle_round2(
     // block_in_place here because we do a lot CPU work
     let res = tokio::task::block_in_place(|| {
         secret_gen
-            .producer_round2(oprf_key_id, nodes)
+            .producer_round2(oprf_key_id, &nodes)
             .context("while doing round2")
     })?;
     tracing::debug!("finished round 2 - now reporting");
@@ -451,9 +451,8 @@ async fn handle_finalize(
                     "Key got deleted in the meantime - we ignore this key for now. Nodes will run into an error, but they will be fine"
                 );
                 return Ok(());
-            } else {
-                return Err(TransactionError::from(err));
             }
+            return Err(TransactionError::from(err));
         }
     };
     let oprf_key_id = OprfKeyId::from(oprfKeyId);
@@ -660,7 +659,7 @@ async fn handle_round3_inner(
         .map(EphemeralEncryptionPublicKey::try_from)
         .collect::<eyre::Result<Vec<_>>>()?;
     let res = secret_gen
-        .round3(oprf_key_id, ciphers, contributions, pks)
+        .round3(oprf_key_id, ciphers, contributions, &pks)
         .context("while doing round3")?;
     tracing::debug!("finished round 3 - now reporting");
     transaction_handler
@@ -679,9 +678,9 @@ fn ping_secret_manager(secret_manager: SecretManagerService, calling_span: traci
             let ping_result = secret_manager.ping().await;
             let elapsed = instant.elapsed();
             match ping_result {
-                Ok(_) => tracing::info!("successfully pinged DB - took {elapsed:?}"),
+                Ok(()) => tracing::info!("successfully pinged DB - took {elapsed:?}"),
                 Err(err) => {
-                    tracing::warn!("Could not reach DB within acquire time {elapsed:?}: {err:?}")
+                    tracing::warn!("Could not reach DB within acquire time {elapsed:?}: {err:?}");
                 }
             }
         }

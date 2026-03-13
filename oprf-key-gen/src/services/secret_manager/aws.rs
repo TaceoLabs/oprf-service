@@ -2,9 +2,9 @@
 //!
 //! The module supports both production and development environments:
 //! - Production: Uses standard AWS credentials and configuration
-//! - Development: Uses LocalStack with hardcoded test credentials
+//! - Development: Uses `LocalStack` with hardcoded test credentials
 //!
-//! Secrets are stored as JSON objects containing the RP's public key, nullifier key,
+//! Secrets are stored as JSON objects containing the OPRF public key, the share,
 //! and current/previous epoch secrets.
 
 use alloy::{hex, signers::local::PrivateKeySigner};
@@ -38,13 +38,14 @@ impl AwsSecretManager {
     ///
     /// Loads AWS configuration from the environment and wraps the client
     /// in a `SecretManagerService`.
-    pub async fn init(
-        aws_config: aws_config::SdkConfig,
+    #[must_use]
+    pub fn init(
+        aws_config: &aws_config::SdkConfig,
         oprf_secret_id_prefix: &str,
         wallet_private_key_secret_id: &str,
     ) -> Self {
         // loads the latest defaults for aws
-        let client = aws_sdk_secretsmanager::Client::new(&aws_config);
+        let client = aws_sdk_secretsmanager::Client::new(aws_config);
         AwsSecretManager {
             client,
             oprf_secret_id_prefix: oprf_secret_id_prefix.to_string(),
@@ -204,32 +205,28 @@ impl SecretManager for AwsSecretManager {
         } else {
             // not initial epoch but maybe we don't have the share stored (consumer)
             tracing::info!("loading old secret at {secret_id}");
-            match self
+            if let Some(secret_value) = self
                 .load_secret_value(&secret_id)
                 .await
                 .context("while loading old secret")?
             {
-                Some(secret_value) => {
-                    // already stored - need update
-                    let old_oprf_key_material: OprfKeyMaterial =
-                        serde_json::from_str(&secret_value)
-                            .context("Cannot deserialize AWS Secret")?;
-                    tracing::info!(
-                        "already stored for epoch: {}. Overwriting...",
-                        old_oprf_key_material.epoch()
-                    );
+                // already stored - need update
+                let old_oprf_key_material: OprfKeyMaterial =
+                    serde_json::from_str(&secret_value).context("Cannot deserialize AWS Secret")?;
+                tracing::info!(
+                    "already stored for epoch: {}. Overwriting...",
+                    old_oprf_key_material.epoch()
+                );
 
-                    let new_oprf_key_material = OprfKeyMaterial::new(share, public_key, epoch);
-                    self.update_secret(&secret_id, new_oprf_key_material, oprf_key_id, epoch)
-                        .await
-                        .context("while updating secret")
-                }
-                None => {
-                    tracing::debug!("Not stored! need to create secret");
-                    self.create_secret(&secret_id, oprf_key_id, public_key, epoch, share)
-                        .await
-                        .context("while creating secret")
-                }
+                let new_oprf_key_material = OprfKeyMaterial::new(share, public_key, epoch);
+                self.update_secret(&secret_id, new_oprf_key_material, oprf_key_id, epoch)
+                    .await
+                    .context("while updating secret")
+            } else {
+                tracing::debug!("Not stored! need to create secret");
+                self.create_secret(&secret_id, oprf_key_id, public_key, epoch, share)
+                    .await
+                    .context("while creating secret")
             }
         }
     }
@@ -238,7 +235,7 @@ impl SecretManager for AwsSecretManager {
 /// Constructs the full secret ID for an OPRF key-id in AWS Secrets Manager.
 ///
 /// Combines the prefix with the OPRF key-id.
-#[inline(always)]
+#[inline]
 fn to_key_secret_id(key_secret_id_prefix: &str, oprf_key_id: OprfKeyId) -> String {
     format!("{}/{}", key_secret_id_prefix, oprf_key_id.into_inner())
 }

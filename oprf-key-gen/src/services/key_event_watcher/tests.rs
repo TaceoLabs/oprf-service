@@ -101,12 +101,10 @@ async fn test_delete() -> eyre::Result<()> {
     secret_gen.key_gen_round1(oprf_key_id, 2);
 
     assert!(secret_gen.has_round1(oprf_key_id));
-    assert!(
-        secret_manager
-            .is_key_id_stored(oprf_key_id, ShareEpoch::default())
-            .await
-            .is_ok()
-    );
+    secret_manager
+        .is_key_id_stored(oprf_key_id, ShareEpoch::default())
+        .await
+        .expect("Should be able to check key-id");
 
     let event = OprfKeyRegistry::KeyDeletion {
         oprfKeyId: oprf_key_id.into_inner(),
@@ -117,12 +115,10 @@ async fn test_delete() -> eyre::Result<()> {
         .expect("Works");
 
     assert!(!secret_gen.has_round1(oprf_key_id));
-    assert!(
-        secret_manager
-            .is_key_id_not_stored(oprf_key_id)
-            .await
-            .is_ok()
-    );
+    secret_manager
+        .is_key_id_not_stored(oprf_key_id)
+        .await
+        .expect("Should be able to check key-id");
 
     Ok(())
 }
@@ -162,12 +158,10 @@ async fn test_abort() -> eyre::Result<()> {
     secret_gen.key_gen_round1(oprf_key_id, 2);
 
     assert!(secret_gen.has_round1(oprf_key_id));
-    assert!(
-        secret_manager
-            .is_key_id_stored(oprf_key_id, ShareEpoch::default())
-            .await
-            .is_ok()
-    );
+    secret_manager
+        .is_key_id_stored(oprf_key_id, ShareEpoch::default())
+        .await
+        .expect("Should be able to check key-id");
 
     let event = OprfKeyRegistry::KeyGenAbort {
         oprfKeyId: oprf_key_id.into_inner(),
@@ -177,12 +171,10 @@ async fn test_abort() -> eyre::Result<()> {
 
     assert!(!secret_gen.has_round1(oprf_key_id));
     // still has the key
-    assert!(
-        secret_manager
-            .is_key_id_stored(oprf_key_id, ShareEpoch::default())
-            .await
-            .is_ok()
-    );
+    secret_manager
+        .is_key_id_stored(oprf_key_id, ShareEpoch::default())
+        .await
+        .expect("Should be able to check key-id");
 
     Ok(())
 }
@@ -197,12 +189,10 @@ async fn test_not_enough_producers() -> eyre::Result<()> {
     secret_gen.key_gen_round1(oprf_key_id, 2);
 
     assert!(secret_gen.has_round1(oprf_key_id));
-    assert!(
-        secret_manager
-            .is_key_id_stored(oprf_key_id, ShareEpoch::default())
-            .await
-            .is_ok()
-    );
+    secret_manager
+        .is_key_id_stored(oprf_key_id, ShareEpoch::default())
+        .await
+        .expect("Should be able to check key-id");
 
     let event = OprfKeyRegistry::NotEnoughProducers {
         oprfKeyId: oprf_key_id.into_inner(),
@@ -212,12 +202,10 @@ async fn test_not_enough_producers() -> eyre::Result<()> {
 
     assert!(!secret_gen.has_round1(oprf_key_id));
     // still has the key
-    assert!(
-        secret_manager
-            .is_key_id_stored(oprf_key_id, ShareEpoch::default())
-            .await
-            .is_ok()
-    );
+    secret_manager
+        .is_key_id_stored(oprf_key_id, ShareEpoch::default())
+        .await
+        .expect("Should be able to check key-id");
 
     Ok(())
 }

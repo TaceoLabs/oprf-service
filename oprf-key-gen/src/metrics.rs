@@ -4,11 +4,11 @@
 //! provides a helper [`describe_metrics`] to set metadata for
 //! each metric using the `metrics` crate.
 
-/// Attribute ID attached to KEY_GEN_ROUND* metrics distinguishing key_gen vs reshare
+/// Attribute ID attached to `KEY_GEN_ROUND`* metrics distinguishing `key_gen` vs reshare
 pub(crate) const METRICS_ATTRID_PROTOCOL: &str = "protocol";
-/// Attribute ID attached to KEY_GEN_ROUND* metrics distinguishing producer vs consumer
+/// Attribute ID attached to `KEY_GEN_ROUND`* metrics distinguishing producer vs consumer
 pub(crate) const METRICS_ATTRID_ROLE: &str = "role";
-/// Attribute ID attached to METRICS_ID_KEY_GEN_WALLET_BALANCE metric to easily see wallet address
+/// Attribute ID attached to `METRICS_ID_KEY_GEN_WALLET_BALANCE` metric to easily see wallet address
 pub(crate) const METRICS_ATTRID_WALLET_ADDRESS: &str = "wallet_address";
 
 /// Attribute value for ROLE describing a producer
@@ -16,7 +16,7 @@ pub(crate) const METRICS_ATTRVAL_ROLE_PRODUCER: &str = "producer";
 /// Attribute value for ROLE describing a consumer
 pub(crate) const METRICS_ATTRVAL_ROLE_CONSUMER: &str = "consumer";
 
-/// Attribute value for PROTOCOL describing key_gen
+/// Attribute value for PROTOCOL describing `key_gen`
 pub(crate) const METRICS_ATTRVAL_PROTOCOL_KEY_GEN: &str = "key_gen";
 /// Attribute value for PROTOCOL describing reshare
 pub(crate) const METRICS_ATTRVAL_PROTOCOL_RESHARE: &str = "reshare";

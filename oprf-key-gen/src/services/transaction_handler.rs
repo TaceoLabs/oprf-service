@@ -124,7 +124,7 @@ where
     F: Fn() -> CallBuilder<P, D, N>,
 {
     if receipt.status() {
-        handle_success_receipt(receipt);
+        handle_success_receipt(&receipt);
         Ok(())
     } else {
         tracing::debug!("could not send transaction - do a call to get revert data");
@@ -136,7 +136,7 @@ where
     }
 }
 
-fn handle_success_receipt<R: ReceiptResponse>(receipt: R) {
+fn handle_success_receipt<R: ReceiptResponse>(receipt: &R) {
     let gas_used = receipt
         .gas_used()
         .to_string()

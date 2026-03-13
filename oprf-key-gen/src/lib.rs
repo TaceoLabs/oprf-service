@@ -1,4 +1,22 @@
 #![deny(missing_docs)]
+#![deny(clippy::all, clippy::pedantic)]
+#![deny(
+    clippy::allow_attributes_without_reason,
+    clippy::assertions_on_result_states,
+    clippy::dbg_macro,
+    clippy::decimal_literal_representation,
+    clippy::exhaustive_enums,
+    clippy::exhaustive_structs,
+    clippy::iter_over_hash_type,
+    clippy::let_underscore_must_use,
+    clippy::missing_assert_message,
+    clippy::print_stderr,
+    clippy::print_stdout,
+    clippy::undocumented_unsafe_blocks,
+    clippy::unnecessary_safety_comment,
+    clippy::unwrap_used
+)]
+//! This crate provides the OPRF key generation functionality for TACEO:OPRF.
 //! This crate provides the OPRF key generation functionality for TACEO:OPRF.
 //!
 //! It implements a service that listens for OPRF key generation events of the  `OprfKeyRegistry`
@@ -39,19 +57,53 @@ pub struct KeyGenTasks {
 
 impl KeyGenTasks {
     /// Consumes the task by joining every registered `JoinHandle`.
+    ///
+    /// # Errors
+    /// Returns the error from the inner tasks or an error if the task panicked.
     pub async fn join(self) -> eyre::Result<()> {
         self.key_event_watcher.await??;
         Ok(())
     }
 }
 
-/// Starts the OPRF key generation service by spawning all necessary sub-tasks. Additionally, creates an `axum::Router` that serves three routes:
-/// - The health and readiness endpoint `/health`.
-/// - The used version `/version`.
-/// - The public wallet of this node `/wallet`.
+/// Starts the OPRF key generation service and spawns all required background tasks.
+/// Additionally, returns an `axum::Router` exposing basic service endpoints.
 ///
-/// The spawned tasks are:
-/// - `key_event_watcher`: subscribes to configured chain and executes the key-gen/reshare protocol
+/// # Exposed Routes
+/// The returned router provides the following endpoints:
+/// - `/health` – health and readiness endpoint.
+/// - `/version` – returns the running service version.
+/// - `/wallet` – returns the public Ethereum wallet address of this node.
+///
+/// # Initialization
+/// During startup the service performs several initialization steps:
+/// - Loads (or creates) the Ethereum private key from the `SecretManagerService`.
+/// - Initializes the RPC provider used to interact with the configured blockchain.
+/// - Fetches and logs the wallet balance.
+/// - Loads the party ID from the `OprfKeyRegistry` contract to verify that this
+///   node is registered as a participant.
+/// - Builds the Groth16 proving material required for the key generation protocol.
+/// - Initializes the `DLogSecretGenService`.
+/// - Creates a `TransactionHandler` used for submitting and confirming on-chain transactions.
+///
+/// # Spawned Tasks
+/// The service spawns the following background tasks:
+/// - `key_event_watcher` – subscribes to the `OprfKeyRegistry` contract events and
+///   drives the key generation / resharing protocol.
+/// - `i_am_alive` – periodically emits a metric once all services have started,
+///   used as a basic liveness indicator.
+///
+/// # Returns
+/// Returns:
+/// - An `axum::Router` exposing the service endpoints.
+/// - A `KeyGenTasks` handle containing the spawned tasks.
+///
+/// # Errors
+/// Returns an error if:
+/// - the wallet private key cannot be loaded,
+/// - the RPC provider cannot be initialized,
+/// - the node is not registered in the `OprfKeyRegistry` contract,
+/// - the Groth16 proving material cannot be built.
 pub async fn start(
     config: OprfKeyGenServiceConfig,
     secret_manager: SecretManagerService,
@@ -85,6 +137,7 @@ pub async fn start(
         "wallet balance: {} ETH",
         alloy::primitives::utils::format_ether(balance)
     );
+    #[allow(clippy::cast_precision_loss,reason="we must use f64 due to API limitations")]
     ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ATTRID_WALLET_ADDRESS => address.to_string())
         .set(f64::from(balance) / ETH_TO_WEI as f64);
 
@@ -151,7 +204,7 @@ pub async fn start(
                             ::metrics::counter!(METRICS_ID_I_AM_ALIVE).increment(1);
                         }
                    },
-                   _ = cancellation_token.cancelled() => {
+                   () = cancellation_token.cancelled() => {
                        break;
                    }
                 }

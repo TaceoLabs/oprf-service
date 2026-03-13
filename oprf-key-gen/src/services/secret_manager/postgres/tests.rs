@@ -139,12 +139,12 @@ async fn load_or_insert_private_key_on_existing_key_overwrite_db() -> eyre::Resu
     let mut pg_connection =
         oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
     sqlx::query(
-        r#"
+        "
                 INSERT INTO evm_address (id, address)
                 VALUES (TRUE, $1)
                 ON CONFLICT (id)
                 DO UPDATE SET address = EXCLUDED.address
-            "#,
+            ",
     )
     .bind("SOMETHING THAT IS NOT AN ADDRESS")
     .execute(&mut pg_connection)
@@ -195,7 +195,7 @@ fn assert_row_matches(
     });
     let should_share = should_share.map(ark_babyjubjub::Fr::from);
     assert_eq!(should_share, is_share);
-    assert_eq!(should_epoch.into_inner() as i64, is_epoch);
+    assert_eq!(i64::from(should_epoch.into_inner()), is_epoch);
     assert_eq!(
         should_public_key,
         OprfPublicKey::deserialize_uncompressed_unchecked(is_public_key.as_slice())
