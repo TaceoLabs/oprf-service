@@ -5,9 +5,12 @@
 //!
 //! The struct supports:
 //! - Required fields: `environment`, `oprf_key_registry_contract`,
-//!   `chain_ws_rpc_url`, `zkey_path`, and `witness_graph_path`.
+//!   `zkey_path`, and `witness_graph_path`.
 //! - Optional fields with sensible defaults (see below).
 //! - Serde deserialization (with [`humantime_serde`] for durations).
+//!
+//! RPC connectivity (HTTP and WebSocket URLs, chain ID) is configured separately
+//! via `nodes_common::web3::RpcProviderConfig`.
 //!
 //! # Defaults
 //!
@@ -48,9 +51,8 @@ pub struct OprfKeyGenServiceConfig {
     #[serde(rename = "rpc")]
     pub rpc_provider_config: web3::RpcProviderConfig,
 
-    /// Max time we wait for a transaction confirmation event until we assume the transaction didn't go through.
-    ///
-    /// We need this because RPCs are not very reliable, so we need to verify whether a transaction did get through or not.
+    /// Max time we wait for a submitted transaction receipt to reach the required
+    /// number of confirmations before treating it as failed.
     ///
     /// Defaults to `300 s`.
     #[serde(default = "OprfKeyGenServiceConfig::default_max_wait_time_transaction_confirmation")]

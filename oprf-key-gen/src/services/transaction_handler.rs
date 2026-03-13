@@ -17,11 +17,11 @@ use crate::{
     services::key_event_watcher::TransactionError,
 };
 
-/// Service that handles transaction submitting, error handling and RPC failure.
+/// Service that handles transaction submission and receipt confirmation.
 ///
-/// On startup, spawns a task that listens for the `KeyGenConfirmation` logs with a topic-filter set to the party ID of this node. For every transaction, the implementation creates a `oneshot` channel for the a calling party and stores the sender half. If the task records a [`TransactionIdentifier`] that is currently in the store, it signals through that through the channel.
-///
-/// On every transaction, it will additionally spawn a dedicated `tokio::task`, that waits `max_wait_time` and then removes the transaction from the store, signaling a waiting task that we could not get the confirmation in time.
+/// Submits transactions to the blockchain via the configured RPC provider, waits for the
+/// required number of confirmations up to `max_wait_time`, and handles failure cases by
+/// performing a static call to extract revert data for diagnostics.
 #[derive(Clone)]
 pub(crate) struct TransactionHandler {
     max_wait_time: Duration,
@@ -48,18 +48,19 @@ impl TransactionHandler {
         }
     }
 
-    /// Attempts to send a transaction with configured provider.
+    /// Attempts to send a transaction and waits for the receipt.
     ///
-    /// We wait for the receipt we get from our RPC. If we successfully get the receipt we check its status. If everything was successful we return with an `Ok`. If we get a receipt signaling a failure we try to do the same call once more, but without doing a transaction to get the potential revert data. This should only act as debug information and not be taken at face value.
+    /// Broadcasts the transaction to the network and waits for the configured number of
+    /// confirmations, up to `max_wait_time`. If the receipt indicates success, returns `Ok`.
+    /// If the receipt indicates failure, performs a static call to extract revert data for
+    /// diagnostics (this is best-effort and should not be taken at face value).
     ///
-    /// Now, if the RPC responds with a null response (which occurs quite often with e.g., Alchemy) we wait for a dedicated event emitted by the smart-contract that was created by the transaction. Apparently, when getting this null response error, the transaction might still have been successful, therefore we can't rely on the response from the RPC. In most cases, we still get the ordinary receipt with a success, so this is a fail safe. If this runs into a timeout, we try to redo the transaction a configured amount of times.
-    ///
-    /// If we could not send the transaction at all, we return with an error.
+    /// If the transaction could not be sent or the confirmation times out, returns an error.
     ///
     /// Takes an `Fn` that produces a `CallBuilder`. This can be done e.g., with
     /// ```rust,ignore
     /// transaction_handler
-    ///     .attempt_transaction(oprf_key_id, TransactionType::Round1, || {
+    ///     .attempt_transaction(|| {
     ///         contract.addRound1KeyGenContribution(
     ///             oprf_key_id.into_inner(),
     ///             contribution.clone().into(),
@@ -67,7 +68,6 @@ impl TransactionHandler {
     ///     })
     ///     .await?;
     /// ```
-    /// This method will then attempt to send the transaction via the provided RPC.
     #[instrument(level = "info", skip_all)]
     pub(crate) async fn attempt_transaction<P, D, N, F>(
         &self,
@@ -79,7 +79,6 @@ impl TransactionHandler {
         N: Network,
         F: Fn() -> CallBuilder<P, D, N>,
     {
-        // start the timer for this transaction
         let transaction_result = transaction()
             .gas(self.max_gas_per_transaction)
             .send()

@@ -1,6 +1,6 @@
 //! OPRF Key Gen Binary
 //!
-//! This is the main entry point for the OPRF node service.
+//! This is the main entry point for the OPRF key-gen service.
 //! It initializes tracing, metrics, and starts the service with configuration
 //! from environment variables using the `TACEO_OPRF_KEY_GEN__` prefix.
 
@@ -152,7 +152,7 @@ async fn main() -> ExitCode {
         .install_default()
         .expect("Can install");
     let tracing_config =
-        nodes_observability::TracingConfig::try_from_env().expect("Can create TryingConfig");
+        nodes_observability::TracingConfig::try_from_env().expect("Can create TracingConfig");
     let _tracing_handle =
         nodes_observability::initialize_tracing(&tracing_config).expect("Can get tracing handle");
     match run().await {

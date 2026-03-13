@@ -216,7 +216,7 @@ async fn key_gen_event(
         Some(&OprfKeyRegistry::SecretGenRound1::SIGNATURE_HASH) => {
             let log = log
                 .log_decode()
-                .context("while decoding key-gen round2 event")?;
+                .context("while decoding key-gen round1 event")?;
             handle_keygen_round1(log.inner.data, contract, secret_gen, transaction_handler).await
         }
         Some(&OprfKeyRegistry::SecretGenRound2::SIGNATURE_HASH) => {
@@ -228,7 +228,7 @@ async fn key_gen_event(
         Some(&OprfKeyRegistry::SecretGenRound3::SIGNATURE_HASH) => {
             let log = log
                 .log_decode()
-                .context("while decoding key-gen round2 event")?;
+                .context("while decoding key-gen round3 event")?;
             handle_keygen_round3(log.inner.data, contract, secret_gen, transaction_handler).await
         }
         Some(&OprfKeyRegistry::SecretGenFinalize::SIGNATURE_HASH) => {

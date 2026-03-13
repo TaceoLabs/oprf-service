@@ -6,7 +6,7 @@
 //! The generated keys are stored securely using the provided `SecretManagerService`.
 //! From there, they can be fetched by the OPRF nodes that handle OPRF requests.
 //!
-//! For details on the OPRF protocol, see the [design document](https://github.com/TaceoLabs/nullifier-oracle-service/blob/491416de204dcad8d46ee1296d59b58b5be54ed9/docs/oprf.pdf).
+//! For details on the OPRF protocol, see the [design document](https://github.com/TaceoLabs/oprf-service/blob/main/docs/oprf.pdf).
 
 use crate::{
     config::OprfKeyGenServiceConfig,
@@ -52,7 +52,6 @@ impl KeyGenTasks {
 ///
 /// The spawned tasks are:
 /// - `key_event_watcher`: subscribes to configured chain and executes the key-gen/reshare protocol
-/// - `transaction_handler`: task that subscribes to same contract as `key_event_watcher` and waits for `KeyGenConfirmation` events from chain in case of errors with the RPC provider.
 pub async fn start(
     config: OprfKeyGenServiceConfig,
     secret_manager: SecretManagerService,
@@ -91,6 +90,8 @@ pub async fn start(
 
     tracing::info!("loading party id..");
     let contract = OprfKeyRegistry::new(config.oprf_key_registry_contract, rpc_provider.http());
+    // Fetch the party ID and log it.
+    // This call verifies whether we are registered at the contract as participant and serves as early failing point if not
     let party_id = PartyId(
         contract
             .getPartyIdForParticipant(address)
