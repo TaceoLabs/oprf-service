@@ -1,10 +1,8 @@
-use std::{
-    sync::{Arc, atomic::AtomicBool},
-    time::Duration,
-};
+use std::{str::FromStr, sync::Arc, time::Duration};
 
-use alloy::primitives::U160;
+use alloy::{network::EthereumWallet, primitives::U160, signers::local::PrivateKeySigner};
 use groth16_material::circom::{CircomGroth16Material, CircomGroth16MaterialBuilder};
+use nodes_common::{Environment, web3::RpcProviderBuilder};
 use oprf_test_utils::{
     DeploySetup, OPRF_PEER_PRIVATE_KEY_0, PEER_ADDRESSES, TestSetup, key_gen_test_secret_manager,
     test_secret_manager::TestSecretManager,
@@ -12,7 +10,6 @@ use oprf_test_utils::{
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     chain::{OprfKeyRegistry, RevertError, Verifier::VerifierErrors},
-    crypto::PartyId,
 };
 
 use crate::{
@@ -22,7 +19,7 @@ use crate::{
             TransactionError, handle_abort, handle_delete, handle_not_enough_producers,
         },
         secret_gen::DLogSecretGenService,
-        transaction_handler::{TransactionHandler, TransactionHandlerInitArgs},
+        transaction_handler::TransactionHandler,
     },
 };
 
@@ -43,22 +40,26 @@ fn key_gen_material(deploy_setup: DeploySetup) -> CircomGroth16Material {
 }
 
 async fn test_config(setup: &TestSetup) -> (CircomGroth16Material, TransactionHandler) {
-    let party_id = PartyId(0);
-
-    let (transaction_handler, _) = TransactionHandler::new(TransactionHandlerInitArgs {
-        max_wait_time: Duration::from_secs(10),
-        max_gas_per_transaction: 10_000_000,
-        confirmations_for_transaction: 1,
-        attempts: 3,
-        party_id,
-        contract_address: setup.oprf_key_registry,
-        provider: setup.provider.clone(),
-        wallet_address: PEER_ADDRESSES[0],
-        start_signal: Arc::new(AtomicBool::new(false)),
-        cancellation_token: setup.cancellation_token.child_token(),
-    })
+    let rpc_provider = RpcProviderBuilder::with_default_values(
+        vec![setup.anvil.endpoint_url()],
+        setup.anvil.ws_endpoint_url(),
+    )
+    .environment(Environment::Dev)
+    .chain_id(31_337)
+    .wallet(EthereumWallet::new(
+        PrivateKeySigner::from_str(OPRF_PEER_PRIVATE_KEY_0).expect("works"),
+    ))
+    .build()
     .await
-    .expect("while spawning transaction handler");
+    .expect("can build RPC providers");
+
+    let transaction_handler = TransactionHandler::new(
+        Duration::from_secs(10),
+        10_000_000,
+        1,
+        rpc_provider,
+        PEER_ADDRESSES[0],
+    );
 
     (key_gen_material(setup.setup), transaction_handler)
 }
@@ -71,7 +72,6 @@ async fn test_send_invalid_proof() -> eyre::Result<()> {
     let key_id = U160::from(INVALID_PROOF_KEY);
     secret_gen.key_gen_round1(key_id.into(), 2);
     let error = super::handle_round2(
-        PartyId(0),
         OprfKeyRegistry::SecretGenRound2 {
             oprfKeyId: key_id,
             epoch: 0,
@@ -136,7 +136,6 @@ async fn test_round2_in_wrong_round_during_load_public_keys() -> eyre::Result<()
     secret_gen.key_gen_round1(key_id.into(), 2);
     assert!(!secret_gen.has_round2(OprfKeyId::from(key_id)));
     super::handle_round2(
-        PartyId(0),
         OprfKeyRegistry::SecretGenRound2 {
             oprfKeyId: key_id,
             epoch: 0,

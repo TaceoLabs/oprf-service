@@ -103,7 +103,9 @@ start_keygen() {
         TACEO_OPRF_KEY_GEN__SERVICE__WITNESS_GRAPH_PATH=./circom/main/key-gen/OPRFKeyGenGraph.13.bin \
         TACEO_OPRF_KEY_GEN__SERVICE__OPRF_KEY_REGISTRY_CONTRACT=$oprf_key_registry \
         TACEO_OPRF_KEY_GEN__SERVICE__CONFIRMATIONS_FOR_TRANSACTION=1 \
-        TACEO_OPRF_KEY_GEN__SERVICE__CHAIN_WS_RPC_URL=ws://127.0.0.1:8545 \
+        TACEO_OPRF_KEY_GEN__SERVICE__RPC__HTTP_URLS=http://127.0.0.1:8545 \
+        TACEO_OPRF_KEY_GEN__SERVICE__RPC__WS_URL=ws://127.0.0.1:8545 \
+        TACEO_OPRF_KEY_GEN__SERVICE__RPC__CHAIN_ID=31337 \
         TACEO_OPRF_KEY_GEN__POSTGRES__CONNECTION_STRING=$db_conn \
         TACEO_OPRF_KEY_GEN__POSTGRES__SCHEMA=oprf$i \
         ./target/release/oprf-key-gen > logs/key-gen$i.log 2>&1 &

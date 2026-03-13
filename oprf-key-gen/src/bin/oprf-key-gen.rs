@@ -1,6 +1,6 @@
 //! OPRF Key Gen Binary
 //!
-//! This is the main entry point for the OPRF node service.
+//! This is the main entry point for the OPRF key-gen service.
 //! It initializes tracing, metrics, and starts the service with configuration
 //! from environment variables using the `TACEO_OPRF_KEY_GEN__` prefix.
 
@@ -31,7 +31,7 @@ struct OprfKeyGenConfig {
     #[serde(with = "humantime_serde")]
     pub max_wait_time_shutdown: Duration,
 
-    /// The OPRF key-gen config
+    /// The OPRF key-gen service config
     #[serde(rename = "service")]
     pub key_gen_config: OprfKeyGenServiceConfig,
 
@@ -49,8 +49,13 @@ fn default_max_wait_shutdown() -> Duration {
 }
 
 fn load_key_gen_config() -> eyre::Result<OprfKeyGenConfig> {
-    let cfg = Config::builder()
-        .add_source(config::Environment::with_prefix("TACEO_OPRF_KEY_GEN").separator("__"));
+    let cfg = Config::builder().add_source(
+        config::Environment::with_prefix("TACEO_OPRF_KEY_GEN")
+            .separator("__")
+            .list_separator(",")
+            .with_list_parse_key("service.rpc.http_urls")
+            .try_parsing(true),
+    );
 
     cfg.build()
         .context("while building from config")?
@@ -147,7 +152,7 @@ async fn main() -> ExitCode {
         .install_default()
         .expect("Can install");
     let tracing_config =
-        nodes_observability::TracingConfig::try_from_env().expect("Can create TryingConfig");
+        nodes_observability::TracingConfig::try_from_env().expect("Can create TracingConfig");
     let _tracing_handle =
         nodes_observability::initialize_tracing(&tracing_config).expect("Can get tracing handle");
     match run().await {

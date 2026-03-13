@@ -11,7 +11,7 @@
 //! locking (`Mutex`) or reference counting (`Arc`) is performed, so multiple tasks
 //! must not concurrently access it.
 //!
-//! We refer to [Appendix B.2 of our design document](https://github.com/TaceoLabs/nullifier-oracle-service/blob/491416de204dcad8d46ee1296d59b58b5be54ed9/docs/oprf.pdf) for more information about the OPRF-nullifier
+//! We refer to [Appendix B.2 of our design document](https://github.com/TaceoLabs/oprf-service/blob/main/docs/oprf.pdf) for more information about the OPRF-nullifier
 //! generation protocol.
 
 use std::collections::HashMap;
