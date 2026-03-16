@@ -14,7 +14,7 @@
 //! We refer to [Appendix B.2 of our design document](https://github.com/TaceoLabs/oprf-service/blob/main/docs/oprf.pdf) for more information about the OPRF-nullifier
 //! generation protocol.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use alloy::primitives::U256;
 use ark_ec::{AffineRepr as _, CurveGroup as _};
@@ -61,7 +61,7 @@ pub(crate) struct DLogSecretGenService {
     toxic_waste_round1: HashMap<OprfKeyId, ToxicWasteRound1>,
     toxic_waste_round2: HashMap<OprfKeyId, ToxicWasteRound2>,
     finished_shares: HashMap<OprfKeyId, DLogShareShamir>,
-    key_gen_material: CircomGroth16Material,
+    key_gen_material: Arc<CircomGroth16Material>,
 }
 
 /// The ephemeral private key of an OPRF node.
@@ -167,7 +167,7 @@ impl DLogSecretGenService {
             toxic_waste_round1: HashMap::new(),
             toxic_waste_round2: HashMap::new(),
             finished_shares: HashMap::new(),
-            key_gen_material,
+            key_gen_material: Arc::new(key_gen_material),
         }
     }
 
@@ -230,20 +230,21 @@ impl DLogSecretGenService {
     /// # Arguments
     /// * `oprf_key_id` - Identifier of the OPRF key that we generate.
     /// * `pks` - List of public keys for nodes participating in the protocol.
-    pub(crate) fn producer_round2(
+    pub(crate) async fn producer_round2(
         &mut self,
         oprf_key_id: OprfKeyId,
-        pks: &[EphemeralEncryptionPublicKey],
+        pks: Vec<EphemeralEncryptionPublicKey>,
     ) -> eyre::Result<SecretGenRound2Contribution> {
         let toxic_waste_keys_and_commitments = self
             .toxic_waste_round1
             .remove(&oprf_key_id)
             .context("Did not have round 1 toxic waste stored")?;
-        let (contribution, toxix_waste_r2) = compute_keygen_proof(
-            &self.key_gen_material,
-            toxic_waste_keys_and_commitments,
-            pks,
-        )
+        let key_gen_material = Arc::clone(&self.key_gen_material);
+        let (contribution, toxix_waste_r2) = tokio::task::spawn_blocking(move || {
+            compute_keygen_proof(&key_gen_material, toxic_waste_keys_and_commitments, &pks)
+        })
+        .await
+        .context("while joining compute key-gen")?
         .context("while computing proof for round2")?;
         self.toxic_waste_round2.insert(oprf_key_id, toxix_waste_r2);
         Ok(SecretGenRound2Contribution {

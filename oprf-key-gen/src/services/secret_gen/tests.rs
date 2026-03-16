@@ -103,15 +103,14 @@ async fn test_secret_gen() -> eyre::Result<()> {
         .flat_map(|p| [p.inner().x, p.inner().y])
         .collect_vec();
 
-    let dlog_secret_gen0_round2 = dlog_secret_gen0
-        .producer_round2(oprf_key_id, &pks)
-        .context("while doing round2")?;
-    let dlog_secret_gen1_round2 = dlog_secret_gen1
-        .producer_round2(oprf_key_id, &pks)
-        .context("while doing round2")?;
-    let dlog_secret_gen2_round2 = dlog_secret_gen2
-        .producer_round2(oprf_key_id, &pks)
-        .context("while doing round2")?;
+    let (dlog_secret_gen0_round2, dlog_secret_gen1_round2, dlog_secret_gen2_round2) = tokio::join!(
+        dlog_secret_gen0.producer_round2(oprf_key_id, pks.to_vec()),
+        dlog_secret_gen1.producer_round2(oprf_key_id, pks.to_vec()),
+        dlog_secret_gen2.producer_round2(oprf_key_id, pks.to_vec())
+    );
+    let dlog_secret_gen0_round2 = dlog_secret_gen0_round2.context("while doing round2")?;
+    let dlog_secret_gen1_round2 = dlog_secret_gen1_round2.context("while doing round2")?;
+    let dlog_secret_gen2_round2 = dlog_secret_gen2_round2.context("while doing round2")?;
 
     assert_eq!(dlog_secret_gen0_round2.oprf_key_id, oprf_key_id);
     assert_eq!(dlog_secret_gen1_round2.oprf_key_id, oprf_key_id);

@@ -377,12 +377,10 @@ async fn handle_round2(
         .into_iter()
         .map(EphemeralEncryptionPublicKey::try_from)
         .collect::<eyre::Result<Vec<_>>>()?;
-    // block_in_place here because we do a lot CPU work
-    let res = tokio::task::block_in_place(|| {
-        secret_gen
-            .producer_round2(oprf_key_id, &nodes)
-            .context("while doing round2")
-    })?;
+    let res = secret_gen
+        .producer_round2(oprf_key_id, nodes)
+        .await
+        .context("while doing round2")?;
     tracing::debug!("finished round 2 - now reporting");
     let contribution = Round2Contribution::from(res.contribution);
     transaction_handler
