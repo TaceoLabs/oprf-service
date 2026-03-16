@@ -25,6 +25,7 @@ pub type SecretManagerService = Arc<dyn SecretManager + Send + Sync>;
 
 /// Error when calling [`SecretManager::get_oprf_key_material`].
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum GetOprfKeyMaterialError {
     /// Cannot find the share with requested oprf-key-id and epoch.
     #[error("Cannot find requested material")]
@@ -42,7 +43,7 @@ pub trait SecretManager {
     /// Loads the EVM `Address` of this node.
     async fn load_address(&self) -> eyre::Result<Address>;
 
-    /// Loads the DLog secrets and their associated [`OprfKeyId`]s.
+    /// Loads the `DLog` secrets and their associated [`OprfKeyId`]s.
     async fn load_secrets(&self) -> eyre::Result<HashMap<OprfKeyId, OprfKeyMaterial>>;
 
     /// Returns the [`OprfKeyMaterial`] for the given [`OprfKeyId`] and [`ShareEpoch`] if it exists.

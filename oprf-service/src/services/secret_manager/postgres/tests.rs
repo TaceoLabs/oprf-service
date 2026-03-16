@@ -10,8 +10,8 @@ use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 use secrecy::SecretString;
 use sqlx::PgConnection;
 
-#[inline(always)]
-fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: T) -> Vec<u8> {
+#[inline]
+fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: &T) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(t.uncompressed_size());
     t.serialize_uncompressed(&mut bytes).expect("Can serialize");
     bytes
@@ -38,15 +38,15 @@ async fn insert_row(
     connection: &mut PgConnection,
 ) -> eyre::Result<()> {
     sqlx::query(
-        r#"
+        "
             INSERT INTO shares (id, share, epoch, public_key)
             VALUES ($1, $2, $3, $4)
-        "#,
+        ",
     )
     .bind(oprf_key_id.to_le_bytes())
-    .bind(to_db_ark_serialize_uncompressed(share))
+    .bind(to_db_ark_serialize_uncompressed(&share))
     .bind(i64::from(epoch.into_inner()))
-    .bind(to_db_ark_serialize_uncompressed(public_key))
+    .bind(to_db_ark_serialize_uncompressed(&public_key))
     .execute(connection)
     .await?;
     Ok(())
@@ -54,13 +54,13 @@ async fn insert_row(
 
 async fn delete_row(oprf_key_id: OprfKeyId, connection: &mut PgConnection) -> eyre::Result<()> {
     let success = sqlx::query(
-        r#"
+        "
             UPDATE shares
             SET
                 share = NULL,
                 deleted = true
             WHERE id = $1
-        "#,
+        ",
     )
     .bind(oprf_key_id.to_le_bytes())
     .execute(connection)
@@ -71,10 +71,10 @@ async fn delete_row(oprf_key_id: OprfKeyId, connection: &mut PgConnection) -> ey
 
 async fn insert_address(address: &str, connection: &mut PgConnection) -> eyre::Result<()> {
     sqlx::query(
-        r#"
+        "
             INSERT INTO evm_address (id, address)
             VALUES (TRUE, $1)
-        "#,
+        ",
     )
     .bind(address)
     .execute(connection)

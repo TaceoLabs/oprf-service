@@ -117,12 +117,9 @@ async fn oprf_ws_handler<
     header_version: Option<TypedHeader<ProtocolVersion>>,
     query_version: Query<ProtocolVersionQuery>,
 ) -> axum::response::Response {
-    let client_version =
-        if let Some(client_version) = parse_client_header(header_version, query_version) {
-            client_version
-        } else {
-            return (StatusCode::BAD_REQUEST, "missing client version").into_response();
-        };
+    let Some(client_version) = parse_client_header(header_version, query_version) else {
+        return (StatusCode::BAD_REQUEST, "missing client version").into_response();
+    };
     let parent_span = tracing::Span::current();
     parent_span.record("client_version", format!("{client_version}"));
     if state.version_req.matches(&client_version) {
@@ -146,7 +143,7 @@ async fn oprf_ws_handler<
                     )
                     .await
                     {
-                        Ok(Ok(_)) => {
+                        Ok(Ok(())) => {
                             ::metrics::counter!(METRICS_ID_NODE_OPRF_SUCCESS).increment(1);
                             Some(CloseFrame {
                                 code: close_code::NORMAL,
@@ -165,6 +162,7 @@ async fn oprf_ws_handler<
                     if let Some(close_frame) = close_frame {
                         tracing::trace!(" < sending close frame");
                         // In their example, axum just sends the frame and ignores the error afterwards and also don't wait for the peers close frame. Therefore we do the same,
+                        #[allow(clippy::let_underscore_must_use, reason="we don't care about this error as we close the connection anyways and only send close frame on best effort")]
                         let _ = ws.send(ws::Message::Close(Some(close_frame))).await;
                     }
                 }
@@ -237,15 +235,8 @@ async fn partial_oprf<
         .await?;
     ::metrics::counter!(METRICS_ID_NODE_PART_2_START).increment(1);
 
-    let proof_share = challenge(
-        challenge_request,
-        request_id,
-        party_id,
-        threshold,
-        session,
-        &oprf_material_store,
-    )
-    .await?;
+    let proof_share =
+        challenge(challenge_request, request_id, party_id, threshold, session).await?;
 
     tracing::debug!("sending challenge response to client...");
     write_response(proof_share, human_readable, socket)
@@ -290,8 +281,9 @@ async fn init_session<
         .record(duration_verify.as_millis() as f64);
 
     tracing::debug!("initiating session with key id {oprf_key_id:?}...");
-    let (session, commitments) =
-        oprf_material_store.partial_commit(init_request.blinded_query, oprf_key_id)?;
+    let (session, commitments) = oprf_material_store
+        .partial_commit(init_request.blinded_query, oprf_key_id)
+        .ok_or_else(|| Error::UnknownOprfKeyId(oprf_key_id))?;
 
     let response = OprfResponse {
         commitments,
@@ -311,7 +303,6 @@ async fn challenge(
     party_id: PartyId,
     threshold: usize,
     session: OprfSession,
-    oprf_material_store: &OprfKeyMaterialStore,
 ) -> Result<DLogProofShareShamir, Error> {
     let start_part_two = Instant::now();
     let coeffs = challenge.get_contributing_parties();
@@ -341,7 +332,7 @@ async fn challenge(
     }
 
     tracing::debug!("finalizing session...");
-    let proof_share = oprf_material_store.challenge(request_id, party_id, session, challenge);
+    let proof_share = OprfKeyMaterialStore::challenge(request_id, party_id, session, challenge);
 
     let duration_part_two = start_part_two.elapsed();
     ::metrics::histogram!(METRICS_ID_NODE_PART_2_DURATION)

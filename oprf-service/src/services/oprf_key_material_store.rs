@@ -1,4 +1,4 @@
-//! This module provides [`OprfKeyMaterialStore`], which securely holds each OPRF DLog shares (per epoch).
+//! This module provides [`OprfKeyMaterialStore`], which securely holds each `OPRF DLog` shares (per epoch).
 //! Access is synchronized via a `RwLock` and wrapped in an `Arc` for thread-safe shared ownership.
 //!
 //! Use the store to retrieve or add shares and public keys safely.
@@ -21,21 +21,6 @@ use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
 
 use crate::metrics::METRICS_ID_NODE_OPRF_SECRETS;
-
-type Result<T> = std::result::Result<T, OprfKeyMaterialStoreError>;
-
-/// Errors returned by the [`OprfKeyMaterial`].
-///
-/// This error type is mostly used in API contexts, meaning it should be digested by the `crate::api::errors` module.
-///
-/// Methods that are used in other contexts may return one of the variants
-/// here or return an `eyre::Result`.
-#[derive(Debug, thiserror::Error)]
-pub enum OprfKeyMaterialStoreError {
-    /// Cannot find the OPRF key id.
-    #[error("Cannot find key id: {0}")]
-    UnknownOprfKeyId(OprfKeyId),
-}
 
 /// Storage for [`OprfKeyMaterial`]s.
 #[derive(Default, Clone)]
@@ -62,6 +47,7 @@ impl OprfSession {
 
 impl OprfKeyMaterialStore {
     /// Creates a new storage instance with the provided initial shares.
+    #[must_use]
     pub fn new(inner: HashMap<OprfKeyId, OprfKeyMaterial>) -> Self {
         ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).set(inner.len() as f64);
         Self(Arc::new(RwLock::new(inner)))
@@ -70,6 +56,7 @@ impl OprfKeyMaterialStore {
     /// Returns the amount of stored [`OprfKeyMaterial`]s.
     ///
     /// _Note_ that this acquires a lock internally and returns the length at that point in time.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.0.read().len()
     }
@@ -77,6 +64,7 @@ impl OprfKeyMaterialStore {
     /// Returns `true` iff the store has no [`OprfKeyMaterial`] stored.
     ///
     /// _Note_ that this acquires a lock internally and returns the result from that point in time.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.0.read().is_empty()
     }
@@ -84,6 +72,7 @@ impl OprfKeyMaterialStore {
     /// Returns the `true` iff the store contains key-material associated with the [`OprfKeyId`].
     ///
     /// _Note_ that this acquires a lock internally and returns the result from that point in time.
+    #[must_use]
     pub fn contains(&self, oprf_key_id: OprfKeyId) -> bool {
         self.0.read().contains_key(&oprf_key_id)
     }
@@ -99,9 +88,9 @@ impl OprfKeyMaterialStore {
         tracing::info!("old store size: {}", new_store.len());
     }
 
-    /// Computes C = B * x_share and commitments to a random value k_share, where x_share is identified by [`OprfKeyId`].
+    /// Computes `C = B * x_share` and commitments to a random value `k_share`, where `x_share` is identified by [`OprfKeyId`].
     ///
-    /// This generates the node's partial contribution used in the DLogEqualityProof and returns an [`OprfSession`] and a [`PartialDLogCommitmentsShamir`].
+    /// This generates the node's partial contribution used in the `DLogEqualityProof` and returns an [`OprfSession`] and a [`PartialDLogCommitmentsShamir`].
     ///
     /// # Errors
     ///
@@ -110,12 +99,11 @@ impl OprfKeyMaterialStore {
         &self,
         point_b: ark_babyjubjub::EdwardsAffine,
         oprf_key_id: OprfKeyId,
-    ) -> Result<(OprfSession, PartialDLogCommitmentsShamir)> {
+    ) -> Option<(OprfSession, PartialDLogCommitmentsShamir)> {
         tracing::debug!("computing partial commitment");
         // we still need to check here, because even if we call contains, we might have removed this share in the meantime
-        let key_material = self
-            .get(oprf_key_id)
-            .ok_or(OprfKeyMaterialStoreError::UnknownOprfKeyId(oprf_key_id))?;
+        let key_material = self.get(oprf_key_id)?;
+
         let (dlog_session, commitment) = DLogSessionShamir::partial_commitments(
             point_b,
             key_material.share(),
@@ -127,7 +115,7 @@ impl OprfKeyMaterialStore {
             dlog_session,
             key_material,
         };
-        Ok((session, commitment))
+        Some((session, commitment))
     }
 
     /// Finalizes a proof share for a [`DLogCommitmentsShamir`] and an [`OprfSession`].
@@ -139,7 +127,6 @@ impl OprfKeyMaterialStore {
     ///
     /// Returns an error if the OPRF key is unknown.
     pub(crate) fn challenge(
-        &self,
         session_id: Uuid,
         my_party_id: PartyId,
         session: OprfSession,
@@ -242,36 +229,28 @@ mod tests {
 
         let should_material0 = OprfKeyMaterial::new(should_epoch_0_share, public_key, epoch0);
         oprf_key_material_store.insert(oprf_key_id, should_material0.clone());
-        check_key_material(&oprf_key_material_store, oprf_key_id, should_material0);
+        check_key_material(&oprf_key_material_store, oprf_key_id, &should_material0);
 
         let should_material1 = OprfKeyMaterial::new(should_epoch_1_share, public_key, epoch42);
         oprf_key_material_store.insert(oprf_key_id, should_material1.clone());
-        check_key_material(
-            &oprf_key_material_store,
-            oprf_key_id,
-            should_material1.clone(),
-        );
+        check_key_material(&oprf_key_material_store, oprf_key_id, &should_material1);
 
         let material_to_refuse =
             OprfKeyMaterial::new(share_not_used.clone(), public_key, epoch42.prev());
         oprf_key_material_store.insert(oprf_key_id, material_to_refuse);
         // Check that still older material
-        check_key_material(
-            &oprf_key_material_store,
-            oprf_key_id,
-            should_material1.clone(),
-        );
+        check_key_material(&oprf_key_material_store, oprf_key_id, &should_material1);
 
         let material_to_refuse = OprfKeyMaterial::new(share_not_used, public_key, epoch42);
         oprf_key_material_store.insert(oprf_key_id, material_to_refuse.clone());
         // Check that still older material
-        check_key_material(&oprf_key_material_store, oprf_key_id, should_material1);
+        check_key_material(&oprf_key_material_store, oprf_key_id, &should_material1);
     }
 
     fn check_key_material(
         store: &OprfKeyMaterialStore,
         oprf_key_id: OprfKeyId,
-        should_material: OprfKeyMaterial,
+        should_material: &OprfKeyMaterial,
     ) {
         let is_material = store.get(oprf_key_id).expect("Must be there");
         assert_eq!(

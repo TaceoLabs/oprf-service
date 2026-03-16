@@ -39,15 +39,24 @@ struct ShareRow {
 
 impl From<ShareRow> for (OprfKeyId, OprfKeyMaterial) {
     fn from(value: ShareRow) -> Self {
-        db_row_into_key_material(value)
+        db_row_into_key_material(&value)
     }
 }
 
 impl PostgresSecretManager {
-    /// Initializes a `PostgresSecretManager` by connecting to the provided `connection_string`.
+    /// Initializes the `PostgresSecretManager`.
+    ///
+    /// Connects to the Postgres database using the provided configuration. This version does **not** run migrations;
+    /// it assumes the database is already set up.
+    ///
+    /// Stores the max retries and retry delay from the configuration for
+    /// use in future database operations.
+    ///
+    /// # Errors
+    /// Returns an error if the connection to the database fails.
     #[instrument(level = "info", skip_all)]
     pub async fn init(config: &PostgresConfig) -> eyre::Result<Self> {
-        let pool = nodes_common::postgres::pg_pool_with_schema(config, CreateSchema::Yes)
+        let pool = nodes_common::postgres::pg_pool_with_schema(config, CreateSchema::No)
             .await
             .context("while connecting to postgres DB")?;
         // we don't run migrations, we just read
@@ -83,7 +92,7 @@ impl SecretManager for PostgresSecretManager {
         tracing::info!("fetching all OPRF keys from DB..");
         let rows: Vec<ShareRow> = (|| {
             sqlx::query_as(
-                r#"
+                "
                     SELECT
                         id,
                         share,
@@ -91,7 +100,7 @@ impl SecretManager for PostgresSecretManager {
                         public_key
                     FROM shares
                     WHERE deleted = false
-                "#,
+                ",
             )
             .fetch_all(&self.pool)
         })
@@ -103,7 +112,7 @@ impl SecretManager for PostgresSecretManager {
         .context("while fetching all OPRF keys")?;
         tracing::debug!("loaded {} rows. parsing..", rows.len());
         let map = rows
-            .into_iter()
+            .iter()
             .map(db_row_into_key_material)
             .collect::<HashMap<_, _>>();
         tracing::info!("successfully parsed {} OPRF entries", map.len());
@@ -118,15 +127,15 @@ impl SecretManager for PostgresSecretManager {
     ) -> Result<OprfKeyMaterial, GetOprfKeyMaterialError> {
         let maybe_row: Option<ShareRow> = (|| {
             sqlx::query_as(
-                r#"
-                SELECT
-                    id,
-                    share,
-                    epoch,
-                    public_key
-                FROM shares
-                WHERE id = $1 AND epoch = $2 AND deleted = false
-            "#,
+                "
+                    SELECT
+                        id,
+                        share,
+                        epoch,
+                        public_key
+                    FROM shares
+                    WHERE id = $1 AND epoch = $2 AND deleted = false
+                ",
             )
             .bind(oprf_key_id.to_le_bytes())
             .bind(i64::from(epoch.into_inner()))
@@ -138,13 +147,13 @@ impl SecretManager for PostgresSecretManager {
         .notify(|e, duration| {
             tracing::warn!(
                 "Retrying get_oprf_key_material for {oprf_key_id}: {e:?} after {duration:?}"
-            )
+            );
         })
         .await
         .context("while fetching previous share")?;
         if let Some(row) = maybe_row {
             tracing::info!("found new key-material!");
-            let (_, key_material) = db_row_into_key_material(row);
+            let (_, key_material) = db_row_into_key_material(&row);
             Ok(key_material)
         } else {
             tracing::debug!("Cannot find share for requested key and epoch");
@@ -182,7 +191,7 @@ fn from_db_ark_deserialize_uncompressed<T: CanonicalDeserialize>(b: impl AsRef<[
 }
 
 /// Converts a row from the DB to an [`OprfKeyId`] and an associated [`OprfKeyMaterial`]. This method will panic if the DB is not sane (i.e., has corrupted data stored).
-fn db_row_into_key_material(row: ShareRow) -> (OprfKeyId, OprfKeyMaterial) {
+fn db_row_into_key_material(row: &ShareRow) -> (OprfKeyId, OprfKeyMaterial) {
     let id = OprfKeyId::from_le_slice(&row.id);
     let share = from_db_ark_deserialize_uncompressed::<DLogShareShamir>(&row.share);
     let epoch = ShareEpoch::new(

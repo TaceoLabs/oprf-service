@@ -2,9 +2,8 @@
 
 use std::io::ErrorKind;
 
-use crate::services::oprf_key_material_store::OprfKeyMaterialStoreError;
 use axum::extract::ws::{CloseFrame, close_code};
-use oprf_types::api::oprf_error_codes;
+use oprf_types::{OprfKeyId, api::oprf_error_codes};
 use tracing::instrument;
 use tungstenite::error::ProtocolError;
 use uuid::Uuid;
@@ -14,6 +13,8 @@ use uuid::Uuid;
 pub(crate) enum Error {
     #[error("Session {0} already exists")]
     SessionReuse(Uuid),
+    #[error("OprfKeyId {0} does not exist")]
+    UnknownOprfKeyId(OprfKeyId),
     #[error("Connection closed by peer")]
     ConnectionClosed,
     #[error(transparent)]
@@ -40,6 +41,10 @@ impl Error {
                 // nothing to do here
                 None
             }
+            Error::UnknownOprfKeyId(_) => Some(CloseFrame {
+                code: oprf_error_codes::BAD_REQUEST,
+                reason: "unknown OPRF key id".into(),
+            }),
             Error::SessionReuse(session_id) => Some(CloseFrame {
                 code: close_code::POLICY,
                 reason: format!("session {session_id} already exists").into(),
@@ -85,17 +90,6 @@ impl Error {
                 code: oprf_error_codes::BAD_REQUEST,
                 reason: err.to_string().into(),
             }),
-        }
-    }
-}
-
-impl From<OprfKeyMaterialStoreError> for Error {
-    fn from(value: OprfKeyMaterialStoreError) -> Self {
-        // we bind it like this in case we add an error later, the compiler will scream at us.
-        match value {
-            OprfKeyMaterialStoreError::UnknownOprfKeyId(oprf_key_id) => {
-                Self::BadRequest(format!("unknown OPRF key id: {oprf_key_id}"))
-            }
         }
     }
 }

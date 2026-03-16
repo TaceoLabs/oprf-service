@@ -5,9 +5,9 @@
 //!
 //! The module supports both production and development environments:
 //! - Production: Uses standard AWS credentials and configuration
-//! - Development: Uses LocalStack with hardcoded test credentials
+//! - Development: Uses `LocalStack` with hardcoded test credentials
 //!
-//! Secrets are stored as JSON objects containing the RP's public key, nullifier key,
+//! Secrets are stored as JSON objects containing the Oprf public key,
 //! and current/previous epoch secrets.
 
 use std::collections::HashMap;
@@ -41,13 +41,14 @@ impl AwsSecretManager {
     ///
     /// Loads AWS configuration from the environment and wraps the client
     /// in a `SecretManagerService`.
-    pub async fn init(
-        aws_config: aws_config::SdkConfig,
+    #[must_use]
+    pub fn init(
+        aws_config: &aws_config::SdkConfig,
         oprf_secret_id_prefix: &str,
         wallet_private_key_secret_id: &str,
     ) -> Self {
         // loads the latest defaults for aws
-        let client = aws_sdk_secretsmanager::Client::new(&aws_config);
+        let client = aws_sdk_secretsmanager::Client::new(aws_config);
         AwsSecretManager {
             client,
             oprf_secret_id_prefix: oprf_secret_id_prefix.to_owned(),
@@ -187,16 +188,16 @@ impl SecretManager for AwsSecretManager {
 /// Constructs the full secret ID for an OPRF key-id in AWS Secrets Manager.
 ///
 /// Combines the prefix with the OPRF key-id.
-#[inline(always)]
+#[inline]
 fn to_key_secret_id(key_secret_id_prefix: &str, oprf_key_id: OprfKeyId) -> String {
     format!("{}/{}", key_secret_id_prefix, oprf_key_id.into_inner())
 }
 
 /// Extracts the OPRF key-id from a full secret ID in AWS Secrets Manager.
-#[inline(always)]
+#[inline]
 fn from_secret_id(key_secret_id_prefix: &str, secret_id: &str) -> eyre::Result<OprfKeyId> {
     Ok(secret_id
-        .strip_prefix(&format!("{}/", key_secret_id_prefix))
+        .strip_prefix(&format!("{key_secret_id_prefix}/"))
         .ok_or_else(|| eyre::eyre!("invalid secret id prefix"))?
         .parse::<U160>()
         .map(OprfKeyId::new)?)

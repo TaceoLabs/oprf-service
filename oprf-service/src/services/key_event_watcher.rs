@@ -1,6 +1,6 @@
 //! Alloy-based Key Generation Event Watcher
 //!
-//! This module provides [`key_event_watcher_task`], an task than can be spawned to monitor an on-chain OprfKeyRegistry contract for key generation events.
+//! This module provides [`key_event_watcher_task`], an task than can be spawned to monitor an on-chain `OprfKeyRegistry` contract for key generation events.
 //!
 //! The watcher subscribes to various key generation events and reports contributions back to the contract.
 
@@ -60,9 +60,9 @@ pub(crate) async fn key_event_watcher_task(
     tracing::info!("start handling events");
     let result = handle_events(key_event_watcher_task_args).await;
     match result.as_ref() {
-        Ok(_) => tracing::info!("stopped key event watcher without error"),
+        Ok(()) => tracing::info!("stopped key event watcher without error"),
         Err(err) => tracing::warn!("key event watcher encountered an error: {err:?}"),
-    };
+    }
     result
 }
 
@@ -115,7 +115,7 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
             .await
             .context("while handling past log")?;
         }
-    };
+    }
 
     let mut stream = sub.into_stream();
     // finally set to healthy
@@ -126,7 +126,7 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
             log = stream.next() => {
                 log.ok_or_else(||eyre::eyre!("logs subscribe stream was closed"))?
             }
-            _ = cancellation_token.cancelled() => {
+            () = cancellation_token.cancelled() => {
                 break;
             }
         };
@@ -169,7 +169,7 @@ async fn key_gen_event(
         .context("while handling finalize")?,
 
         Some(&OprfKeyRegistry::KeyDeletion::SIGNATURE_HASH) => {
-            handle_delete(log, oprf_key_material_store).context("while handling deletion")?
+            handle_delete(&log, oprf_key_material_store).context("while handling deletion")?;
         }
         x => {
             tracing::warn!("unknown event: {x:?}");
@@ -226,7 +226,7 @@ async fn fetch_oprf_key_material_from_secret_manager(
         .notify(|_, duration| {
             tracing::debug!(
                 "Share {oprf_key_id} with epoch {epoch} not yet in DB. Retrying after {duration:?}."
-            )
+            );
         })
         .await;
     match result {
@@ -249,7 +249,7 @@ async fn fetch_oprf_key_material_from_secret_manager(
 
 #[instrument(level="info", skip_all, fields(oprf_key_id=tracing::field::Empty))]
 fn handle_delete(
-    log: Log<LogData>,
+    log: &Log<LogData>,
     oprf_key_material_store: &OprfKeyMaterialStore,
 ) -> eyre::Result<()> {
     let key_delete = log

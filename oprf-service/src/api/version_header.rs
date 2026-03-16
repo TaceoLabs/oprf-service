@@ -22,7 +22,7 @@ impl<'a> de::Deserialize<'a> for ProtocolVersion {
 
 struct ProtocolVersionHeaderVisitor;
 
-impl<'de> de::Visitor<'de> for ProtocolVersionHeaderVisitor {
+impl de::Visitor<'_> for ProtocolVersionHeaderVisitor {
     type Value = ProtocolVersion;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {

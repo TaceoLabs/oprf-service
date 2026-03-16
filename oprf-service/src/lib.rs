@@ -1,4 +1,25 @@
 #![deny(missing_docs)]
+#![deny(clippy::all, clippy::pedantic)]
+#![deny(
+    clippy::allow_attributes_without_reason,
+    clippy::assertions_on_result_states,
+    clippy::dbg_macro,
+    clippy::decimal_literal_representation,
+    clippy::exhaustive_enums,
+    clippy::exhaustive_structs,
+    clippy::iter_over_hash_type,
+    clippy::let_underscore_must_use,
+    clippy::missing_assert_message,
+    clippy::print_stderr,
+    clippy::print_stdout,
+    clippy::undocumented_unsafe_blocks,
+    clippy::unnecessary_safety_comment,
+    clippy::unwrap_used
+)]
+#![allow(
+    clippy::cast_precision_loss,
+    reason = "we must use f64 due to API limitations for metrics"
+)]
 //! This crate provides the core functionality of a node for TACEO:OPRF.
 //!
 //! When implementing a concrete instantiation of TACEO:OPRF, projects use this composable library to build their flavor of the distributed OPRF protocol. The main entry point for implementations is the [`OprfServiceBuilder`].
@@ -27,6 +48,8 @@
 //! Clients will connect via web-sockets to the OPRF node. Axum supports both HTTP/1.1 and HTTP/2.0 web-socket connections, therefore we accept connections with `any`.
 //!
 //! If you want to enable HTTP/2.0, you either have to do it by hand or by calling `axum::serve`, which enabled HTTP/2.0 by default. Have a look at [Axum's HTTP2.0 example](https://github.com/tokio-rs/axum/blob/aeff16e91af6fa76efffdee8f3e5f464b458785b/examples/websockets-http2/src/main.rs#L57).
+
+use std::time::Duration;
 
 use crate::api::oprf::OprfModuleState;
 use crate::metrics::{METRICS_ID_I_AM_ALIVE, METRICS_ID_NODE_SESSIONS_OPEN};
@@ -69,19 +92,25 @@ pub struct OprfServiceBuilder {
 }
 
 impl OprfServiceBuilder {
-    /// Initializes the OPRF service.
+    /// Initializes the OPRF node service.
     ///
-    /// This function sets up the necessary components and services required for the OPRF node
-    /// to operate. It performs the following steps:
+    /// Connects to the configured blockchain RPC endpoint, loads the node
+    /// identity and cryptographic material, and starts the background tasks
+    /// required for the service to operate.
     ///
-    /// 1. Loads or generates the Ethereum wallet private key from the secret manager.
-    /// 2. Initializes the Ethereum RPC provider using the wallet and the provided WebSocket RPC URL.
-    /// 3. Loads the party ID from the OPRF key registry contract.
-    /// 4. Loads cryptographic secrets from the secret manager.
-    /// 5. Initializes the distributed logarithm (DLog) secret generation service using the key generation material.
-    /// 6. Spawns a task to watch for key events from the OPRF key registry contract and updates the secret manager accordingly.
-    /// 7. Initializes the OPRF service, to which multiple OPRF modules can be added.
-    /// 8. Sets up the Axum-based REST API routes for the OPRF service.
+    /// During initialization the service:
+    /// - Connects to the Ethereum RPC provider.
+    /// - Loads the node address from the secret manager.
+    /// - Fetches the party ID and threshold from the `OprfKeyRegistry` contract.
+    /// - Loads the OPRF key material from the secret manager.
+    /// - Starts a refresh task that periodically reloads key material.
+    /// - Spawns the `key_event_watcher` task which listens for registry events
+    ///   and updates the local key material store.
+    /// - Initializes the Axum router exposing the node API.
+    ///
+    /// # Errors
+    /// Returns an error if the RPC connection fails, if loading secrets fails,
+    /// or if reading required data from the contract fails.
     pub async fn init(
         config: OprfNodeServiceConfig,
         secret_manager: SecretManagerService,
@@ -131,19 +160,12 @@ impl OprfServiceBuilder {
                 .context("while loading secrets from secret-manager")?,
         );
 
-        tokio::task::spawn({
-            let secret_manager = secret_manager.clone();
-            let oprf_key_material_store = oprf_key_material_store.clone();
-            let mut interval = tokio::time::interval(config.reload_key_material_interval);
-            async move {
-                // first tick triggers instantly
-                interval.tick().await;
-                loop {
-                    interval.tick().await;
-                    refresh_oprf_secrets_task(&secret_manager, &oprf_key_material_store).await;
-                }
-            }
-        });
+        // start the refresh task
+        start_refresh_task(
+            &secret_manager,
+            &oprf_key_material_store,
+            config.reload_key_material_interval,
+        );
 
         tracing::info!("spawning key event watcher..");
         let key_event_watcher = tokio::spawn({
@@ -183,7 +205,7 @@ impl OprfServiceBuilder {
                                 ::metrics::counter!(METRICS_ID_I_AM_ALIVE).increment(1);
                             }
                        },
-                       _ = cancellation_token.cancelled() => {
+                       () = cancellation_token.cancelled() => {
                            break;
                        }
                     }
@@ -213,6 +235,7 @@ impl OprfServiceBuilder {
     ///
     /// - `path`: The URL path where the OPRF module will be accessible (`/api/{path}`).
     /// - `service`: An instance of `OprfRequestAuthService` that will handle authentication for this module.
+    #[must_use]
     pub fn module<
         RequestAuth: for<'de> Deserialize<'de> + Send + 'static,
         RequestAuthError: Send + 'static + std::error::Error,
@@ -250,9 +273,7 @@ impl OprfServiceBuilder {
     ///
     /// - If no oprf modules were added
     pub fn build(self) -> (axum::Router, tokio::task::JoinHandle<eyre::Result<()>>) {
-        if !self.api.has_routes() {
-            panic!("add at least 1 oprf module");
-        }
+        assert!(self.api.has_routes(), "Needs at least 1 oprf-module");
         (
             self.root
                 .nest("/api", self.api)
@@ -272,7 +293,27 @@ async fn refresh_oprf_secrets_task(
         Ok(refreshed_key_material) => oprf_key_material_store.reload(refreshed_key_material),
         // In case we get an error from the secret-manager, we simply log the error - we can still serve OPRF requests, nothing wrong with that.
         Err(err) => {
-            tracing::error!("Could not load key-material store from secret-manager: {err:?}")
+            tracing::error!("Could not load key-material store from secret-manager: {err:?}");
         }
     }
+}
+
+fn start_refresh_task(
+    secret_manager: &SecretManagerService,
+    oprf_key_material_store: &OprfKeyMaterialStore,
+    reload_key_material_interval: Duration,
+) {
+    tokio::task::spawn({
+        let secret_manager = secret_manager.clone();
+        let oprf_key_material_store = oprf_key_material_store.clone();
+        let mut interval = tokio::time::interval(reload_key_material_interval);
+        async move {
+            // first tick triggers instantly
+            interval.tick().await;
+            loop {
+                interval.tick().await;
+                refresh_oprf_secrets_task(&secret_manager, &oprf_key_material_store).await;
+            }
+        }
+    });
 }

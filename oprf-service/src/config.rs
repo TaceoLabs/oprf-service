@@ -36,11 +36,11 @@ use serde::{
 pub struct OprfNodeServiceConfig {
     /// The environment of the OPRF-node.
     pub environment: Environment,
-    /// The Address of the OprfKeyRegistry contract.
+    /// The Address of the `OprfKeyRegistry` contract.
     pub oprf_key_registry_contract: Address,
     /// The websocket rpc url of the chain
     pub chain_ws_rpc_url: SecretString,
-    /// Accepted SemVer versions of clients.
+    /// Accepted `SemVer` versions of clients.
     #[serde(deserialize_with = "deserialize_version_req")]
     pub version_req: VersionReq,
 
@@ -69,7 +69,7 @@ pub struct OprfNodeServiceConfig {
     #[serde(default = "OprfNodeServiceConfig::default_get_oprf_key_material_timeout")]
     #[serde(with = "humantime_serde")]
     pub get_oprf_key_material_timeout: Duration,
-    /// The block number to start listening for events from the OprfKeyRegistry contract.
+    /// The block number to start listening for events from the `OprfKeyRegistry` contract.
     /// If not set, will start from the latest block.
     pub start_block: Option<u64>,
     /// Interval in which we emit "I am alive" metric.
@@ -115,6 +115,7 @@ impl OprfNodeServiceConfig {
     }
 
     /// Construct with all default values except required fields.
+    #[must_use]
     pub fn with_default_values(
         environment: Environment,
         oprf_key_registry_contract: Address,
