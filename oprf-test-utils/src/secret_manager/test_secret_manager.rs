@@ -81,18 +81,17 @@ macro_rules! key_gen_test_secret_manager {
 
 #[macro_export]
 macro_rules! oprf_node_test_secret_manager {
-    ($module: path, $name: ident) => {
+    ($secret_manager: path, $name: ident) => {
         mod impl_node_secret_manager {
             use $crate::alloy::primitives::Address;
             use $crate::async_trait::async_trait;
             use $crate::oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfKeyMaterial};
-            use $module::*;
 
             // need a new type to implement the trait
             pub struct $name(pub std::sync::Arc<$crate::test_secret_manager::TestSecretManager>);
 
             #[async_trait]
-            impl SecretManager for $name {
+            impl $secret_manager for $name {
                 async fn load_address(&self) -> $crate::eyre::Result<Address> {
                     self.0.load_address().await
                 }

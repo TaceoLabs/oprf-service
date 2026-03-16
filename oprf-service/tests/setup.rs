@@ -27,7 +27,10 @@ use uuid::Uuid;
 pub const OPRF_KEY_ID: u32 = 42;
 pub const TEST_PROTOCOL_VERSION: &str = "1.3.101";
 
-oprf_node_test_secret_manager!(taceo_oprf_service::secret_manager, NodeTestSecretManager);
+oprf_node_test_secret_manager!(
+    taceo_oprf_service::secret_manager::SecretManager,
+    NodeTestSecretManager
+);
 
 #[derive(Clone, Copy, Debug)]
 pub enum WireFormat {
