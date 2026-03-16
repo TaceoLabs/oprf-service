@@ -408,7 +408,7 @@ async fn delete_oprf_key_inner(format: WireFormat) -> eyre::Result<()> {
     node.doesnt_have_key(key_id).await?;
     let should_close_frame = CloseFrame {
         code: oprf_error_codes::BAD_REQUEST.into(),
-        reason: "unknown OPRF key id: 42".into(),
+        reason: "unknown OPRF key id".into(),
     };
 
     node.init_expect_error(

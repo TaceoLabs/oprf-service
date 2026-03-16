@@ -19,7 +19,7 @@ use secrecy::zeroize::ZeroizeOnDrop;
 use sqlx::PgPool;
 use tracing::instrument;
 
-use crate::secret_manager::{GetOprfKeyMaterialError, SecretManager};
+use crate::secret_manager::SecretManager;
 
 /// The postgres secret manager wrapping a `PgPool`.
 #[derive(Debug)]
@@ -124,7 +124,7 @@ impl SecretManager for PostgresSecretManager {
         &self,
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
-    ) -> Result<OprfKeyMaterial, GetOprfKeyMaterialError> {
+    ) -> eyre::Result<Option<OprfKeyMaterial>> {
         let maybe_row: Option<ShareRow> = (|| {
             sqlx::query_as(
                 "
@@ -154,10 +154,10 @@ impl SecretManager for PostgresSecretManager {
         if let Some(row) = maybe_row {
             tracing::info!("found new key-material!");
             let (_, key_material) = db_row_into_key_material(&row);
-            Ok(key_material)
+            Ok(Some(key_material))
         } else {
             tracing::debug!("Cannot find share for requested key and epoch");
-            Err(GetOprfKeyMaterialError::NotFound)
+            Ok(None)
         }
     }
 }

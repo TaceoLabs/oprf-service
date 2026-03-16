@@ -86,7 +86,7 @@ macro_rules! oprf_node_test_secret_manager {
             use $crate::alloy::primitives::Address;
             use $crate::async_trait::async_trait;
             use $crate::oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfKeyMaterial};
-            use $module::{GetOprfKeyMaterialError, SecretManager};
+            use $module::*;
 
             // need a new type to implement the trait
             pub struct $name(pub std::sync::Arc<$crate::test_secret_manager::TestSecretManager>);
@@ -108,11 +108,8 @@ macro_rules! oprf_node_test_secret_manager {
                     &self,
                     oprf_key_id: OprfKeyId,
                     epoch: ShareEpoch,
-                ) -> Result<OprfKeyMaterial, GetOprfKeyMaterialError> {
-                    self.0
-                        .get_oprf_key_material(oprf_key_id, epoch)
-                        .await?
-                        .ok_or(GetOprfKeyMaterialError::NotFound)
+                ) -> eyre::Result<Option<OprfKeyMaterial>> {
+                    self.0.get_oprf_key_material(oprf_key_id, epoch).await
                 }
             }
         }

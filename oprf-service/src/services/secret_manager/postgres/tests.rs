@@ -1,6 +1,4 @@
-use crate::secret_manager::{
-    GetOprfKeyMaterialError, SecretManager, postgres::PostgresSecretManager,
-};
+use crate::secret_manager::{SecretManager, postgres::PostgresSecretManager};
 use alloy::primitives::U160;
 use ark_serialize::CanonicalSerialize;
 use nodes_common::postgres::PostgresConfig;
@@ -204,7 +202,8 @@ async fn test_get_oprf_key_material() -> eyre::Result<()> {
 
     let key_material0 = secret_manager
         .get_oprf_key_material(oprf_key_id0, epoch0)
-        .await?;
+        .await?
+        .expect("Is there");
     assert_eq!(
         ark_babyjubjub::Fr::from(key_material0.share()),
         ark_babyjubjub::Fr::from(share0)
@@ -217,7 +216,7 @@ async fn test_get_oprf_key_material() -> eyre::Result<()> {
         secret_manager
             .get_oprf_key_material(oprf_key_id0, epoch1)
             .await,
-        Err(GetOprfKeyMaterialError::NotFound)
+        Ok(None)
     ));
 
     // should be NotInDb
@@ -225,12 +224,13 @@ async fn test_get_oprf_key_material() -> eyre::Result<()> {
         secret_manager
             .get_oprf_key_material(oprf_key_id_unknown, epoch1)
             .await,
-        Err(GetOprfKeyMaterialError::NotFound)
+        Ok(None)
     ));
 
     let key_material1 = secret_manager
         .get_oprf_key_material(oprf_key_id1, epoch1)
-        .await?;
+        .await?
+        .expect("Is there");
     assert_eq!(
         ark_babyjubjub::Fr::from(key_material1.share()),
         ark_babyjubjub::Fr::from(share1)
@@ -243,7 +243,7 @@ async fn test_get_oprf_key_material() -> eyre::Result<()> {
         secret_manager
             .get_oprf_key_material(oprf_key_id1, epoch1.prev())
             .await,
-        Err(GetOprfKeyMaterialError::NotFound)
+        Ok(None)
     ));
 
     Ok(())
@@ -312,7 +312,7 @@ async fn test_get_deleted_secret() -> eyre::Result<()> {
         secret_manager
             .get_oprf_key_material(oprf_key_id, epoch)
             .await,
-        Err(GetOprfKeyMaterialError::NotFound)
+        Ok(None)
     ));
     Ok(())
 }

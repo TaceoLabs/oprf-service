@@ -25,7 +25,6 @@ use secrecy::zeroize::Zeroize as _;
 use secrecy::{ExposeSecret, SecretString};
 use tracing::instrument;
 
-use crate::secret_manager::GetOprfKeyMaterialError;
 use crate::services::secret_manager::SecretManager;
 
 /// AWS Secret Manager client wrapper.
@@ -145,7 +144,7 @@ impl SecretManager for AwsSecretManager {
         &self,
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
-    ) -> Result<OprfKeyMaterial, GetOprfKeyMaterialError> {
+    ) -> eyre::Result<Option<OprfKeyMaterial>> {
         let secret_id = to_key_secret_id(&self.oprf_secret_id_prefix, oprf_key_id);
         tracing::debug!("loading secret at {secret_id}");
         match self
@@ -165,19 +164,19 @@ impl SecretManager for AwsSecretManager {
                     serde_json::from_str(&secret_value).context("Cannot deserialize AWS Secret")?;
                 if key_material.is_epoch(epoch) {
                     tracing::debug!("Found! Returning");
-                    Ok(key_material)
+                    Ok(Some(key_material))
                 } else {
                     tracing::debug!(
                         "Cannot find requested epoch in secret-manager, latest epoch is: {:?}",
                         key_material.epoch()
                     );
-                    Err(GetOprfKeyMaterialError::NotFound)
+                    Ok(None)
                 }
             }
             Err(x) => match x.into_service_error() {
                 GetSecretValueError::ResourceNotFoundException(_) => {
                     tracing::debug!("{secret_id} not yet in secret-manager");
-                    Err(GetOprfKeyMaterialError::NotFound)
+                    Ok(None)
                 }
                 x => Err(eyre::eyre!(x))?,
             },

@@ -28,11 +28,30 @@ use tracing::{Instrument, instrument};
 
 use crate::{
     metrics::METRICS_ID_NODE_CANNOT_FETCH_KEY_MATERIAL,
-    secret_manager::GetOprfKeyMaterialError,
     services::{
         oprf_key_material_store::OprfKeyMaterialStore, secret_manager::SecretManagerService,
     },
 };
+
+/// Represents errors returned when fetching OPRF key material from the [`SecretManagerService`].
+///
+/// This error type is mainly used to convert `Option` results into an
+/// actionable error for retry/backoff logic.
+///
+/// Variants:
+/// - `NotFound` – the requested material for a given OPRF key ID and epoch
+///   does not yet exist. Can be used to signal retryable conditions.
+/// - `Internal` – wraps any internal database or I/O errors encountered
+///   while fetching the material.
+#[derive(Debug, thiserror::Error)]
+enum FetchOprfKeyMaterialError {
+    /// Cannot find the share with requested oprf-key-id and epoch.
+    #[error("Cannot find requested material")]
+    NotFound,
+    /// Internal error from DB.
+    #[error(transparent)]
+    Internal(#[from] eyre::Report),
+}
 
 /// The arguments to start the key-even-watcher.
 pub(crate) struct KeyEventWatcherTaskArgs {
@@ -219,22 +238,27 @@ async fn fetch_oprf_key_material_from_secret_manager(
         .with_total_delay(Some(get_oprf_key_material_timeout))
         .without_max_times()
         .build();
-    let result = (|| secret_manager.get_oprf_key_material(oprf_key_id, epoch))
-        .retry(backoff_strategy)
-        .sleep(tokio::time::sleep)
-        .when(|e| matches!(e, GetOprfKeyMaterialError::NotFound))
-        .notify(|_, duration| {
-            tracing::debug!(
-                "Share {oprf_key_id} with epoch {epoch} not yet in DB. Retrying after {duration:?}."
-            );
-        })
-        .await;
+    let result = (|| async {
+        secret_manager
+            .get_oprf_key_material(oprf_key_id, epoch)
+            .await?
+            .ok_or_else(|| FetchOprfKeyMaterialError::NotFound)
+    })
+    .retry(backoff_strategy)
+    .sleep(tokio::time::sleep)
+    .when(|e| matches!(e, FetchOprfKeyMaterialError::NotFound))
+    .notify(|_, duration| {
+        tracing::debug!(
+            "Share {oprf_key_id} with epoch {epoch} not yet in DB. Retrying after {duration:?}."
+        );
+    })
+    .await;
     match result {
         Ok(key_material) => {
             tracing::info!("got key from secret manager for {oprf_key_id} and epoch {epoch}");
             oprf_key_material_store.insert(oprf_key_id, key_material);
         }
-        Err(GetOprfKeyMaterialError::NotFound) => {
+        Err(FetchOprfKeyMaterialError::NotFound) => {
             tracing::warn!(
                 "Could not fetch oprf-key-id {oprf_key_id} and epoch {epoch} after {get_oprf_key_material_timeout:?}. Will continue anyways."
             );
