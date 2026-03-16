@@ -11,12 +11,11 @@ use alloy::primitives::Address;
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::{HeaderValue, StatusCode, header},
+    http::StatusCode,
     response::IntoResponse,
     routing::get,
 };
 use oprf_types::OprfKeyId;
-use tower_http::set_header::SetResponseHeaderLayer;
 
 #[derive(Clone)]
 struct InfoState {
@@ -25,16 +24,10 @@ struct InfoState {
 }
 
 /// Create a router containing the info endpoints.
-///
-/// All endpoints have `Cache-Control: no-cache` set.
 pub(crate) fn routes(oprf_material_store: OprfKeyMaterialStore, wallet_address: Address) -> Router {
     Router::new()
         .route("/wallet", get(wallet))
         .route("/oprf_pub/{id}", get(oprf_key_available))
-        .layer(SetResponseHeaderLayer::overriding(
-            header::CACHE_CONTROL,
-            HeaderValue::from_static("no-cache"),
-        ))
         .with_state(InfoState {
             wallet_address,
             oprf_material_store,

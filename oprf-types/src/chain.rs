@@ -6,8 +6,8 @@
 //! Use these types to encode the payloads that nodes send and receive on-chain.
 
 // we need this because the sol macro is angry otherwise
-#![allow(missing_docs)]
 
+#![allow(missing_docs, reason = "Get this error from sol macro")]
 use std::fmt;
 
 use alloy::{primitives::U256, sol};
@@ -28,14 +28,24 @@ use crate::{
 
 // Codegen from ABI file to interact with the contract.
 sol!(
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        clippy::exhaustive_enums,
+        reason = "Get lints from sol macro"
+    )]
     #[sol(rpc)]
     OprfKeyRegistry,
     "./OprfKeyRegistry.json"
 );
 
 sol!(
-    #[allow(missing_docs)]
+    #[allow(
+        missing_docs,
+        clippy::too_many_arguments,
+        clippy::exhaustive_structs,
+        clippy::exhaustive_enums,
+        reason = "Get lints from sol macro"
+    )]
     #[derive(Debug, PartialEq, Eq)]
     contract Verifier {
         error PublicInputNotInField();
@@ -48,8 +58,12 @@ sol!(
 );
 
 #[derive(Debug)]
+#[non_exhaustive]
+/// Errors obtained from on-chain `OprfKeyRegistry` contract and transient contract errors converted to Rust errors.
 pub enum RevertError {
+    /// Errors from the `OprfKeyRegistry`
     OprfKeyRegistry(OprfKeyRegistryErrors),
+    /// Error from the groth16 verifier contract.
     Verifier(VerifierErrors),
 }
 
@@ -258,8 +272,18 @@ impl From<SecretGenCiphertexts> for OprfKeyGen::Round2Contribution {
     }
 }
 
-/// Tries to convert an u256 into a value on the scalar field of babyjubjub.
-/// We need this function because of orphan rule.
+/// Converts a `U256` into a `Fr` element of the `BabyJubJub` scalar field.
+///
+/// Checks that the input fits within the field modulus. Returns an error
+/// if the value is too large.
+///
+/// This function exists because of Rust's orphan rules: we cannot implement
+/// `From<U256>` for `ark_babyjubjub::Fr` directly.
+///
+/// # Errors
+///
+/// Returns an `eyre::Report` if the input value does not fit into the
+/// `BabyJubJub` scalar field.
 pub fn try_u256_into_bjj_fr(value: U256) -> eyre::Result<ark_babyjubjub::Fr> {
     let big_int = ark_ff::BigInt(value.into_limbs());
     if ark_babyjubjub::Fr::MODULUS <= big_int {

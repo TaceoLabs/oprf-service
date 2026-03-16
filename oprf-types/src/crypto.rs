@@ -39,7 +39,7 @@ pub struct EphemeralEncryptionPublicKey(
 
 /// The OPRF public-key.
 ///
-/// Constructed by multiplying the BabyJubJub generator with the secret shared among the OPRF nodes.
+/// Constructed by multiplying the `BabyJubJub` generator with the secret shared among the OPRF nodes.
 #[derive(
     Debug,
     Clone,
@@ -111,12 +111,13 @@ pub struct SecretGenCiphertext {
     #[serde(serialize_with = "babyjubjub::serialize_affine")]
     #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
     /// The commitment to the encrypted value. Computed as xG, where x
-    /// is the plaintext and G the generator of BabyJubJub.
+    /// is the plaintext and G the generator of `BabyJubJub`.
     pub commitment: ark_babyjubjub::EdwardsAffine,
 }
 
 impl PartyId {
     /// Converts to a `u16`.
+    #[must_use]
     pub fn into_inner(self) -> u16 {
         self.0
     }
@@ -129,36 +130,41 @@ impl From<ark_babyjubjub::EdwardsAffine> for OprfPublicKey {
 }
 
 impl OprfPublicKey {
-    /// Create a new `NullifierKey` by wrapping an BabyJubJub Point.
+    /// Create a new `NullifierKey` by wrapping an `BabyJubJub` Point.
+    #[must_use]
     pub fn new(value: ark_babyjubjub::EdwardsAffine) -> Self {
         Self::from(value)
     }
 
-    /// Gets the inner value (a BabyJubJub point in Affine representation).
+    /// Gets the inner value (a `BabyJubJub` point in Affine representation).
     pub fn inner(self) -> ark_babyjubjub::EdwardsAffine {
         self.0
     }
 }
 
 impl EphemeralEncryptionPublicKey {
-    /// Create a new `EphemeralEncryptionPublicKey` by wrapping an BabyJubJub Point.
+    /// Create a new `EphemeralEncryptionPublicKey` by wrapping an `BabyJubJub` Point.
     ///
     /// Checks if the the point is on the curve and in correct subgroup.
     /// Returns an error iff those checks fail.
+    ///
+    /// # Errors
+    /// Returns an error if the provided point is not on the curve or not in the prime module sub-group.
     pub fn new(value: ark_babyjubjub::EdwardsAffine) -> eyre::Result<Self> {
         Self::try_from(value)
     }
 
-    /// Create a new `EphemeralEncryptionPublicKey` by wrapping an BabyJubJub Point.
+    /// Create a new `EphemeralEncryptionPublicKey` by wrapping an `BabyJubJub` Point.
     ///
     /// Does **not** check if the the point is on the curve and in correct subgroup.
     /// Only use this function if you know what you are doing.
     /// Prefer [`Self::new`].
+    #[must_use]
     pub fn new_unchecked(value: ark_babyjubjub::EdwardsAffine) -> Self {
         Self(value)
     }
 
-    /// Gets the inner value (a BabyJubJub point in Affine representation).
+    /// Gets the inner value (a `BabyJubJub` point in Affine representation).
     pub fn inner(self) -> ark_babyjubjub::EdwardsAffine {
         self.0
     }
@@ -192,6 +198,7 @@ impl fmt::Display for EphemeralEncryptionPublicKey {
 
 impl SecretGenCiphertexts {
     /// Creates a new instance by wrapping the provided value.
+    #[must_use]
     pub fn new(proof: Proof<Bn254>, ciphers: Vec<SecretGenCiphertext>) -> Self {
         Self { proof, ciphers }
     }
@@ -199,6 +206,7 @@ impl SecretGenCiphertexts {
 
 impl SecretGenCiphertext {
     /// Creates a new ciphertext contribution for an OPRF node by wrapping a nonce, a ciphertext and a commitment to the plain text.
+    #[must_use]
     pub fn new(
         cipher: ark_babyjubjub::Fq,
         commitment: ark_babyjubjub::EdwardsAffine,
@@ -245,6 +253,7 @@ pub struct OprfKeyMaterial {
 
 impl OprfKeyMaterial {
     /// Creates a new [`OprfKeyMaterial`] from the provided [`DLogShareShamir`], [`OprfPublicKey`], and [`ShareEpoch`].
+    #[must_use]
     pub fn new(share: DLogShareShamir, oprf_public_key: OprfPublicKey, epoch: ShareEpoch) -> Self {
         Self {
             share,
@@ -254,26 +263,31 @@ impl OprfKeyMaterial {
     }
 
     /// Returns the latest [`ShareEpoch`].
+    #[must_use]
     pub fn epoch(&self) -> ShareEpoch {
         self.epoch
     }
 
     /// Returns the [`DLogShareShamir`].
+    #[must_use]
     pub fn share(&self) -> DLogShareShamir {
         self.share.clone()
     }
 
     /// Returns `true` iff the the material contains the requested epoch.
+    #[must_use]
     pub fn is_epoch(&self, epoch: ShareEpoch) -> bool {
         self.epoch == epoch
     }
 
     /// Returns the [`OprfPublicKey`].
+    #[must_use]
     pub fn public_key(&self) -> OprfPublicKey {
         self.oprf_public_key
     }
 
     /// Returns the [`OprfPublicKeyWithEpoch`].
+    #[must_use]
     pub fn public_key_with_epoch(&self) -> OprfPublicKeyWithEpoch {
         OprfPublicKeyWithEpoch {
             key: self.oprf_public_key,

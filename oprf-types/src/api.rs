@@ -48,7 +48,7 @@ pub mod oprf_error_codes {
 pub struct OprfRequest<OprfRequestAuth> {
     /// Unique ID of the request (used to correlate responses).
     pub request_id: Uuid,
-    /// Input point `B` of the OPRF, serialized as a BabyJubJub affine point.
+    /// Input point `B` of the OPRF, serialized as a `BabyJubJub` affine point.
     #[serde(serialize_with = "babyjubjub::serialize_affine")]
     #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
     pub blinded_query: ark_babyjubjub::EdwardsAffine,

@@ -122,10 +122,6 @@ impl OprfKeyMaterialStore {
     ///
     /// Consumes the session to prevent reuse of the randomness.
     /// The provided [`OprfKeyId`] identifies the used OPRF key.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the OPRF key is unknown.
     pub(crate) fn challenge(
         session_id: Uuid,
         my_party_id: PartyId,
