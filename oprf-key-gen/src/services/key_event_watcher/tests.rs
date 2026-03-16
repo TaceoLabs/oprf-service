@@ -64,7 +64,7 @@ async fn test_config(setup: &TestSetup) -> (CircomGroth16Material, TransactionHa
     (key_gen_material(setup.setup), transaction_handler)
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test]
 async fn test_send_invalid_proof() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let (key_gen_material, transaction_handler) = test_config(&setup).await;
@@ -89,7 +89,7 @@ async fn test_send_invalid_proof() -> eyre::Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test]
 async fn test_delete() -> eyre::Result<()> {
     let key_gen_material = key_gen_material(DeploySetup::TwoThree);
     let mut secret_gen = DLogSecretGenService::init(key_gen_material);
@@ -123,7 +123,7 @@ async fn test_delete() -> eyre::Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test]
 async fn test_round2_in_wrong_round_during_load_public_keys() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let (key_gen_material, transaction_handler) = test_config(&setup).await;
@@ -148,7 +148,7 @@ async fn test_round2_in_wrong_round_during_load_public_keys() -> eyre::Result<()
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test]
 async fn test_abort() -> eyre::Result<()> {
     let key_gen_material = key_gen_material(DeploySetup::TwoThree);
     let mut secret_gen = DLogSecretGenService::init(key_gen_material);
@@ -179,7 +179,7 @@ async fn test_abort() -> eyre::Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test]
 async fn test_not_enough_producers() -> eyre::Result<()> {
     let key_gen_material = key_gen_material(DeploySetup::TwoThree);
     let mut secret_gen = DLogSecretGenService::init(key_gen_material);

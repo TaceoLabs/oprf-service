@@ -10,7 +10,7 @@ pub(crate) use setup::TestKeyGen;
 
 use crate::setup::keygen_asserts;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_delete_oprf_key() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gen = TestKeyGen::start(0, &setup).await?;
@@ -34,7 +34,7 @@ async fn test_delete_oprf_key() -> eyre::Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_keygen_works_two_three() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gens = TestKeyGen::start_three(&setup).await?;
@@ -45,7 +45,7 @@ async fn test_keygen_works_two_three() -> eyre::Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 async fn test_keygen_works_three_five() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::ThreeFive).await?;
     let key_gens = TestKeyGen::start_five(&setup).await?;
@@ -56,14 +56,14 @@ async fn test_keygen_works_three_five() -> eyre::Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_reshare_five_times_works_two_three() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gens = TestKeyGen::start_three(&setup).await?;
     test_reshare_five_times_works_inner(&setup, &key_gens).await
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 async fn test_reshare_five_times_works_three_five() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::ThreeFive).await?;
     let key_gens = TestKeyGen::start_five(&setup).await?;
@@ -89,14 +89,14 @@ async fn test_reshare_five_times_works_inner(
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_reshare_with_consumer_two_three() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gens = TestKeyGen::start_three(&setup).await?;
     test_reshare_with_consumer_inner(&setup, &key_gens, 1).await
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 async fn test_reshare_with_consumer_three_five() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::ThreeFive).await?;
     let key_gens = TestKeyGen::start_five(&setup).await?;
@@ -132,7 +132,7 @@ async fn test_reshare_with_consumer_inner(
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_reshare_emits_stuck_if_two_consumer() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gens = TestKeyGen::start_three(&setup).await?;
@@ -164,7 +164,7 @@ async fn test_reshare_emits_stuck_if_two_consumer() -> eyre::Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_not_a_participant() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     // for this setup this node is not registered
@@ -173,7 +173,7 @@ async fn test_not_a_participant() -> eyre::Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_health_route() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gen = TestKeyGen::start(0, &setup).await?;
@@ -193,7 +193,7 @@ async fn test_health_route() -> eyre::Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_health_route_not_ready() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gen = TestKeyGen::start(0, &setup).await?;
@@ -204,7 +204,7 @@ async fn test_health_route_not_ready() -> eyre::Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_wallet() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gen = TestKeyGen::start(0, &setup).await?;
@@ -214,7 +214,7 @@ async fn test_wallet() -> eyre::Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_version() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gen = TestKeyGen::start(0, &setup).await?;
@@ -224,7 +224,7 @@ async fn test_version() -> eyre::Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn key_gen_dies_on_cancellation() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gen = TestKeyGen::start(0, &setup).await?;
