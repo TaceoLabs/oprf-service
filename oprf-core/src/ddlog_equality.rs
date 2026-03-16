@@ -1,4 +1,4 @@
-//! Distributed DLogEquality Proof Commitments for Threshold OPRF
+//! Distributed `DLogEquality` Proof Commitments for Threshold OPRF
 //!
 //! This module defines the core types and helpers for constructing distributed (threshold) Chaum-Pedersen
 //! discrete log equality proofs. Each participating party generates commitment shares and proof shares that
@@ -34,7 +34,7 @@ pub mod shamir;
 
 const FROST_2_NONCE_COMBINER_LABEL: &[u8] = b"FROST_2_NONCE_COMBINER";
 
-/// Per-party commitments to the distributed DLogEquality proof protocol.
+/// Per-party commitments to the distributed `DLogEquality` proof protocol.
 ///
 /// Each party sends these commitments, which consist of a split of the actual response and two nonce splits, for aggregation and creation of the global challenge hash.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,7 +60,7 @@ pub struct PartialDLogEqualityCommitments {
     pub(crate) e2: Affine,
 }
 
-/// Aggregated commitments for the distributed DLogEquality proof protocol.
+/// Aggregated commitments for the distributed `DLogEquality` proof protocol.
 ///
 /// This struct aggregates the per-party commitment shares, to be used as the challenge hash input, and to verify against the full proof after all shares are combined.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,7 +88,7 @@ pub struct DLogEqualityCommitments {
     pub(crate) contributing_parties: Vec<u16>,
 }
 
-/// Individual party's proof share for the DLogEquality protocol.
+/// Individual party's proof share for the `DLogEquality` protocol.
 /// Carries a response share for the Chaum-Pedersen protocol.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -99,7 +99,7 @@ pub(crate) struct DLogEqualityProofShare(
     pub(crate) ScalarField,
 );
 
-/// The internal storage of a party in a distributed DlogEqualityProof protocol.
+/// The internal storage of a party in a distributed `DlogEqualityProof` protocol.
 ///
 /// This is not `Clone` because it contains secret randomness that may only be used once. We also don't implement `Debug` so we do don't print it by accident.
 /// The `challenge` method consumes the session.
@@ -111,7 +111,7 @@ pub struct DLogEqualitySession {
 }
 
 impl DLogEqualitySession {
-    /// Computes C=B·x_share and commitments to two random values d_share and e_share, which will be the shares of the randomness used in the DlogEqualityProof.
+    /// Computes `C=B·x_share` and commitments to two random values `d_share` and `e_share`, which will be the shares of the randomness used in the `DlogEqualityProof`.
     /// The result is meant to be sent to one accumulating party (e.g., the verifier) who combines all the shares of all parties and creates the challenge hash.
     pub fn partial_commitments(
         b: Affine,
@@ -159,16 +159,16 @@ impl DLogEqualityCommitments {
         for proof in proofs {
             s += proof.0;
         }
-        let (r1, r2, _) = combine_two_nonce_randomness(
+        let (r1, r2, _) = combine_two_nonce_randomness(CombineTwoNonceRandomnessArgs {
             session_id,
-            a,
-            self.c,
-            self.d1,
-            self.d2,
-            self.e1,
-            self.e2,
-            &self.contributing_parties,
-        );
+            public_key: a,
+            oprf_output: self.c,
+            d1: self.d1,
+            d2: self.d2,
+            e1: self.e1,
+            e2: self.e2,
+            parties: &self.contributing_parties,
+        });
 
         let d = Affine::generator();
         let e = crate::dlog_equality::challenge_hash(a, b, self.c, d, r1, r2);
@@ -177,10 +177,7 @@ impl DLogEqualityCommitments {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-/// Combines the two-nonce randomness shares into the full randomness used in the challenge.
-/// Returns (r1, r2, b) where r1 = d1 + e1*b and r2 = d2 + e2*b
-pub(crate) fn combine_two_nonce_randomness(
+pub(crate) struct CombineTwoNonceRandomnessArgs<'a> {
     session_id: Uuid,
     public_key: Affine,
     oprf_output: Affine,
@@ -188,8 +185,28 @@ pub(crate) fn combine_two_nonce_randomness(
     d2: Affine,
     e1: Affine,
     e2: Affine,
-    parties: &[u16],
+    parties: &'a [u16],
+}
+
+/// Combines the two-nonce randomness shares into the full randomness used in the challenge.
+/// Returns (r1, r2, b) where r1 = d1 + e1*b and r2 = d2 + e2*b
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "This method should consume the args"
+)]
+pub(crate) fn combine_two_nonce_randomness(
+    args: CombineTwoNonceRandomnessArgs<'_>,
 ) -> (Affine, Affine, ScalarField) {
+    let CombineTwoNonceRandomnessArgs {
+        session_id,
+        public_key,
+        oprf_output,
+        d1,
+        d2,
+        e1,
+        e2,
+        parties,
+    } = args;
     let mut hasher = blake3::Hasher::new();
     hasher.update(FROST_2_NONCE_COMBINER_LABEL);
     hasher.update(session_id.as_bytes());

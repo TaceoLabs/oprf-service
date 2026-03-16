@@ -1,5 +1,5 @@
 //! This module provides the server-side components for handling OPRF queries.
-//! It is only available with the `server` feature and is intended **only** for non-threshold (single-key) OPRF scenarios.  
+//! It is only available with the `server` feature and is intended **only** for non-threshold (single-key) OPRF scenarios.
 //! In threshold OPRF protocols, these methods are replaced by secure multiparty computation (MPC) implementations.
 //!
 //! The server manages an OPRF secret key, responds to client queries (blinded requests), and can optionally produce a zero-knowledge
@@ -37,6 +37,7 @@ impl OprfKey {
     }
 
     /// Returns the public key corresponding to this OPRF secret key.
+    #[must_use]
     pub fn public_key(&self) -> Affine {
         (Curve::generator() * self.0).into_affine()
     }
@@ -52,22 +53,26 @@ pub struct OprfServer {
 
 impl OprfServer {
     /// Create a new OPRF server instance using the given key.
+    #[must_use]
     pub fn new(key: OprfKey) -> Self {
         OprfServer { key }
     }
 
     /// Returns a reference to the OPRF server's key.
+    #[must_use]
     pub fn key(&self) -> &OprfKey {
         &self.key
     }
 
     /// Returns the public key corresponding to the server's secret key.
+    #[must_use]
     pub fn public_key(&self) -> Affine {
         self.key.public_key()
     }
 
     /// Computes the blinded OPRF response for a given blinded query.
-    pub fn answer_query(&self, query: BlindedOprfRequest) -> BlindedOprfResponse {
+    #[must_use]
+    pub fn answer_query(&self, query: &BlindedOprfRequest) -> BlindedOprfResponse {
         // Compute the blinded response
         let blinded_response = (query.0 * self.key.0).into_affine();
         BlindedOprfResponse(blinded_response)
@@ -80,9 +85,10 @@ impl OprfServer {
     ///
     /// # Returns
     /// Tuple of blinded response and zero-knowledge (discrete log equality) proof of correctness.
+    #[must_use]
     pub fn answer_query_with_proof(
         &self,
-        query: BlindedOprfRequest,
+        query: &BlindedOprfRequest,
     ) -> (BlindedOprfResponse, DLogEqualityProof) {
         // Compute the blinded response
         let blinded_response = (query.0 * self.key.0).into_affine();

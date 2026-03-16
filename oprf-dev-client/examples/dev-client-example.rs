@@ -127,7 +127,7 @@ impl DevClient for ExampleDevClient {
         let action = ark_babyjubjub::Fq::rand(rng);
         let blinding_factor = BlindingFactor::rand(rng);
         let query = action;
-        let blinded_query = oprf_core::oprf::client::blind_query(query, blinding_factor.clone());
+        let blinded_query = oprf_core::oprf::client::blind_query(query, blinding_factor);
         let init_request = OprfRequest {
             request_id,
             blinded_query: blinded_query.blinded_query(),

@@ -1,4 +1,4 @@
-//! Additive Secret Sharing variant of distributed DLogEquality proof combination.
+//! Additive Secret Sharing variant of distributed `DLogEquality` proof combination.
 //!
 //! This module implements the distributed Chaum-Pedersen discrete log equality proof for the
 //! simple additive secret sharing scenario. All parties collaborate using additive shares of
@@ -45,14 +45,14 @@ pub struct DLogShareAdditive(
     ScalarField,
 );
 
-/// Wrapper for the internal DLogEquality session state in the additive sharing variant.
+/// Wrapper for the internal `DLogEquality` session state in the additive sharing variant.
 ///
-/// Stores secret, non-clonable session state for a participant in the additive DLogEquality protocol,
+/// Stores secret, non-clonable session state for a participant in the additive `DLogEquality` protocol,
 /// used to generate commitment shares and construct proof shares. Not `Debug` to prevent unintended leakage.
 #[derive(ZeroizeOnDrop)]
 pub struct DLogSessionAdditive(DLogEqualitySession);
 
-/// Aggregated commitment object for additive DLogEquality proof.
+/// Aggregated commitment object for additive `DLogEquality` proof.
 ///
 /// Transparent wrapper for the core `DLogEqualityCommitments` struct, grouping aggregate commitments
 /// and participating party IDs as combined by simple additive summation.
@@ -60,7 +60,7 @@ pub struct DLogSessionAdditive(DLogEqualitySession);
 #[serde(transparent)]
 pub struct DLogCommitmentsAdditive(DLogEqualityCommitments);
 
-/// Per-party commitment shares for additive DLogEquality proof.
+/// Per-party commitment shares for additive `DLogEquality` proof.
 ///
 /// Transparent wrapper for individual commitment shares produced by each participant in the additive
 /// secret sharing case, ready for simple sum aggregation.
@@ -68,7 +68,7 @@ pub struct DLogCommitmentsAdditive(DLogEqualityCommitments);
 #[serde(transparent)]
 pub struct PartialDLogCommitmentsAdditive(PartialDLogEqualityCommitments);
 
-/// Individual additive proof share for the DLogEquality protocol.
+/// Individual additive proof share for the `DLogEquality` protocol.
 ///
 /// Wraps the per-party Chaum-Pedersen response share for additive aggregation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,7 +87,7 @@ impl From<DLogShareAdditive> for ark_babyjubjub::Fr {
     }
 }
 impl DLogSessionAdditive {
-    /// Computes C=B·x_share and commitments to two random values d_share and e_share, which will be the shares of the randomness used in the DlogEqualityProof.
+    /// Computes `C=B·x_share` and commitments to two random values `d_share` and `e_share`, which will be the shares of the randomness used in the `DlogEqualityProof`.
     /// The result is meant to be sent to one accumulating party (e.g., the verifier) who combines all the shares of all parties and creates the challenge hash.
     pub fn partial_commitments(
         b: Affine,
@@ -101,6 +101,7 @@ impl DLogSessionAdditive {
 
 impl DLogCommitmentsAdditive {
     /// Create an aggregated commitment object from component affine points and party IDs.
+    #[must_use]
     pub fn new(
         c: Affine,
         d1: Affine,
@@ -121,6 +122,7 @@ impl DLogCommitmentsAdditive {
     }
 
     /// Returns the parties that contributed to this commitment.
+    #[must_use]
     pub fn get_contributing_parties(&self) -> &[u16] {
         &self.0.contributing_parties
     }
@@ -128,6 +130,7 @@ impl DLogCommitmentsAdditive {
     /// Combine all parties' proof shares into a single Chaum-Pedersen proof object.
     ///
     /// Must use the same order of contributing parties as in aggregation
+    #[must_use]
     pub fn combine_proofs(
         self,
         session_id: Uuid,
@@ -140,6 +143,7 @@ impl DLogCommitmentsAdditive {
     }
     /// The accumulating party (e.g., the verifier) combines all the shares of all parties.
     /// The returned points are the combined commitments C, R1, R2.
+    #[must_use]
     pub fn combine_commitments(commitments: &[(u16, PartialDLogCommitmentsAdditive)]) -> Self {
         let mut c = Projective::zero();
         let mut d1 = Projective::zero();
@@ -175,6 +179,7 @@ impl DLogCommitmentsAdditive {
     }
 
     /// Returns the combined blinded response C=B*x.
+    #[must_use]
     pub fn blinded_response(&self) -> Affine {
         self.0.c
     }
@@ -183,25 +188,26 @@ impl DLogCommitmentsAdditive {
 impl DLogSessionAdditive {
     /// Finalizes a proof share for a given challenge hash and session.
     /// The session and information therein is consumed to prevent reuse of the randomness.
+    #[must_use]
     pub fn challenge(
         self,
         session_id: Uuid,
-        contributing_parties: &[u16],
         DLogShareAdditive(x_share): DLogShareAdditive,
         a: Affine,
         DLogCommitmentsAdditive(challenge_input): DLogCommitmentsAdditive,
     ) -> DLogProofShareAdditive {
         // Recombine the two-nonce randomness shares into the full randomness used in the challenge.
-        let (r1, r2, b) = super::combine_two_nonce_randomness(
-            session_id,
-            a,
-            challenge_input.c,
-            challenge_input.d1,
-            challenge_input.d2,
-            challenge_input.e1,
-            challenge_input.e2,
-            contributing_parties,
-        );
+        let (r1, r2, b) =
+            super::combine_two_nonce_randomness(super::CombineTwoNonceRandomnessArgs {
+                session_id,
+                public_key: a,
+                oprf_output: challenge_input.c,
+                d1: challenge_input.d1,
+                d2: challenge_input.d2,
+                e1: challenge_input.e1,
+                e2: challenge_input.e2,
+                parties: &challenge_input.contributing_parties,
+            });
 
         // Recompute the challenge hash to ensure the challenge is well-formed.
         let d = Affine::generator();
@@ -259,7 +265,7 @@ mod tests {
             let (session, comm) =
                 DLogSessionAdditive::partial_commitments(b, x_.to_owned(), &mut rng);
             sessions.push(session);
-            commitments.push((id as u16 + 1, comm));
+            commitments.push((u16::try_from(id + 1).expect("Can fit into u16"), comm));
         }
 
         // 2) Client accumulates commitments and creates challenge
@@ -267,16 +273,9 @@ mod tests {
         let c = challenge.blinded_response();
 
         // 3) Client challenges all servers
-        let contributing_parties = (1u16..=(num_parties as u16)).collect::<Vec<_>>();
         let mut proofs = Vec::with_capacity(num_parties);
         for (session, x_) in sessions.into_iter().zip(x_shares.iter().cloned()) {
-            let proof = session.challenge(
-                session_id,
-                &contributing_parties,
-                x_,
-                public_key,
-                challenge.to_owned(),
-            );
+            let proof = session.challenge(session_id, x_, public_key, challenge.clone());
             proofs.push(proof);
         }
 
@@ -286,7 +285,7 @@ mod tests {
         // Verify the result and the proof
         let d = Affine::generator();
         assert_eq!(c, b * x, "Result must be correct");
-        assert!(proof.verify(public_key, b, c, d).is_ok());
+        proof.verify(public_key, b, c, d).expect("Can verify proof");
     }
 
     #[test]

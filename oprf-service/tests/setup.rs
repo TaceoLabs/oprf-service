@@ -282,7 +282,7 @@ pub fn request_with_id<R: Rng + CryptoRng>(
 ) -> OprfRequest<ConfigurableTestRequestAuth> {
     let blinding_factor = BlindingFactor::rand(rng);
     let query = ark_babyjubjub::Fq::rand(rng);
-    let blinded_request = oprf_core::oprf::client::blind_query(query, blinding_factor.clone());
+    let blinded_request = oprf_core::oprf::client::blind_query(query, blinding_factor);
     OprfRequest {
         request_id: Uuid::new_v4(),
         blinded_query: blinded_request.blinded_query(),

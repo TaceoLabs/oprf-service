@@ -376,7 +376,7 @@ where
     distributed_oprf_span.record("request_id", request_id.to_string());
     tracing::debug!("starting with request id: {request_id}");
 
-    let blinded_request = oprf_core::oprf::client::blind_query(query, blinding_factor.clone());
+    let blinded_request = oprf_core::oprf::client::blind_query(query, blinding_factor);
     let oprf_req = OprfRequest {
         request_id,
         blinded_query: blinded_request.blinded_query(),
@@ -421,7 +421,7 @@ where
     )?;
 
     let blinded_response = challenge.blinded_response();
-    let blinding_factor_prepared = blinding_factor.clone().prepare();
+    let blinding_factor_prepared = blinding_factor.prepare();
     let oprf_blinded_response = BlindedOprfResponse::new(blinded_response);
     let unblinded_response = oprf_blinded_response.unblind_response(&blinding_factor_prepared);
 

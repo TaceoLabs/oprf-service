@@ -1,4 +1,4 @@
-//! Shamir Secret Sharing variant of distributed DLogEquality proof combination.
+//! Shamir Secret Sharing variant of distributed `DLogEquality` proof combination.
 //!
 //! This module implements threshold (Shamir) secret sharing for distributed Chaum-Pedersen
 //! discrete log equality proofs, enabling a group of parties to collectively prove knowledge
@@ -9,7 +9,7 @@
 //! interpolation, avoiding the need for extra round trips or communication to share randomness.
 //!
 //! This module provides:
-//! - Extension types that encapsulate the core DLogEquality structs for Shamir sharing.
+//! - Extension types that encapsulate the core `DLogEquality` structs for Shamir sharing.
 //! - Methods for combining Shamir-shared commitments and proof shares via Lagrange interpolation.
 //! - Drop-in integration with the [`crate::dlog_equality`] primitives for session handling and proof creation.
 //!
@@ -51,14 +51,14 @@ pub struct DLogShareShamir(
     ScalarField,
 );
 
-/// Wrapper for the internal DLogEquality session state in the Shamir-sharing variant.
+/// Wrapper for the internal `DLogEquality` session state in the Shamir-sharing variant.
 ///
-/// Stores non-clonable, non-debug secret state for a threshold party during the DLogEquality protocol.
+/// Stores non-clonable, non-debug secret state for a threshold party during the `DLogEquality` protocol.
 /// Used to generate the commitment shares and construct the proof share for Shamir secret sharing.
 #[derive(ZeroizeOnDrop)]
 pub struct DLogSessionShamir(DLogEqualitySession);
 
-/// Commitment aggregation object for the Shamir DLogEquality protocol.
+/// Commitment aggregation object for the Shamir `DLogEquality` protocol.
 ///
 /// This is a transparent wrapper around the core `DLogEqualityCommitments` struct, grouping
 /// together the aggregate commitments and participating party identifiers as reconstructed
@@ -67,15 +67,15 @@ pub struct DLogSessionShamir(DLogEqualitySession);
 #[serde(transparent)]
 pub struct DLogCommitmentsShamir(DLogEqualityCommitments);
 
-/// Per-party commitment shares for Shamir DLogEquality protocol.
+/// Per-party commitment shares for Shamir `DLogEquality` protocol.
 ///
-/// Wraps and serializes individual party commitments to the distributed DLogEquality proof,
+/// Wraps and serializes individual party commitments to the distributed `DLogEquality` proof,
 /// in the context of Shamir secret sharing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PartialDLogCommitmentsShamir(PartialDLogEqualityCommitments);
 
-/// Individual party's proof share for the Shamir DLogEquality proof protocol.
+/// Individual party's proof share for the Shamir `DLogEquality` proof protocol.
 ///
 /// Wraps the share of the challenge response for Shamir secret sharing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,7 +95,7 @@ impl From<DLogShareShamir> for ark_babyjubjub::Fr {
 }
 
 impl DLogSessionShamir {
-    /// Computes C=B·x_share and commitments to two random values d_share and e_share, which will be the shares of the randomness used in the DlogEqualityProof.
+    /// Computes `C=B·x_share` and commitments to two random values `d_share` and `e_share`, which will be the shares of the randomness used in the `DlogEqualityProof`.
     /// The result is meant to be sent to one accumulating party (e.g., the verifier) who combines all the shares of all parties and creates the challenge hash.
     pub fn partial_commitments(
         b: Affine,
@@ -109,6 +109,7 @@ impl DLogSessionShamir {
 
 impl DLogCommitmentsShamir {
     /// Create an aggregated commitment object from component affine points and party IDs.
+    #[must_use]
     pub fn new(
         c: Affine,
         d1: Affine,
@@ -129,6 +130,7 @@ impl DLogCommitmentsShamir {
     }
 
     /// Returns the parties that contributed to this commitment.
+    #[must_use]
     pub fn get_contributing_parties(&self) -> &[u16] {
         &self.0.contributing_parties
     }
@@ -136,6 +138,7 @@ impl DLogCommitmentsShamir {
     /// Combine all parties' proof shares into a single Chaum-Pedersen proof object.
     ///
     /// Must use the same order of contributing parties as in aggregation
+    #[must_use]
     pub fn combine_proofs(
         self,
         session_id: Uuid,
@@ -158,12 +161,13 @@ impl DLogCommitmentsShamir {
     /// i.e. `commitments.len() != contributing_parties.len()`.
     /// Additionally, panics if the contributing parties contain duplicate party IDs.
     /// The call site is expected to enforce these checks.
+    #[must_use]
     pub fn combine_commitments(
         commitments: &[PartialDLogCommitmentsShamir],
         contributing_parties: Vec<u16>,
     ) -> Self {
         let mut contributing_parties_dedup = contributing_parties.clone();
-        contributing_parties_dedup.sort();
+        contributing_parties_dedup.sort_unstable();
         contributing_parties_dedup.dedup();
         assert_eq!(
             contributing_parties.len(),
@@ -186,7 +190,7 @@ impl DLogCommitmentsShamir {
         let mut e1 = Projective::zero();
         let mut e2 = Projective::zero();
 
-        for PartialDLogCommitmentsShamir(comm) in commitments.iter() {
+        for PartialDLogCommitmentsShamir(comm) in commitments {
             d1 += comm.d1;
             d2 += comm.d2;
             e1 += comm.e1;
@@ -219,8 +223,9 @@ impl DLogSessionShamir {
     /// The session and information therein is consumed to prevent reuse of the randomness.
     ///
     /// Prerequisites:
-    /// * The lagrange_coefficient is computed from the same set of contributing parties as in the commitments.
-    /// * The set of contributing parties in challenge_input is checked for duplicates, has the correct number of parties and contains the party corresponding to this session.
+    /// * The `lagrange_coefficient` is computed from the same set of contributing parties as in the commitments.
+    /// * The set of contributing parties in `challenge_input` is checked for duplicates, has the correct number of parties and contains the party corresponding to this session.
+    #[must_use]
     pub fn challenge(
         self,
         session_id: Uuid,
@@ -230,16 +235,17 @@ impl DLogSessionShamir {
         lagrange_coefficient: ScalarField,
     ) -> DLogProofShareShamir {
         // Recombine the two-nonce randomness shares into the full randomness used in the challenge.
-        let (r1, r2, b) = super::combine_two_nonce_randomness(
-            session_id,
-            a,
-            challenge_input.c,
-            challenge_input.d1,
-            challenge_input.d2,
-            challenge_input.e1,
-            challenge_input.e2,
-            &challenge_input.contributing_parties,
-        );
+        let (r1, r2, b) =
+            super::combine_two_nonce_randomness(super::CombineTwoNonceRandomnessArgs {
+                session_id,
+                public_key: a,
+                oprf_output: challenge_input.c,
+                d1: challenge_input.d1,
+                d2: challenge_input.d2,
+                e1: challenge_input.e1,
+                e2: challenge_input.e2,
+                parties: &challenge_input.contributing_parties,
+            });
 
         // Recompute the challenge hash to ensure the challenge is well-formed.
         let d = Affine::generator();
@@ -308,7 +314,8 @@ mod tests {
         // Crete session and choose the used set of parties
         let session_id = Uuid::new_v4();
         let b = Affine::rand(&mut rng);
-        let used_parties = (1..=num_parties as u16).choose_multiple(&mut rng, degree + 1);
+        let used_parties = (1..=u16::try_from(num_parties).expect("Fits into u16"))
+            .choose_multiple(&mut rng, degree + 1);
 
         // 1) Client requests commitments from all servers
         let mut sessions = Vec::with_capacity(num_parties);
@@ -355,7 +362,7 @@ mod tests {
         // Verify the result and the proof
         let d = Affine::generator();
         assert_eq!(c, b * x, "Result must be correct");
-        assert!(proof.verify(public_key, b, c, d).is_ok());
+        proof.verify(public_key, b, c, d).expect("Can verify proof");
     }
 
     #[test]

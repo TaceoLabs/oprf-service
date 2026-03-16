@@ -46,7 +46,7 @@ fn oprf_bench(c: &mut Criterion) {
         let query = ark_babyjubjub::Fq::rand(rng);
         let blinding_factor = BlindingFactor::rand(rng);
 
-        b.iter(|| oprf::client::blind_query(query, blinding_factor.clone()));
+        b.iter(|| oprf::client::blind_query(query, blinding_factor));
     });
 
     c.bench_function("OPRF Client Proof Verify", |b| {
@@ -68,7 +68,7 @@ fn oprf_bench(c: &mut Criterion) {
                 let q = ark_babyjubjub::Fq::rand(rng);
                 oprf::client::blind_query(q, blinding_factor)
             },
-            |query| server.answer_query(query),
+            |query| server.answer_query(&query),
             BatchSize::SmallInput,
         );
     });
@@ -77,16 +77,11 @@ fn oprf_bench(c: &mut Criterion) {
         let rng = &mut rand::thread_rng();
         let key = OprfKey::random(rng);
         let server = OprfServer::new(key);
+        let blinding_factor = BlindingFactor::rand(rng);
+        let q = ark_babyjubjub::Fq::rand(rng);
+        let query = oprf::client::blind_query(q, blinding_factor);
 
-        b.iter_batched(
-            || {
-                let blinding_factor = BlindingFactor::rand(rng);
-                let q = ark_babyjubjub::Fq::rand(rng);
-                oprf::client::blind_query(q, blinding_factor)
-            },
-            |query| server.answer_query_with_proof(query),
-            BatchSize::SmallInput,
-        );
+        b.iter(|| server.answer_query_with_proof(&query));
     });
 
     c.bench_function("OPRF/Client/Finalize", |b| {
@@ -98,14 +93,14 @@ fn oprf_bench(c: &mut Criterion) {
             || {
                 let blinding_factor = BlindingFactor::rand(rng);
                 let q = ark_babyjubjub::Fq::rand(rng);
-                let query = oprf::client::blind_query(q, blinding_factor.clone());
+                let query = oprf::client::blind_query(q, blinding_factor);
                 let blinding = blinding_factor.prepare();
-                let response = server.answer_query(query);
+                let response = server.answer_query(&query);
                 (q, response, blinding)
             },
             |(q, response, blinding)| {
                 // Call the OPRF evaluate function here
-                oprf::client::finalize_query(q, response, blinding, ark_babyjubjub::Fq::ZERO)
+                oprf::client::finalize_query(q, &response, &blinding, ark_babyjubjub::Fq::ZERO)
             },
             BatchSize::SmallInput,
         );
@@ -120,9 +115,9 @@ fn oprf_bench(c: &mut Criterion) {
             || {
                 let blinding_factor = BlindingFactor::rand(rng);
                 let q = ark_babyjubjub::Fq::rand(rng);
-                let query = oprf::client::blind_query(q, blinding_factor.clone());
+                let query = oprf::client::blind_query(q, blinding_factor);
                 let blinding = blinding_factor.prepare();
-                let (response, proof) = server.answer_query_with_proof(query);
+                let (response, proof) = server.answer_query_with_proof(&query);
                 (q, response, proof, blinding)
             },
             |(q, response, proof, blinding)| {
@@ -130,9 +125,9 @@ fn oprf_bench(c: &mut Criterion) {
                 oprf::client::finalize_query_and_verify_proof(
                     pk,
                     q,
-                    response,
-                    proof,
-                    blinding,
+                    &response,
+                    &proof,
+                    &blinding,
                     ark_babyjubjub::Fq::ZERO,
                 )
             },
@@ -154,7 +149,6 @@ fn ddlog_bench(c: &mut Criterion) {
         let point = EdwardsAffine::rand(rng);
         let pk = (EdwardsProjective::generator() * x).into_affine();
         let session_id = Uuid::new_v4();
-        let participating_parties = vec![1, 2, 3];
 
         b.iter_batched(
             || {
@@ -163,9 +157,7 @@ fn ddlog_bench(c: &mut Criterion) {
                 let challenge = DLogCommitmentsAdditive::combine_commitments(&[(1, comm)]);
                 (session, challenge)
             },
-            |(session, challenge)| {
-                session.challenge(session_id, &participating_parties, x.into(), pk, challenge)
-            },
+            |(session, challenge)| session.challenge(session_id, x.into(), pk, challenge),
             BatchSize::SmallInput,
         );
     });
@@ -216,7 +208,6 @@ fn ddlog_bench(c: &mut Criterion) {
             let point = EdwardsAffine::rand(rng);
             let pk = (EdwardsProjective::generator() * x).into_affine();
             let session_id = Uuid::new_v4();
-            let participating_parties = (1u16..=set_size as u16).collect::<Vec<_>>();
 
             b.iter_batched(
                 || {
@@ -230,15 +221,7 @@ fn ddlog_bench(c: &mut Criterion) {
                     let challenge = DLogCommitmentsAdditive::combine_commitments(&commitments);
                     let responses = sessions
                         .into_iter()
-                        .map(|s| {
-                            s.challenge(
-                                session_id,
-                                &participating_parties,
-                                x.into(),
-                                pk,
-                                challenge.clone(),
-                            )
-                        })
+                        .map(|s| s.challenge(session_id, x.into(), pk, challenge.clone()))
                         .collect::<Vec<_>>();
                     (challenge, responses)
                 },

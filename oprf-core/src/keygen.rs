@@ -20,7 +20,7 @@ use crate::{
 // From SAFE-API paper (https://eprint.iacr.org/2023/522.pdf)
 // Absorb 2, squeeze 1,  domainsep = 0x4142
 // [0x80000002, 0x00000001, 0x4142]
-const T1_DS: u128 = 0x80000002000000014142;
+const T1_DS: u128 = 0x8000_0002_0000_0001_4142;
 const COEFF_DS: &[u8] = b"KeyGenPolyCoeff";
 
 /// Represents the generated polynomial for a single party during key generation.
@@ -57,6 +57,7 @@ fn get_coeff_ds() -> BaseField {
 }
 
 /// Accumulates the provided shares by adding them together.
+#[must_use]
 pub fn accumulate_shares(shares: &[ScalarField]) -> ScalarField {
     shares.iter().fold(ScalarField::zero(), |acc, x| acc + x)
 }
@@ -72,8 +73,12 @@ pub fn accumulate_shares(shares: &[ScalarField]) -> ScalarField {
 ///
 /// # Panics
 /// This method panics if the len of `shares` and `lagrange` do not match. This method expects this check at callsite.
+#[must_use]
 pub fn accumulate_lagrange_shares(shares: &[ScalarField], lagrange: &[ScalarField]) -> ScalarField {
-    assert!(shares.len() == lagrange.len());
+    assert!(
+        shares.len() == lagrange.len(),
+        "Shares and lagrange coeffs length does not match"
+    );
     let shares = &shares[0..lagrange.len()];
     let mut result = ScalarField::zero();
     for (share, l) in izip!(shares.iter(), lagrange.iter()) {
@@ -117,6 +122,7 @@ fn sym_decrypt(key: BaseField, ciphertext: BaseField, nonce: BaseField) -> Optio
 /// Decrypts a ciphertext using a symmetric key derived from Diffie-Hellman between `my_sk` and `their_pk`.
 ///
 /// Returns the plaintext if decryption succeeds, or `None` otherwise.
+#[must_use]
 pub fn decrypt_share(
     my_sk: &ScalarField,
     their_pk: Affine,
@@ -140,13 +146,18 @@ pub fn decrypt_share(
 ///
 /// # Panics
 /// This method panics if the len of `shares` is lower than the len of `lagrange`. This method expects this check at callsite.
+#[must_use]
 pub fn accumulate_lagrange_pks(pks: &[Affine], lagrange: &[ScalarField]) -> Affine {
-    assert!(pks.len() >= lagrange.len());
+    assert!(
+        pks.len() >= lagrange.len(),
+        "Coeffeciants and Pks len don't match"
+    );
     let pks = &pks[0..lagrange.len()];
     Projective::msm_unchecked(pks, lagrange).into_affine()
 }
 
 /// An encrypted share for another party. Contains the ciphertext and nonce for encryption along with a commitment to underlying value computed as `share` ⋅ `G`, where `G` is the generator of babyjubjub.
+#[non_exhaustive]
 pub struct EncryptedShare {
     /// The commitment to the share
     pub commitment: Affine,
@@ -186,6 +197,7 @@ impl KeyGenPoly {
     /// Returns a reference to the coefficients.
     ///
     /// **Note**: use with care! The coefficients are sensitive data.
+    #[must_use]
     pub fn coeffs(&self) -> &[ScalarField] {
         &self.poly
     }
@@ -264,16 +276,19 @@ impl KeyGenPoly {
     }
 
     /// Returns the degree of the polynomial.
+    #[must_use]
     pub fn degree(&self) -> usize {
         self.poly.len() - 1
     }
 
     /// Returns the commitment to the secret `a_0`.
+    #[must_use]
     pub fn get_pk_share(&self) -> Affine {
         self.comm_share
     }
 
     /// Returns the commitment to the coefficients.
+    #[must_use]
     pub fn get_coeff_commitment(&self) -> BaseField {
         self.comm_coeffs
     }
@@ -281,6 +296,7 @@ impl KeyGenPoly {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::similar_names, reason = "doesnt matter in tests")]
 
     use itertools::Itertools;
 
@@ -323,7 +339,7 @@ mod tests {
         // pk from commitments
         let pks = party_polys
             .iter()
-            .map(|x| x.get_pk_share())
+            .map(KeyGenPoly::get_pk_share)
             .collect::<Vec<_>>();
         assert_eq!(should_pk, accumulate_pks(&pks));
 
@@ -388,6 +404,7 @@ mod tests {
         test_distributed_keygen(31, 15);
     }
 
+    #[allow(clippy::too_many_lines, reason = "Long tests are ok")]
     fn test_reshare(num_parties: usize, degree: usize) {
         let mut rng = rand::thread_rng();
 
@@ -417,7 +434,7 @@ mod tests {
         // pk from commitments
         let pks = party_polys
             .iter()
-            .map(|x| x.get_pk_share())
+            .map(KeyGenPoly::get_pk_share)
             .collect::<Vec<_>>();
         assert_eq!(should_pk, accumulate_pks(&pks));
 
@@ -491,7 +508,7 @@ mod tests {
         // pk from commitments
         let pks = party_polys
             .iter()
-            .map(|x| x.get_pk_share())
+            .map(KeyGenPoly::get_pk_share)
             .collect::<Vec<_>>();
         let pk_from_comm = accumulate_lagrange_pks(&pks, &lagrange);
         assert_eq!(should_pk, pk_from_comm);
@@ -552,7 +569,7 @@ mod tests {
         // This can be checked outside of the ZK proof (e.g., in the SC) using the commitments
         for (i, poly) in party_polys.iter().enumerate() {
             let mut reconstructed_commitment = Affine::zero();
-            for comm in party_commitments.iter() {
+            for comm in &party_commitments {
                 // For later reshares, the following sum needs to be replaced by a weighted sum using the lagrange coefficients
                 reconstructed_commitment = (reconstructed_commitment + comm[i]).into_affine();
             }

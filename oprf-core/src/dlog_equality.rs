@@ -2,7 +2,7 @@
 //! enabling the demonstration that two group elements are related by the same discrete logarithm
 //! (i.e., knowledge of a secret x such that A = x*D and C = x*B), without revealing x itself.
 //!
-//! This is primarily used to prove correctness of OPRF operations over BabyJubJub elliptic curve elements.
+//! This is primarily used to prove correctness of OPRF operations over `BabyJubJub` elliptic curve elements.
 //!
 //! ## Features
 //! - Proof creation given secret
@@ -24,9 +24,9 @@ use rand::{CryptoRng, Rng};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DLogEqualityProof {
     ///Fiat-Shamir challenge, represented as a field element.
-    pub e: BaseField,
+    pub(crate) e: BaseField,
     /// Proof response, represented as a scalar. The verifier checks that it fits in the base field to avoid malleability attacks.
-    pub s: ScalarField,
+    pub(crate) s: ScalarField,
 }
 
 type ScalarField = ark_babyjubjub::Fr;
@@ -35,6 +35,7 @@ type Affine = ark_babyjubjub::EdwardsAffine;
 
 /// Error indicating that the DLog-Proof could not be verified.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[allow(clippy::exhaustive_structs, reason = "Simple error for a single use")]
 pub struct InvalidProof;
 
 impl std::error::Error for InvalidProof {}
@@ -70,6 +71,9 @@ impl DLogEqualityProof {
     }
 
     /// Takes the Chaum-Pedersen proof e,s and verifies that A=x*D and C=x*B have the same dlog x, given A,B,C,D.
+    ///
+    /// # Errors
+    /// Returns an error if proof verification fails.
     pub fn verify(&self, a: Affine, b: Affine, c: Affine, d: Affine) -> Result<(), InvalidProof> {
         // All points need to be valid curve elements.
         if [a, b, c, d]
@@ -78,7 +82,7 @@ impl DLogEqualityProof {
         {
             return Err(InvalidProof);
         }
-        if [a, b, c, d].iter().any(|p| p.is_zero()) {
+        if [a, b, c, d].iter().any(Affine::is_zero) {
             return Err(InvalidProof);
         }
 
@@ -159,7 +163,7 @@ mod tests {
         let c = (b * x).into_affine();
 
         let proof = DLogEqualityProof::proof(b, x, &mut rng);
-        assert!(proof.verify(a, b, c, d).is_ok());
+        proof.verify(a, b, c, d).expect("Can verify proof");
         let b2 = Affine::rand(&mut rng);
         let invalid_proof = DLogEqualityProof::proof(b2, x, &mut rng);
         assert!(invalid_proof.verify(a, b, c, d).is_err());

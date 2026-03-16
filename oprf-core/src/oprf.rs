@@ -29,16 +29,19 @@ pub struct BlindedOprfRequest(Affine);
 
 impl BlindedOprfRequest {
     /// Construct a new [`BlindedOprfRequest`] from an affine point.
+    #[must_use]
     pub fn new(value: Affine) -> Self {
         Self(value)
     }
 
     /// Returns the public x/y coordinates of the blinded query.
+    #[must_use]
     pub fn blinded_query_as_public_output(&self) -> [BaseField; 2] {
         [self.0.x, self.0.y]
     }
 
     /// Returns the blinded query as an affine curve point.
+    #[must_use]
     pub fn blinded_query(&self) -> Affine {
         self.0
     }
@@ -47,11 +50,12 @@ impl BlindedOprfRequest {
 /// The OPRF query blinding factor, as well as the original query value.
 ///
 /// The blinding factor shall not be zero, otherwise [`BlindingFactor::prepare`] will panic.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BlindingFactor(ScalarField);
 
 /// Error indicating an invalid blinding factor (it may not be zero).
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[allow(clippy::exhaustive_structs, reason = "Simple error for a single use")]
 pub struct InvalidBlindingFactor;
 
 impl std::fmt::Display for InvalidBlindingFactor {
@@ -87,6 +91,7 @@ impl BlindingFactor {
     ///
     /// # Panics
     /// This method panics if the blinding factor is 0.
+    #[must_use]
     pub fn prepare(self) -> PreparedBlindingFactor {
         PreparedBlindingFactor(
             self.0
@@ -96,6 +101,7 @@ impl BlindingFactor {
     }
 
     /// Returns the (non-inverted) blinding factor.
+    #[must_use]
     pub fn beta(&self) -> ScalarField {
         self.0
     }
@@ -107,6 +113,7 @@ pub struct PreparedBlindingFactor(ScalarField);
 
 impl PreparedBlindingFactor {
     /// Returns the (inverted) blinding factor.
+    #[must_use]
     pub fn beta_inv(&self) -> ScalarField {
         self.0
     }
@@ -118,16 +125,19 @@ pub struct BlindedOprfResponse(Affine);
 
 impl BlindedOprfResponse {
     /// Construct a new blinded response from an affine point.
+    #[must_use]
     pub fn new(p: Affine) -> Self {
         Self(p)
     }
 
     /// Unblind the server response using the prepared blinding factor.
+    #[must_use]
     pub fn unblind_response(&self, blinding_factor: &PreparedBlindingFactor) -> Affine {
         (self.0 * blinding_factor.beta_inv()).into_affine()
     }
 
     /// Return the affine curve point of the response.
+    #[must_use]
     pub fn response(&self) -> Affine {
         self.0
     }
@@ -156,15 +166,15 @@ mod tests {
         let blinding_factor2 = BlindingFactor::rand(&mut rng);
 
         let query = BaseField::from(42);
-        let blinded_request = oprf::client::blind_query(query, blinding_factor.clone());
-        let blinded_request2 = oprf::client::blind_query(query, blinding_factor2.clone());
+        let blinded_request = oprf::client::blind_query(query, blinding_factor);
+        let blinded_request2 = oprf::client::blind_query(query, blinding_factor2);
         assert_ne!(blinded_request, blinded_request2);
-        let response = service.answer_query(blinded_request);
+        let response = service.answer_query(&blinded_request);
 
         let response = oprf::client::finalize_query(
             query,
-            response,
-            blinding_factor.prepare(),
+            &response,
+            &blinding_factor.prepare(),
             domain_separator,
         );
 
@@ -178,12 +188,12 @@ mod tests {
         let expected_output = out[1];
 
         assert_eq!(response, expected_output);
-        let response2 = service.answer_query(blinded_request2);
+        let response2 = service.answer_query(&blinded_request2);
 
         let unblinded_response2 = oprf::client::finalize_query(
             query,
-            response2,
-            blinding_factor2.prepare(),
+            &response2,
+            &blinding_factor2.prepare(),
             domain_separator,
         );
         assert_eq!(response, unblinded_response2);
@@ -200,20 +210,20 @@ mod tests {
         let blinding_factor2 = BlindingFactor::rand(&mut rng);
 
         let query = BaseField::from(42);
-        let blinded_request = oprf::client::blind_query(query, blinding_factor.clone());
-        let blinded_request2 = oprf::client::blind_query(query, blinding_factor2.clone());
+        let blinded_request = oprf::client::blind_query(query, blinding_factor);
+        let blinded_request2 = oprf::client::blind_query(query, blinding_factor2);
         assert_ne!(blinded_request, blinded_request2);
-        let (response, proof) = service.answer_query_with_proof(blinded_request);
+        let (response, proof) = service.answer_query_with_proof(&blinded_request);
 
         let unblinded_response = oprf::client::finalize_query_and_verify_proof(
             public_key,
             query,
-            response.clone(),
-            proof,
-            blinding_factor.clone().prepare(),
+            &response,
+            &proof,
+            &blinding_factor.prepare(),
             domain_separator,
         )
-        .unwrap();
+        .expect("Can finalize query and verify proof");
 
         let expected_response = &service.key * mappings::encode_to_curve(query);
         let out = poseidon2::bn254::t4::permutation(&[
@@ -226,26 +236,26 @@ mod tests {
 
         assert_eq!(unblinded_response, expected_output);
 
-        let (response2, proof2) = service.answer_query_with_proof(blinded_request2);
+        let (response2, proof2) = service.answer_query_with_proof(&blinded_request2);
         let unblinded_response2 = oprf::client::finalize_query_and_verify_proof(
             public_key,
             query,
-            response2,
-            proof2.clone(),
-            blinding_factor2.prepare(),
+            &response2,
+            &proof2,
+            &blinding_factor2.prepare(),
             domain_separator,
         )
-        .unwrap();
+        .expect("Can finalize query and verify proof");
         assert_eq!(unblinded_response, unblinded_response2);
 
-        oprf::client::finalize_query_and_verify_proof(
+        let _err = oprf::client::finalize_query_and_verify_proof(
             public_key,
             query,
-            response,
-            proof2,
-            blinding_factor.prepare(),
+            &response,
+            &proof2,
+            &blinding_factor.prepare(),
             domain_separator,
         )
-        .unwrap_err();
+        .expect_err("Should now fail");
     }
 }

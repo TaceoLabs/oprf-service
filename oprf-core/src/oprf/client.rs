@@ -25,11 +25,16 @@ use crate::oprf::{
 /// # Returns
 ///
 /// A [`BlindedOprfRequest`].
+///
+/// # Panics
+/// If the provided `blinding_factor` is 0.
+#[must_use]
 pub fn blind_query(query: BaseField, blinding_factor: BlindingFactor) -> BlindedOprfRequest {
     // The blinding factor shall not be zero. As the chance of getting a zero is negligible we just panic here.
-    if blinding_factor.beta().is_zero() {
-        panic!("blinding_factor cannot be zero");
-    }
+    assert!(
+        !blinding_factor.beta().is_zero(),
+        "blinding_factor must be != zero"
+    );
     let encoded_input = mappings::encode_to_curve(query);
     let blinded_query = (encoded_input * blinding_factor.beta()).into_affine();
     BlindedOprfRequest(blinded_query)
@@ -37,7 +42,7 @@ pub fn blind_query(query: BaseField, blinding_factor: BlindingFactor) -> Blinded
 
 /// Unblinds an OPRF server response and hashes it to produce the final output for the query. This method is for the non-threshold variant of the OPRF protocol.
 ///
-/// Performs 2Hash-DH: H(query, unblinded_point).
+/// Performs 2Hash-DH: `H(query, unblinded_point)`.
 ///
 /// # Arguments
 ///
@@ -49,14 +54,15 @@ pub fn blind_query(query: BaseField, blinding_factor: BlindingFactor) -> Blinded
 /// # Returns
 ///
 /// OPRF output as a `BaseField` element.
+#[must_use]
 pub fn finalize_query(
     query: BaseField,
-    response: BlindedOprfResponse,
-    blinding_factor: PreparedBlindingFactor,
+    response: &BlindedOprfResponse,
+    blinding_factor: &PreparedBlindingFactor,
     domain_separator: BaseField,
 ) -> BaseField {
     // Unblind the response using the blinding factor
-    let unblinded_point = response.unblind_response(&blinding_factor);
+    let unblinded_point = response.unblind_response(blinding_factor);
 
     // compute the second hash in the 2Hash-DH construction
     // out = H(query, unblinded_point)
@@ -86,20 +92,31 @@ pub fn finalize_query(
 /// # Returns
 ///
 /// Returns the OPRF output if the proof is valid, else returns `InvalidProof`.
+///
+/// # Errors
+/// If the final `DLog` proof cannot be verified.
+#[allow(
+    clippy::missing_panics_doc,
+    reason = "Blinding factor can always be reversed as it cannot be 0"
+)]
 pub fn finalize_query_and_verify_proof(
     a: Affine,
     query: BaseField,
-    response: BlindedOprfResponse,
-    proof: DLogEqualityProof,
-    blinding_factor: PreparedBlindingFactor,
+    response: &BlindedOprfResponse,
+    proof: &DLogEqualityProof,
+    blinding_factor: &PreparedBlindingFactor,
     domain_separator: BaseField,
 ) -> Result<BaseField, InvalidProof> {
     // Verify the proof
     use ark_ec::PrimeGroup as _;
     use ark_ff::Field as _;
     let d = Curve::generator().into_affine();
-    let b = (mappings::encode_to_curve(query) * blinding_factor.beta_inv().inverse().unwrap())
-        .into_affine();
+    let b = (mappings::encode_to_curve(query)
+        * blinding_factor
+            .beta_inv()
+            .inverse()
+            .expect("Blinding factor cannot be zero"))
+    .into_affine();
     let c = response.0;
 
     proof.verify(a, b, c, d)?;

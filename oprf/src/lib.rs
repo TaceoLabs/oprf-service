@@ -44,18 +44,6 @@
 //! ```
 //!
 //! The default feature `full` enables all modules.
-//!
-//! ## Example
-//!
-//! ```rust
-//! #[cfg(feature = "client")]
-//! use taceo_oprf::client::OprfClient;
-//!
-//! #[cfg(feature = "core")]
-//! use taceo_oprf::core::OprfCore;
-//!
-//! // Use OprfClient or OprfCore depending on your feature flags
-//! ```
 
 #[cfg(feature = "client")]
 /// Re-export of the `taceo-oprf-client` crate.

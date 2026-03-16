@@ -16,7 +16,8 @@ fn ct_is_zero<F: PrimeField>(v: F) -> Choice {
     // byte representation.
     let mut lhs_v = Vec::with_capacity(v.uncompressed_size());
     let rhs_v = vec![0; v.uncompressed_size()];
-    v.serialize_uncompressed(&mut lhs_v).unwrap();
+    v.serialize_uncompressed(&mut lhs_v)
+        .expect("Can serialize primefield into pre-allocated vec");
     lhs_v.ct_eq(&rhs_v)
 }
 
@@ -34,8 +35,11 @@ fn ct_is_square<F: PrimeField>(x: F) -> Choice {
     let mut x_v = Vec::with_capacity(x.uncompressed_size());
     let mut one_v = Vec::with_capacity(x.uncompressed_size());
     let zero_v = vec![0; x.uncompressed_size()];
-    x.serialize_uncompressed(&mut x_v).unwrap();
-    F::one().serialize_uncompressed(&mut one_v).unwrap();
+    x.serialize_uncompressed(&mut x_v)
+        .expect("Can serialize primefield into pre-allocated vec");
+    F::one()
+        .serialize_uncompressed(&mut one_v)
+        .expect("Can serialize primefield into pre-allocated vec");
     let is_zero = x_v.ct_eq(&zero_v);
     let is_one = x_v.ct_eq(&one_v);
     is_zero ^ is_one
@@ -54,7 +58,10 @@ pub fn encode_to_curve(input: BaseField) -> Affine {
 /// A curve encoding function that maps a field element to a point on the curve, based on [RFC9380, Section 3](https://www.rfc-editor.org/rfc/rfc9380.html#name-encoding-byte-strings-to-el).
 ///
 /// In contrast to `encode_to_curve`, this function uses a two-step mapping to ensure that the output is uniformly random over the curve.
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "currently not used but maybe relevant in the future"
+)]
 pub fn hash_to_curve(input: BaseField) -> Affine {
     // Map the input to a point on the curve using Elligator2
     let [u0, u1] = hash_to_field2(input);
@@ -103,7 +110,7 @@ fn map_to_curve_twisted_edwards(input: BaseField) -> Affine {
 /// We follow the Elligator2 mapping as described in [RFC9380, Section 6.7.1](https://www.rfc-editor.org/rfc/rfc9380.html#name-elligator-2-method).
 fn map_to_curve_elligator2(input: BaseField) -> (BaseField, BaseField) {
     // constant c1 = J/K;
-    let j = BaseField::from(168698);
+    let j = BaseField::from(168_698);
     // since k = 1 for Baby JubJub, this simplifies a few operations below
     let c1 = j;
     // The constant c2 would be 1/(k*k) = 1, so we also skip it
@@ -142,7 +149,7 @@ fn map_to_curve_elligator2(input: BaseField) -> (BaseField, BaseField) {
     let y = y2
         .sqrt()
         .expect("y2 should be a square based on our conditional selection above");
-    let e3 = Choice::from(sgn0(y) as u8);
+    let e3 = Choice::from(u8::from(sgn0(y)));
     let y = ct_select(-y, y, e2 ^ e3);
     // the reduced (s,t) would normally be (x*k,y*k), but since k = 1 for Baby JubJub, we can skip that step
     (x, y)
@@ -156,7 +163,7 @@ fn map_to_curve_elligator2(input: BaseField) -> (BaseField, BaseField) {
 /// let the Montgomery curve be defined by the equation $K*t^2 = s^3 + J*s^2 + s$, with
 /// $J = 2 * (a + d) / (a - d)$ and $K = 4 / (a - d)$.
 ///
-/// For the concrete case of Baby JubJub, we have:
+/// For the concrete case of `BabyJubJub`, we have:
 /// - $K = 1$
 /// - $J = 168698$
 /// - $a = 168700$
@@ -221,7 +228,7 @@ mod tests {
             let (s, t) = map_to_curve_elligator2(input);
             let (v, w) = rational_map_mont_to_twisted_edwards(s, t);
             let point = Affine { x: v, y: w };
-            assert!(point.is_on_curve(), "Failed for input: {:?}", input);
+            assert!(point.is_on_curve(), "Failed for input: {input:?}");
         }
     }
 
@@ -235,11 +242,11 @@ mod tests {
             x: BaseField::from_str(
                 "1368536874988764403285491466492470225763829673979223271328990939656695174872",
             )
-            .unwrap(),
+            .expect("Valid basefield element"),
             y: BaseField::from_str(
                 "5918944744409897789209151589310931911112404737084812644826989226820698253694",
             )
-            .unwrap(),
+            .expect("Valid basefield element"),
         };
         assert_eq!(expected_point, point);
     }
@@ -262,10 +269,10 @@ mod tests {
             let output = inv0(input);
             assert_eq!(
                 input * output,
-                if !input.is_zero() {
-                    BaseField::ONE
-                } else {
+                if input.is_zero() {
                     BaseField::zero()
+                } else {
+                    BaseField::ONE
                 }
             );
         }
