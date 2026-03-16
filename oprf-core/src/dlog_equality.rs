@@ -49,6 +49,20 @@ impl fmt::Display for InvalidProof {
 impl DLogEqualityProof {
     const DLOG_DS: &[u8] = b"DLOG Equality Proof";
 
+    ///Fiat-Shamir challenge, represented as a field element.
+    #[must_use]
+    pub fn e(&self) -> BaseField {
+        self.e
+    }
+
+    /// Proof response, represented as a scalar.
+    ///
+    /// The verifier checks that it fits in the base field to avoid malleability attacks.
+    #[must_use]
+    pub fn s(&self) -> ScalarField {
+        self.s
+    }
+
     // Returns the domain separator for the query finalization as a field element
     fn get_dlog_ds() -> BaseField {
         BaseField::from_be_bytes_mod_order(Self::DLOG_DS)
