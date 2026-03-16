@@ -163,8 +163,12 @@ impl OprfServiceBuilder {
         });
 
         tracing::info!("init oprf-service...");
+        let version_str = nodes_common::version_info!();
         let root = Router::new()
-            .merge(api::health::routes(started_services.clone()))
+            .merge(nodes_common::api::routes_with_services(
+                started_services.clone(),
+                version_str,
+            ))
             .merge(api::info::routes(oprf_key_material_store.clone(), address));
 
         tokio::task::spawn({

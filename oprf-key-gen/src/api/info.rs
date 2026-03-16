@@ -1,8 +1,7 @@
 //! Info Endpoint
 //!
-//! Returns cargo package name, cargo package version, and the git hash of the repository that was used to build the binary
+//! Exposes the following API endpoints:
 //!
-//! - `/version` – returns the version string
 //! - `/wallet` – returns the wallet address
 //!
 //! The endpoints include a `Cache-Control: no-cache` header to prevent caching of responses.
