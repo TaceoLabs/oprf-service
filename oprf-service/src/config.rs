@@ -53,7 +53,7 @@ pub struct OprfNodeServiceConfig {
     ///
     /// This interval specifies how long a websocket connection is kept alive after a user initiates a session.
     ///
-    /// Defaults to `10 s`.
+    /// Defaults to `30 s`.
     #[serde(default = "OprfNodeServiceConfig::default_session_lifetime")]
     #[serde(with = "humantime_serde")]
     pub session_lifetime: Duration,

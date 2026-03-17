@@ -49,6 +49,12 @@ impl fmt::Display for InvalidProof {
 impl DLogEqualityProof {
     const DLOG_DS: &[u8] = b"DLOG Equality Proof";
 
+    /// Creates a new `DLogEqualityProof` from existing `e` and `s` values.
+    #[must_use]
+    pub fn new(e: BaseField, s: ScalarField) -> Self {
+        Self { e, s }
+    }
+
     ///Fiat-Shamir challenge, represented as a field element.
     #[must_use]
     pub fn e(&self) -> BaseField {
