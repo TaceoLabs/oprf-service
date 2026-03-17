@@ -31,7 +31,8 @@ pub struct OprfPublicKeyWithEpoch {
 }
 
 /// The name of the oprf-protocol-version header.
-pub static OPRF_PROTOCOL_VERSION_HEADER: HeaderName = http::HeaderName::from_static("version");
+pub static OPRF_PROTOCOL_VERSION_HEADER: HeaderName =
+    http::HeaderName::from_static("x-taceo-oprf-protocol-version");
 
 /// TACEO:OPRF specific websocket error codes.
 pub mod oprf_error_codes {
