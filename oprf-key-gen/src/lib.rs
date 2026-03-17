@@ -45,6 +45,7 @@ pub mod config;
 pub mod metrics;
 pub(crate) mod services;
 
+pub use nodes_common::Environment;
 pub use nodes_common::StartedServices;
 pub use services::secret_manager;
 use tokio_util::sync::CancellationToken;

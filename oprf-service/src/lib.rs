@@ -75,6 +75,7 @@ pub(crate) mod services;
 
 pub use nodes_common::Environment;
 pub use nodes_common::StartedServices;
+pub use semver::VersionReq;
 pub use services::oprf_key_material_store;
 pub use services::secret_manager;
 use tracing::instrument;
