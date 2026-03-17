@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.6.1...taceo-oprf-key-gen-v0.7.0)
+
+### 🚜 Refactor
+
+
+- Removed health/info routes and uses nodes-common - ([ac1d534](https://github.com/TaceoLabs/oprf-service/commit/ac1d534258c0675e2bd0ee4fcfbe5becdb7e21c7))
+- Use spawn_blocking over block_in_place - ([1b9350b](https://github.com/TaceoLabs/oprf-service/commit/1b9350b5e9c4ad6893e7450d0ff9c85248afc369))
+- Enabled prod level clippy lints - ([acb40ba](https://github.com/TaceoLabs/oprf-service/commit/acb40baca90e356506e936db3aa092d15c6d7504))
+- [**breaking**] Moved oprf-key-gen bin to main to have same target - ([5ef0da3](https://github.com/TaceoLabs/oprf-service/commit/5ef0da34d6f6e190e70ee165ead10f297eba69f2))
+- Refactor!(key-gen): Removed transaction handler task and use RPC provider from nodes-common ([#509](https://github.com/TaceoLabs/oprf-service/pull/509)) - ([7cd3b75](https://github.com/TaceoLabs/oprf-service/commit/7cd3b750a673405f2bf029af4cbd5176ed6b7956))
+- [**breaking**] Move from clap to config [TAC-475] ([#506](https://github.com/TaceoLabs/oprf-service/pull/506)) - ([d33a65b](https://github.com/TaceoLabs/oprf-service/commit/d33a65bdce4d3dcc7c2f4067be52313b8f470447))
+
+### 🧪 Testing
+
+
+- Updated runtime for tokio::test - ([7383204](https://github.com/TaceoLabs/oprf-service/commit/7383204fb460acdc13709c1b4fdec31077192888))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Small fixes to allow compat for downstream ([#514](https://github.com/TaceoLabs/oprf-service/pull/514)) - ([a39850d](https://github.com/TaceoLabs/oprf-service/commit/a39850de605376c0493507d958c2ae605b62e269))
+- Removed duplicate doc line - ([518e3ca](https://github.com/TaceoLabs/oprf-service/commit/518e3cae520e1368b9db405763f60c789aac6a03))
+
+
 ## [0.6.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.6.0...taceo-oprf-key-gen-v0.6.1)
 
 ### 📚 Documentation

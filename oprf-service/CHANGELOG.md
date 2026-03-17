@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.9.2...taceo-oprf-service-v0.10.0)
+
+### 🚜 Refactor
+
+
+- *(core)* [**breaking**] Enabled prod level clippy lints for core - ([52996dc](https://github.com/TaceoLabs/oprf-service/commit/52996dceac894ca3bdf7582d7e61806065790bfc))
+- *(node)* [**breaking**] Removed error type from secret-manager for retry - ([f361b04](https://github.com/TaceoLabs/oprf-service/commit/f361b045543b195468849a483ccda3d5a8c42c88))
+- *(node)* [**breaking**] Enabled prod level clippy lints for service - ([3f835a2](https://github.com/TaceoLabs/oprf-service/commit/3f835a24298aab9db54d8621cdfd9253df6cd2b0))
+- *(test-utils)* [**breaking**] Refactor service_test_secret_manager macro - ([6bd6e27](https://github.com/TaceoLabs/oprf-service/commit/6bd6e2735191746061a199759f50f0f1e166c479))
+- *(types)* [**breaking**] Enabled prod level clippy lints for types - ([7f97b0b](https://github.com/TaceoLabs/oprf-service/commit/7f97b0b53a4949bc36b022dadba6680abe9b3426))
+- Removed health/info routes and uses nodes-common - ([ac1d534](https://github.com/TaceoLabs/oprf-service/commit/ac1d534258c0675e2bd0ee4fcfbe5becdb7e21c7))
+- [**breaking**] Move from clap to config [TAC-475] ([#506](https://github.com/TaceoLabs/oprf-service/pull/506)) - ([d33a65b](https://github.com/TaceoLabs/oprf-service/commit/d33a65bdce4d3dcc7c2f4067be52313b8f470447))
+
+### 🧪 Testing
+
+
+- Updated runtime for tokio::test - ([7383204](https://github.com/TaceoLabs/oprf-service/commit/7383204fb460acdc13709c1b4fdec31077192888))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Small fixes to allow compat for downstream ([#514](https://github.com/TaceoLabs/oprf-service/pull/514)) - ([a39850d](https://github.com/TaceoLabs/oprf-service/commit/a39850de605376c0493507d958c2ae605b62e269))
+
+
 ## [0.9.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.9.1...taceo-oprf-service-v0.9.2)
 
 ### ⛰️ Features

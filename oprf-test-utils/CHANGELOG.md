@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.7.1...taceo-oprf-test-utils-v0.8.0)
+
+### 🚜 Refactor
+
+
+- *(node)* [**breaking**] Removed error type from secret-manager for retry - ([f361b04](https://github.com/TaceoLabs/oprf-service/commit/f361b045543b195468849a483ccda3d5a8c42c88))
+- *(test-utils)* [**breaking**] Refactor service_test_secret_manager macro - ([6bd6e27](https://github.com/TaceoLabs/oprf-service/commit/6bd6e2735191746061a199759f50f0f1e166c479))
+- [**breaking**] Move from clap to config [TAC-475] ([#506](https://github.com/TaceoLabs/oprf-service/pull/506)) - ([d33a65b](https://github.com/TaceoLabs/oprf-service/commit/d33a65bdce4d3dcc7c2f4067be52313b8f470447))
+
+
 ## [0.7.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.7.0...taceo-oprf-test-utils-v0.7.1)
 
 ### 📚 Documentation

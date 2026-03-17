@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.7.1...taceo-oprf-v0.8.0)
+
+### 🚜 Refactor
+
+
+- *(core)* [**breaking**] Enabled prod level clippy lints for core - ([52996dc](https://github.com/TaceoLabs/oprf-service/commit/52996dceac894ca3bdf7582d7e61806065790bfc))
+- *(types)* [**breaking**] Enabled prod level clippy lints for types - ([7f97b0b](https://github.com/TaceoLabs/oprf-service/commit/7f97b0b53a4949bc36b022dadba6680abe9b3426))
+- [**breaking**] Move from clap to config [TAC-475] ([#506](https://github.com/TaceoLabs/oprf-service/pull/506)) - ([d33a65b](https://github.com/TaceoLabs/oprf-service/commit/d33a65bdce4d3dcc7c2f4067be52313b8f470447))
+
+### 📚 Documentation
+
+
+- *(oprf)* Added docs for umbrealla crate - ([58fbc75](https://github.com/TaceoLabs/oprf-service/commit/58fbc7557f37b68f8489be9d1addd59dc8225d0f))
+
+
 ## [0.7.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.7.0...taceo-oprf-v0.7.1)
 
 ### 📚 Documentation

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.6.0...taceo-oprf-dev-client-v0.7.0)
+
+### 🚜 Refactor
+
+
+- *(core)* [**breaking**] Enabled prod level clippy lints for core - ([52996dc](https://github.com/TaceoLabs/oprf-service/commit/52996dceac894ca3bdf7582d7e61806065790bfc))
+- [**breaking**] Move from clap to config [TAC-475] ([#506](https://github.com/TaceoLabs/oprf-service/pull/506)) - ([d33a65b](https://github.com/TaceoLabs/oprf-service/commit/d33a65bdce4d3dcc7c2f4067be52313b8f470447))
+
+
 ## [0.6.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.5.0...taceo-oprf-dev-client-v0.6.0)
 
 ### 🚜 Refactor

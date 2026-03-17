@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.9.2...taceo-oprf-types-v0.10.0)
+
+### 🚜 Refactor
+
+
+- *(types)* [**breaking**] Enabled prod level clippy lints for types - ([7f97b0b](https://github.com/TaceoLabs/oprf-service/commit/7f97b0b53a4949bc36b022dadba6680abe9b3426))
+- [**breaking**] Move from clap to config [TAC-475] ([#506](https://github.com/TaceoLabs/oprf-service/pull/506)) - ([d33a65b](https://github.com/TaceoLabs/oprf-service/commit/d33a65bdce4d3dcc7c2f4067be52313b8f470447))
+
+
 ## [0.9.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.9.1...taceo-oprf-types-v0.9.2)
 
 ### ⛰️ Features
