@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.10.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.10.0...taceo-oprf-service-v0.10.1)
+
+### 🐛 Bug Fixes
+
+
+- Uses correct header name again ([#518](https://github.com/TaceoLabs/oprf-service/pull/518)) - ([4a2fd52](https://github.com/TaceoLabs/oprf-service/commit/4a2fd525d55c325456045edc1f0a86bccdb33dd1))
+
+
 ## [0.10.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.9.2...taceo-oprf-service-v0.10.0)
 
 ### 🚜 Refactor
