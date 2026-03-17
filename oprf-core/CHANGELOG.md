@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-core-v0.4.3...taceo-oprf-core-v0.5.0)
+
+### ⛰️ Features
+
+
+- Add e and s method for DLogEqualityProof - ([da0c059](https://github.com/TaceoLabs/oprf-service/commit/da0c059434d11e033c89f3b375958afa2e01dae8))
+
+### 🚜 Refactor
+
+
+- *(core)* [**breaking**] Enabled prod level clippy lints for core - ([52996dc](https://github.com/TaceoLabs/oprf-service/commit/52996dceac894ca3bdf7582d7e61806065790bfc))
+- [**breaking**] Move from clap to config [TAC-475] ([#506](https://github.com/TaceoLabs/oprf-service/pull/506)) - ([d33a65b](https://github.com/TaceoLabs/oprf-service/commit/d33a65bdce4d3dcc7c2f4067be52313b8f470447))
+
+### 📚 Documentation
+
+
+- Add performance benchmark section ([#489](https://github.com/TaceoLabs/oprf-service/pull/489)) - ([1269558](https://github.com/TaceoLabs/oprf-service/commit/12695583c783b0d373055e6147f48d06d4ad9ae3))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Small fixes to allow compat for downstream ([#514](https://github.com/TaceoLabs/oprf-service/pull/514)) - ([a39850d](https://github.com/TaceoLabs/oprf-service/commit/a39850de605376c0493507d958c2ae605b62e269))
+
+
 ## [0.4.3](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-core-v0.4.2...taceo-oprf-core-v0.4.3)
 
 ### 📚 Documentation
