@@ -379,6 +379,28 @@ async fn session_timeout_after_init_inner(format: WireFormat) -> eyre::Result<()
     Ok(())
 }
 
+/// Switch encoding between first and second round
+async fn switch_encoding_failed_inner(
+    init_format: WireFormat,
+    challenge_format: WireFormat,
+) -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let node = TestNode::start(0, &setup).await?;
+    let mut ws = node
+        .send_success_init_request(init_format, &mut rand::thread_rng())
+        .await;
+
+    let challenge = setup::random_challenge(&mut rand::thread_rng(), vec![42]);
+    let should_close_frame = CloseFrame {
+        code: close_code::UNSUPPORTED.into(),
+        reason: "unexpected message".into(),
+    };
+
+    node.challenge_expect_error(&mut ws, challenge, challenge_format, should_close_frame)
+        .await;
+    Ok(())
+}
+
 /// Test that checks that the happy path works
 async fn auth_failed_inner(format: WireFormat) -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
@@ -732,4 +754,14 @@ async fn drop_session_id_cbor() -> eyre::Result<()> {
 #[tokio::test]
 async fn drop_session_id_json() -> eyre::Result<()> {
     drop_session_id_inner(WireFormat::Json).await
+}
+
+#[tokio::test]
+async fn switch_encoding_failed_json_cbor() -> eyre::Result<()> {
+    switch_encoding_failed_inner(WireFormat::Json, WireFormat::Cbor).await
+}
+
+#[tokio::test]
+async fn switch_encoding_failed_cbor_json() -> eyre::Result<()> {
+    switch_encoding_failed_inner(WireFormat::Cbor, WireFormat::Json).await
 }
