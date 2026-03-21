@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.11.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.10.1...taceo-oprf-service-v0.11.0)
+
+### ⛰️ Features
+
+
+- Feat(service,types)! added more fine-grained error codes - ([a8b95dd](https://github.com/TaceoLabs/oprf-service/commit/a8b95ddd3ea3b6df67f5b1e8f182a73a699f18ed))
+
+
 ## [0.10.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.10.0...taceo-oprf-service-v0.10.1)
 
 ### 🐛 Bug Fixes
