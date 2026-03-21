@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.9.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.9.0...taceo-oprf-client-v0.9.1)
+
+### ⛰️ Features
+
+
+- *(client)* Updated client to digest new closecodes - ([9c33cd6](https://github.com/TaceoLabs/oprf-service/commit/9c33cd640276f61836cb66db2cd1d00b4a70018e))
+
+
 ## [0.9.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.8.1...taceo-oprf-client-v0.9.0)
 
 ### 🚜 Refactor

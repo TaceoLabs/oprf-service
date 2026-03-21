@@ -1,6 +1,6 @@
 [package]
 name = "taceo-oprf-key-gen"
-version = "0.7.1"
+version = "0.7.2"
 edition.workspace = true
 rust-version.workspace = true
 description = "TACEO:OPRF Distributed Key Generation Protocol."
@@ -46,7 +46,7 @@ nodes-common = { workspace = true, features = [
 ] }
 nodes-observability = { workspace = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.10" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.11" }
 rand.workspace = true
 reqwest = { workspace = true, features = ["json"] }
 rustls = { workspace = true }
