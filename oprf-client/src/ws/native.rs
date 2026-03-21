@@ -128,6 +128,7 @@ impl WebSocketSession {
                     Err(NodeError::ServiceError(ServiceError {
                         error_code: u16::from(frame.code),
                         msg: (!frame.reason.is_empty()).then(|| frame.reason.to_string()),
+                        kind: oprf_types::api::OprfErrorKind::from(u16::from(frame.code)),
                     }))
                 } else {
                     Err(NodeError::UnexpectedMessage {

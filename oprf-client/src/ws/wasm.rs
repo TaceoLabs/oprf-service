@@ -34,6 +34,10 @@ impl WebSocketSession {
     /// Creates a new session at the provided endpoint.
     ///
     /// Expects a valid `ws://` or `wss://` URI  
+    #[allow(
+        clippy::unused_async,
+        reason = "Want to have async to have equivalent signature with native"
+    )]
     pub(crate) async fn new(endpoint: Uri, _connector: Connector) -> Result<Self, NodeError> {
         let version = env!("CARGO_PKG_VERSION");
         let has_query = endpoint.query().is_some();
@@ -93,15 +97,16 @@ impl WebSocketSession {
             }
             Some(Err(WebSocketError::ConnectionClose(event))) => {
                 tracing::trace!("did get close frame: code={}", event.code);
-                if event.code != CLOSE_CODE_NORMAL {
-                    Err(NodeError::ServiceError(ServiceError {
-                        error_code: event.code,
-                        msg: (!event.reason.is_empty()).then(|| event.reason),
-                    }))
-                } else {
+                if event.code == CLOSE_CODE_NORMAL {
                     Err(NodeError::UnexpectedMessage {
                         reason: "Server closed websocket".to_owned(),
                     })
+                } else {
+                    Err(NodeError::ServiceError(ServiceError {
+                        error_code: event.code,
+                        msg: (!event.reason.is_empty()).then_some(event.reason),
+                        kind: oprf_types::api::OprfErrorKind::from(event.code),
+                    }))
                 }
             }
             Some(Err(e)) => Err(NodeError::WsError(Box::new(std::io::Error::other(
@@ -116,6 +121,7 @@ impl WebSocketSession {
     /// Gracefully closes the web-socket.
     pub(crate) async fn graceful_close(mut self) {
         // Close the sink, which triggers the browser's WebSocket close handshake.
-        let _ = self.write.close().await;
+        // We ignore the result as this is best effort close anyways.
+        let _result = self.write.close().await;
     }
 }

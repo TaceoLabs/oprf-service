@@ -32,7 +32,11 @@ use oprf_core::{
     dlog_equality::DLogEqualityProof,
     oprf::{BlindedOprfRequest, BlindedOprfResponse, BlindingFactor},
 };
-use oprf_types::{ShareEpoch, api::OprfRequest, crypto::OprfPublicKey};
+use oprf_types::{
+    ShareEpoch,
+    api::{OprfErrorKind, OprfRequest},
+    crypto::OprfPublicKey,
+};
 use serde::Serialize;
 use tracing::instrument;
 use uuid::Uuid;
@@ -187,6 +191,17 @@ pub struct ServiceError {
     pub error_code: u16,
     /// An optional message recorded from the close frame. Intended for debugging and not to show to the user.
     pub msg: Option<String>,
+    /// The [`OprfErrorKind`] classification derived from the WebSocket close code.
+    /// Use this for programmatic error handling instead of matching on raw `error_code`.
+    pub kind: OprfErrorKind,
+}
+
+impl ServiceError {
+    /// Returns `true` if this error was returned by the [`OprfRequestAuthenticator`](oprf_types::api::OprfRequestAuthenticator) (close code 4500–4999).
+    #[must_use]
+    pub fn is_auth(&self) -> bool {
+        self.kind.is_auth()
+    }
 }
 
 impl core::error::Error for ServiceError {}
@@ -507,22 +522,29 @@ mod tests {
         let err_a1 = NodeError::ServiceError(ServiceError {
             error_code: 1,
             msg: Some("A".into()),
+            kind: OprfErrorKind::Unknown,
         });
         let err_a2 = NodeError::ServiceError(ServiceError {
             error_code: 1,
             msg: Some("A".into()),
+            kind: OprfErrorKind::Unknown,
         });
         let err_b = NodeError::ServiceError(ServiceError {
             error_code: 2,
             msg: Some("B".into()),
+            kind: OprfErrorKind::Unknown,
         });
 
         let errors = vec![err_a1, err_a2, err_b];
-        if let Error::ThresholdServiceError(ServiceError { error_code, msg }) =
-            aggregate_error(2, errors)
+        if let Error::ThresholdServiceError(ServiceError {
+            error_code,
+            msg,
+            kind: typed_error,
+        }) = aggregate_error(2, errors)
         {
             assert_eq!(error_code, 1);
             assert_eq!(msg.expect("Should have a message"), "A");
+            assert_eq!(typed_error, OprfErrorKind::Unknown);
         } else {
             panic!("did not receive service error but expected it");
         }
@@ -560,6 +582,7 @@ mod tests {
             NodeError::ServiceError(ServiceError {
                 error_code: 1,
                 msg: Some("A".into()),
+                kind: OprfErrorKind::Unknown,
             }),
             NodeError::WsError(ws2),
             NodeError::UnexpectedMessage {
@@ -585,10 +608,12 @@ mod tests {
             NodeError::ServiceError(ServiceError {
                 error_code: 1,
                 msg: Some("A".into()),
+                kind: OprfErrorKind::Unknown,
             }),
             NodeError::ServiceError(ServiceError {
                 error_code: 2,
                 msg: Some("B".into()),
+                kind: OprfErrorKind::Unknown,
             }),
             NodeError::UnexpectedMessage {
                 reason: "oops".into(),
