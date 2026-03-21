@@ -121,6 +121,7 @@ check-pr: lint all-tests
 lint:
     cargo fmt --all -- --check
     cargo clippy --workspace --tests --examples --benches --bins -q -- -D warnings
+    cargo clippy -p taceo-oprf-client --target wasm32-unknown-unknown -q -- -D warnings
     cargo clippy --workspace --tests --examples --benches --bins -q --all-features -- -D warnings
     RUSTDOCFLAGS='-D warnings' cargo doc --workspace -q --no-deps --document-private-items
     cd contracts && forge fmt
