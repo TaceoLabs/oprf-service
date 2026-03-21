@@ -36,18 +36,18 @@ use uuid::Uuid;
 
 use tracing::{Instrument, instrument};
 
-pub(crate) struct OprfModuleState<ReqAuth, ReqAuthError> {
+pub(crate) struct OprfModuleState<ReqAuth> {
     pub(crate) party_id: PartyId,
     pub(crate) threshold: usize,
     pub(crate) oprf_material_store: OprfKeyMaterialStore,
     pub(crate) open_sessions: OpenSessions,
-    pub(crate) req_auth_service: OprfRequestAuthService<ReqAuth, ReqAuthError>,
+    pub(crate) req_auth_service: OprfRequestAuthService<ReqAuth>,
     pub(crate) version_req: VersionReq,
     pub(crate) max_message_size: usize,
     pub(crate) max_connection_lifetime: Duration,
 }
 
-impl<ReqAuth, ReqAuthError> Clone for OprfModuleState<ReqAuth, ReqAuthError> {
+impl<ReqAuth> Clone for OprfModuleState<ReqAuth> {
     fn clone(&self) -> Self {
         Self {
             party_id: self.party_id,
@@ -108,11 +108,8 @@ enum HumanReadable {
 ///
 /// See [`partial_oprf`] for the flow of the web-socket connection. If the session finishes successfully, encounters an error, the user closes the connection, or we run into a timeout, the implementation will try to initiate a graceful shutdown of the web-socket connection (closing handshake). We do this on a best-effort basis but are very restrictive on what we expect. We close any session that sends invalid requests/authentication. If sending the `Close` frame fails, we simply ignore the error and destruct everything associated with the session.
 #[instrument(level = "debug", skip_all,name="request", fields(client_version=tracing::field::Empty))]
-async fn oprf_ws_handler<
-    ReqAuth: for<'de> Deserialize<'de> + Send + 'static,
-    ReqAuthError: Send + 'static + std::error::Error,
->(
-    State(state): State<OprfModuleState<ReqAuth, ReqAuthError>>,
+async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
+    State(state): State<OprfModuleState<ReqAuth>>,
     websocket_upgrade: WebSocketUpgrade,
     header_version: Option<TypedHeader<ProtocolVersion>>,
     query_version: Query<ProtocolVersionQuery>,
@@ -132,7 +129,7 @@ async fn oprf_ws_handler<
                 async move {
                     let close_frame = match tokio::time::timeout(
                         state.max_connection_lifetime,
-                        partial_oprf::<ReqAuth, ReqAuthError>(
+                        partial_oprf::<ReqAuth>(
                             &mut ws,
                             state.party_id,
                             state.threshold,
@@ -189,16 +186,13 @@ async fn oprf_ws_handler<
 ///
 /// Clients may and will close the connection at any point because they only need `threshold` amount of sessions, therefore it is very much expected that sane clients send a `Close` frame at any point (or simply drop the connection). This method handles this gracefully at any point.
 #[instrument(level="debug", skip_all, fields(request_id=tracing::field::Empty, oprf_key_id=tracing::field::Empty))]
-async fn partial_oprf<
-    ReqAuth: for<'de> Deserialize<'de> + Send + 'static,
-    ReqAuthError: Send + 'static + std::error::Error,
->(
+async fn partial_oprf<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     socket: &mut WebSocket,
     party_id: PartyId,
     threshold: usize,
     open_sessions: OpenSessions,
     oprf_material_store: OprfKeyMaterialStore,
-    req_auth_service: OprfRequestAuthService<ReqAuth, ReqAuthError>,
+    req_auth_service: OprfRequestAuthService<ReqAuth>,
 ) -> Result<(), Error> {
     tracing::trace!("> new oprf session - reading request...");
     ::metrics::counter!(METRICS_ID_NODE_PART_1_START).increment(1);
@@ -247,34 +241,23 @@ async fn partial_oprf<
 }
 
 #[instrument(level = "debug", skip_all)]
-async fn init_session<
-    ReqAuth: for<'de> Deserialize<'de> + Send + 'static,
-    ReqAuthError: Send + 'static + std::error::Error,
->(
+async fn init_session<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     init_request: OprfRequest<ReqAuth>,
     party_id: PartyId,
-    req_auth_service: &OprfRequestAuthService<ReqAuth, ReqAuthError>,
+    req_auth_service: &OprfRequestAuthService<ReqAuth>,
     oprf_material_store: &OprfKeyMaterialStore,
 ) -> Result<(OprfSession, OprfResponse), Error> {
     let start_part_one = Instant::now();
     tracing::trace!("checking that blinded query is not zero...");
     // check that blinded query (B) is not the identity element
     if init_request.blinded_query.is_zero() {
-        return Err(Error::BadRequest(
-            "blinded query must not be identity".to_owned(),
-        ));
+        return Err(Error::BlindedQueryIsIdentity);
     }
 
     tracing::debug!("verifying request with auth service...");
     ::metrics::counter!(METRICS_ID_NODE_REQUEST_AUTH_START).increment(1);
     let start_verify = Instant::now();
-    let oprf_key_id = req_auth_service
-        .authenticate(&init_request)
-        .await
-        .map_err(|err| {
-            tracing::debug!("Could not auth request: {err:?}");
-            Error::Auth(err.to_string())
-        })?;
+    let oprf_key_id = req_auth_service.authenticate(&init_request).await?;
     let duration_verify = start_verify.elapsed();
     ::metrics::counter!(METRICS_ID_NODE_REQUEST_AUTH_VERIFIED).increment(1);
     ::metrics::histogram!(METRICS_ID_NODE_REQUEST_VERIFY_DURATION)
@@ -308,27 +291,22 @@ async fn challenge(
     let coeffs = challenge.get_contributing_parties();
     let num_coeffs = coeffs.len();
     if num_coeffs != threshold {
-        return Err(Error::BadRequest(format!(
-            "expected {threshold} contributing parties but got {num_coeffs}",
-        )));
+        return Err(Error::ThresholdContributingPartiesMissmatch {
+            threshold,
+            num_coeffs,
+        });
     }
     let my_coeff = party_id.into_inner() + 1;
     if !coeffs.contains(&my_coeff) {
-        return Err(Error::BadRequest(format!(
-            "contributing parties does not contain my coefficient ({my_coeff})",
-        )));
+        return Err(Error::MissingMyCoefficient);
     }
     let mut unique_coeffs = coeffs.to_vec();
     if !unique_coeffs.is_sorted() {
-        return Err(Error::BadRequest(
-            "contributing parties are not sorted".to_owned(),
-        ));
+        return Err(Error::ContributionsNotSorted);
     }
     unique_coeffs.dedup();
     if unique_coeffs.len() != num_coeffs {
-        return Err(Error::BadRequest(
-            "contributing parties contains duplicate coefficients".to_owned(),
-        ));
+        return Err(Error::DuplicateCoefficients);
     }
 
     tracing::debug!("finalizing session...");
@@ -404,11 +382,8 @@ fn parse_client_header(
 /// The clients will upgrade their connection via the web-socket upgrade protocol. Axum basically supports HTTP/1.1 and HTTP/2.0 web-socket connections, therefore we accept connections with `any`.
 ///
 /// If you want to enable HTTP/2.0, you either have to do it by hand or by calling `axum::serve`, which enabled HTTP/2.0 by default. Have a look at [Axum's HTTP2.0 example](https://github.com/tokio-rs/axum/blob/aeff16e91af6fa76efffdee8f3e5f464b458785b/examples/websockets-http2/src/main.rs#L57).
-pub fn routes<
-    ReqAuth: for<'de> Deserialize<'de> + Send + 'static,
-    ReqAuthError: Send + 'static + std::error::Error,
->(
-    args: OprfModuleState<ReqAuth, ReqAuthError>,
+pub fn routes<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
+    args: OprfModuleState<ReqAuth>,
 ) -> Router {
     Router::new()
         .route("/oprf", any(oprf_ws_handler))

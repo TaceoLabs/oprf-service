@@ -1,6 +1,5 @@
 use std::{sync::Arc, time::Duration};
 
-use axum::extract::ws::close_code;
 use http::StatusCode;
 use oprf_core::ddlog_equality::shamir::DLogProofShareShamir;
 use oprf_test_utils::{
@@ -12,10 +11,12 @@ use oprf_types::{
     api::{OprfResponse, oprf_error_codes},
 };
 use serde::{Deserialize, Serialize};
-use tungstenite::protocol::CloseFrame;
+use tungstenite::protocol::{CloseFrame, frame::coding::CloseCode};
 use uuid::Uuid;
 
-use crate::setup::{TEST_PROTOCOL_VERSION, TestNode, WireFormat};
+use crate::setup::{
+    INVALID_AUTH_CODE, INVALID_AUTH_MSG, TEST_PROTOCOL_VERSION, TestNode, WireFormat,
+};
 
 mod setup;
 
@@ -310,6 +311,42 @@ async fn session_timeout_no_message() -> eyre::Result<()> {
     Ok(())
 }
 
+/// Test that sending a message that exceeds the maximum allowed size returns the correct close code.
+async fn message_too_large_inner(format: WireFormat) -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let node = TestNode::start(0, &setup).await?;
+    let mut ws = node
+        .server
+        .get_websocket("/api/test/oprf")
+        .add_header(
+            oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
+            setup::TEST_PROTOCOL_VERSION,
+        )
+        .await
+        .into_websocket()
+        .await;
+
+    let oversized_payload = vec![0u8; 2048];
+    let msg = match format {
+        WireFormat::Json => tungstenite::Message::Text(
+            String::from_utf8_lossy(&oversized_payload)
+                .to_string()
+                .into(),
+        ),
+        WireFormat::Cbor => tungstenite::Message::Binary(oversized_payload.into()),
+    };
+    ws.send_message(msg).await;
+
+    let should_close_frame = CloseFrame {
+        code: CloseCode::Size,
+        reason: "size exceeds max frame length".into(),
+    };
+    let is_message = ws.receive_message().await;
+    setup::assert_close_frame(is_message, should_close_frame);
+
+    Ok(())
+}
+
 /// Test that checks that the happy path works
 async fn happy_path_inner(format: WireFormat) -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
@@ -387,8 +424,8 @@ async fn auth_failed_inner(format: WireFormat) -> eyre::Result<()> {
     request.auth = setup::ConfigurableTestRequestAuth(OprfKeyId::from(123_usize));
 
     let should_close_frame = CloseFrame {
-        code: close_code::POLICY.into(),
-        reason: "invalid".into(),
+        code: CloseCode::from(INVALID_AUTH_CODE),
+        reason: INVALID_AUTH_MSG.into(),
     };
     node.init_expect_error(&request, format, should_close_frame)
         .await;
@@ -407,7 +444,7 @@ async fn delete_oprf_key_inner(format: WireFormat) -> eyre::Result<()> {
     // check that we can't query the key any longer
     node.doesnt_have_key(key_id).await?;
     let should_close_frame = CloseFrame {
-        code: oprf_error_codes::BAD_REQUEST.into(),
+        code: oprf_error_codes::UNKNOWN_OPRF_KEY_ID.into(),
         reason: "unknown OPRF key id".into(),
     };
 
@@ -429,15 +466,14 @@ async fn init_session_reuse_inner(format: WireFormat) -> eyre::Result<()> {
     let request0 = setup::request(&mut rand::thread_rng());
     let mut request1 = setup::request(&mut rand::thread_rng());
     request1.request_id = request0.request_id;
-    let session = request0.request_id;
 
     let mut ws0 = node.send_request(request0, format).await;
     // can deserialize success message
     let _ = setup::ws_recv::<OprfResponse>(&mut ws0, format).await;
 
     let should_close_frame = CloseFrame {
-        code: close_code::POLICY.into(),
-        reason: format!("session {session} already exists").into(),
+        code: oprf_error_codes::SESSION_REUSE.into(),
+        reason: "session already in use".into(),
     };
     node.init_expect_error(request1, format, should_close_frame)
         .await;
@@ -454,7 +490,7 @@ async fn init_bad_blinded_query_inner(format: WireFormat) -> eyre::Result<()> {
     request.blinded_query = ark_babyjubjub::EdwardsAffine::zero();
 
     let should_close_frame = CloseFrame {
-        code: oprf_error_codes::BAD_REQUEST.into(),
+        code: oprf_error_codes::BLINDED_QUERY_IS_IDENTITY.into(),
         reason: "blinded query must not be identity".into(),
     };
 
@@ -485,16 +521,17 @@ async fn init_bad_request_inner(format: WireFormat) -> eyre::Result<()> {
         .await;
     setup::ws_send(&mut ws, &BadRequest::default(), format).await;
     let is_message = ws.receive_message().await;
-    // slightly different error messages for json/cbor there we can't use oprf_expect_error
     match is_message {
         tungstenite::Message::Close(Some(is_close_frame)) => {
-            assert_eq!(is_close_frame.code, oprf_error_codes::BAD_REQUEST.into());
-            assert!(
-                is_close_frame
-                    .reason
-                    .to_string()
-                    .contains("missing field `request_id`")
+            assert_eq!(
+                is_close_frame.code,
+                oprf_error_codes::CORRUPTED_MESSAGE.into()
             );
+            let expected_reason = match format {
+                WireFormat::Json => "invalid json",
+                WireFormat::Cbor => "invalid cbor",
+            };
+            assert_eq!(is_close_frame.reason.to_string(), expected_reason);
         }
         _ => panic!("unexpected message - expected CloseFrame"),
     }
@@ -517,16 +554,17 @@ async fn challenge_bad_request_inner(format: WireFormat) -> eyre::Result<()> {
 
     setup::ws_send(&mut ws, &BadRequest::default(), format).await;
     let is_message = ws.receive_message().await;
-    // slightly different error messages for json/cbor there we can't use oprf_expect_error
     match is_message {
         tungstenite::Message::Close(Some(is_close_frame)) => {
-            assert_eq!(is_close_frame.code, oprf_error_codes::BAD_REQUEST.into());
-            assert!(
-                is_close_frame
-                    .reason
-                    .to_string()
-                    .contains("missing field `c`")
+            assert_eq!(
+                is_close_frame.code,
+                oprf_error_codes::CORRUPTED_MESSAGE.into()
             );
+            let expected_reason = match format {
+                WireFormat::Json => "invalid json",
+                WireFormat::Cbor => "invalid cbor",
+            };
+            assert_eq!(is_close_frame.reason.to_string(), expected_reason);
         }
         _ => panic!("unexpected message - expected CloseFrame"),
     }
@@ -543,8 +581,8 @@ async fn challenge_bad_contributing_parties_inner(format: WireFormat) -> eyre::R
     let challenge = setup::random_challenge(&mut rng, vec![42]);
 
     let should_close_frame = CloseFrame {
-        code: oprf_error_codes::BAD_REQUEST.into(),
-        reason: "expected 2 contributing parties but got 1".into(),
+        code: oprf_error_codes::COEFFICIENTS_DOES_NOT_EQUAL_THRESHOLD.into(),
+        reason: "not exactly threshold many contributions".into(),
     };
 
     node.challenge_expect_error(&mut ws, challenge, format, should_close_frame)
@@ -563,8 +601,8 @@ async fn challenge_challenge_not_contributing_party_inner(format: WireFormat) ->
     let challenge = setup::random_challenge(&mut rng, vec![2, 3]);
 
     let should_close_frame = CloseFrame {
-        code: oprf_error_codes::BAD_REQUEST.into(),
-        reason: "contributing parties does not contain my coefficient (1)".into(),
+        code: oprf_error_codes::MISSING_MY_COEFFICIENT.into(),
+        reason: "contributing parties does not contain my coefficient".into(),
     };
 
     node.challenge_expect_error(&mut ws, challenge, format, should_close_frame)
@@ -582,7 +620,7 @@ async fn challenge_contributing_parties_not_sorted_inner(format: WireFormat) -> 
     let challenge = setup::random_challenge(&mut rng, vec![3, 1]);
 
     let should_close_frame = CloseFrame {
-        code: oprf_error_codes::BAD_REQUEST.into(),
+        code: oprf_error_codes::UNSORTED_CONTRIBUTING_PARTIES.into(),
         reason: "contributing parties are not sorted".into(),
     };
 
@@ -600,7 +638,7 @@ async fn challenge_duplicate_contributions_inner(format: WireFormat) -> eyre::Re
     let challenge = setup::random_challenge(&mut rng, vec![1, 1]);
 
     let should_close_frame = CloseFrame {
-        code: oprf_error_codes::BAD_REQUEST.into(),
+        code: oprf_error_codes::DUPLICATE_COEFFICIENT.into(),
         reason: "contributing parties contains duplicate coefficients".into(),
     };
 
@@ -732,4 +770,14 @@ async fn drop_session_id_cbor() -> eyre::Result<()> {
 #[tokio::test]
 async fn drop_session_id_json() -> eyre::Result<()> {
     drop_session_id_inner(WireFormat::Json).await
+}
+
+#[tokio::test]
+async fn message_too_large_json() -> eyre::Result<()> {
+    message_too_large_inner(WireFormat::Json).await
+}
+
+#[tokio::test]
+async fn message_too_large_cbor() -> eyre::Result<()> {
+    message_too_large_inner(WireFormat::Cbor).await
 }

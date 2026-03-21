@@ -237,13 +237,10 @@ impl OprfServiceBuilder {
     /// - `path`: The URL path where the OPRF module will be accessible (`/api/{path}`).
     /// - `service`: An instance of `OprfRequestAuthService` that will handle authentication for this module.
     #[must_use]
-    pub fn module<
-        RequestAuth: for<'de> Deserialize<'de> + Send + 'static,
-        RequestAuthError: Send + 'static + std::error::Error,
-    >(
+    pub fn module<RequestAuth: for<'de> Deserialize<'de> + Send + 'static>(
         mut self,
         path: &str,
-        service: OprfRequestAuthService<RequestAuth, RequestAuthError>,
+        service: OprfRequestAuthService<RequestAuth>,
     ) -> Self {
         let args = Router::new().merge(self.api).nest(
             path,

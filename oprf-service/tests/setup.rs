@@ -12,6 +12,7 @@ use oprf_test_utils::{
     PEER_PRIVATE_KEYS, TEST_TIMEOUT, TestSetup, oprf_node_test_secret_manager,
     test_secret_manager::TestSecretManager,
 };
+use oprf_types::api::OprfRequestAuthenticatorError;
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     api::{OprfPublicKeyWithEpoch, OprfRequest, OprfRequestAuthenticator, OprfResponse},
@@ -26,6 +27,8 @@ use uuid::Uuid;
 
 pub const OPRF_KEY_ID: u32 = 42;
 pub const TEST_PROTOCOL_VERSION: &str = "1.3.101";
+pub const INVALID_AUTH_CODE: u16 = 4500;
+pub const INVALID_AUTH_MSG: &str = "invalid auth";
 
 oprf_node_test_secret_manager!(
     taceo_oprf_service::secret_manager::SecretManager,
@@ -41,28 +44,24 @@ pub enum WireFormat {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ConfigurableTestRequestAuth(pub OprfKeyId);
 
-#[derive(Debug, thiserror::Error)]
-#[allow(unused)]
-pub enum TestError {
-    #[error("invalid")]
-    Invalid,
-}
 pub struct ConfigurableTestAuthenticator;
 
 #[async_trait]
 impl OprfRequestAuthenticator for ConfigurableTestAuthenticator {
     type RequestAuth = ConfigurableTestRequestAuth;
-    type RequestAuthError = TestError;
 
     async fn authenticate(
         &self,
         request: &OprfRequest<Self::RequestAuth>,
-    ) -> Result<OprfKeyId, Self::RequestAuthError> {
+    ) -> Result<OprfKeyId, OprfRequestAuthenticatorError> {
         let ConfigurableTestRequestAuth(oprf_key_id) = &request.auth;
         if *oprf_key_id == OprfKeyId::from(OPRF_KEY_ID) {
             Ok(*oprf_key_id)
         } else {
-            Err(TestError::Invalid)
+            Err(OprfRequestAuthenticatorError::with_message(
+                INVALID_AUTH_CODE,
+                oprf_types::close_frame_message!(INVALID_AUTH_MSG),
+            ))
         }
     }
 }
