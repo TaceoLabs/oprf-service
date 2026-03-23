@@ -39,7 +39,7 @@ impl PostgresSecretManager {
     ///
     /// # Errors
     /// Returns an error if creating the database pool fails or if running the migrations fails.
-    #[instrument(level = "info", skip_all)]
+    #[instrument(level = "debug", skip_all)]
     pub async fn init(
         db_config: &PostgresConfig,
         aws_config: aws_config::SdkConfig,
@@ -65,7 +65,6 @@ impl PostgresSecretManager {
 
 #[async_trait]
 impl SecretManager for PostgresSecretManager {
-    #[instrument(level = "info", skip_all)]
     async fn load_or_insert_wallet_private_key(&self) -> eyre::Result<PrivateKeySigner> {
         // load or insert the key with the secret-manager
         // has internal backoff strategy, therefore we don't need to wrap this manually.
@@ -74,7 +73,7 @@ impl SecretManager for PostgresSecretManager {
             &self.wallet_private_key_secret_id,
         )
         .await?;
-        tracing::debug!("insert address into DB...");
+        tracing::trace!("insert address into DB...");
         // insert address into postgres DB
         (|| {
             sqlx::query(
@@ -96,7 +95,6 @@ impl SecretManager for PostgresSecretManager {
         })
         .await
         .context("while storing address into DB")?;
-        tracing::info!("stored address in DB");
         Ok(private_key)
     }
 
@@ -108,13 +106,12 @@ impl SecretManager for PostgresSecretManager {
         Ok(())
     }
 
-    #[instrument(level = "info", skip_all, fields(oprf_key_id, generated_epoch))]
     async fn get_share_by_epoch(
         &self,
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
     ) -> eyre::Result<Option<DLogShareShamir>> {
-        tracing::debug!("loading share...");
+        tracing::trace!("loading share...");
         let maybe_share_bytes: Option<Vec<u8>> = (|| {
             sqlx::query_scalar(
                 "
@@ -144,14 +141,13 @@ impl SecretManager for PostgresSecretManager {
                     .context("Cannot deserialize share: DB not sane")?,
             ))
         } else {
-            tracing::debug!("Cannot find share for requested key and epoch");
+            tracing::trace!("Cannot find share for requested key and epoch");
             Ok(None)
         }
     }
 
-    #[instrument(level = "info", skip_all, fields(oprf_key_id))]
     async fn remove_oprf_key_material(&self, oprf_key_id: OprfKeyId) -> eyre::Result<()> {
-        tracing::debug!("trying to delete key-material..");
+        tracing::trace!("trying to delete key-material..");
         let rows_deleted = (|| {
             sqlx::query(
                 "
@@ -175,11 +171,10 @@ impl SecretManager for PostgresSecretManager {
         .with_context(|| format!("while deleting key-share {oprf_key_id}"))?
         .rows_affected();
 
-        tracing::info!("deleted {rows_deleted} secrets from postgres");
+        tracing::trace!("deleted {rows_deleted} secrets from postgres");
         Ok(())
     }
 
-    #[instrument(level = "info", skip_all, fields(oprf_key_id, epoch))]
     async fn store_dlog_share(
         &self,
         oprf_key_id: OprfKeyId,
@@ -187,7 +182,7 @@ impl SecretManager for PostgresSecretManager {
         epoch: ShareEpoch,
         share: DLogShareShamir,
     ) -> eyre::Result<()> {
-        tracing::info!("storing share...");
+        tracing::trace!("storing share...");
 
         let success = (|| {
             sqlx::query(
@@ -225,7 +220,7 @@ impl SecretManager for PostgresSecretManager {
                 "Did not insert anything, maybe someone else stored something with later epoch?"
             );
         } else {
-            tracing::info!("successfully stored {oprf_key_id}");
+            tracing::trace!("successfully stored {oprf_key_id}");
         }
         Ok(())
     }

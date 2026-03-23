@@ -37,7 +37,6 @@ use oprf_types::{
     },
 };
 use rand::{CryptoRng, Rng};
-use tracing::instrument;
 use zeroize::ZeroizeOnDrop;
 
 #[cfg(test)]
@@ -190,13 +189,13 @@ impl DLogSecretGenService {
     /// * Any finished shares that wait for finalize from all nodes
     pub(crate) fn delete_oprf_key_material(&mut self, oprf_key_id: OprfKeyId) {
         if self.toxic_waste_round1.remove(&oprf_key_id).is_some() {
-            tracing::debug!("removed {oprf_key_id:?} toxic waste round 1");
+            tracing::trace!("removed {oprf_key_id:?} toxic waste round 1");
         }
         if self.toxic_waste_round2.remove(&oprf_key_id).is_some() {
-            tracing::debug!("removed {oprf_key_id:?} toxic waste round 2");
+            tracing::trace!("removed {oprf_key_id:?} toxic waste round 2");
         }
         if self.finished_shares.remove(&oprf_key_id).is_some() {
-            tracing::debug!("removed {oprf_key_id:?} finished share");
+            tracing::trace!("removed {oprf_key_id:?} finished share");
         }
     }
 
@@ -208,13 +207,12 @@ impl DLogSecretGenService {
     /// # Arguments
     /// * `oprf_key_id` - Identifier of the OPRF key that we generate.
     /// * `threshold` - The threshold of the MPC-protocol.
-    #[instrument(level = "info", skip(self))]
     pub(crate) fn key_gen_round1(
         &mut self,
         oprf_key_id: OprfKeyId,
         threshold: u16,
     ) -> SecretGenRound1Contribution {
-        tracing::info!("secret gen round1..");
+        tracing::trace!("secret gen round1..");
         let mut rng = rand::thread_rng();
         let degree = usize::from(threshold - 1);
         let toxic_waste = ToxicWasteRound1::new(degree, &mut rng);
@@ -260,7 +258,6 @@ impl DLogSecretGenService {
     /// * `ciphers` - Ciphertexts received from other parties in round 2.
     /// * `sharing_type` - Defines how the resulting share is secret-shared. `Linear` for key-gen, `Shamir` for reshare.
     /// * `pks` - The ephemeral public-keys of the producers needed for DHE.
-    #[instrument(level = "info", skip_all, fields(oprf_key_id=%oprf_key_id))]
     pub(crate) fn round3(
         &mut self,
         oprf_key_id: OprfKeyId,
@@ -268,7 +265,7 @@ impl DLogSecretGenService {
         sharing_type: Contributions,
         pks: &[EphemeralEncryptionPublicKey],
     ) -> eyre::Result<SecretGenRound3Contribution> {
-        tracing::info!("calling round3 with {}", ciphers.len());
+        tracing::trace!("calling round3 with {}", ciphers.len());
         let toxic_waste_r2 = self
             .toxic_waste_round2
             .remove(&oprf_key_id)
@@ -286,7 +283,6 @@ impl DLogSecretGenService {
     /// # Arguments
     /// * `oprf_key_id` - Identifier of the RP for which the secret is being finalized.
     pub(crate) fn finalize(&mut self, oprf_key_id: OprfKeyId) -> eyre::Result<DLogShareShamir> {
-        tracing::info!("finalize..");
         self.finished_shares
             .remove(&oprf_key_id)
             .context("cannot find computed DLogShare")
@@ -307,7 +303,6 @@ impl DLogSecretGenService {
         threshold: u16,
         old_share: DLogShareShamir,
     ) -> SecretGenRound1Contribution {
-        tracing::info!("reshare round1..");
         let mut rng = rand::thread_rng();
         let degree = usize::from(threshold - 1);
         let toxic_waste = ToxicWasteRound1::reshare(old_share, degree, &mut rng);
@@ -345,7 +340,7 @@ impl DLogSecretGenService {
         oprf_key_id: OprfKeyId,
         rng: &mut R,
     ) -> EphemeralEncryptionPublicKey {
-        tracing::debug!("computing ephemeral encryption key");
+        tracing::trace!("computing ephemeral encryption key");
         let sk = EphemeralEncryptionPrivateKey::generate(rng);
         let pk = sk.get_public_key();
         if self
@@ -362,13 +357,13 @@ impl DLogSecretGenService {
     ///
     /// Only relevant for reshare as everyone is a producer in key-gen. A consuming node simply drops the polynomial it created in round1 if it created one in round 1.
     pub(crate) fn consumer_round2(&mut self, oprf_key_id: OprfKeyId) {
-        tracing::debug!("reverting reshare...");
+        tracing::trace!("reverting reshare...");
         if let Some(toxic_waste_round1) = self.toxic_waste_round1.remove(&oprf_key_id) {
             self.toxic_waste_round2
                 .insert(oprf_key_id, toxic_waste_round1.next());
-            tracing::debug!("tried to be a producer in round 2 - dropping polynomial");
+            tracing::trace!("tried to be a producer in round 2 - dropping polynomial");
         } else {
-            tracing::debug!("nothing to do as registered as consumer in round1");
+            tracing::trace!("nothing to do as registered as consumer in round1");
         }
     }
 }

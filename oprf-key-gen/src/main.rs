@@ -73,6 +73,7 @@ async fn run() -> eyre::Result<()> {
     // Load AWS config from environment
     let aws_config = aws_config::load_from_env().await;
 
+    tracing::info!("starting Postgres secret-manager...");
     // Load the Postgres secret manager.
     let secret_manager = Arc::new(
         PostgresSecretManager::init(

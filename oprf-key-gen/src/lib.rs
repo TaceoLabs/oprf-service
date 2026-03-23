@@ -155,7 +155,6 @@ pub async fn start(
     );
     tracing::info!("we are party id: {party_id}");
 
-    tracing::info!("init dlog secret gen service..");
     let key_gen_material = tokio::task::spawn_blocking(move || {
         CircomGroth16MaterialBuilder::new()
             .bbf_inv()

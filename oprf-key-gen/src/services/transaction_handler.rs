@@ -95,7 +95,7 @@ impl TransactionHandler {
             .await
         {
             let balance_eth = alloy::primitives::utils::format_ether(balance);
-            tracing::debug!("current wallet balance: {balance_eth} ETH",);
+            tracing::trace!("current wallet balance: {balance_eth} ETH",);
             ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ATTRID_WALLET_ADDRESS => self.wallet_address.to_string())
                     .set(balance_eth.parse::<f64>().unwrap_or(f64::NAN));
         } else {
@@ -150,9 +150,8 @@ fn handle_success_receipt<R: ReceiptResponse>(receipt: &R) {
         .parse::<f64>()
         .unwrap_or(f64::NAN);
     let gas_price_eth = alloy::primitives::utils::format_ether(receipt.effective_gas_price());
-    tracing::debug!("successfully sent transaction");
-    tracing::debug!("gas used: {gas_used}");
-    tracing::debug!("transaction cost: {cost_eth} ETH");
-    tracing::debug!("transaction gas price: {gas_price_eth} ETH");
+    tracing::debug!(
+        "gas used: {gas_used}; transaction cost: {cost_eth} ETH; transaction gas price: {gas_price_eth} ETH"
+    );
     metrics::gauge!(METRICS_ID_GAS_PRICE).set(gas_price_wei);
 }

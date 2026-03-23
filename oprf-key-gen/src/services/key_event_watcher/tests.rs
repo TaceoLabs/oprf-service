@@ -72,10 +72,8 @@ async fn test_send_invalid_proof() -> eyre::Result<()> {
     let key_id = U160::from(INVALID_PROOF_KEY);
     secret_gen.key_gen_round1(key_id.into(), 2);
     let error = super::handle_round2(
-        OprfKeyRegistry::SecretGenRound2 {
-            oprfKeyId: key_id,
-            epoch: 0,
-        },
+        OprfKeyId::from(key_id),
+        ShareEpoch::from(0u32),
         &OprfKeyRegistry::new(setup.oprf_key_registry, setup.provider.clone()),
         &mut secret_gen,
         &transaction_handler,
@@ -106,11 +104,7 @@ async fn test_delete() -> eyre::Result<()> {
         .await
         .expect("Should be able to check key-id");
 
-    let event = OprfKeyRegistry::KeyDeletion {
-        oprfKeyId: oprf_key_id.into_inner(),
-    };
-
-    handle_delete(event, &mut secret_gen, &key_gen_secret_manager)
+    handle_delete(oprf_key_id, &mut secret_gen, &key_gen_secret_manager)
         .await
         .expect("Works");
 
@@ -132,10 +126,8 @@ async fn test_round2_in_wrong_round_during_load_public_keys() -> eyre::Result<()
     secret_gen.key_gen_round1(key_id.into(), 2);
     assert!(!secret_gen.has_round2(OprfKeyId::from(key_id)));
     super::handle_round2(
-        OprfKeyRegistry::SecretGenRound2 {
-            oprfKeyId: key_id,
-            epoch: 0,
-        },
+        OprfKeyId::from(key_id),
+        ShareEpoch::from(0u32),
         &OprfKeyRegistry::new(setup.oprf_key_registry, setup.provider.clone()),
         &mut secret_gen,
         &transaction_handler,
@@ -163,11 +155,7 @@ async fn test_abort() -> eyre::Result<()> {
         .await
         .expect("Should be able to check key-id");
 
-    let event = OprfKeyRegistry::KeyGenAbort {
-        oprfKeyId: oprf_key_id.into_inner(),
-    };
-
-    handle_abort(event, &mut secret_gen).await;
+    handle_abort(oprf_key_id, &mut secret_gen);
 
     assert!(!secret_gen.has_round1(oprf_key_id));
     // still has the key
@@ -194,11 +182,7 @@ async fn test_not_enough_producers() -> eyre::Result<()> {
         .await
         .expect("Should be able to check key-id");
 
-    let event = OprfKeyRegistry::NotEnoughProducers {
-        oprfKeyId: oprf_key_id.into_inner(),
-    };
-
-    handle_not_enough_producers(event, &mut secret_gen).await;
+    handle_not_enough_producers(oprf_key_id, &mut secret_gen);
 
     assert!(!secret_gen.has_round1(oprf_key_id));
     // still has the key
