@@ -157,4 +157,3 @@ jobs:
             --annotation "index:org.opencontainers.image.description=Docker image for ${{ inputs.image-name }} from ${{ github.repository_owner }}/${{ github.repository }}" \
             --annotation "index:org.opencontainers.image.vendor=${{ github.repository_owner }}" \
             $(printf '${{ env.REGISTRY }}/${{ steps.meta.outputs.tags }}@sha256:%s ' *)
-

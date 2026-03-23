@@ -129,7 +129,3 @@ lint:
 [group('dev-client')]
 run-dev-client *args:
     OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$(just load-key-registry) cargo run --release --example dev-client-example {{ args }}
-
-[group('docker')]
-build-push-docker-image-oprf-service-amd TAG:
-    docker buildx build --build-arg GIT_HASH=$(git rev-parse HEAD) --platform linux/amd64 --push -t 651706750785.dkr.ecr.eu-central-1.amazonaws.com/nullifier-oracle-service/oprf-service-example:{{ TAG }}-amd64 -f build/Dockerfile.oprf-service-example .

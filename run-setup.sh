@@ -140,7 +140,7 @@ start_nodes() {
         TACEO_OPRF_NODE__SERVICE__CHAIN_WS_RPC_URL=ws://127.0.0.1:8545 \
         TACEO_OPRF_NODE__SERVICE__VERSION_REQ=">=0.0.0" \
         TACEO_OPRF_NODE__BIND_ADDR=127.0.0.1:$port \
-        ./target/release/examples/oprf-service-example > logs/node$i.log 2>&1 &
+        ./target/release/examples/taceo-oprf-service-example > logs/node$i.log 2>&1 &
         nodes_pids+=($!)
         echo "started node$i with PID ${nodes_pids[$i]}"
     done
