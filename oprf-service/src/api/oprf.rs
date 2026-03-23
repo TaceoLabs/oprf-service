@@ -107,7 +107,7 @@ enum HumanReadable {
 /// ## Session Flow
 ///
 /// See [`partial_oprf`] for the flow of the web-socket connection. If the session finishes successfully, encounters an error, the user closes the connection, or we run into a timeout, the implementation will try to initiate a graceful shutdown of the web-socket connection (closing handshake). We do this on a best-effort basis but are very restrictive on what we expect. We close any session that sends invalid requests/authentication. If sending the `Close` frame fails, we simply ignore the error and destruct everything associated with the session.
-#[instrument(level = "debug", skip_all,name="request", fields(client_version=tracing::field::Empty, session_id=tracing::field::Empty))]
+#[instrument(level = "debug", skip_all,name="request", fields(client_version=tracing::field::Empty))]
 async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     State(state): State<OprfModuleState<ReqAuth>>,
     websocket_upgrade: WebSocketUpgrade,
