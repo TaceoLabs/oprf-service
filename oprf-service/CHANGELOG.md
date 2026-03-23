@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+## [0.11.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.10.1...taceo-oprf-service-v0.11.0)
+
+### ⛰️ Features
+
+
+- Feat(service,types)! added more fine-grained error codes - ([a8b95dd](https://github.com/TaceoLabs/oprf-service/commit/a8b95ddd3ea3b6df67f5b1e8f182a73a699f18ed))
+
+### 🚜 Refactor
+
+
+- *(node)* Updated log events - ([353d90c](https://github.com/TaceoLabs/oprf-service/commit/353d90c8b06d23ef7a3e71a9992b103623659ed7))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(service)* Removed tracing element that was never recorded - ([0f21e62](https://github.com/TaceoLabs/oprf-service/commit/0f21e624bfce2ddc05d5e888d691a68889cecc3b))
+- Pin old localstack version ([#527](https://github.com/TaceoLabs/oprf-service/pull/527)) - ([fed00a3](https://github.com/TaceoLabs/oprf-service/commit/fed00a3b083f125ea5e657f065ecbe047ee9ec71))
+- Fixed a typo - ([5c21f6c](https://github.com/TaceoLabs/oprf-service/commit/5c21f6c83f1e39bbbd1a974e86cd400d59a071b7))
+- Renamed example - ([82f2a6d](https://github.com/TaceoLabs/oprf-service/commit/82f2a6dd03e7ffe6f16668b09b7b2732aac0922f))
+
+
 ## [0.10.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.10.0...taceo-oprf-service-v0.10.1)
 
 ### 🐛 Bug Fixes
