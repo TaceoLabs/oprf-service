@@ -463,8 +463,13 @@ async fn handle_finalize(
         .store_dlog_share(oprf_key_id, oprf_public_key, epoch, dlog_share)
         .await
         .context("while storing dlog share")?;
+    let attr = if epoch.is_initial_epoch() {
+        METRICS_ATTRVAL_PROTOCOL_KEY_GEN
+    } else {
+        METRICS_ATTRVAL_PROTOCOL_RESHARE
+    };
     ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_4_FINISH,
-            METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_RESHARE)
+            METRICS_ATTRID_PROTOCOL => attr)
     .increment(1);
     Ok(())
 }
