@@ -244,10 +244,15 @@ async fn key_gen_event(
             let handle_span = tracing::Span::current();
             handle_span.record("oprf_key_id", oprfKeyId.to_string());
             handle_span.record("epoch", epoch.to_string());
-            handle_span.record("event", "key-gen/reshare round 2");
+            let epoch = ShareEpoch::from(epoch);
+            if epoch.is_initial_epoch() {
+                handle_span.record("event", "key-gen round 2");
+            } else {
+                handle_span.record("event", "reshare round 2");
+            }
             handle_round2(
                 OprfKeyId::from(oprfKeyId),
-                ShareEpoch::from(epoch),
+                epoch,
                 contract,
                 secret_gen,
                 transaction_handler,
