@@ -103,9 +103,6 @@ pub async fn start_service(
     let (cancellation_token, is_graceful_shutdown) =
         nodes_common::spawn_shutdown_task(shutdown_signal);
 
-    tracing::info!("init oprf request auth service..");
-    let oprf_req_auth_service = Arc::new(ExampleOprfRequestAuthenticator);
-
     tracing::info!("init oprf service..");
     let (oprf_service_router, key_event_watcher) = OprfServiceBuilder::init(
         config.node_config,
@@ -114,7 +111,7 @@ pub async fn start_service(
         cancellation_token.clone(),
     )
     .await?
-    .module("/example", oprf_req_auth_service)
+    .module("/example", Arc::new(ExampleOprfRequestAuthenticator))
     .build();
 
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
