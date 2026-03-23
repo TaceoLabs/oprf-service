@@ -160,7 +160,7 @@ async fn wrong_client_version_header() -> eyre::Result<()> {
         )
         .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
-    response.assert_text("invalid version, expected: ^1.0.0");
+    response.assert_text("invalid version, expected: ^1.0.0 got: 2.0.0");
     Ok(())
 }
 
@@ -173,7 +173,7 @@ async fn wrong_client_version_query() -> eyre::Result<()> {
         .get_websocket("/api/test/oprf?version=2.0.0")
         .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
-    response.assert_text("invalid version, expected: ^1.0.0");
+    response.assert_text("invalid version, expected: ^1.0.0 got: 2.0.0");
     Ok(())
 }
 

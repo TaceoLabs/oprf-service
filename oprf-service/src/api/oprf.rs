@@ -1,11 +1,11 @@
 use crate::api::errors::Error;
 use crate::api::version_header::{ProtocolVersion, ProtocolVersionQuery};
 use crate::metrics::{
-    METRICS_ID_NODE_OPRF_SUCCESS, METRICS_ID_NODE_PART_1_DURATION, METRICS_ID_NODE_PART_1_FINISH,
-    METRICS_ID_NODE_PART_1_START, METRICS_ID_NODE_PART_2_DURATION, METRICS_ID_NODE_PART_2_FINISH,
-    METRICS_ID_NODE_PART_2_START, METRICS_ID_NODE_REQUEST_AUTH_START,
-    METRICS_ID_NODE_REQUEST_AUTH_VERIFIED, METRICS_ID_NODE_REQUEST_VERIFY_DURATION,
-    METRICS_ID_NODE_SESSIONS_TIMEOUT,
+    METRICS_CLIENT_VERSION_MISSMATCH, METRICS_ID_NODE_OPRF_SUCCESS,
+    METRICS_ID_NODE_PART_1_DURATION, METRICS_ID_NODE_PART_1_FINISH, METRICS_ID_NODE_PART_1_START,
+    METRICS_ID_NODE_PART_2_DURATION, METRICS_ID_NODE_PART_2_FINISH, METRICS_ID_NODE_PART_2_START,
+    METRICS_ID_NODE_REQUEST_AUTH_START, METRICS_ID_NODE_REQUEST_AUTH_VERIFIED,
+    METRICS_ID_NODE_REQUEST_VERIFY_DURATION, METRICS_ID_NODE_SESSIONS_TIMEOUT,
 };
 use crate::oprf_key_material_store::OprfSession;
 use crate::services::open_sessions::OpenSessions;
@@ -107,7 +107,7 @@ enum HumanReadable {
 /// ## Session Flow
 ///
 /// See [`partial_oprf`] for the flow of the web-socket connection. If the session finishes successfully, encounters an error, the user closes the connection, or we run into a timeout, the implementation will try to initiate a graceful shutdown of the web-socket connection (closing handshake). We do this on a best-effort basis but are very restrictive on what we expect. We close any session that sends invalid requests/authentication. If sending the `Close` frame fails, we simply ignore the error and destruct everything associated with the session.
-#[instrument(level = "debug", skip_all,name="request", fields(client_version=tracing::field::Empty))]
+#[instrument(level = "debug", skip_all,name="request", fields(client_version=tracing::field::Empty, session_id=tracing::field::Empty))]
 async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     State(state): State<OprfModuleState<ReqAuth>>,
     websocket_upgrade: WebSocketUpgrade,
@@ -140,7 +140,8 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
                     )
                     .await
                     {
-                        Ok(Ok(())) => {
+                        Ok(Ok(session_id)) => {
+                            tracing::debug!("successfully created nullifier for {session_id}");
                             ::metrics::counter!(METRICS_ID_NODE_OPRF_SUCCESS).increment(1);
                             Some(CloseFrame {
                                 code: close_code::NORMAL,
@@ -149,6 +150,7 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
                         }
                         Ok(Err(err)) => err.into_close_frame(),
                         Err(_) => {
+                            tracing::trace!("session ran into timeout"); 
                             ::metrics::counter!(METRICS_ID_NODE_SESSIONS_TIMEOUT).increment(1);
                             Some(CloseFrame {
                                 code: oprf_error_codes::TIMEOUT,
@@ -166,12 +168,13 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
                 .instrument(parent_span)
             })
     } else {
-        tracing::trace!("rejecting because version mismatch");
-        (
-            StatusCode::BAD_REQUEST,
-            format!("invalid version, expected: {}", state.version_req),
-        )
-            .into_response()
+        let msg = format!(
+            "invalid version, expected: {} got: {client_version}",
+            state.version_req
+        );
+        tracing::trace!("{msg}");
+        ::metrics::counter!(METRICS_CLIENT_VERSION_MISSMATCH).increment(1);
+        (StatusCode::BAD_REQUEST, msg).into_response()
     }
 }
 
@@ -193,7 +196,7 @@ async fn partial_oprf<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     open_sessions: OpenSessions,
     oprf_material_store: OprfKeyMaterialStore,
     req_auth_service: OprfRequestAuthService<ReqAuth>,
-) -> Result<(), Error> {
+) -> Result<Uuid, Error> {
     tracing::trace!("> new oprf session - reading request...");
     ::metrics::counter!(METRICS_ID_NODE_PART_1_START).increment(1);
     let (init_request, human_readable) = read_request::<OprfRequest<ReqAuth>>(socket)
@@ -202,7 +205,7 @@ async fn partial_oprf<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
 
     // Some setup before we start processing - setup span and reserve the session ID
     let request_id = init_request.request_id;
-    tracing::debug!("starting with request id: {request_id}");
+    tracing::trace!("starting with request id: {request_id}");
     let oprf_span = tracing::Span::current();
     oprf_span.record("request_id", request_id.to_string());
 
@@ -232,12 +235,12 @@ async fn partial_oprf<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     let proof_share =
         challenge(challenge_request, request_id, party_id, threshold, session).await?;
 
-    tracing::debug!("sending challenge response to client...");
+    tracing::trace!("sending challenge response to client...");
     write_response(proof_share, human_readable, socket)
         .instrument(tracing::debug_span!("write_challenge_response"))
         .await?;
     ::metrics::counter!(METRICS_ID_NODE_PART_2_FINISH).increment(1);
-    Ok(())
+    Ok(request_id)
 }
 
 #[instrument(level = "debug", skip_all)]
@@ -254,7 +257,7 @@ async fn init_session<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
         return Err(Error::BlindedQueryIsIdentity);
     }
 
-    tracing::debug!("verifying request with auth service...");
+    tracing::trace!("verifying request with auth service...");
     ::metrics::counter!(METRICS_ID_NODE_REQUEST_AUTH_START).increment(1);
     let start_verify = Instant::now();
     let oprf_key_id = req_auth_service.authenticate(&init_request).await?;
@@ -263,7 +266,7 @@ async fn init_session<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     ::metrics::histogram!(METRICS_ID_NODE_REQUEST_VERIFY_DURATION)
         .record(duration_verify.as_millis() as f64);
 
-    tracing::debug!("initiating session with key id {oprf_key_id:?}...");
+    tracing::trace!("initiating session with key id {oprf_key_id:?}...");
     let (session, commitments) = oprf_material_store
         .partial_commit(init_request.blinded_query, oprf_key_id)
         .ok_or_else(|| Error::UnknownOprfKeyId(oprf_key_id))?;
@@ -309,7 +312,7 @@ async fn challenge(
         return Err(Error::DuplicateCoefficients);
     }
 
-    tracing::debug!("finalizing session...");
+    tracing::trace!("finalizing session...");
     let proof_share = OprfKeyMaterialStore::challenge(request_id, party_id, session, challenge);
 
     let duration_part_two = start_part_two.elapsed();

@@ -204,13 +204,12 @@ async fn handle_finalize(
     secret_manager: &SecretManagerService,
     get_oprf_key_material_timeout: Duration,
 ) -> eyre::Result<()> {
-    tracing::info!("Received Finalize event");
     let finalize = log.log_decode().context("while decoding finalize event")?;
     let OprfKeyRegistry::SecretGenFinalize { oprfKeyId, epoch } = finalize.inner.data;
     let handle_span = tracing::Span::current();
     handle_span.record("oprf_key_id", oprfKeyId.to_string());
-    tracing::info!("Event for {oprfKeyId} ");
     let oprf_key_id = OprfKeyId::from(oprfKeyId);
+    tracing::info!("trying to fetch {oprf_key_id} for epoch {epoch}");
     let current_span = tracing::Span::current();
     tokio::spawn(
         fetch_oprf_key_material_from_secret_manager(
@@ -232,8 +231,6 @@ async fn fetch_oprf_key_material_from_secret_manager(
     get_oprf_key_material_timeout: Duration,
     epoch: ShareEpoch,
 ) {
-    tracing::info!("trying to fetch {oprf_key_id} for epoch {epoch}");
-
     let backoff_strategy = ExponentialBuilder::new()
         .with_total_delay(Some(get_oprf_key_material_timeout))
         .without_max_times()
@@ -255,7 +252,7 @@ async fn fetch_oprf_key_material_from_secret_manager(
     .await;
     match result {
         Ok(key_material) => {
-            tracing::info!("got key from secret manager for {oprf_key_id} and epoch {epoch}");
+            tracing::trace!("got key from secret manager for {oprf_key_id} and epoch {epoch}");
             oprf_key_material_store.insert(oprf_key_id, key_material);
         }
         Err(FetchOprfKeyMaterialError::NotFound) => {

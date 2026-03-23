@@ -79,13 +79,16 @@ impl OprfKeyMaterialStore {
 
     /// Swaps the inner `HashMap` with the provided `HashMap`.
     pub(crate) fn reload(&self, mut new_store: HashMap<OprfKeyId, OprfKeyMaterial>) {
-        tracing::info!("new store size: {}", new_store.len());
+        let new_store_size = new_store.len();
         ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).set(new_store.len() as f64);
         {
             let mut current = self.0.write();
             std::mem::swap(&mut *current, &mut new_store);
         }
-        tracing::info!("old store size: {}", new_store.len());
+        tracing::info!(
+            "old store size: {}, new store size: {new_store_size}",
+            new_store.len()
+        );
     }
 
     /// Computes `C = B * x_share` and commitments to a random value `k_share`, where `x_share` is identified by [`OprfKeyId`].
@@ -100,7 +103,7 @@ impl OprfKeyMaterialStore {
         point_b: ark_babyjubjub::EdwardsAffine,
         oprf_key_id: OprfKeyId,
     ) -> Option<(OprfSession, PartialDLogCommitmentsShamir)> {
-        tracing::debug!("computing partial commitment");
+        tracing::trace!("computing partial commitment");
         // we still need to check here, because even if we call contains, we might have removed this share in the meantime
         let key_material = self.get(oprf_key_id)?;
 
@@ -109,7 +112,7 @@ impl OprfKeyMaterialStore {
             key_material.share(),
             &mut rand::thread_rng(),
         );
-        tracing::debug!("created session with epoch {}", key_material.epoch());
+        tracing::trace!("created session with epoch {}", key_material.epoch());
         let session = OprfSession {
             oprf_key_id,
             dlog_session,
@@ -128,7 +131,7 @@ impl OprfKeyMaterialStore {
         session: OprfSession,
         challenge: DLogCommitmentsShamir,
     ) -> DLogProofShareShamir {
-        tracing::debug!("finalizing proof share");
+        tracing::trace!("finalizing proof share");
         let OprfSession {
             oprf_key_id: _,
             dlog_session,
@@ -169,19 +172,19 @@ impl OprfKeyMaterialStore {
         .entry(oprf_key_id)
         .and_modify(|stored| {
             if stored.epoch() >= key_material.epoch() {
-                tracing::debug!(
+                tracing::info!(
                     "refusing to roll back share for {oprf_key_id} to epoch {} when already at {}",
                     key_material.epoch(),
                     stored.epoch()
                 );
             } else {
-                tracing::debug!("overwriting material for {oprf_key_id}");
+                tracing::info!("overwriting material for {oprf_key_id}");
                 *stored = key_material.clone();
             }
         })
         .or_insert_with(|| {
             ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).increment(1);
-            tracing::debug!(
+            tracing::info!(
                 "added {oprf_key_id:?} material to OprfKeyMaterialStore"
             );
             key_material
@@ -194,7 +197,7 @@ impl OprfKeyMaterialStore {
     pub(super) fn remove(&self, oprf_key_id: OprfKeyId) {
         if self.0.write().remove(&oprf_key_id).is_some() {
             ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).decrement(1);
-            tracing::debug!("removed {oprf_key_id:?} material from OprfKeyMaterialStore");
+            tracing::info!("removed {oprf_key_id:?} material from OprfKeyMaterialStore");
         }
     }
 }

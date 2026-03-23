@@ -54,7 +54,7 @@ impl PostgresSecretManager {
     ///
     /// # Errors
     /// Returns an error if the connection to the database fails.
-    #[instrument(level = "info", skip_all)]
+    #[instrument(level = "debug", skip_all)]
     pub async fn init(config: &PostgresConfig) -> eyre::Result<Self> {
         let pool = nodes_common::postgres::pg_pool_with_schema(config, CreateSchema::No)
             .await
@@ -71,9 +71,8 @@ impl PostgresSecretManager {
 
 #[async_trait]
 impl SecretManager for PostgresSecretManager {
-    #[instrument(level = "info", skip_all)]
+    #[instrument(level = "debug", skip_all)]
     async fn load_address(&self) -> eyre::Result<Address> {
-        tracing::info!("loading address from secret-manager");
         let stored_address: String = (|| {
             sqlx::query_scalar("SELECT address FROM evm_address WHERE id = TRUE")
                 .fetch_optional(&self.pool)
@@ -87,9 +86,9 @@ impl SecretManager for PostgresSecretManager {
         Address::parse_checksummed(stored_address, None).context("invalid address stored in DB")
     }
 
-    #[instrument(level = "info", skip_all)]
+    #[instrument(level = "debug", skip_all)]
     async fn load_secrets(&self) -> eyre::Result<HashMap<OprfKeyId, OprfKeyMaterial>> {
-        tracing::info!("fetching all OPRF keys from DB..");
+        tracing::trace!("fetching all OPRF keys from DB..");
         let rows: Vec<ShareRow> = (|| {
             sqlx::query_as(
                 "
@@ -110,16 +109,16 @@ impl SecretManager for PostgresSecretManager {
         .notify(|e, duration| tracing::warn!("Retrying load secrets: {e:?} after {duration:?}"))
         .await
         .context("while fetching all OPRF keys")?;
-        tracing::debug!("loaded {} rows. parsing..", rows.len());
+        tracing::trace!("loaded {} rows. parsing..", rows.len());
         let map = rows
             .iter()
             .map(db_row_into_key_material)
             .collect::<HashMap<_, _>>();
-        tracing::info!("successfully parsed {} OPRF entries", map.len());
+        tracing::trace!("successfully parsed {} OPRF entries", map.len());
         Ok(map)
     }
 
-    #[instrument(level = "info", skip_all)]
+    #[instrument(level = "debug", skip_all)]
     async fn get_oprf_key_material(
         &self,
         oprf_key_id: OprfKeyId,
@@ -152,11 +151,11 @@ impl SecretManager for PostgresSecretManager {
         .await
         .context("while fetching previous share")?;
         if let Some(row) = maybe_row {
-            tracing::info!("found new key-material!");
+            tracing::trace!("found new key-material!");
             let (_, key_material) = db_row_into_key_material(&row);
             Ok(Some(key_material))
         } else {
-            tracing::debug!("Cannot find share for requested key and epoch");
+            tracing::trace!("Cannot find share for requested key and epoch");
             Ok(None)
         }
     }

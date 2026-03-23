@@ -19,6 +19,9 @@ pub const METRICS_ID_NODE_SESSIONS_OPEN: &str = "taceo.oprf.node.sessions.open";
 pub const METRICS_ID_NODE_SESSIONS_TIMEOUT: &str = "taceo.oprf.node.sessions.timeout";
 /// Metrics key for registered `DLogSecrets`.
 pub const METRICS_ID_NODE_OPRF_SECRETS: &str = "taceo.oprf.node.secrets";
+/// Metrics key for how often we reject clients due to version miss-match.
+pub const METRICS_CLIENT_VERSION_MISSMATCH: &str = "taceo.oprf.node.client.invalid_version";
+
 /// Metrics key for the duration of successful `OprfRequestAuth` verification
 pub const METRICS_ID_NODE_REQUEST_VERIFY_DURATION: &str = "taceo.oprf.node.request_verify.duration";
 /// Metrics key for the duration of part one of the OPRF computation
@@ -128,5 +131,11 @@ pub fn describe_metrics() {
         METRICS_ID_NODE_CANNOT_FETCH_KEY_MATERIAL,
         metrics::Unit::Count,
         "Number of times we could not fetch key-material from secret-manager"
+    );
+
+    metrics::describe_counter!(
+        METRICS_CLIENT_VERSION_MISSMATCH,
+        metrics::Unit::Count,
+        "How often we rejected clients due to version miss-match"
     );
 }
