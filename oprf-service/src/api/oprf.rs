@@ -1,9 +1,9 @@
 use crate::api::errors::Error;
 use crate::api::version_header::{ProtocolVersion, ProtocolVersionQuery};
 use crate::metrics::{
-    METRICS_CLIENT_VERSION_MISSMATCH, METRICS_ID_NODE_OPRF_SUCCESS,
-    METRICS_ID_NODE_PART_1_DURATION, METRICS_ID_NODE_PART_1_FINISH, METRICS_ID_NODE_PART_1_START,
-    METRICS_ID_NODE_PART_2_DURATION, METRICS_ID_NODE_PART_2_FINISH, METRICS_ID_NODE_PART_2_START,
+    METRICS_CLIENT_VERSION_MISMATCH, METRICS_ID_NODE_OPRF_SUCCESS, METRICS_ID_NODE_PART_1_DURATION,
+    METRICS_ID_NODE_PART_1_FINISH, METRICS_ID_NODE_PART_1_START, METRICS_ID_NODE_PART_2_DURATION,
+    METRICS_ID_NODE_PART_2_FINISH, METRICS_ID_NODE_PART_2_START,
     METRICS_ID_NODE_REQUEST_AUTH_START, METRICS_ID_NODE_REQUEST_AUTH_VERIFIED,
     METRICS_ID_NODE_REQUEST_VERIFY_DURATION, METRICS_ID_NODE_SESSIONS_TIMEOUT,
 };
@@ -173,7 +173,7 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
             state.version_req
         );
         tracing::trace!("{msg}");
-        ::metrics::counter!(METRICS_CLIENT_VERSION_MISSMATCH).increment(1);
+        ::metrics::counter!(METRICS_CLIENT_VERSION_MISMATCH).increment(1);
         (StatusCode::BAD_REQUEST, msg).into_response()
     }
 }
