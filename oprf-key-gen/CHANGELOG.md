@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.7.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.7.1...taceo-oprf-key-gen-v0.7.2)
+
+### 🐛 Bug Fixes
+
+
+- *(key-gen)* Now emits correct metric for round4 ([#521](https://github.com/TaceoLabs/oprf-service/pull/521)) - ([825edfe](https://github.com/TaceoLabs/oprf-service/commit/825edfe4edc8b092c273dbbe1c1f4fa05562a54b))
+
+### 🚜 Refactor
+
+
+- *(keygen)* Updated log events - ([0d3ed36](https://github.com/TaceoLabs/oprf-service/commit/0d3ed36e8e3b04f8b2aa01f5432672e5e00be3c6))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(key-gen)* Emit correct event in round2 - ([04a3b93](https://github.com/TaceoLabs/oprf-service/commit/04a3b93a628610991091b231f8960a90f7efbcee))
+
+
 ## [0.7.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.7.0...taceo-oprf-key-gen-v0.7.1)
 
 ### ⚙️ Miscellaneous Tasks

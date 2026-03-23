@@ -1,6 +1,6 @@
 [package]
 name = "taceo-oprf-service"
-version = "0.10.1"
+version = "0.11.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Main service for nodes of TACEO:OPRF"
@@ -30,7 +30,7 @@ humantime-serde = { workspace = true }
 metrics = { workspace = true }
 nodes-common = { workspace = true, features = ["api", "postgres", "serde"] }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.10" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.11" }
 parking_lot = { workspace = true }
 rand.workspace = true
 secrecy = { workspace = true, features = ["serde"] }
