@@ -151,6 +151,18 @@ main() {
     rm -rf logs/*
     docker compose -f ./oprf-service/examples/deploy/docker-compose.yml up -d anvil postgres
 
+    # wait for anvil to be healthy before proceeding
+    while true; do
+        response=$(curl -X POST --data '{"jsonrpc":"2.0","method":"web3_clientVersion","params":[],"id":1}' -H "Content-Type: application/json" http://localhost:8545 || echo "bla")
+        if [[ "$response" == *"anvil"* ]]; then
+            echo "Anvil is healthy!"
+            break
+        fi
+        echo "Waiting for Anvil to be healthy..."
+        sleep 1
+    done
+
+
     # centralized teardown
     teardown() {
         echo "Tearing down..."
