@@ -58,7 +58,7 @@ fn load_key_gen_config() -> eyre::Result<OprfKeyGenConfig> {
             .try_parsing(true),
     );
 
-    let result = cfg
+    let key_gen_config = cfg
         .build()
         .context("while building from config")?
         .try_deserialize()
@@ -77,7 +77,7 @@ fn load_key_gen_config() -> eyre::Result<OprfKeyGenConfig> {
         }
     }
 
-    Ok(result)
+    Ok(key_gen_config)
 }
 
 async fn run(config: OprfKeyGenConfig) -> eyre::Result<()> {
@@ -154,6 +154,8 @@ async fn run(config: OprfKeyGenConfig) -> eyre::Result<()> {
 }
 
 fn main() -> ExitCode {
+    // try loading config and unsetting vars before we do any potentially multithreaded work;
+    let maybe_config = load_key_gen_config();
     // we panic if we cannot setup tracing + TLS - if that fails we won't see anything anyways on tracing endpoint
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
@@ -164,7 +166,7 @@ fn main() -> ExitCode {
         nodes_observability::initialize_tracing(&tracing_config).expect("Can get tracing handle");
 
     // load the config
-    let config = match load_key_gen_config() {
+    let config = match maybe_config {
         Ok(config) => config,
         Err(err) => {
             tracing::error!("failed to load config: {err:?}");
