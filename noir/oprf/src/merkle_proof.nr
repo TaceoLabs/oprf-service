@@ -21,9 +21,12 @@ pub fn compute_merkle_root_poseidon2<let N: u32>(
     hashpath: [Field; N],
 ) -> Field {
     let mut current = leaf;
-    let mut idx = index as u32;
+    // we check index < 2^32 to allow the below check
+    index.assert_max_bit_size::<64>();
+    let mut idx = index as u64;
+    // depth is public and checked outside of the circuit to be < 64
     let depth_u32 = depth as u32;
-    assert(idx < (1 << depth_u32), "Index out of range for given depth");
+    assert(idx < (1 << (depth_u32 as u64)), "Index out of range for given depth");
 
     for i in 0..N {
         if i < depth_u32 {
