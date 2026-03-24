@@ -5,6 +5,7 @@ use super::{
 };
 use babyjubjub::{BabyJubJubPoint, hash_to_curve::encode};
 use eddsa_poseidon2::verify_eddsa_poseidon2;
+use std::field::bn254::assert_lt;
 
 pub fn oprf_query_inner<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
     query: Field,
@@ -14,6 +15,7 @@ pub fn oprf_query_inner<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
     beta_bits: [u1; 251],
 ) -> BabyJubJubPoint {
     // 1. Verify sk/pk by verifying a signature to a known message
+    assert_lt(inputs.pk_index, NUM_KEYS as Field);
     let chosen_pk = inputs.user_pk[inputs.pk_index as u32];
 
     let is_valid = verify_eddsa_poseidon2(
