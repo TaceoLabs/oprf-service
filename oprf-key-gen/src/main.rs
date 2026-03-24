@@ -71,7 +71,6 @@ fn load_key_gen_config() -> eyre::Result<OprfKeyGenConfig> {
         .collect();
     for key in keys_to_remove {
         // SAFETY: no other threads are running at this point in the startup sequence.
-        #[allow(unused_unsafe)]
         unsafe {
             std::env::remove_var(&key);
         }

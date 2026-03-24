@@ -71,18 +71,6 @@ async fn main() -> eyre::Result<ExitCode> {
     let config = load_example_config()?;
     tracing::info!("starting oprf-service with config: {config:#?}");
 
-    // Unset all env vars with our prefix to prevent leakage to subprocesses.
-    // Safety: this is called before any threads are spawned.
-    let keys_to_remove: Vec<String> = std::env::vars()
-        .filter_map(|(k, _)| k.starts_with("TACEO_OPRF_NODE_").then_some(k))
-        .collect();
-    for key in keys_to_remove {
-        // SAFETY: no other threads are running at this point in the startup sequence.
-        #[allow(unused_unsafe)]
-        unsafe {
-            std::env::remove_var(&key);
-        }
-    }
     // Load the postgres secret manager.
     let secret_manager = Arc::new(
         PostgresSecretManager::init(&config.postgres_config)
