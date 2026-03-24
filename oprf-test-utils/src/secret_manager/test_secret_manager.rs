@@ -17,7 +17,6 @@ use crate::TEST_TIMEOUT;
 macro_rules! key_gen_test_secret_manager {
     ($trait: path, $name: ident) => {
         mod impl_key_gen_secret_manager {
-            use $crate::alloy::signers::local::PrivateKeySigner;
             use $crate::async_trait::async_trait;
             use $crate::eyre::Context;
             use $crate::oprf_core::ddlog_equality::shamir::DLogShareShamir;
@@ -218,10 +217,6 @@ impl TestSecretManager {
 
     pub fn load_key_ids(&self) -> Vec<OprfKeyId> {
         self.store.lock().keys().copied().collect_vec()
-    }
-
-    pub async fn load_or_insert_wallet_private_key(&self) -> eyre::Result<PrivateKeySigner> {
-        Ok(self.wallet_private_key.clone())
     }
 
     pub async fn get_share_by_epoch(
