@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.7.1...taceo-oprf-dev-client-v0.8.0)
+
+### 🚜 Refactor
+
+
+- *(dev-client)* [**breaking**] Updated stress-test so that we can do different modules at the same time ([#530](https://github.com/TaceoLabs/oprf-service/pull/530)) - ([283c1ac](https://github.com/TaceoLabs/oprf-service/commit/283c1ac3e2b4ac3865f54e633ed577d3405c719a))
+
+
 ## [0.7.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.7.0...taceo-oprf-dev-client-v0.7.1)
 
 ### ⚙️ Miscellaneous Tasks
