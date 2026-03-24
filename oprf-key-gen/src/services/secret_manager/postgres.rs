@@ -1,8 +1,9 @@
-//! This module provides an implementation of [`SecretManager`] using a Postgres database to store shares and the AWS secret-manager to store the Ethereum private-key of the node provider.
+//! This module provides an implementation of [`SecretManager`] using a Postgres database to store shares.
 //!
-//! If the EVM private-key doesn't exist at the requested `secret-id`, it will create a new one and store it. Additionally, will store the associated address in the DB so that the accompanying OPRF-nodes can fetch the address from there.
+//! The wallet private key is accepted directly at initialization and stored in memory. The associated address is written to the DB so that the accompanying OPRF-nodes can fetch it from there.
 
 use std::num::NonZeroUsize;
+use std::str::FromStr as _;
 use std::time::Duration;
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
@@ -17,17 +18,18 @@ use eyre::Context;
 use nodes_common::postgres::{CreateSchema, PostgresConfig};
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
+use secrecy::{ExposeSecret, SecretString};
 use sqlx::PgPool;
 use tracing::instrument;
+use zeroize::Zeroize as _;
 
-use crate::secret_manager::{self, SecretManager};
+use crate::secret_manager::SecretManager;
 
 /// The postgres secret manager wrapping a `PgPool`.
 #[derive(Debug)]
 pub struct PostgresSecretManager {
     pool: PgPool,
-    aws_config: aws_config::SdkConfig,
-    wallet_private_key_secret_id: String,
+    wallet_private_key: PrivateKeySigner,
     max_retries: NonZeroUsize,
     retry_delay: Duration,
 }
@@ -35,16 +37,18 @@ pub struct PostgresSecretManager {
 impl PostgresSecretManager {
     /// Initializes the `PostgresSecretManager`.
     ///
-    /// Creates the Postgres connection pool, ensures the configured schema exists, and runs all pending database migrations. Stores the AWS SDK configuration and the secret identifier used to load or store the wallet private key.
+    /// Creates the Postgres connection pool, ensures the configured schema exists, and runs all pending database migrations. Parses and stores the wallet private key.
     ///
     /// # Errors
-    /// Returns an error if creating the database pool fails or if running the migrations fails.
+    /// Returns an error if the wallet private key is invalid, if creating the database pool fails, or if running the migrations fails.
     #[instrument(level = "debug", skip_all)]
     pub async fn init(
         db_config: &PostgresConfig,
-        aws_config: aws_config::SdkConfig,
-        wallet_private_key_secret_id: &str,
+        mut wallet_private_key: SecretString,
     ) -> eyre::Result<Self> {
+        let signer = PrivateKeySigner::from_str(wallet_private_key.expose_secret())
+            .context("while parsing wallet private key")?;
+        wallet_private_key.zeroize();
         let pool = nodes_common::postgres::pg_pool_with_schema(db_config, CreateSchema::Yes)
             .await
             .context("while creating pool")?;
@@ -55,8 +59,7 @@ impl PostgresSecretManager {
             .context("while running migrations")?;
         Ok(Self {
             pool,
-            wallet_private_key_secret_id: wallet_private_key_secret_id.to_owned(),
-            aws_config,
+            wallet_private_key: signer,
             max_retries: db_config.max_retries,
             retry_delay: db_config.retry_delay,
         })
@@ -66,13 +69,7 @@ impl PostgresSecretManager {
 #[async_trait]
 impl SecretManager for PostgresSecretManager {
     async fn load_or_insert_wallet_private_key(&self) -> eyre::Result<PrivateKeySigner> {
-        // load or insert the key with the secret-manager
-        // has internal backoff strategy, therefore we don't need to wrap this manually.
-        let private_key = secret_manager::aws::load_or_insert_ethereum_private_key(
-            &aws_sdk_secretsmanager::Client::new(&self.aws_config),
-            &self.wallet_private_key_secret_id,
-        )
-        .await?;
+        let private_key = self.wallet_private_key.clone();
         tracing::trace!("insert address into DB...");
         // insert address into postgres DB
         (|| {

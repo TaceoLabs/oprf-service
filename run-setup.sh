@@ -11,15 +11,13 @@ DEPLOYED_ADDRESS=""
 
 RUN_MODE="${1:-sleep}"  # default to 'sleep' if no argument provided
 
+node_private_keys=("0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356" "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97"  "0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6")
+
 # -------------------------
 # Deploy key registry and register participants
 # -------------------------
 run_deploy() {
     mkdir -p logs
-
-    docker compose -f ./oprf-service/examples/deploy/docker-compose.yml exec localstack sh -c "AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test aws --endpoint-url=http://localhost:4566 --region us-east-1 secretsmanager create-secret --name oprf/eth/n0 --secret-string 0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356"
-    docker compose -f ./oprf-service/examples/deploy/docker-compose.yml exec localstack sh -c "AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test aws --endpoint-url=http://localhost:4566 --region us-east-1 secretsmanager create-secret --name oprf/eth/n1 --secret-string 0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97"
-    docker compose -f ./oprf-service/examples/deploy/docker-compose.yml exec localstack sh -c "AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test aws --endpoint-url=http://localhost:4566 --region us-east-1 secretsmanager create-secret --name oprf/eth/n2 --secret-string 0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6"
 
     # deploy key registry
     (cd contracts/script/deploy && \
@@ -96,7 +94,7 @@ start_keygen() {
         AWS_ACCESS_KEY_ID=test \
         AWS_SECRET_ACCESS_KEY=test \
         AWS_ENDPOINT_URL="http://localhost:4566" \
-        TACEO_OPRF_KEY_GEN__WALLET_PRIVATE_KEY_SECRET_ID=oprf/eth/$prefix \
+        TACEO_OPRF_KEY_GEN__WALLET_PRIVATE_KEY=${node_private_keys[$i]} \
         TACEO_OPRF_KEY_GEN__BIND_ADDR=127.0.0.1:$port \
         TACEO_OPRF_KEY_GEN__SERVICE__ENVIRONMENT=dev \
         TACEO_OPRF_KEY_GEN__SERVICE__ZKEY_PATH=./circom/main/key-gen/OPRFKeyGen.13.arks.zkey \
@@ -151,7 +149,7 @@ start_nodes() {
 # -------------------------
 main() {
     rm -rf logs/*
-    docker compose -f ./oprf-service/examples/deploy/docker-compose.yml up -d localstack anvil postgres
+    docker compose -f ./oprf-service/examples/deploy/docker-compose.yml up -d anvil postgres
 
     # centralized teardown
     teardown() {

@@ -24,8 +24,6 @@ ark-ec.workspace = true
 ark-ff.workspace = true
 ark-serialize.workspace = true
 async-trait = { workspace = true }
-aws-config = { workspace = true, features = ["behavior-version-latest"] }
-aws-sdk-secretsmanager = { workspace = true }
 axum = { workspace = true }
 backon = { workspace = true, features = ["std", "tokio-sleep"] }
 config = { workspace = true }
@@ -40,7 +38,6 @@ metrics = { workspace = true }
 nodes-common = { workspace = true, features = [
   "alloy",
   "api",
-  "aws",
   "postgres",
   "serde"
 ] }
@@ -50,7 +47,7 @@ oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "
 rand.workspace = true
 reqwest = { workspace = true, features = ["json"] }
 rustls = { workspace = true }
-secrecy = { workspace = true }
+secrecy = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sqlx = { workspace = true, features = [

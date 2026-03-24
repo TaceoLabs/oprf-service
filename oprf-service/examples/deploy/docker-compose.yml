@@ -1,14 +1,4 @@
 services:
-  localstack:
-    image: localstack/localstack:4.14
-    container_name: localstack
-    stop_grace_period: 1s
-    ports:
-      - "4566:4566"
-    environment:
-      SERVICES: secretsmanager
-      DEBUG: 1
-
   anvil:
     image: ghcr.io/foundry-rs/foundry:latest
     container_name: anvil

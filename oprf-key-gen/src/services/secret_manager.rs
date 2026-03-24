@@ -4,7 +4,7 @@
 //! persist and retrieve `OprfKeyMaterial`.
 //!
 //! Current `SecretManager` implementations:
-//! - AWS (cloud storage)
+//! - Postgres
 
 use std::sync::Arc;
 
@@ -13,7 +13,6 @@ use async_trait::async_trait;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 
-pub mod aws;
 pub mod postgres;
 
 /// Dynamic trait object for secret manager service.
@@ -27,8 +26,6 @@ pub type SecretManagerService = Arc<dyn SecretManager + Send + Sync>;
 #[async_trait]
 pub trait SecretManager {
     /// Loads the wallet private key from the secret-manager.
-    ///
-    /// If the secret-manager can't find a secret, it shall create a new one, store it and then return the new one.
     async fn load_or_insert_wallet_private_key(&self) -> eyre::Result<PrivateKeySigner>;
 
     /// Pings the secret manager. Mostly used for secret-managers in deep-sleep to reduce latency during finalize round.
