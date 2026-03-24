@@ -15,7 +15,7 @@ use alloy::{
     signers::local::PrivateKeySigner,
 };
 use eyre::Context;
-use oprf_client::{Connector, OprfSessions, Uri};
+use oprf_client::{Connector, OprfSessions};
 use oprf_core::{
     ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir},
     oprf::BlindedOprfRequest,
@@ -61,13 +61,13 @@ pub trait DevClient: Send + Sync + 'static {
 
     fn get_oprf_key(&self, setup: &Self::Setup) -> OprfPublicKey;
     fn get_oprf_key_id(&self, setup: &Self::Setup) -> OprfKeyId;
-    fn auth_module(&self) -> String;
 }
 
 pub struct StressTestItem<OprfRequestAuth> {
     pub request_id: Uuid,
     pub blinded_query: BlindedOprfRequest,
     pub init_request: OprfRequest<OprfRequestAuth>,
+    pub auth_module: String,
 }
 
 fn avg(durations: &[Duration]) -> Duration {
@@ -112,11 +112,11 @@ pub async fn delete_test(config: DevClientConfig, provider: DynProvider) -> eyre
 }
 
 pub async fn send_init_requests<OprfRequestAuth: Clone + Serialize + Send + 'static>(
-    nodes: &[Uri],
+    nodes: &[String],
     threshold: usize,
     connector: Connector,
     sequential: bool,
-    requests: HashMap<Uuid, OprfRequest<OprfRequestAuth>>,
+    requests: HashMap<Uuid, (OprfRequest<OprfRequestAuth>, String)>,
 ) -> eyre::Result<(
     HashMap<Uuid, OprfSessions>,
     HashMap<Uuid, DLogCommitmentsShamir>,
@@ -126,10 +126,12 @@ pub async fn send_init_requests<OprfRequestAuth: Clone + Serialize + Send + 'sta
     let mut init_results = JoinSet::new();
     let start = Instant::now();
 
-    for (id, req) in requests.into_iter() {
+    for (id, (req, module)) in requests.into_iter() {
         let nodes = nodes.to_vec();
         let connector = connector.clone();
         init_results.spawn(async move {
+            let nodes = oprf_client::to_oprf_uri_many(nodes, module)
+                .context("while producing OPRF uris")?;
             let init_start = Instant::now();
             let sessions = oprf_client::init_sessions(&nodes, threshold, req, connector)
                 .await
@@ -330,18 +332,17 @@ async fn stress_test<T: DevClient>(
             request_id,
             blinded_query,
             init_request,
+            auth_module,
         } = dev_client
             .prepare_stress_test_item(&setup, &mut rng)
             .await?;
         blinded_requests.insert(request_id, blinded_query);
-        init_requests.insert(request_id, init_request);
+        init_requests.insert(request_id, (init_request, auth_module));
     }
     tracing::info!("sending init requests..");
-    let services = oprf_client::to_oprf_uri_many(&config.nodes, dev_client.auth_module())
-        .context("while building URIs")?;
 
     let (sessions, finish_requests) = send_init_requests(
-        &services,
+        &config.nodes,
         config.threshold,
         connector,
         sequential,
