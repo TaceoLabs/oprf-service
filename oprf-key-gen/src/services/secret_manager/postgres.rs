@@ -3,12 +3,10 @@
 //! The wallet private key is accepted directly at initialization and stored in memory. The associated address is written to the DB so that the accompanying OPRF-nodes can fetch it from there.
 
 use std::num::NonZeroUsize;
-use std::str::FromStr as _;
 use std::time::Duration;
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
-use alloy::signers::local::PrivateKeySigner;
 use async_trait::async_trait;
 use backon::BackoffBuilder;
 use backon::ConstantBackoff;
@@ -18,10 +16,8 @@ use eyre::Context;
 use nodes_common::postgres::{CreateSchema, PostgresConfig};
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
-use secrecy::{ExposeSecret, SecretString};
 use sqlx::PgPool;
 use tracing::instrument;
-use zeroize::Zeroize as _;
 
 use crate::secret_manager::SecretManager;
 
@@ -29,7 +25,6 @@ use crate::secret_manager::SecretManager;
 #[derive(Debug)]
 pub struct PostgresSecretManager {
     pool: PgPool,
-    wallet_private_key: PrivateKeySigner,
     max_retries: NonZeroUsize,
     retry_delay: Duration,
 }
@@ -42,13 +37,7 @@ impl PostgresSecretManager {
     /// # Errors
     /// Returns an error if the wallet private key is invalid, if creating the database pool fails, or if running the migrations fails.
     #[instrument(level = "debug", skip_all)]
-    pub async fn init(
-        db_config: &PostgresConfig,
-        mut wallet_private_key: SecretString,
-    ) -> eyre::Result<Self> {
-        let signer = PrivateKeySigner::from_str(wallet_private_key.expose_secret())
-            .context("while parsing wallet private key")?;
-        wallet_private_key.zeroize();
+    pub async fn init(db_config: &PostgresConfig) -> eyre::Result<Self> {
         let pool = nodes_common::postgres::pg_pool_with_schema(db_config, CreateSchema::Yes)
             .await
             .context("while creating pool")?;
@@ -57,9 +46,9 @@ impl PostgresSecretManager {
             .run(&pool)
             .await
             .context("while running migrations")?;
+
         Ok(Self {
             pool,
-            wallet_private_key: signer,
             max_retries: db_config.max_retries,
             retry_delay: db_config.retry_delay,
         })
@@ -68,11 +57,8 @@ impl PostgresSecretManager {
 
 #[async_trait]
 impl SecretManager for PostgresSecretManager {
-    async fn load_or_insert_wallet_private_key(&self) -> eyre::Result<PrivateKeySigner> {
-        let private_key = self.wallet_private_key.clone();
-        tracing::trace!("insert address into DB...");
-        // insert address into postgres DB
-        (|| {
+    async fn store_wallet_address(&self, address: String) -> eyre::Result<()> {
+        let _query_res = (|| {
             sqlx::query(
                 "
                     INSERT INTO evm_address (id, address)
@@ -81,7 +67,7 @@ impl SecretManager for PostgresSecretManager {
                     DO UPDATE SET address = EXCLUDED.address
                 ",
             )
-            .bind(private_key.address().to_string())
+            .bind(&address)
             .execute(&self.pool)
         })
         .retry(self.backoff_strategy())
@@ -92,7 +78,7 @@ impl SecretManager for PostgresSecretManager {
         })
         .await
         .context("while storing address into DB")?;
-        Ok(private_key)
+        Ok(())
     }
 
     async fn ping(&self) -> eyre::Result<()> {

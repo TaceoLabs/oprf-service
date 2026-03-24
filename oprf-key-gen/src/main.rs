@@ -9,7 +9,6 @@ use std::{net::SocketAddr, process::ExitCode, sync::Arc, time::Duration};
 use config::Config;
 use eyre::Context;
 use nodes_common::{StartedServices, postgres::PostgresConfig};
-use secrecy::SecretString;
 use serde::Deserialize;
 use taceo_oprf_key_gen::{
     config::OprfKeyGenServiceConfig, secret_manager::postgres::PostgresSecretManager,
@@ -20,9 +19,6 @@ use taceo_oprf_key_gen::{
 /// Configured via environment variables using the `TACEO_OPRF_KEY_GEN__` prefix and `__` as separator.
 #[derive(Clone, Debug, Deserialize)]
 struct OprfKeyGenConfig {
-    /// Hex-encoded wallet private key (with or without 0x prefix).
-    pub wallet_private_key: SecretString,
-
     /// The bind addr of the AXUM server
     #[serde(default = "default_bind_addr")]
     pub bind_addr: SocketAddr,
@@ -86,7 +82,7 @@ async fn run(config: OprfKeyGenConfig) -> eyre::Result<()> {
     tracing::info!("starting Postgres secret-manager...");
     // Load the Postgres secret manager.
     let secret_manager = Arc::new(
-        PostgresSecretManager::init(&config.postgres_config, config.wallet_private_key)
+        PostgresSecretManager::init(&config.postgres_config)
             .await
             .context("while starting postgres secret-manager")?,
     );

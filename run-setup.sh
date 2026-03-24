@@ -94,8 +94,8 @@ start_keygen() {
         AWS_ACCESS_KEY_ID=test \
         AWS_SECRET_ACCESS_KEY=test \
         AWS_ENDPOINT_URL="http://localhost:4566" \
-        TACEO_OPRF_KEY_GEN__WALLET_PRIVATE_KEY=${node_private_keys[$i]} \
         TACEO_OPRF_KEY_GEN__BIND_ADDR=127.0.0.1:$port \
+        TACEO_OPRF_KEY_GEN__SERVICE__WALLET_PRIVATE_KEY=${node_private_keys[$i]} \
         TACEO_OPRF_KEY_GEN__SERVICE__ENVIRONMENT=dev \
         TACEO_OPRF_KEY_GEN__SERVICE__ZKEY_PATH=./circom/main/key-gen/OPRFKeyGen.13.arks.zkey \
         TACEO_OPRF_KEY_GEN__SERVICE__WITNESS_GRAPH_PATH=./circom/main/key-gen/OPRFKeyGenGraph.13.bin \

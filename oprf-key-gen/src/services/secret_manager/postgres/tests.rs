@@ -20,13 +20,10 @@ async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<Postgr
         .run(&mut pg_connection)
         .await?;
 
-    PostgresSecretManager::init(
-        &PostgresConfig::with_default_values(
-            SecretString::from(connection_string.to_owned()),
-            TEST_SCHEMA.parse().expect("Is a valid schema"),
-        ),
-        SecretString::from(TEST_ETH_PRIVATE_KEY),
-    )
+    PostgresSecretManager::init(&PostgresConfig::with_default_values(
+        SecretString::from(connection_string.to_owned()),
+        TEST_SCHEMA.parse().expect("Is a valid schema"),
+    ))
     .await
 }
 
@@ -35,12 +32,11 @@ async fn load_wallet_private_key_returns_correct_key() -> eyre::Result<()> {
     let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
     let secret_manager = postgres_secret_manager(&connection_string).await?;
 
-    let loaded_key = secret_manager.load_or_insert_wallet_private_key().await?;
-
-    assert_eq!(
-        PrivateKeySigner::from_str(TEST_ETH_PRIVATE_KEY)?,
-        loaded_key
-    );
+    let key = PrivateKeySigner::from_str(TEST_ETH_PRIVATE_KEY)?;
+    let address = key.address();
+    secret_manager
+        .store_wallet_address(address.to_string())
+        .await?;
 
     // check that the address is stored in the DB
     let mut pg_connection =

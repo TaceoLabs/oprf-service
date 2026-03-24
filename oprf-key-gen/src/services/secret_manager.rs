@@ -8,7 +8,6 @@
 
 use std::sync::Arc;
 
-use alloy::signers::local::PrivateKeySigner;
 use async_trait::async_trait;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
@@ -25,8 +24,8 @@ pub type SecretManagerService = Arc<dyn SecretManager + Send + Sync>;
 /// Handles persistence of `OprfKeyMaterial`.
 #[async_trait]
 pub trait SecretManager {
-    /// Loads the wallet private key from the secret-manager.
-    async fn load_or_insert_wallet_private_key(&self) -> eyre::Result<PrivateKeySigner>;
+    /// Stores the wallet address in the secret manager, so that nodes can later retrieve it.
+    async fn store_wallet_address(&self, address: String) -> eyre::Result<()>;
 
     /// Pings the secret manager. Mostly used for secret-managers in deep-sleep to reduce latency during finalize round.
     async fn ping(&self) -> eyre::Result<()>;

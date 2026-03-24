@@ -25,6 +25,8 @@
 //!
 //! For details on the OPRF protocol, see the [design document](https://github.com/TaceoLabs/oprf-service/blob/main/docs/oprf.pdf).
 
+use std::str::FromStr as _;
+
 use crate::{
     config::OprfKeyGenServiceConfig,
     metrics::{
@@ -35,7 +37,10 @@ use crate::{
         secret_manager::SecretManagerService, transaction_handler::TransactionHandler,
     },
 };
-use alloy::{consensus::constants::ETH_TO_WEI, network::EthereumWallet, providers::Provider as _};
+use alloy::{
+    consensus::constants::ETH_TO_WEI, network::EthereumWallet, providers::Provider as _,
+    signers::local::PrivateKeySigner,
+};
 use eyre::Context as _;
 use groth16_material::circom::CircomGroth16MaterialBuilder;
 use oprf_types::{chain::OprfKeyRegistry, crypto::PartyId};
@@ -47,6 +52,7 @@ pub(crate) mod services;
 
 pub use nodes_common::Environment;
 pub use nodes_common::StartedServices;
+use secrecy::ExposeSecret;
 pub use services::secret_manager;
 use tokio_util::sync::CancellationToken;
 
@@ -112,11 +118,13 @@ pub async fn start(
 ) -> eyre::Result<(axum::Router, KeyGenTasks)> {
     tracing::info!("init oprf key-gen service..");
     tracing::info!("loading ETH private key from secret manager..");
-    let private_key = secret_manager
-        .load_or_insert_wallet_private_key()
-        .await
-        .context("while loading ETH private key from secret-manager")?;
+    let private_key = PrivateKeySigner::from_str(config.wallet_private_key.expose_secret())
+        .context("while loading wallet private key")?;
     let address = private_key.address();
+    secret_manager
+        .store_wallet_address(address.to_string())
+        .await
+        .context("while storing wallet address in secret manager")?;
     tracing::info!("my wallet address: {address}");
     let wallet = EthereumWallet::from(private_key);
 
