@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 use taceo_oprf_dev_client::{DevClient, DevClientConfig, StressTestItem};
 use uuid::Uuid;
 
+const EXAMPLE_MODULE: &str = "example";
+
 #[derive(Clone, Parser, Debug)]
 struct ExampleDevClientConfig {
     #[clap(long, env = "OPRF_DEV_CLIENT_OPRF_KEY_ID")]
@@ -101,7 +103,7 @@ impl DevClient for ExampleDevClient {
         let domain_separator = ark_babyjubjub::Fq::from_be_bytes_mod_order(b"OPRF");
         let auth = ExampleOprfRequestAuth(setup.oprf_key_id);
 
-        let services = oprf_client::to_oprf_uri_many(&config.nodes, self.auth_module())
+        let services = oprf_client::to_oprf_uri_many(&config.nodes, EXAMPLE_MODULE)
             .context("while building URIs")?;
 
         let verifiable_oprf_output = oprf_client::distributed_oprf(
@@ -137,6 +139,7 @@ impl DevClient for ExampleDevClient {
             request_id,
             blinded_query,
             init_request,
+            auth_module: EXAMPLE_MODULE.to_owned(),
         })
     }
 
@@ -146,9 +149,5 @@ impl DevClient for ExampleDevClient {
 
     fn get_oprf_key_id(&self, setup: &Self::Setup) -> OprfKeyId {
         setup.oprf_key_id
-    }
-
-    fn auth_module(&self) -> String {
-        "example".to_owned()
     }
 }
