@@ -226,7 +226,7 @@ pub enum Error {
     #[error(
         "Invalid combination num_peers {num_peers} and {threshold}. Must be 0 < threshold <= num_peers"
     )]
-    InvalidTreshold {
+    InvalidThreshold {
         /// The number of peers (URIs) provided
         num_peers: usize,
         /// The requested threshold
@@ -415,7 +415,7 @@ where
         env!("CARGO_PKG_VERSION")
     );
     if threshold == 0 || threshold > services.len() {
-        return Err(Error::InvalidTreshold {
+        return Err(Error::InvalidThreshold {
             num_peers: services.len(),
             threshold,
         });
