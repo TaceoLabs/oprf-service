@@ -238,13 +238,13 @@ impl DLogSecretGenService {
             .remove(&oprf_key_id)
             .context("Did not have round 1 toxic waste stored")?;
         let key_gen_material = Arc::clone(&self.key_gen_material);
-        let (contribution, toxix_waste_r2) = tokio::task::spawn_blocking(move || {
+        let (contribution, toxic_waste_r2) = tokio::task::spawn_blocking(move || {
             compute_keygen_proof(&key_gen_material, toxic_waste_keys_and_commitments, &pks)
         })
         .await
         .context("while joining compute key-gen")?
         .context("while computing proof for round2")?;
-        self.toxic_waste_round2.insert(oprf_key_id, toxix_waste_r2);
+        self.toxic_waste_round2.insert(oprf_key_id, toxic_waste_r2);
         Ok(SecretGenRound2Contribution {
             oprf_key_id,
             contribution,
