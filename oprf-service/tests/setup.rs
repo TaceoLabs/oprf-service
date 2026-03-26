@@ -5,6 +5,7 @@ use ark_ff::UniformRand as _;
 use async_trait::async_trait;
 use axum_test::{TestServer, TestWebSocket};
 use http::StatusCode;
+use nodes_common::web3::RpcProviderBuilder;
 use nodes_common::{Environment, StartedServices};
 use oprf_core::ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir};
 use oprf_core::oprf::BlindingFactor;
@@ -113,17 +114,27 @@ impl TestNode {
         let mut config = OprfNodeServiceConfig::with_default_values(
             Environment::Dev,
             *oprf_key_registry,
-            anvil.ws_endpoint().into(),
             "1.0.0".parse().expect("Valid VersionReq"),
         );
         config.session_lifetime = Duration::from_secs(10);
 
         let child_token = cancellation_token.child_token();
 
+        let rpc_provider = RpcProviderBuilder::with_default_values(
+            vec![anvil.endpoint_url()],
+            anvil.ws_endpoint_url(),
+        )
+        .environment(Environment::Dev)
+        .chain_id(31_337)
+        .build()
+        .await
+        .expect("can build RPC providers");
+
         let started_services = StartedServices::new();
         let (service, key_event_watcher_task) = OprfServiceBuilder::init(
             config,
             Arc::new(NodeTestSecretManager(Arc::clone(&secret_manager))),
+            rpc_provider,
             started_services.clone(),
             child_token.clone(),
         )

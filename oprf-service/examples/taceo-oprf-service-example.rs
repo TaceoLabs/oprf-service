@@ -7,7 +7,10 @@ use std::{
 
 use config::{Config, Environment};
 use eyre::Context;
-use nodes_common::postgres::PostgresConfig;
+use nodes_common::{
+    postgres::PostgresConfig,
+    web3::{self},
+};
 use serde::Deserialize;
 use taceo_oprf_service::{
     OprfServiceBuilder, StartedServices,
@@ -33,6 +36,10 @@ pub struct ExampleOprfNodeConfig {
     #[serde(with = "humantime_serde")]
     pub max_wait_time_shutdown: Duration,
 
+    /// The blockchain RPC config
+    #[serde(rename = "rpc")]
+    pub rpc_provider_config: web3::RpcProviderConfig,
+
     /// The OPRF service config
     #[serde(rename = "service")]
     pub node_config: OprfNodeServiceConfig,
@@ -51,8 +58,13 @@ fn default_max_wait_shutdown() -> Duration {
 }
 
 pub fn load_example_config() -> eyre::Result<ExampleOprfNodeConfig> {
-    let cfg =
-        Config::builder().add_source(Environment::with_prefix("TACEO_OPRF_NODE").separator("__"));
+    let cfg = Config::builder().add_source(
+        Environment::with_prefix("TACEO_OPRF_NODE")
+            .separator("__")
+            .list_separator(",")
+            .with_list_parse_key("rpc.http_urls")
+            .try_parsing(true),
+    );
 
     cfg.build()
         .context("while building from config")?
@@ -76,8 +88,17 @@ async fn main() -> eyre::Result<ExitCode> {
             .await
             .context("while starting postgres secret-manager")?,
     );
+
+    tracing::info!("connect to chain RPC...");
+    let rpc_provider =
+        nodes_common::web3::RpcProviderBuilder::with_config(&config.rpc_provider_config)
+            .environment(config.node_config.environment)
+            .build()
+            .await
+            .context("while init blockchain connection")?;
     let result = start_service(
         config,
+        rpc_provider,
         secret_manager,
         nodes_common::default_shutdown_signal(),
     )
@@ -97,6 +118,7 @@ async fn main() -> eyre::Result<ExitCode> {
 
 pub async fn start_service(
     config: ExampleOprfNodeConfig,
+    rpc_provider: web3::RpcProvider,
     secret_manager: SecretManagerService,
     shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> eyre::Result<()> {
@@ -107,6 +129,7 @@ pub async fn start_service(
     let (oprf_service_router, key_event_watcher) = OprfServiceBuilder::init(
         config.node_config,
         secret_manager,
+        rpc_provider,
         StartedServices::default(),
         cancellation_token.clone(),
     )

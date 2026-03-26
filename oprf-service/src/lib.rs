@@ -57,13 +57,11 @@ use crate::services::key_event_watcher::KeyEventWatcherTaskArgs;
 use crate::services::open_sessions::OpenSessions;
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
 use crate::{config::OprfNodeServiceConfig, services::secret_manager::SecretManagerService};
-use alloy::providers::{Provider as _, ProviderBuilder, WsConnect};
 use axum::Router;
 use eyre::Context as _;
 use oprf_types::api::OprfRequestAuthService;
 use oprf_types::chain::OprfKeyRegistry;
 use oprf_types::crypto::PartyId;
-use secrecy::ExposeSecret as _;
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 use tower_http::trace::TraceLayer;
@@ -75,6 +73,7 @@ pub(crate) mod services;
 
 pub use nodes_common::Environment;
 pub use nodes_common::StartedServices;
+pub use nodes_common::web3;
 pub use semver::VersionReq;
 pub use services::oprf_key_material_store;
 pub use services::secret_manager;
@@ -115,17 +114,11 @@ impl OprfServiceBuilder {
     pub async fn init(
         config: OprfNodeServiceConfig,
         secret_manager: SecretManagerService,
+        rpc_provider: web3::RpcProvider,
         started_services: StartedServices,
         cancellation_token: CancellationToken,
     ) -> eyre::Result<Self> {
         ::metrics::gauge!(METRICS_ID_NODE_SESSIONS_OPEN).set(0);
-        tracing::info!("init rpc provider..");
-        let ws = WsConnect::new(config.chain_ws_rpc_url.expose_secret());
-        let provider = ProviderBuilder::new()
-            .connect_ws(ws)
-            .await
-            .context("while connecting to RPC")?
-            .erased();
 
         tracing::info!("loading address from secret-manager..");
         let address = secret_manager
@@ -134,7 +127,7 @@ impl OprfServiceBuilder {
             .context("while loading address")?;
 
         tracing::info!("loading party id with address {address}..");
-        let contract = OprfKeyRegistry::new(config.oprf_key_registry_contract, provider.clone());
+        let contract = OprfKeyRegistry::new(config.oprf_key_registry_contract, rpc_provider.http());
         let party_id = PartyId(
             contract
                 .getPartyIdForParticipant(address)
@@ -170,11 +163,11 @@ impl OprfServiceBuilder {
 
         tracing::info!("spawning key event watcher..");
         let key_event_watcher = tokio::spawn({
-            let provider = provider.clone();
+            let rpc_provider = rpc_provider.clone();
             let contract_address = config.oprf_key_registry_contract;
             let cancellation_token = cancellation_token.clone();
             services::key_event_watcher::key_event_watcher_task(KeyEventWatcherTaskArgs {
-                provider,
+                rpc_provider,
                 contract_address,
                 secret_manager,
                 oprf_key_material_store: oprf_key_material_store.clone(),

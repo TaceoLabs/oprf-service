@@ -23,7 +23,6 @@ use std::time::Duration;
 
 use alloy::primitives::Address;
 use nodes_common::Environment;
-use secrecy::SecretString;
 use semver::VersionReq;
 use serde::{
     Deserialize,
@@ -38,8 +37,7 @@ pub struct OprfNodeServiceConfig {
     pub environment: Environment,
     /// The Address of the `OprfKeyRegistry` contract.
     pub oprf_key_registry_contract: Address,
-    /// The websocket rpc url of the chain
-    pub chain_ws_rpc_url: SecretString,
+
     /// Accepted `SemVer` versions of clients.
     #[serde(deserialize_with = "deserialize_version_req")]
     pub version_req: VersionReq,
@@ -119,13 +117,11 @@ impl OprfNodeServiceConfig {
     pub fn with_default_values(
         environment: Environment,
         oprf_key_registry_contract: Address,
-        chain_ws_rpc_url: SecretString,
         version_req: VersionReq,
     ) -> Self {
         Self {
             environment,
             oprf_key_registry_contract,
-            chain_ws_rpc_url,
             version_req,
             ws_max_message_size: Self::default_ws_max_message_size(),
             session_lifetime: Self::default_session_lifetime(),
