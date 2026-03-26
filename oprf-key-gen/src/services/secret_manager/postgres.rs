@@ -38,10 +38,12 @@ impl PostgresSecretManager {
     /// Returns an error if creating the database pool fails, or if running the migrations fails.
     #[instrument(level = "debug", skip_all)]
     pub async fn init(db_config: &PostgresConfig) -> eyre::Result<Self> {
+        tracing::debug!("init PgPool with schema: {}", db_config.schema);
         let pool = nodes_common::postgres::pg_pool_with_schema(db_config, CreateSchema::Yes)
             .await
             .context("while creating pool")?;
         // if we just got a fresh db pool, we have a valid connection, as we don't have connect_lazy, therefore this should not run into timeouts.
+        tracing::debug!("potentially running migrations..");
         sqlx::migrate!("./migrations")
             .run(&pool)
             .await
@@ -57,6 +59,7 @@ impl PostgresSecretManager {
 
 #[async_trait]
 impl SecretManager for PostgresSecretManager {
+    #[instrument(level = "info", skip_all)]
     async fn store_wallet_address(&self, address: String) -> eyre::Result<()> {
         let _query_res = (|| {
             sqlx::query(
@@ -78,17 +81,21 @@ impl SecretManager for PostgresSecretManager {
         })
         .await
         .context("while storing address into DB")?;
+        tracing::trace!("successfully stored address");
         Ok(())
     }
 
+    #[instrument(level = "trace", skip_all)]
     async fn ping(&self) -> eyre::Result<()> {
         sqlx::query("SELECT 1")
             .execute(&self.pool)
             .await
             .context("while pinging DB")?;
+        tracing::trace!("ping successful");
         Ok(())
     }
 
+    #[instrument(level = "debug", skip(self))]
     async fn get_share_by_epoch(
         &self,
         oprf_key_id: OprfKeyId,
@@ -119,6 +126,7 @@ impl SecretManager for PostgresSecretManager {
         .with_context(||format!("while fetching share {oprf_key_id} with epoch {epoch}"))?;
 
         if let Some(share_bytes) = maybe_share_bytes {
+            tracing::trace!("found share!");
             Ok(Some(
                 DLogShareShamir::deserialize_uncompressed(share_bytes.as_slice())
                     .context("Cannot deserialize share: DB not sane")?,
@@ -129,6 +137,7 @@ impl SecretManager for PostgresSecretManager {
         }
     }
 
+    #[instrument(level = "debug", skip(self))]
     async fn remove_oprf_key_material(&self, oprf_key_id: OprfKeyId) -> eyre::Result<()> {
         tracing::trace!("trying to delete key-material..");
         let rows_deleted = (|| {
@@ -158,6 +167,7 @@ impl SecretManager for PostgresSecretManager {
         Ok(())
     }
 
+    #[instrument(level = "debug", skip_all, fields(oprf_key_id=%oprf_key_id, epoch=%epoch))]
     async fn store_dlog_share(
         &self,
         oprf_key_id: OprfKeyId,

@@ -56,6 +56,7 @@ impl PostgresSecretManager {
     /// Returns an error if the connection to the database fails.
     #[instrument(level = "debug", skip_all)]
     pub async fn init(config: &PostgresConfig) -> eyre::Result<Self> {
+        tracing::debug!("init PgPool with schema: {}", config.schema);
         let pool = nodes_common::postgres::pg_pool_with_schema(config, CreateSchema::No)
             .await
             .context("while connecting to postgres DB")?;
@@ -86,9 +87,9 @@ impl SecretManager for PostgresSecretManager {
         Address::parse_checksummed(stored_address, None).context("invalid address stored in DB")
     }
 
-    #[instrument(level = "debug", skip_all)]
+    #[instrument(level = "info", skip_all)]
     async fn load_secrets(&self) -> eyre::Result<HashMap<OprfKeyId, OprfKeyMaterial>> {
-        tracing::trace!("fetching all OPRF keys from DB..");
+        tracing::info!("fetching all OPRF keys from DB..");
         let rows: Vec<ShareRow> = (|| {
             sqlx::query_as(
                 "
@@ -114,7 +115,7 @@ impl SecretManager for PostgresSecretManager {
             .iter()
             .map(db_row_into_key_material)
             .collect::<HashMap<_, _>>();
-        tracing::trace!("successfully parsed {} OPRF entries", map.len());
+        tracing::info!("successfully parsed {} OPRF entries", map.len());
         Ok(map)
     }
 
