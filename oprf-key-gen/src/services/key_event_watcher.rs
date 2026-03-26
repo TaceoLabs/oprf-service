@@ -668,7 +668,7 @@ async fn handle_delete(
     secret_manager
         .remove_oprf_key_material(oprf_key_id)
         .await
-        .context("while storing share to secret manager")?;
+        .context("while removing share from secret-manager")?;
     tracing::info!("successfully deleted {oprf_key_id:?}");
     Ok(())
 }
