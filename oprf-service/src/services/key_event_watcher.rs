@@ -15,13 +15,14 @@ use std::{
 use alloy::{
     eips::BlockNumberOrTag,
     primitives::{Address, LogData},
-    providers::{DynProvider, Provider as _},
+    providers::Provider as _,
     rpc::types::{Filter, Log},
     sol_types::SolEvent as _,
 };
 use backon::{BackoffBuilder, ExponentialBuilder, Retryable as _};
 use eyre::Context;
 use futures::StreamExt as _;
+use nodes_common::web3;
 use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, instrument};
@@ -55,7 +56,7 @@ enum FetchOprfKeyMaterialError {
 
 /// The arguments to start the key-even-watcher.
 pub(crate) struct KeyEventWatcherTaskArgs {
-    pub(crate) provider: DynProvider,
+    pub(crate) rpc_provider: web3::RpcProvider,
     pub(crate) contract_address: Address,
     pub(crate) secret_manager: SecretManagerService,
     pub(crate) oprf_key_material_store: OprfKeyMaterialStore,
@@ -88,7 +89,7 @@ pub(crate) async fn key_event_watcher_task(
 /// Filters for various key generation event signatures and handles them
 async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> eyre::Result<()> {
     let KeyEventWatcherTaskArgs {
-        provider,
+        rpc_provider,
         contract_address,
         secret_manager,
         oprf_key_material_store,
@@ -106,7 +107,7 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
         .from_block(BlockNumberOrTag::Latest)
         .event_signature(event_signatures.clone());
     // subscribe now so we don't miss any events between now and when we start processing past events
-    let sub = provider.subscribe_logs(&filter).await?;
+    let sub = rpc_provider.subscriptions().subscribe_logs(&filter).await?;
     let mut latest_block = 0;
 
     // if start_block is set, load past events from there to head
@@ -117,7 +118,8 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
             .from_block(BlockNumberOrTag::Number(start_block))
             .to_block(BlockNumberOrTag::Latest)
             .event_signature(event_signatures);
-        let logs = provider
+        let logs = rpc_provider
+            .http()
             .get_logs(&filter)
             .await
             .context("while loading past logs")?;

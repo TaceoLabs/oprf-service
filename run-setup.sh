@@ -138,6 +138,9 @@ start_nodes() {
         TACEO_OPRF_NODE__SERVICE__ENVIRONMENT=dev \
         TACEO_OPRF_NODE__SERVICE__OPRF_KEY_REGISTRY_CONTRACT=$oprf_key_registry \
         TACEO_OPRF_NODE__SERVICE__CHAIN_WS_RPC_URL=ws://127.0.0.1:8545 \
+        TACEO_OPRF_NODE__RPC__HTTP_URLS=http://127.0.0.1:8545 \
+        TACEO_OPRF_NODE__RPC__WS_URL=ws://127.0.0.1:8545 \
+        TACEO_OPRF_NODE__RPC__CHAIN_ID=31337 \
         TACEO_OPRF_NODE__SERVICE__VERSION_REQ=">=0.0.0" \
         TACEO_OPRF_NODE__BIND_ADDR=127.0.0.1:$port \
         ./target/release/examples/taceo-oprf-service-example > logs/node$i.log 2>&1 &
