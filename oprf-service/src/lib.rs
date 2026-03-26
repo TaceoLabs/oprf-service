@@ -49,8 +49,6 @@
 //!
 //! If you want to enable HTTP/2.0, you either have to do it by hand or by calling `axum::serve`, which enabled HTTP/2.0 by default. Have a look at [Axum's HTTP2.0 example](https://github.com/tokio-rs/axum/blob/aeff16e91af6fa76efffdee8f3e5f464b458785b/examples/websockets-http2/src/main.rs#L57).
 
-use std::time::Duration;
-
 use crate::api::oprf::OprfModuleState;
 use crate::metrics::{METRICS_ID_I_AM_ALIVE, METRICS_ID_NODE_SESSIONS_OPEN};
 use crate::services::key_event_watcher::KeyEventWatcherTaskArgs;
@@ -77,7 +75,6 @@ pub use nodes_common::web3;
 pub use semver::VersionReq;
 pub use services::oprf_key_material_store;
 pub use services::secret_manager;
-use tracing::instrument;
 
 /// [`OprfServiceBuilder`] to initialize a `OprfService` with multiple [`OprfRequestAuthService`]s.
 pub struct OprfServiceBuilder {
@@ -152,13 +149,6 @@ impl OprfServiceBuilder {
                 .load_secrets()
                 .await
                 .context("while loading secrets from secret-manager")?,
-        );
-
-        // start the refresh task
-        start_refresh_task(
-            &secret_manager,
-            &oprf_key_material_store,
-            config.reload_key_material_interval,
         );
 
         tracing::info!("spawning key event watcher..");
@@ -272,39 +262,4 @@ impl OprfServiceBuilder {
             self.key_event_watcher,
         )
     }
-}
-
-#[instrument(level = "info", skip_all)]
-async fn refresh_oprf_secrets_task(
-    secret_manager: &SecretManagerService,
-    oprf_key_material_store: &OprfKeyMaterialStore,
-) {
-    tracing::info!("Refreshing key-material store - loading from DB");
-    match secret_manager.load_secrets().await {
-        Ok(refreshed_key_material) => oprf_key_material_store.reload(refreshed_key_material),
-        // In case we get an error from the secret-manager, we simply log the error - we can still serve OPRF requests, nothing wrong with that.
-        Err(err) => {
-            tracing::error!("Could not load key-material store from secret-manager: {err:?}");
-        }
-    }
-}
-
-fn start_refresh_task(
-    secret_manager: &SecretManagerService,
-    oprf_key_material_store: &OprfKeyMaterialStore,
-    reload_key_material_interval: Duration,
-) {
-    tokio::task::spawn({
-        let secret_manager = secret_manager.clone();
-        let oprf_key_material_store = oprf_key_material_store.clone();
-        let mut interval = tokio::time::interval(reload_key_material_interval);
-        async move {
-            // first tick triggers instantly
-            interval.tick().await;
-            loop {
-                interval.tick().await;
-                refresh_oprf_secrets_task(&secret_manager, &oprf_key_material_store).await;
-            }
-        }
-    });
 }
