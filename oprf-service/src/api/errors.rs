@@ -28,7 +28,7 @@ pub(crate) enum Error {
     ConnectionClosed,
     #[error(transparent)]
     Axum(#[from] axum::Error),
-    #[error("unexpected message - received PING/PONG")]
+    #[error("unexpected message - received PING/PONG or user switched encoding between messages")]
     UnexpectedMessage,
     #[error("cannot authenticate: {0}")]
     Auth(#[from] OprfRequestAuthenticatorError),

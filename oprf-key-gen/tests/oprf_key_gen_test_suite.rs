@@ -169,7 +169,16 @@ async fn test_not_a_participant() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     // for this setup this node is not registered
     let is_error = TestKeyGen::start(4, &setup).await.expect_err("Should fail");
-    assert_eq!(is_error.to_string(), "while loading party id");
+    assert_eq!(is_error.to_string(), "while doing sanity checks");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_invalid_threshold() -> eyre::Result<()> {
+    let mut setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    setup.setup = DeploySetup::ThreeFive;
+    let is_error = TestKeyGen::start(0, &setup).await.expect_err("Should fail");
+    assert_eq!(is_error.to_string(), "while doing sanity checks");
     Ok(())
 }
 

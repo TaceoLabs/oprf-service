@@ -57,12 +57,6 @@ pub struct OprfNodeServiceConfig {
     #[serde(default = "OprfNodeServiceConfig::default_session_lifetime")]
     #[serde(with = "humantime_serde")]
     pub session_lifetime: Duration,
-    /// Interval for which the node reloads all oprf-secrets from the secret-manager. Can be a rather long and only acts as fail-safe.
-    ///
-    /// Defaults to `24 h`.
-    #[serde(default = "OprfNodeServiceConfig::default_reload_key_material_interval")]
-    #[serde(with = "humantime_serde")]
-    pub reload_key_material_interval: Duration,
     /// Max time to wait for oprf key material secret retrieval from secret manager during key-event processing.
     ///
     /// Defaults to `10 min`.
@@ -99,11 +93,6 @@ impl OprfNodeServiceConfig {
         Duration::from_secs(30)
     }
 
-    /// Default reload key material interval (`24 h`).
-    fn default_reload_key_material_interval() -> Duration {
-        Duration::from_secs(24 * 60 * 60)
-    }
-
     /// Default get oprf key material timeout (`10 min`).
     fn default_get_oprf_key_material_timeout() -> Duration {
         Duration::from_secs(10 * 60)
@@ -129,7 +118,6 @@ impl OprfNodeServiceConfig {
             version_req,
             ws_max_message_size: Self::default_ws_max_message_size(),
             session_lifetime: Self::default_session_lifetime(),
-            reload_key_material_interval: Self::default_reload_key_material_interval(),
             get_oprf_key_material_timeout: Self::default_get_oprf_key_material_timeout(),
             start_block: None,
             i_am_alive_interval: Self::default_i_am_alive_interval(),

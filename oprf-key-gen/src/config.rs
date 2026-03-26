@@ -21,6 +21,7 @@
 //! | `confirmations_for_transaction`          | 5           |
 //! | `i_am_alive_interval`                    | 60 s        |
 
+use std::num::NonZeroU16;
 use std::{path::PathBuf, time::Duration};
 
 use alloy::primitives::Address;
@@ -28,7 +29,6 @@ use nodes_common::{
     Environment,
     web3::{self, RpcProviderConfig},
 };
-use reqwest::Url;
 use serde::Deserialize;
 
 /// The configuration for TACEO:OPRF key-gen functionality.
@@ -46,6 +46,12 @@ pub struct OprfKeyGenServiceConfig {
 
     /// The location of the graph binary for the key-gen witness extension
     pub witness_graph_path: PathBuf,
+
+    /// The expected num peers stored at the contract.
+    pub expected_num_peers: NonZeroU16,
+
+    /// The expected threshold stored at the contract.
+    pub expected_threshold: NonZeroU16,
 
     /// The blockchain RPC config
     #[serde(rename = "rpc")]
@@ -113,15 +119,18 @@ impl OprfKeyGenServiceConfig {
         oprf_key_registry_contract: Address,
         zkey_path: PathBuf,
         witness_graph_path: PathBuf,
-        http_urls: Vec<Url>,
-        ws_url: Url,
+        expected_threshold: NonZeroU16,
+        expected_num_peers: NonZeroU16,
+        rpc_provider_config: RpcProviderConfig,
     ) -> Self {
         Self {
             environment,
             oprf_key_registry_contract,
             zkey_path,
             witness_graph_path,
-            rpc_provider_config: RpcProviderConfig::with_default_values(http_urls, ws_url),
+            expected_num_peers,
+            expected_threshold,
+            rpc_provider_config,
             max_wait_time_transaction_confirmation:
                 Self::default_max_wait_time_transaction_confirmation(),
             start_block: None,

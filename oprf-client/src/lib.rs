@@ -222,6 +222,16 @@ pub enum Error {
     /// Services must be unique
     #[error("Services must be unique")]
     NonUniqueServices,
+    /// Invalid threshold for provided URIs.
+    #[error(
+        "Invalid combination num_peers {num_peers} and {threshold}. Must be 0 < threshold <= num_peers"
+    )]
+    InvalidTreshold {
+        /// The number of peers (URIs) provided
+        num_peers: usize,
+        /// The requested threshold
+        threshold: usize,
+    },
     /// The `DLog` equality proof failed verification.
     #[error("DLog proof could not be verified")]
     InvalidDLogProof,
@@ -358,6 +368,29 @@ pub struct VerifiableOprfOutput {
 /// - `auth`: Implementation specific authentication request forwarded to each OPRF node as part of the request
 /// - `connector`: TLS connector configuration for the WebSocket connections
 ///
+/// # Timeout and Cancellation
+///
+/// This method does not implement any timeout policy. Callers are expected to
+/// enforce timeouts at a higher level (e.g., via `tokio::time::timeout` or
+/// equivalent mechanisms).
+///
+/// All network operations are executed using structured concurrency (no detached
+/// tasks are spawned). As a result, dropping the returned future (e.g., due to
+/// cancellation or timeout at the call-site) will also drop all in-flight
+/// requests initiated by this method.
+///
+/// However, whether cancellation fully aborts underlying work depends on the
+/// behavior of the contacted OPRF nodes. In particular:
+///
+/// - If a request has already been processed by a node, that work cannot be
+///   undone.
+/// - Some node implementations may persist request-related state (e.g., nonces
+///   included in the `auth` argument). Retrying the same request after
+///   cancellation may therefore be rejected by the nodes.
+///
+/// Callers should treat this operation as potentially having side effects and
+/// design retry logic accordingly.
+///
 /// # Errors
 /// See the [`Error`] enum for all potential errors of this function.
 #[instrument(level = "debug", skip_all, fields(request_id = tracing::field::Empty))]
@@ -381,6 +414,12 @@ where
         "starting distributed oprf. my version: {}",
         env!("CARGO_PKG_VERSION")
     );
+    if threshold == 0 || threshold > services.len() {
+        return Err(Error::InvalidTreshold {
+            num_peers: services.len(),
+            threshold,
+        });
+    }
     let services_dedup = services.iter().collect::<HashSet<_>>();
     if services_dedup.len() != services.len() {
         return Err(Error::NonUniqueServices);
