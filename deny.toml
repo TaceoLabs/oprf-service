@@ -73,8 +73,6 @@ ignore = [
     { id = "RUSTSEC-2024-0436", reason = "Paste crate is unmaintained, but arkworks is still using it." },
     { id = "RUSTSEC-2024-0388", reason = "derivative crate is unmaintained, but arkworks is still using it." },
     { id = "RUSTSEC-2025-0055", reason = "ark-relations is using v0.2 of tracing-subscriber still, we do not use this functionality so it is not exploitable." },
-    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile crate is unmaintained, but its used by testcontainers and aws crates" },
-    { id = "RUSTSEC-2026-0049", reason = "no ciritical bug and cant upgrade because of aws-config" },
     { id = "RUSTSEC-2026-0066", reason = "can't be upgraded with current version of testcontainers" },
 
 ]
@@ -105,7 +103,7 @@ allow = [
     "CDLA-Permissive-2.0",
     "Unlicense",
     "0BSD",
-    "CC0-1.0"
+    "CC0-1.0",
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the

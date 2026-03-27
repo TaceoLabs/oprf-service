@@ -63,32 +63,28 @@ just run-dev-client test
 
 ## Secret Management
 
-The OPRF service supports two secret manager backends for storing OPRF key shares and wallet credentials.
+The OPRF service supports different secret manager backends for storing OPRF key shares.
 
 ### Postgres Secret Manager (Default)
 
 The Postgres backend stores OPRF key shares in a PostgreSQL database while using AWS Secrets Manager only for the wallet private key. This is the recommended approach for production deployments, especially when managing many OPRF keys.
 
 **Required environment variables:**
-- `TACEO_OPRF_NODE__POSTGRES__CONNECTION_STRING` – PostgreSQL connection string (e.g., `postgres://user:password@host:5432/dbname`)
-- `TACEO_OPRF_NODE__POSTGRES__SCHEMA` – Database schema to use
-- Standard AWS credentials (for wallet key retrieval)
+
+* `TACEO_OPRF_NODE__POSTGRES__CONNECTION_STRING` – PostgreSQL connection string (e.g., `postgres://user:password@host:5432/dbname`)
+* `TACEO_OPRF_NODE__POSTGRES__SCHEMA` – Database schema to use
+* Standard AWS credentials (for wallet key retrieval)
 
 **Database setup:**
 
 The Postgres secret manager automatically runs migrations on startup to create the required tables:
-- `oprf_shares` – Stores OPRF key shares per epoch
-- `evm_address` – Stores EVM address mappings
+
+* `oprf_shares` – Stores OPRF key shares per epoch
+* `evm_address` – Stores EVM address mappings
 
 **Security considerations:**
-- The connection string contains credentials and should be treated as a secret
-- Use SSL/TLS connections in production (`?sslmode=require`)
-- Ensure the database is not publicly accessible
-- The wallet private key is always stored in AWS Secrets Manager for additional security
 
-### AWS Secrets Manager
-
-For simpler deployments with a small number of OPRF keys, you can use AWS Secrets Manager to store all secrets.
-
-**Required environment variables:**
-- Standard AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`)
+* The connection string contains credentials and should be treated as a secret
+* Use SSL/TLS connections in production (`?sslmode=require`)
+* Ensure the database is not publicly accessible
+* The wallet private key is always stored in AWS Secrets Manager for additional security
