@@ -43,7 +43,7 @@ criterion = "0.8"
 eyre = { version = "0.6" }
 futures = "0.3"
 groth16-material = { package = "taceo-groth16-material", version = "0.2", default-features = false }
-groth16-sol = { package = "taceo-groth16-sol", version = "0.2" }
+groth16-sol = { package = "taceo-groth16-sol", version = "0.2", default-features = false }
 http = "1"
 humantime = "2"
 humantime-serde = "1.1.1"
