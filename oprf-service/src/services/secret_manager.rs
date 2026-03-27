@@ -4,7 +4,6 @@
 //! persist and retrieve `OprfKeyMaterial`.
 //!
 //! Current `SecretManager` implementations:
-//! - AWS (cloud storage)
 //! - Postgres
 
 use std::{collections::HashMap, sync::Arc};
@@ -13,8 +12,6 @@ use alloy::primitives::Address;
 use async_trait::async_trait;
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfKeyMaterial};
 
-#[cfg(feature = "aws")]
-pub mod aws;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 

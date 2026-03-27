@@ -17,7 +17,6 @@ use crate::TEST_TIMEOUT;
 macro_rules! key_gen_test_secret_manager {
     ($trait: path, $name: ident) => {
         mod impl_key_gen_secret_manager {
-            use $crate::alloy::signers::local::PrivateKeySigner;
             use $crate::async_trait::async_trait;
             use $crate::eyre::Context;
             use $crate::oprf_core::ddlog_equality::shamir::DLogShareShamir;
@@ -28,12 +27,9 @@ macro_rules! key_gen_test_secret_manager {
 
             #[async_trait]
             impl $trait for $name {
-                async fn load_or_insert_wallet_private_key(
-                    &self,
-                ) -> $crate::eyre::Result<PrivateKeySigner> {
-                    self.0.load_or_insert_wallet_private_key().await
+                async fn store_wallet_address(&self, address: String) -> $crate::eyre::Result<()> {
+                    self.0.store_wallet_address(address).await
                 }
-
                 async fn ping(&self) -> eyre::Result<()> {
                     // noop
                     Ok(())
@@ -223,10 +219,6 @@ impl TestSecretManager {
         self.store.lock().keys().copied().collect_vec()
     }
 
-    pub async fn load_or_insert_wallet_private_key(&self) -> eyre::Result<PrivateKeySigner> {
-        Ok(self.wallet_private_key.clone())
-    }
-
     pub async fn get_share_by_epoch(
         &self,
         oprf_key_id: OprfKeyId,
@@ -272,6 +264,12 @@ impl TestSecretManager {
 
     pub async fn load_address(&self) -> eyre::Result<Address> {
         Ok(self.wallet_private_key.address())
+    }
+
+    pub async fn store_wallet_address(&self, address: String) -> eyre::Result<()> {
+        // noop, since the test secret manager already has the wallet private key
+        assert!(self.wallet_private_key.address().to_string() == address);
+        Ok(())
     }
 
     pub async fn get_oprf_key_material(

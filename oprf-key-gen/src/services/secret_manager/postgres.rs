@@ -1,13 +1,12 @@
-//! This module provides an implementation of [`SecretManager`] using a Postgres database to store shares and the AWS secret-manager to store the Ethereum private-key of the node provider.
+//! This module provides an implementation of [`SecretManager`] using a Postgres database to store shares.
 //!
-//! If the EVM private-key doesn't exist at the requested `secret-id`, it will create a new one and store it. Additionally, will store the associated address in the DB so that the accompanying OPRF-nodes can fetch the address from there.
+//! The wallet private key is accepted directly at initialization and stored in memory. The associated address is written to the DB so that the accompanying OPRF-nodes can fetch it from there.
 
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
-use alloy::signers::local::PrivateKeySigner;
 use async_trait::async_trait;
 use backon::BackoffBuilder;
 use backon::ConstantBackoff;
@@ -20,14 +19,12 @@ use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 use sqlx::PgPool;
 use tracing::instrument;
 
-use crate::secret_manager::{self, SecretManager};
+use crate::secret_manager::SecretManager;
 
 /// The postgres secret manager wrapping a `PgPool`.
 #[derive(Debug)]
 pub struct PostgresSecretManager {
     pool: PgPool,
-    aws_config: aws_config::SdkConfig,
-    wallet_private_key_secret_id: String,
     max_retries: NonZeroUsize,
     retry_delay: Duration,
 }
@@ -35,16 +32,12 @@ pub struct PostgresSecretManager {
 impl PostgresSecretManager {
     /// Initializes the `PostgresSecretManager`.
     ///
-    /// Creates the Postgres connection pool, ensures the configured schema exists, and runs all pending database migrations. Stores the AWS SDK configuration and the secret identifier used to load or store the wallet private key.
+    /// Creates the Postgres connection pool, ensures the configured schema exists, and runs all pending database migrations.
     ///
     /// # Errors
-    /// Returns an error if creating the database pool fails or if running the migrations fails.
+    /// Returns an error if creating the database pool fails, or if running the migrations fails.
     #[instrument(level = "debug", skip_all)]
-    pub async fn init(
-        db_config: &PostgresConfig,
-        aws_config: aws_config::SdkConfig,
-        wallet_private_key_secret_id: &str,
-    ) -> eyre::Result<Self> {
+    pub async fn init(db_config: &PostgresConfig) -> eyre::Result<Self> {
         let pool = nodes_common::postgres::pg_pool_with_schema(db_config, CreateSchema::Yes)
             .await
             .context("while creating pool")?;
@@ -53,10 +46,9 @@ impl PostgresSecretManager {
             .run(&pool)
             .await
             .context("while running migrations")?;
+
         Ok(Self {
             pool,
-            wallet_private_key_secret_id: wallet_private_key_secret_id.to_owned(),
-            aws_config,
             max_retries: db_config.max_retries,
             retry_delay: db_config.retry_delay,
         })
@@ -65,17 +57,8 @@ impl PostgresSecretManager {
 
 #[async_trait]
 impl SecretManager for PostgresSecretManager {
-    async fn load_or_insert_wallet_private_key(&self) -> eyre::Result<PrivateKeySigner> {
-        // load or insert the key with the secret-manager
-        // has internal backoff strategy, therefore we don't need to wrap this manually.
-        let private_key = secret_manager::aws::load_or_insert_ethereum_private_key(
-            &aws_sdk_secretsmanager::Client::new(&self.aws_config),
-            &self.wallet_private_key_secret_id,
-        )
-        .await?;
-        tracing::trace!("insert address into DB...");
-        // insert address into postgres DB
-        (|| {
+    async fn store_wallet_address(&self, address: String) -> eyre::Result<()> {
+        let _query_res = (|| {
             sqlx::query(
                 "
                     INSERT INTO evm_address (id, address)
@@ -84,18 +67,18 @@ impl SecretManager for PostgresSecretManager {
                     DO UPDATE SET address = EXCLUDED.address
                 ",
             )
-            .bind(private_key.address().to_string())
+            .bind(&address)
             .execute(&self.pool)
         })
         .retry(self.backoff_strategy())
         .sleep(tokio::time::sleep)
         .when(is_retryable_error)
         .notify(|e, duration| {
-            tracing::warn!("Retrying load or insert db: {e:?} after {duration:?}");
+            tracing::warn!("Retrying inserting wallet address into db: {e:?} after {duration:?}");
         })
         .await
         .context("while storing address into DB")?;
-        Ok(private_key)
+        Ok(())
     }
 
     async fn ping(&self) -> eyre::Result<()> {

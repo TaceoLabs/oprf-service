@@ -82,6 +82,7 @@ async fn main() -> eyre::Result<ExitCode> {
 
     let config = load_example_config()?;
     tracing::info!("starting oprf-service with config: {config:#?}");
+
     // Load the postgres secret manager.
     let secret_manager = Arc::new(
         PostgresSecretManager::init(&config.postgres_config)

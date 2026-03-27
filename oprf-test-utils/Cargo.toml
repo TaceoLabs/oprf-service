@@ -29,8 +29,6 @@ ark-ec.workspace = true
 ark-ff.workspace = true
 askama = { version = "0.15", optional = true }
 async-trait.workspace = true
-aws-config = { workspace = true, features = ["behavior-version-latest"], optional = true }
-aws-sdk-secretsmanager = { workspace = true, optional = true }
 clap = { workspace = true, features = ["derive", "env"], optional = true }
 eyre.workspace = true
 futures = { workspace = true }
@@ -50,7 +48,6 @@ sqlx = { workspace = true, features = [
   "runtime-tokio",
 ], optional = true }
 testcontainers-modules = { workspace = true, features = [
-  "localstack",
   "postgres"
 ], optional = true }
 tokio = { workspace = true, features = [
@@ -65,12 +62,7 @@ tokio-util = { workspace = true, optional = true }
 tracing.workspace = true
 
 [features]
-default = ["aws-test-container", "deploy-anvil", "postgres-test-container"]
-aws-test-container = [
-  "dep:aws-config",
-  "dep:aws-sdk-secretsmanager",
-  "dep:testcontainers-modules"
-]
+default = ["deploy-anvil", "postgres-test-container"]
 ci = []
 deploy-anvil = ["dep:serde_json", "dep:tokio-util"]
 generate-test-transcript = [

@@ -19,9 +19,6 @@ use taceo_oprf_key_gen::{
 /// Configured via environment variables using the `TACEO_OPRF_KEY_GEN__` prefix and `__` as separator.
 #[derive(Clone, Debug, Deserialize)]
 struct OprfKeyGenConfig {
-    /// Secret Id of the wallet private key.
-    pub wallet_private_key_secret_id: String,
-
     /// The bind addr of the AXUM server
     #[serde(default = "default_bind_addr")]
     pub bind_addr: SocketAddr,
@@ -57,32 +54,37 @@ fn load_key_gen_config() -> eyre::Result<OprfKeyGenConfig> {
             .try_parsing(true),
     );
 
-    cfg.build()
+    let key_gen_config = cfg
+        .build()
         .context("while building from config")?
         .try_deserialize()
-        .context("while parsing config")
+        .context("while parsing config")?;
+
+    // Unset all env vars with our prefix to prevent leakage to subprocesses.
+    // Safety: this is called before any threads are spawned.
+    let keys_to_remove: Vec<String> = std::env::vars()
+        .filter_map(|(k, _)| k.starts_with("TACEO_OPRF_KEY_GEN_").then_some(k))
+        .collect();
+    for key in keys_to_remove {
+        // SAFETY: no other threads are running at this point in the startup sequence.
+        unsafe {
+            std::env::remove_var(&key);
+        }
+    }
+
+    Ok(key_gen_config)
 }
 
-async fn run() -> eyre::Result<()> {
+async fn run(config: OprfKeyGenConfig) -> eyre::Result<()> {
     taceo_oprf_key_gen::metrics::describe_metrics();
     tracing::info!("{}", nodes_common::version_info!());
-
-    let config = load_key_gen_config().context("while loading config")?;
-    tracing::info!("starting taceo-oprf-key-gen with config: {config:#?}");
-
-    // Load AWS config from environment
-    let aws_config = aws_config::load_from_env().await;
 
     tracing::info!("starting Postgres secret-manager...");
     // Load the Postgres secret manager.
     let secret_manager = Arc::new(
-        PostgresSecretManager::init(
-            &config.postgres_config,
-            aws_config,
-            &config.wallet_private_key_secret_id,
-        )
-        .await
-        .context("while starting postgres secret-manager")?,
+        PostgresSecretManager::init(&config.postgres_config)
+            .await
+            .context("while starting postgres secret-manager")?,
     );
 
     let (cancellation_token, _) =
@@ -146,8 +148,9 @@ async fn run() -> eyre::Result<()> {
     }
 }
 
-#[tokio::main]
-async fn main() -> ExitCode {
+fn main() -> ExitCode {
+    // try loading config and unsetting vars before we do any potentially multithreaded work;
+    let maybe_config = load_key_gen_config();
     // we panic if we cannot setup tracing + TLS - if that fails we won't see anything anyways on tracing endpoint
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
@@ -156,15 +159,32 @@ async fn main() -> ExitCode {
         nodes_observability::TracingConfig::try_from_env().expect("Can create TracingConfig");
     let _tracing_handle =
         nodes_observability::initialize_tracing(&tracing_config).expect("Can get tracing handle");
-    match run().await {
-        Ok(_) => {
-            tracing::info!("good night");
-            ExitCode::SUCCESS
-        }
+
+    // load the config
+    let config = match maybe_config {
+        Ok(config) => config,
         Err(err) => {
-            tracing::error!("key-gen did shutdown: {err:?}");
-            tracing::error!("good night anyways");
-            ExitCode::FAILURE
+            tracing::error!("failed to load config: {err:?}");
+            return ExitCode::FAILURE;
         }
-    }
+    };
+    tracing::info!("starting taceo-oprf-key-gen with config: {config:#?}");
+
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Can build Tokio runtime");
+    runtime.block_on(async {
+        match run(config).await {
+            Ok(_) => {
+                tracing::info!("good night");
+                ExitCode::SUCCESS
+            }
+            Err(err) => {
+                tracing::error!("key-gen did shutdown: {err:?}");
+                tracing::error!("good night anyways");
+                ExitCode::FAILURE
+            }
+        }
+    })
 }

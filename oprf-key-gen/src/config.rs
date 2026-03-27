@@ -29,6 +29,7 @@ use nodes_common::{
     web3::{self, RpcProviderConfig},
 };
 use reqwest::Url;
+use secrecy::SecretString;
 use serde::Deserialize;
 
 /// The configuration for TACEO:OPRF key-gen functionality.
@@ -37,6 +38,9 @@ use serde::Deserialize;
 pub struct OprfKeyGenServiceConfig {
     /// The environment of OPRF key-gen.
     pub environment: Environment,
+
+    /// Hex-encoded wallet private key (with or without 0x prefix).
+    pub wallet_private_key: SecretString,
 
     /// The Address of the `OprfKeyRegistry` contract.
     pub oprf_key_registry_contract: Address,
@@ -111,6 +115,7 @@ impl OprfKeyGenServiceConfig {
     pub fn with_default_values(
         environment: Environment,
         oprf_key_registry_contract: Address,
+        wallet_private_key: SecretString,
         zkey_path: PathBuf,
         witness_graph_path: PathBuf,
         http_urls: Vec<Url>,
@@ -119,6 +124,7 @@ impl OprfKeyGenServiceConfig {
         Self {
             environment,
             oprf_key_registry_contract,
+            wallet_private_key,
             zkey_path,
             witness_graph_path,
             rpc_provider_config: RpcProviderConfig::with_default_values(http_urls, ws_url),

@@ -16,8 +16,6 @@ alloy = { workspace = true, features = ["full", "rpc", "rpc-client-ws"] }
 ark-babyjubjub = { workspace = true }
 ark-serialize.workspace = true
 async-trait = { workspace = true }
-aws-config = { workspace = true, features = ["behavior-version-latest"], optional = true }
-aws-sdk-secretsmanager = { workspace = true, optional = true }
 axum = { workspace = true, features = ["ws"] }
 axum-extra = { workspace = true, features = ["typed-header"] }
 backon = { workspace = true, features = ["std", "tokio-sleep"] }
@@ -77,6 +75,5 @@ oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-util
 rustls = { workspace = true }
 
 [features]
-default = ["aws", "postgres"]
-aws = ["dep:aws-config", "dep:aws-sdk-secretsmanager"]
+default = ["postgres"]
 postgres = ["dep:sqlx"]

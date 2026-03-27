@@ -21,9 +21,6 @@ pub use setup::*;
 
 pub use oprf_key_registry::*;
 
-#[cfg(feature = "aws-test-container")]
-pub use secret_manager::aws::*;
-
 #[cfg(feature = "postgres-test-container")]
 pub use secret_manager::postgres::*;
 

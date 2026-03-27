@@ -49,6 +49,7 @@ impl TestKeyGen {
         let mut config = OprfKeyGenServiceConfig::with_default_values(
             Environment::Dev,
             *oprf_key_registry,
+            private_key.into(),
             setup.key_gen_path(),
             setup.witness_path(),
             vec![anvil.endpoint_url()],

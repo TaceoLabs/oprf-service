@@ -7,28 +7,11 @@ use ark_serialize::CanonicalDeserialize;
 use eyre::Context;
 use nodes_common::postgres::PostgresConfig;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_test_utils::{
-    TEST_ETH_ADDRESS, TEST_ETH_PRIVATE_KEY, TEST_SCHEMA, TEST_WALLET_PRIVATE_KEY_SECRET_ID,
-};
+use oprf_test_utils::{TEST_ETH_ADDRESS, TEST_ETH_PRIVATE_KEY, TEST_SCHEMA};
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 use secrecy::SecretString;
 use sqlx::Row;
 use sqlx::{PgConnection, postgres::PgRow};
-
-async fn postgres_secret_manager_with_localstack(
-    aws_config: &aws_config::SdkConfig,
-    connection_string: &str,
-) -> eyre::Result<PostgresSecretManager> {
-    PostgresSecretManager::init(
-        &PostgresConfig::with_default_values(
-            SecretString::from(connection_string),
-            TEST_SCHEMA.parse().expect("Is a valid schema"),
-        ),
-        aws_config.to_owned(),
-        TEST_WALLET_PRIVATE_KEY_SECRET_ID,
-    )
-    .await
-}
 
 async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<PostgresSecretManager> {
     let mut pg_connection =
@@ -37,127 +20,27 @@ async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<Postgr
         .run(&mut pg_connection)
         .await?;
 
-    PostgresSecretManager::init(
-        &PostgresConfig::with_default_values(
-            SecretString::from(connection_string.to_owned()),
-            TEST_SCHEMA.parse().expect("Is a valid schema"),
-        ),
-        oprf_test_utils::dummy_localstack_config().await,
-        TEST_WALLET_PRIVATE_KEY_SECRET_ID,
-    )
+    PostgresSecretManager::init(&PostgresConfig::with_default_values(
+        SecretString::from(connection_string.to_owned()),
+        TEST_SCHEMA.parse().expect("Is a valid schema"),
+    ))
     .await
 }
 
 #[tokio::test]
-async fn load_or_insert_private_key_on_empty_db() -> eyre::Result<()> {
-    // for this test we need localstack as well
-    let (_localstack, localstack_url) = oprf_test_utils::localstack_testcontainer().await?;
-    let aws_config = oprf_test_utils::localstack_config(&localstack_url).await;
+async fn load_wallet_private_key_returns_correct_key() -> eyre::Result<()> {
     let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
-    let secret_manager =
-        postgres_secret_manager_with_localstack(&aws_config, &connection_string).await?;
-    let computed_private_key = secret_manager.load_or_insert_wallet_private_key().await?;
+    let secret_manager = postgres_secret_manager(&connection_string).await?;
 
-    let localstack_client = aws_sdk_secretsmanager::Client::new(&aws_config);
-    let stored_private_key = localstack_client
-        .get_secret_value()
-        .secret_id(TEST_WALLET_PRIVATE_KEY_SECRET_ID)
-        .send()
-        .await?
-        .secret_string()
-        .ok_or_else(|| eyre::eyre!("is not a secret-string"))?
-        .to_owned();
-
-    assert_eq!(
-        PrivateKeySigner::from_str(&stored_private_key)?,
-        computed_private_key
-    );
-
-    // check that the address is correct
-    let mut pg_connection =
-        oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
-    let stored_address: String =
-        sqlx::query_scalar("SELECT address FROM evm_address WHERE id = TRUE")
-            .fetch_one(&mut pg_connection)
-            .await?;
-
-    assert_eq!(stored_address, computed_private_key.address().to_string());
-    Ok(())
-}
-
-#[tokio::test]
-async fn load_or_insert_private_key_on_existing_key() -> eyre::Result<()> {
-    let (_localstack, localstack_url) = oprf_test_utils::localstack_testcontainer().await?;
-    let aws_config = oprf_test_utils::localstack_config(&localstack_url).await;
-    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
-    let secret_manager =
-        postgres_secret_manager_with_localstack(&aws_config, &connection_string).await?;
-
-    let localstack_client = aws_sdk_secretsmanager::Client::new(&aws_config);
-    localstack_client
-        .create_secret()
-        .name(TEST_WALLET_PRIVATE_KEY_SECRET_ID)
-        .secret_string(TEST_ETH_PRIVATE_KEY)
-        .send()
+    let key = PrivateKeySigner::from_str(TEST_ETH_PRIVATE_KEY)?;
+    let address = key.address();
+    secret_manager
+        .store_wallet_address(address.to_string())
         .await?;
 
-    let is_private_key = secret_manager.load_or_insert_wallet_private_key().await?;
-
-    assert_eq!(
-        PrivateKeySigner::from_str(TEST_ETH_PRIVATE_KEY)?,
-        is_private_key
-    );
-
-    // check that the address is correct
+    // check that the address is stored in the DB
     let mut pg_connection =
         oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
-    let stored_address: String =
-        sqlx::query_scalar("SELECT address FROM evm_address WHERE id = TRUE")
-            .fetch_one(&mut pg_connection)
-            .await?;
-
-    assert_eq!(stored_address, TEST_ETH_ADDRESS);
-    Ok(())
-}
-
-#[tokio::test]
-async fn load_or_insert_private_key_on_existing_key_overwrite_db() -> eyre::Result<()> {
-    let (_localstack, localstack_url) = oprf_test_utils::localstack_testcontainer().await?;
-    let aws_config = oprf_test_utils::localstack_config(&localstack_url).await;
-    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
-    let secret_manager =
-        postgres_secret_manager_with_localstack(&aws_config, &connection_string).await?;
-
-    let localstack_client = aws_sdk_secretsmanager::Client::new(&aws_config);
-    localstack_client
-        .create_secret()
-        .name(TEST_WALLET_PRIVATE_KEY_SECRET_ID)
-        .secret_string(TEST_ETH_PRIVATE_KEY)
-        .send()
-        .await?;
-
-    let mut pg_connection =
-        oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
-    sqlx::query(
-        "
-                INSERT INTO evm_address (id, address)
-                VALUES (TRUE, $1)
-                ON CONFLICT (id)
-                DO UPDATE SET address = EXCLUDED.address
-            ",
-    )
-    .bind("SOMETHING THAT IS NOT AN ADDRESS")
-    .execute(&mut pg_connection)
-    .await?;
-
-    let is_private_key = secret_manager.load_or_insert_wallet_private_key().await?;
-
-    assert_eq!(
-        PrivateKeySigner::from_str(TEST_ETH_PRIVATE_KEY)?,
-        is_private_key
-    );
-
-    // check that the address is correct
     let stored_address: String =
         sqlx::query_scalar("SELECT address FROM evm_address WHERE id = TRUE")
             .fetch_one(&mut pg_connection)
