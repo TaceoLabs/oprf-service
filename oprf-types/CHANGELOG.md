@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.11.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.11.0...taceo-oprf-types-v0.11.1)
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Cleanup Cargo.toml, Readme, update setup script and cargo deny - ([e7f47cb](https://github.com/TaceoLabs/oprf-service/commit/e7f47cb17d3e2171e119d3fe0913a75890e344e8))
+
+
 ## [0.11.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.10.1...taceo-oprf-types-v0.11.0)
 
 ### ⛰️ Features
