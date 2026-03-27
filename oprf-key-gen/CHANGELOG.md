@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.7.2...taceo-oprf-key-gen-v0.8.0)
+
+### 🚜 Refactor
+
+
+- [**breaking**] Remove AWS secretmanager backend and `aws-*` crates - ([011bf1f](https://github.com/TaceoLabs/oprf-service/commit/011bf1fc6bbfab086d5028020e63859a9105dfba))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Cleanup Cargo.toml, Readme, update setup script and cargo deny - ([e7f47cb](https://github.com/TaceoLabs/oprf-service/commit/e7f47cb17d3e2171e119d3fe0913a75890e344e8))
+
+
 ## [0.7.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.7.1...taceo-oprf-key-gen-v0.7.2)
 
 ### 🐛 Bug Fixes

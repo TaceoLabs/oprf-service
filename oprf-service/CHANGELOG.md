@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.12.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.11.0...taceo-oprf-service-v0.12.0)
+
+### 🚜 Refactor
+
+
+- [**breaking**] Remove AWS secretmanager backend and `aws-*` crates - ([011bf1f](https://github.com/TaceoLabs/oprf-service/commit/011bf1fc6bbfab086d5028020e63859a9105dfba))
+- Refactor!(service): also use nodes-common web3 provider in service ([#532](https://github.com/TaceoLabs/oprf-service/pull/532)) - ([77176a3](https://github.com/TaceoLabs/oprf-service/commit/77176a3f6a1ecc44e2e336a903bc5e8317aa2e27))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Cleanup Cargo.toml, Readme, update setup script and cargo deny - ([e7f47cb](https://github.com/TaceoLabs/oprf-service/commit/e7f47cb17d3e2171e119d3fe0913a75890e344e8))
+
+
 ## [0.11.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.10.1...taceo-oprf-service-v0.11.0)
 
 ### ⛰️ Features
