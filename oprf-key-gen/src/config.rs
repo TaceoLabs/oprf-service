@@ -51,10 +51,10 @@ pub struct OprfKeyGenServiceConfig {
     /// The location of the graph binary for the key-gen witness extension
     pub witness_graph_path: PathBuf,
 
-    /// The expected num peers stored at the contract.
+    /// The expected number of peers the contract was configured with
     pub expected_num_peers: NonZeroU16,
 
-    /// The expected threshold stored at the contract.
+    /// The expected threshold the contract was configured with
     pub expected_threshold: NonZeroU16,
 
     /// The blockchain RPC config
