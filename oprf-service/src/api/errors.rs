@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 macro_rules! to_close_frame_bytes {
     ($s: expr) => {
-        Utf8Bytes::from_static(oprf_types::close_frame_message!($s).inner())
+        Utf8Bytes::from(oprf_types::close_frame_message!($s).inner())
     };
 }
 
@@ -63,7 +63,7 @@ impl Error {
             Error::Auth(err) => {
                 return Some(CloseFrame {
                     code: err.code(),
-                    reason: Utf8Bytes::from_static(err.message()),
+                    reason: Utf8Bytes::from(err.message()),
                 });
             }
             // For all other errors, we print it before returning the CloseFrame.
