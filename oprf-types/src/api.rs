@@ -6,7 +6,7 @@
 //!
 //! Additionally, it defines the [`OprfRequestAuthenticator`] trait to define an authentication module for TACEO:OPRF.
 
-use std::{fmt, sync::Arc};
+use std::{borrow::Cow, fmt, sync::Arc};
 
 use async_trait::async_trait;
 use http::HeaderName;
@@ -294,11 +294,11 @@ impl core::fmt::Display for OprfRequestAuthenticatorError {
 ///
 /// Use the [`crate::close_frame_message!`] macro for compile-time length validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CloseFrameMessage(&'static str);
+pub struct CloseFrameMessage(Cow<'static, str>);
 
 impl core::fmt::Display for CloseFrameMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.0)
+        f.write_str(&self.0)
     }
 }
 
@@ -307,9 +307,21 @@ impl TryFrom<&'static str> for CloseFrameMessage {
 
     fn try_from(value: &'static str) -> Result<Self, Self::Error> {
         if value.len() <= CLOSE_FRAME_MAX_LENGTH {
-            Ok(CloseFrameMessage(value))
+            Ok(CloseFrameMessage(Cow::Borrowed(value)))
         } else {
             Err(value.to_string())
+        }
+    }
+}
+
+impl TryFrom<String> for CloseFrameMessage {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value.len() <= CLOSE_FRAME_MAX_LENGTH {
+            Ok(CloseFrameMessage(Cow::Owned(value)))
+        } else {
+            Err(value)
         }
     }
 }
@@ -325,10 +337,30 @@ impl CloseFrameMessage {
         Self::try_from(s)
     }
 
-    /// Returns the inner `&'static str`.
+    /// Creates a new [`CloseFrameMessage`] from a `String`, truncating it if it exceeds [`CLOSE_FRAME_MAX_LENGTH`].
+    ///
+    /// A string longer than [`CLOSE_FRAME_MAX_LENGTH`] bytes will be shortened to fit the limit,
+    /// with an ellipsis (`"..."`) appended to indicate truncation. This ensures that the resulting
+    /// [`CloseFrameMessage`] always fits within protocol-imposed size constraints.
+    ///
+    /// # Notes
+    ///
+    /// - This method guarantees that the returned [`CloseFrameMessage`] will never exceed the
+    ///   maximum allowed length.
+    /// - Truncation is performed at the nearest UTF-8 character boundary using
+    ///   [`str::floor_char_boundary`], so its limitations also apply here.
     #[must_use]
-    pub fn inner(&self) -> &'static str {
-        self.0
+    pub fn new_truncate(s: String) -> Self {
+        Self::try_from(s).unwrap_or_else(|s| {
+            let end = s.floor_char_boundary(CLOSE_FRAME_MAX_LENGTH - 3);
+            CloseFrameMessage(Cow::Owned(format!("{}...", &s[..end])))
+        })
+    }
+
+    /// Returns the inner message as a `&str`.
+    #[must_use]
+    pub fn inner(&self) -> &str {
+        &self.0
     }
 }
 
@@ -336,7 +368,7 @@ impl OprfRequestAuthenticatorError {
     /// Creates a new error with the given `code` and an empty message.
     #[must_use]
     pub fn new(code: u16) -> Self {
-        Self::with_message(code, CloseFrameMessage(""))
+        Self::with_message(code, CloseFrameMessage(Cow::Borrowed("")))
     }
 
     /// Creates a new error with the given `code` and `message`.
@@ -356,10 +388,10 @@ impl OprfRequestAuthenticatorError {
         self.code
     }
 
-    /// Returns the WebSocket close frame message.
+    /// Returns the WebSocket close frame message as a `&str`.
     #[must_use]
-    pub fn message(&self) -> &'static str {
-        self.message.0
+    pub fn message(&self) -> &str {
+        &self.message.0
     }
 }
 
@@ -452,5 +484,41 @@ mod tests {
         assert!(OprfErrorKind::Auth.is_auth());
         assert!(!OprfErrorKind::Timeout.is_auth());
         assert!(!OprfErrorKind::Unknown.is_auth());
+    }
+
+    #[test]
+    fn close_frame_message_new_truncate_within_limit() {
+        let s = "hello world".to_string();
+        let msg = CloseFrameMessage::new_truncate(s.clone());
+        assert_eq!(msg.inner(), s);
+    }
+
+    #[test]
+    fn close_frame_message_new_truncate_at_exact_limit() {
+        let s = "x".repeat(CLOSE_FRAME_MAX_LENGTH);
+        let msg = CloseFrameMessage::new_truncate(s.clone());
+        assert_eq!(msg.inner(), s);
+        assert_eq!(msg.inner().len(), CLOSE_FRAME_MAX_LENGTH);
+    }
+
+    #[test]
+    fn close_frame_message_new_truncate_over_limit_ascii() {
+        let s = "a".repeat(CLOSE_FRAME_MAX_LENGTH + 10);
+        let msg = CloseFrameMessage::new_truncate(s);
+        assert!(msg.inner().ends_with("..."));
+        assert!(msg.inner().len() <= CLOSE_FRAME_MAX_LENGTH);
+    }
+
+    #[test]
+    fn close_frame_message_new_truncate_multibyte_boundary() {
+        // Place a 4-byte emoji (🦀) such that the default truncation point
+        // would land in the middle of it (bytes 119-122). floor_char_boundary
+        // must round down so the result is valid UTF-8.
+        let s = "a".repeat(119) + "🦀extra";
+        let msg = CloseFrameMessage::new_truncate(s);
+        assert!(msg.inner().ends_with("..."));
+        assert!(msg.inner().len() <= CLOSE_FRAME_MAX_LENGTH);
+        // Verify the result is valid UTF-8 (would panic on std::str ops if not)
+        let _ = msg.inner().chars().count();
     }
 }
