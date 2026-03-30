@@ -1,6 +1,6 @@
 use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 
-use alloy::{primitives::Address, signers::local::PrivateKeySigner};
+use alloy::{hex, primitives::Address, signers::local::PrivateKeySigner};
 use ark_ff::UniformRand;
 use itertools::Itertools;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
@@ -24,6 +24,12 @@ macro_rules! key_gen_test_secret_manager {
 
             // need a new type to implement the trait
             pub struct $name(pub std::sync::Arc<$crate::test_secret_manager::TestSecretManager>);
+
+            impl $name {
+                pub fn wallet_private_key_hex_string(&self) -> String {
+                    self.0.wallet_private_key_hex_string()
+                }
+            }
 
             #[async_trait]
             impl $trait for $name {
@@ -125,6 +131,15 @@ impl TestSecretManager {
                 .expect("valid private key"),
             store: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    pub fn wallet_private_key(&self) -> PrivateKeySigner {
+        self.wallet_private_key.clone()
+    }
+
+    pub fn wallet_private_key_hex_string(&self) -> String {
+        let private_key_bytes = self.wallet_private_key.to_bytes();
+        hex::encode_prefixed(private_key_bytes)
     }
 
     pub fn clear(&self) {
