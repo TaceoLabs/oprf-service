@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+## [0.8.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.7.2...taceo-oprf-key-gen-v0.8.0)
+
+### ⛰️ Features
+
+
+- [**breaking**] Add expected numPeers/threshold to key-gen and check at contract - ([a510957](https://github.com/TaceoLabs/oprf-service/commit/a510957d8a352f059ac4c6083e1b22171d091e08))
+
+### 🚜 Refactor
+
+
+- [**breaking**] Remove AWS secretmanager backend and `aws-*` crates - ([011bf1f](https://github.com/TaceoLabs/oprf-service/commit/011bf1fc6bbfab086d5028020e63859a9105dfba))
+
+### 📚 Documentation
+
+
+- *(key-gen)* Updates secret-manager docs - ([300571f](https://github.com/TaceoLabs/oprf-service/commit/300571f55c32ea8975a050df013488dcba5b98f6))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(client,key-gen)* Fixed some typos - ([0277787](https://github.com/TaceoLabs/oprf-service/commit/0277787c6ed63905c034ec8a085a8ebb1b327033))
+- *(key-gen)* Fixes a context string - ([a9dbfcb](https://github.com/TaceoLabs/oprf-service/commit/a9dbfcb2eb97a765019ed536f51477208ddfd393))
+- *(key-gen)* Fixed a typo - ([c798c36](https://github.com/TaceoLabs/oprf-service/commit/c798c368de4ef4c06b6e24bf1ffd2815892a4391))
+- *(key-gen, service)* Updated tracing for postgres secret-manager - ([c9ca5ba](https://github.com/TaceoLabs/oprf-service/commit/c9ca5ba3f3f7313c9461092db9107a93a57d4b2b))
+- Cleanup Cargo.toml, Readme, update setup script and cargo deny - ([e7f47cb](https://github.com/TaceoLabs/oprf-service/commit/e7f47cb17d3e2171e119d3fe0913a75890e344e8))
+
+
 ## [0.7.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.7.1...taceo-oprf-key-gen-v0.7.2)
 
 ### 🐛 Bug Fixes

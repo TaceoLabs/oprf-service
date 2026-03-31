@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.12.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.11.0...taceo-oprf-types-v0.12.0)
+
+### 🚜 Refactor
+
+
+- *(types)* [**breaking**] CloseFrameMessage now supports owned Strings as well - ([f5e7fa2](https://github.com/TaceoLabs/oprf-service/commit/f5e7fa2c72530fa56dd8371b2785779c49524332))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Cleanup Cargo.toml, Readme, update setup script and cargo deny - ([e7f47cb](https://github.com/TaceoLabs/oprf-service/commit/e7f47cb17d3e2171e119d3fe0913a75890e344e8))
+
+
 ## [0.11.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.10.1...taceo-oprf-types-v0.11.0)
 
 ### ⛰️ Features

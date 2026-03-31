@@ -1,6 +1,6 @@
 [package]
 name = "taceo-oprf-dev-client"
-version = "0.8.0"
+version = "0.8.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "A development client to interact with the TACEO:OPRF service."
@@ -20,8 +20,8 @@ eyre.workspace = true
 humantime.workspace = true
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.9" }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5" }
-oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.8", default-features = false }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.11" }
+oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.9", default-features = false }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.12" }
 rand.workspace = true
 rand_chacha.workspace = true
 rustls.workspace = true

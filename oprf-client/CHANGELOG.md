@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.9.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.9.1...taceo-oprf-client-v0.9.2)
+
+### 🐛 Bug Fixes
+
+
+- *(client)* Add a check for threshold/num_peers in distributed_oprf - ([e2db7a3](https://github.com/TaceoLabs/oprf-service/commit/e2db7a3516c0150bac2e7911738f226f13a027cc))
+
+### 📚 Documentation
+
+
+- *(client)* Added docs about timeout for distributed_oprf - ([aaa1983](https://github.com/TaceoLabs/oprf-service/commit/aaa198376f684a5461f2c7a44b0d440b2c895767))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(client)* Update missing word in error log - ([43235cb](https://github.com/TaceoLabs/oprf-service/commit/43235cbcf028f00ac31d1dd6e6c1df389e9bb47b))
+- *(client,key-gen)* Fixed some typos - ([0277787](https://github.com/TaceoLabs/oprf-service/commit/0277787c6ed63905c034ec8a085a8ebb1b327033))
+- Cleanup Cargo.toml, Readme, update setup script and cargo deny - ([e7f47cb](https://github.com/TaceoLabs/oprf-service/commit/e7f47cb17d3e2171e119d3fe0913a75890e344e8))
+
+
 ## [0.9.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.9.0...taceo-oprf-client-v0.9.1)
 
 ### ⛰️ Features
