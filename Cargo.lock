@@ -6256,7 +6256,7 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "taceo-oprf-client",
  "taceo-oprf-core",
