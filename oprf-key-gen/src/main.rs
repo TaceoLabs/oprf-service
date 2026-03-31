@@ -151,30 +151,32 @@ async fn run(config: OprfKeyGenConfig) -> eyre::Result<()> {
 fn main() -> ExitCode {
     // try loading config and unsetting vars before we do any potentially multithreaded work;
     let maybe_config = load_key_gen_config();
+
     // we panic if we cannot setup tracing + TLS - if that fails we won't see anything anyways on tracing endpoint
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
         .expect("Can install");
-    let tracing_config =
-        nodes_observability::TracingConfig::try_from_env().expect("Can create TracingConfig");
-    let _tracing_handle =
-        nodes_observability::initialize_tracing(&tracing_config).expect("Can get tracing handle");
-
-    // load the config
-    let config = match maybe_config {
-        Ok(config) => config,
-        Err(err) => {
-            tracing::error!("failed to load config: {err:?}");
-            return ExitCode::FAILURE;
-        }
-    };
-    tracing::info!("starting taceo-oprf-key-gen with config: {config:#?}");
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .expect("Can build Tokio runtime");
     runtime.block_on(async {
+        // nodes_observability already needs a tokio reactor to set up the logs/metrics exporter
+        let tracing_config =
+            nodes_observability::TracingConfig::try_from_env().expect("Can create TracingConfig");
+        let _tracing_handle = nodes_observability::initialize_tracing(&tracing_config)
+            .expect("Can get tracing handle");
+
+        // load the config
+        let config = match maybe_config {
+            Ok(config) => config,
+            Err(err) => {
+                tracing::error!("failed to load config: {err:?}");
+                return ExitCode::FAILURE;
+            }
+        };
+        tracing::info!("starting taceo-oprf-key-gen with config: {config:#?}");
         match run(config).await {
             Ok(_) => {
                 tracing::info!("good night");
