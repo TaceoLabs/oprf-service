@@ -1,6 +1,6 @@
 [package]
 name = "taceo-oprf-service"
-version = "0.11.0"
+version = "0.12.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Main service for nodes of TACEO:OPRF"
@@ -33,7 +33,7 @@ nodes-common = { workspace = true, features = [
   "serde"
 ] }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.11" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.12" }
 parking_lot = { workspace = true }
 rand.workspace = true
 secrecy = { workspace = true, features = ["serde"] }
@@ -68,7 +68,7 @@ config = { workspace = true }
 itertools = { workspace = true }
 nodes-observability = { workspace = true }
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.9" }
-oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.8", default-features = false, features = [
+oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.9", default-features = false, features = [
   "deploy-anvil",
   "postgres-test-container"
 ] }

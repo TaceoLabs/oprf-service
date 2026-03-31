@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.8.1...taceo-oprf-test-utils-v0.9.0)
+
+### 🚜 Refactor
+
+
+- [**breaking**] Remove AWS secretmanager backend and `aws-*` crates - ([011bf1f](https://github.com/TaceoLabs/oprf-service/commit/011bf1fc6bbfab086d5028020e63859a9105dfba))
+
+### 🧪 Testing
+
+
+- Added wallet_private_key_hex_string on test-secret-manager ([#539](https://github.com/TaceoLabs/oprf-service/pull/539)) - ([0e0fb6a](https://github.com/TaceoLabs/oprf-service/commit/0e0fb6a4af52a62b8a584030af7e95cd422a160e))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Cleanup Cargo.toml, Readme, update setup script and cargo deny - ([e7f47cb](https://github.com/TaceoLabs/oprf-service/commit/e7f47cb17d3e2171e119d3fe0913a75890e344e8))
+
+
 ## [0.8.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.8.0...taceo-oprf-test-utils-v0.8.1)
 
 ### ⚙️ Miscellaneous Tasks
