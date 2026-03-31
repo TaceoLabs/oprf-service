@@ -224,7 +224,7 @@ pub enum Error {
     NonUniqueServices,
     /// Invalid threshold for provided URIs.
     #[error(
-        "Invalid combination num_peers {num_peers} and {threshold}. Must be 0 < threshold <= num_peers"
+        "Invalid combination num_peers {num_peers} and threshold {threshold}. Must be 0 < threshold <= num_peers"
     )]
     InvalidThreshold {
         /// The number of peers (URIs) provided
