@@ -1,0 +1,35 @@
+name: SBOM Security Pipeline
+
+on:
+  push:
+    branches:
+      - sg/docker_vuln
+    tags-ignore:
+      - v*
+  pull_request:
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Install Syft
+      run: |
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+    - name: Install Grype
+      run: |
+        curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+    - name: Generate SBOM for Docker Hub Image with Syft
+      run: syft docker:ghcr.io/taceolabs/oprf-service/oprf-key-gen:v1.1.0-rc.4 -o cyclonedx-json > juice-shop-sbom.json
+
+    - name: Scan SBOM with Grype
+      run: grype sbom:juice-shop-sbom.json -o json > grype-sbom-scan.json
+
+    - name: Upload SBOM and Scan Results as Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: Reports
+        path: |
+          juice-shop-sbom.json
+          grype-sbom-scan.json
