@@ -27,7 +27,7 @@ jobs:
       run: grype sbom:juice-shop-sbom.json -o json > grype-sbom-scan.json
 
     - name: Upload SBOM and Scan Results as Artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v6
       with:
         name: Reports
         path: |
