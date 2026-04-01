@@ -22,3 +22,4 @@ jobs:
       - run: cd babyjubjub && ~/.nargo/bin/nargo test
       - run: cd eddsa_poseidon2 && ~/.nargo/bin/nargo test
       - run: cd oprf && ~/.nargo/bin/nargo test
+      - run: cd ownership_proof && ~/.nargo/bin/nargo test
