@@ -13,6 +13,7 @@ use types::{OwnershipProofInputs, OwnershipProofOutputs};
 pub fn main(
     root: pub Field,
     depth: pub Field,
+    nonce: pub Field,
     inputs: OwnershipProofInputs<MAX_DEPTH, NUM_KEYS>,
 ) -> pub OwnershipProofOutputs {
     // 1. Generate query
@@ -41,5 +42,13 @@ pub fn main(
     );
     assert(computed_root == root, "Merkle proof verification failed");
 
+    // SAFETY: The multiplication is constrained below, this is just to emulate the signal hash coming from Circom/Semaphore
+    let nonce_squared = unsafe { unconstrained_mul(nonce, nonce) };
+    assert(nonce_squared == nonce * nonce, "Nonce dummy constraint failed");
+
     OwnershipProofOutputs { commitment: message }
+}
+
+unconstrained fn unconstrained_mul(a: Field, b: Field) -> Field {
+    a * b
 }
