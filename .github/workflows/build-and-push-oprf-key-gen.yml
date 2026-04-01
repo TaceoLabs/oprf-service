@@ -1,10 +1,16 @@
 name: Build and Push (oprf-key-gen)
 
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+      - sg/docker_vuln
     tags:
       - 'oprf-key-gen-v*'
 
@@ -14,4 +20,6 @@ jobs:
     with:
       image-name: oprf-key-gen
       dockerfile: build/Dockerfile.oprf-key-gen
-
+    secrets:
+      S3_ACCOUNT_ID: ${{ secrets.S3_ACCOUNT_ID }}
+      AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
