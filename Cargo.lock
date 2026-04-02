@@ -6344,7 +6344,7 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf-key-gen"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "alloy",
  "ark-bn254",

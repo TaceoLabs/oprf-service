@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.8.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.8.0...taceo-oprf-key-gen-v0.8.1)
+
+### 🐛 Bug Fixes
+
+
+- Initialization order of tokio and tracing in key-gen binary ([#542](https://github.com/TaceoLabs/oprf-service/pull/542)) - ([a1a1af0](https://github.com/TaceoLabs/oprf-service/commit/a1a1af096bb92e682ec4ab594e06d9a9398643f1))
+
+
 ## [0.8.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.7.2...taceo-oprf-key-gen-v0.8.0)
 
 ### ⛰️ Features
