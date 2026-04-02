@@ -8,6 +8,9 @@ on:
       - v*
   pull_request:
 
+permissions:
+  contents: read
+
 env:
   # incremental builds are slower and don't make much sense in ci
   CARGO_INCREMENTAL: 0
