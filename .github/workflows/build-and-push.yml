@@ -131,7 +131,14 @@ jobs:
         shell: bash
         run: |
           mkdir -p ${{ runner.temp }}/digests
-          digest="$(docker image inspect '${{ steps.scan-image.outputs.image }}' --format '{{json .RepoDigests}}' | jq -r 'map(select(startswith("${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@"))) | first | split("@")[1]')"
+          digest_prefix='${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@'
+          digest="$(docker image inspect '${{ steps.scan-image.outputs.image }}' --format '{{json .RepoDigests}}' \
+            | jq -r --arg prefix "$digest_prefix" '
+                map(select(type == "string" and startswith($prefix)))
+                | first?
+                | select(type == "string")
+                | split("@")[1] // empty
+              ')"
           if [[ -z "$digest" || "$digest" == "null" ]]; then
             echo "Unable to determine pushed digest for ${{ steps.scan-image.outputs.image }}" >&2
             exit 1
