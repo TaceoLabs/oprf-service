@@ -1,5 +1,9 @@
 name: Build and Push (oprf-key-gen)
 
+permissions:
+  contents: read
+  packages: write
+
 on:
   workflow_dispatch:
   push:
