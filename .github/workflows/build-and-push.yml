@@ -18,7 +18,7 @@ env:
   BUILDX_NO_DEFAULT_ATTESTATIONS: 1
 
 permissions:
-  contents: read # Required for the checkout action
+  contents: write
   packages: write
 
 jobs:
@@ -77,25 +77,65 @@ jobs:
             org.opencontainers.image.description=Docker image for ${{ inputs.image-name }} from ${{ github.repository_owner }}/${{ github.repository }}
             org.opencontainers.image.vendor=${{ github.repository_owner }}
 
-      - name: Build and push
+      - name: Build image
         id: build
         uses: docker/build-push-action@v7
         with:
           context: .
-          push: true
+          load: true
           file: ${{ inputs.dockerfile }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,name-canonical=true
           cache-from: type=gha,scope=${{ github.repository }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ github.repository }}-${{ matrix.arch }}
           build-args: |
             GIT_HASH=${{ github.sha }}
 
+      - name: Select scan image
+        id: scan-image
+        shell: bash
+        run: |
+          scan_image="$(printf '%s\n' '${{ steps.meta.outputs.tags }}' | head -n1)"
+          if [[ -z "$scan_image" ]]; then
+            echo "No Docker tags were generated" >&2
+            exit 1
+          fi
+          echo "image=$scan_image" >> "$GITHUB_OUTPUT"
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.scan-image.outputs.image }}
+          format: spdx-json
+          artifact-name: ${{ inputs.image-name }}-${{ matrix.arch }}-sbom.spdx.json
+          output-file: ${{ runner.temp }}/${{ matrix.arch }}-sbom.spdx.json
+          dependency-snapshot: true
+          upload-artifact: true
+
+      - name: Run vulnerability scan
+        uses: anchore/scan-action@v7
+        with:
+          sbom: ${{ runner.temp }}/${{ matrix.arch }}-sbom.spdx.json
+          fail-build: true
+          severity-cutoff: critical
+
+      - name: Push image tags
+        shell: bash
+        run: |
+          while IFS= read -r tag; do
+            [[ -n "$tag" ]] || continue
+            docker push "$tag"
+          done <<< '${{ steps.meta.outputs.tags }}'
+
       - name: Export digest
+        shell: bash
         run: |
           mkdir -p ${{ runner.temp }}/digests
-          digest="${{ steps.build.outputs.digest }}"
+          digest="$(docker image inspect '${{ steps.scan-image.outputs.image }}' --format '{{json .RepoDigests}}' | jq -r 'map(select(startswith("${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@"))) | first | split("@")[1]')"
+          if [[ -z "$digest" || "$digest" == "null" ]]; then
+            echo "Unable to determine pushed digest for ${{ steps.scan-image.outputs.image }}" >&2
+            exit 1
+          fi
           touch "${{ runner.temp }}/digests/${digest#sha256:}"
 
       - name: Upload digest
@@ -156,4 +196,4 @@ jobs:
             --annotation "index:org.opencontainers.image.title=${{ inputs.image-name }}" \
             --annotation "index:org.opencontainers.image.description=Docker image for ${{ inputs.image-name }} from ${{ github.repository_owner }}/${{ github.repository }}" \
             --annotation "index:org.opencontainers.image.vendor=${{ github.repository_owner }}" \
-            $(printf '${{ env.REGISTRY }}/${{ steps.meta.outputs.tags }}@sha256:%s ' *)
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
