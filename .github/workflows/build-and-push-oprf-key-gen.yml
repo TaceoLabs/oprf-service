@@ -8,6 +8,10 @@ on:
     tags:
       - 'oprf-key-gen-v*'
 
+permissions:
+  contents: read # Required for the checkout action
+  packages: write
+
 jobs:
   workflow:
     uses: ./.github/workflows/build-and-push.yml

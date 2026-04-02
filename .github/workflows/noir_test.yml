@@ -8,6 +8,9 @@ on:
       - v*
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Noir Unit/KAT Tests
