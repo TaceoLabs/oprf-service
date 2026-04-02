@@ -120,25 +120,29 @@ jobs:
           severity-cutoff: critical
 
       - name: Push image tags
+        id: push-image
         shell: bash
         run: |
+          digest=""
           while IFS= read -r tag; do
             [[ -n "$tag" ]] || continue
-            docker push "$tag"
+            push_output="$(docker push "$tag" 2>&1)"
+            printf '%s\n' "$push_output"
+            if [[ -z "$digest" ]]; then
+              digest="$(printf '%s\n' "$push_output" | sed -n 's/^.*digest: \(sha256:[[:xdigit:]]\{64\}\).*$/\1/p' | tail -n1)"
+            fi
           done <<< '${{ steps.meta.outputs.tags }}'
+          if [[ -z "$digest" ]]; then
+            echo "Unable to determine pushed digest from docker push output" >&2
+            exit 1
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
       - name: Export digest
         shell: bash
         run: |
           mkdir -p ${{ runner.temp }}/digests
-          digest_prefix='${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@'
-          digest="$(docker image inspect '${{ steps.scan-image.outputs.image }}' --format '{{json .RepoDigests}}' \
-            | jq -r --arg prefix "$digest_prefix" '
-                map(select(type == "string" and startswith($prefix)))
-                | first?
-                | select(type == "string")
-                | split("@")[1] // empty
-              ')"
+          digest='${{ steps.push-image.outputs.digest }}'
           if [[ -z "$digest" || "$digest" == "null" ]]; then
             echo "Unable to determine pushed digest for ${{ steps.scan-image.outputs.image }}" >&2
             exit 1
