@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - sg/docker_vuln
     tags:
       - 'oprf-key-gen-v*'
 
