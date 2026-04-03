@@ -118,7 +118,7 @@ jobs:
         with:
           sbom: ${{ runner.temp }}/${{ matrix.arch }}-sbom.spdx.json
           fail-build: true
-          severity-cutoff: critical
+          severity-cutoff: high
 
       - name: Push image tags
         id: push-image
