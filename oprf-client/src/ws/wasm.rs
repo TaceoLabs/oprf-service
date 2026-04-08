@@ -31,6 +31,16 @@ pub(crate) struct WebSocketSession {
 }
 
 impl WebSocketSession {
+    /// Tries to close the sink on a best effort basis.
+    async fn silent_close(&mut self) {
+        if let Err(err) = self.write.close().await {
+            tracing::trace!(
+                "Received an error when trying to best effort close {}: {err:?}",
+                self.service
+            );
+        }
+    }
+
     /// Creates a new session at the provided endpoint.
     ///
     /// Expects a valid `ws://` or `wss://` URI  
@@ -65,42 +75,47 @@ impl WebSocketSession {
     }
 
     /// Attempts to send the provided message to the web-socket.
+    ///
+    /// On error tries to close the sink.
     pub(crate) async fn send<Msg: Serialize>(&mut self, msg: Msg) -> Result<(), NodeError> {
         let mut buf = Vec::new();
         ciborium::into_writer(&msg, &mut buf).expect("Can serialize msg");
-        self.write.send(Message::Bytes(buf)).await.map_err(|e| {
-            NodeError::WsError(Box::new(std::io::Error::other(format!(
-                "send failed: {e:?}"
+        if let Err(e) = self.write.send(Message::Bytes(buf)).await {
+            self.silent_close().await;
+            Err(NodeError::WsError(Box::new(std::io::Error::other(
+                format!("send failed: {e:?}"),
             ))))
-        })?;
-        Ok(())
+        } else {
+            Ok(())
+        }
     }
 
     /// Attempts to read the provided message from the web-socket.
     pub(crate) async fn read<Msg: for<'de> Deserialize<'de>>(&mut self) -> Result<Msg, NodeError> {
         match self.read.next().await {
             Some(Ok(Message::Bytes(bytes))) => {
-                if let Ok(response) = ciborium::from_reader::<Msg, _>(bytes.as_slice()) {
-                    Ok(response)
+                if let Ok(msg) = ciborium::from_reader::<Msg, _>(bytes.as_slice()) {
+                    Ok(msg)
                 } else {
-                    tracing::trace!("could not parse message...");
+                    self.silent_close().await;
                     Err(NodeError::UnexpectedMessage {
                         reason: "could not parse message from server".to_owned(),
                     })
                 }
             }
             Some(Ok(Message::Text(_))) => {
-                tracing::trace!("did get text instead of binary...");
+                self.silent_close().await;
                 Err(NodeError::UnexpectedMessage {
                     reason: "text frame received".to_owned(),
                 })
             }
             Some(Err(WebSocketError::ConnectionClose(event))) => {
                 tracing::trace!("did get close frame: code={}", event.code);
+                self.silent_close().await;
                 if event.code == CLOSE_CODE_NORMAL {
-                    Err(NodeError::UnexpectedMessage {
-                        reason: "Server closed websocket".to_owned(),
-                    })
+                    Err(NodeError::WsError(Box::new(std::io::Error::other(
+                        "Server closed websocket without finishing protocol - EOF",
+                    ))))
                 } else {
                     Err(NodeError::ServiceError(ServiceError {
                         error_code: event.code,
@@ -109,12 +124,15 @@ impl WebSocketSession {
                     }))
                 }
             }
-            Some(Err(e)) => Err(NodeError::WsError(Box::new(std::io::Error::other(
-                format!("read failed: {e:?}"),
+            Some(Err(e)) => {
+                self.silent_close().await;
+                Err(NodeError::WsError(Box::new(std::io::Error::other(
+                    format!("read failed: {e:?}"),
+                ))))
+            }
+            None => Err(NodeError::WsError(Box::new(std::io::Error::other(
+                "server closed connection without sending close-frame",
             )))),
-            None => Err(NodeError::UnexpectedMessage {
-                reason: "Server closed connection".to_owned(),
-            }),
         }
     }
 
