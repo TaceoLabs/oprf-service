@@ -237,10 +237,11 @@ async fn key_gen_event(
             .await
         }
         Some(&OprfKeyRegistry::SecretGenRound2::SIGNATURE_HASH) => {
-            let log = log
+            let OprfKeyRegistry::SecretGenRound2 { oprfKeyId, epoch } = log
                 .log_decode()
-                .context("while decoding key-gen round2 event")?;
-            let OprfKeyRegistry::SecretGenRound2 { oprfKeyId, epoch } = log.inner.data;
+                .context("while decoding key-gen round2 event")?
+                .inner
+                .data;
             let handle_span = tracing::Span::current();
             handle_span.record("oprf_key_id", oprfKeyId.to_string());
             handle_span.record("epoch", epoch.to_string());
