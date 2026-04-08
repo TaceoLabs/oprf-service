@@ -106,9 +106,9 @@ impl WebSocketSession {
                 return Err(err.into());
             }
             None => {
-                return Err(NodeError::UnexpectedMessage {
-                    reason: "Server closed connection".into(),
-                });
+                return Err(NodeError::WsError(Box::new(tungstenite::Error::Io(
+                    std::io::Error::other("server closed connection without sending close-frame"),
+                ))));
             }
         };
 
@@ -131,9 +131,11 @@ impl WebSocketSession {
                         kind: oprf_types::api::OprfErrorKind::from(u16::from(frame.code)),
                     }))
                 } else {
-                    Err(NodeError::UnexpectedMessage {
-                        reason: "Server closed websocket".into(),
-                    })
+                    Err(NodeError::WsError(Box::new(tungstenite::Error::Io(
+                        std::io::Error::other(
+                            "Server closed websocket without finishing protocol - EOF",
+                        ),
+                    ))))
                 }
             }
 
