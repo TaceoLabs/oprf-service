@@ -1,11 +1,16 @@
 # OPRF Service
 
+[![CI](https://github.com/TaceoLabs/oprf-service/actions/workflows/rust_test.yml/badge.svg)](https://github.com/TaceoLabs/oprf-service/actions/workflows/rust_test.yml)
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.91%2B-orange.svg)](https://www.rust-lang.org)
+
 This is a monorepo containing:
 
 * `circom`: A collection of Circom circuits and test vectors for them.
 * `contracts`: An implementation of the required smart contracts.
 * `docs`: A typst document serving as a writeup of the overall scheme.
 * `noir`: A collection of Noir circuits.
+* `oprf`: A meta-crate (`taceo-oprf`) that re-exports all other crates for convenience.
 * `oprf-client`: A crate implementing a client lib for the OPRF service.
 * `oprf-core`: A crate implementing a verifiable OPRF based on the TwoHashDH OPRF construction + a threshold variant of it.
 * `oprf-dev-client`: A crate implementing common dev client functionality.
@@ -17,8 +22,9 @@ This is a monorepo containing:
 ## Dev Dependencies
 
 * [just](https://github.com/casey/just?tab=readme-ov-file#installation)
-* docker-compose
+* docker compose (for running `anvil` and `postgres` containers)
 * anvil and forge, install with [foundryup](https://getfoundry.sh/introduction/installation/)
+* PostgreSQL (provided via Docker in the local setup)
 
 ## Setup
 
@@ -46,12 +52,12 @@ just run-setup
 
 This command does multiple things in order:
 
-1. start `localstack` and `anvil` docker containers
-2. create private keys for OPRF nodes and store them in AWS secrets manager
-3. deploy the `OprfKeyRegistry` smart contract
-4. register the OPRF nodes at the `OprfKeyRegistry` contract
-5. start 3 OPRF nodes
-6. start 3 OPRF key-gen instances
+1. start `anvil` and `postgres` docker containers
+2. deploy the `OprfKeyRegistry` smart contract
+3. register the OPRF participants at the `OprfKeyRegistry` contract
+4. build the workspace
+5. start 3 OPRF key-gen instances
+6. start 3 OPRF service nodes
 
 Log files for all processes can be found in the created `logs` directory.
 You can kill the setup with `Ctrl+C`, which kills all processes and stops all docker containers.
@@ -63,19 +69,13 @@ just run-dev-client test
 
 ## Secret Management
 
-The OPRF service supports different secret manager backends for storing OPRF key shares.
-
-### Postgres Secret Manager (Default)
-
-The Postgres backend stores OPRF key shares in a PostgreSQL database while using AWS Secrets Manager only for the wallet private key. This is the recommended approach for production deployments, especially when managing many OPRF keys.
+OPRF key shares are stored in a PostgreSQL database.
 
 **Required environment variables:**
 
 * `TACEO_OPRF_NODE__POSTGRES__CONNECTION_STRING` – PostgreSQL connection string (e.g., `postgres://user:password@host:5432/dbname`)
 * `TACEO_OPRF_NODE__POSTGRES__SCHEMA` – Database schema to use
-* Standard AWS credentials (for wallet key retrieval)
-
-**Database setup:**
+* `TACEO_OPRF_NODE__SERVICE__WALLET_PRIVATE_KEY` – Wallet private key for the node
 
 The Postgres secret manager automatically runs migrations on startup to create the required tables:
 
@@ -87,4 +87,26 @@ The Postgres secret manager automatically runs migrations on startup to create t
 * The connection string contains credentials and should be treated as a secret
 * Use SSL/TLS connections in production (`?sslmode=require`)
 * Ensure the database is not publicly accessible
-* The wallet private key is always stored in AWS Secrets Manager for additional security
+* The wallet private key should be provided securely (e.g., via a secrets manager in your deployment environment)
+
+## Configuration
+
+Both the OPRF service and key-gen are configured via environment variables using a hierarchical prefix scheme:
+
+* **OPRF service:** `TACEO_OPRF_NODE__*` (e.g., `TACEO_OPRF_NODE__BIND_ADDR`, `TACEO_OPRF_NODE__SERVICE__ENVIRONMENT`)
+* **Key generation:** `TACEO_OPRF_KEY_GEN__*` (e.g., `TACEO_OPRF_KEY_GEN__BIND_ADDR`, `TACEO_OPRF_KEY_GEN__SERVICE__WALLET_PRIVATE_KEY`)
+
+See `run-setup.sh` for a complete example of all required environment variables.
+
+## Architecture
+
+For a detailed description of the OPRF scheme, see [`docs/oprf.pdf`](docs/oprf.pdf).
+
+## License
+
+This project is licensed under either of
+
+* [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)
+* [MIT License](http://opensource.org/licenses/MIT)
+
+at your option.
