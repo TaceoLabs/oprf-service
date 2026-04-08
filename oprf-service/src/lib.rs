@@ -57,11 +57,13 @@ use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
 use crate::{config::OprfNodeServiceConfig, services::secret_manager::SecretManagerService};
 use axum::Router;
 use eyre::Context as _;
+use http::StatusCode;
 use oprf_types::api::OprfRequestAuthService;
 use oprf_types::chain::OprfKeyRegistry;
 use oprf_types::crypto::PartyId;
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
+use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 
 pub(crate) mod api;
@@ -258,6 +260,10 @@ impl OprfServiceBuilder {
         (
             self.root
                 .nest("/api", self.api)
+                .layer(TimeoutLayer::with_status_code(
+                    StatusCode::REQUEST_TIMEOUT,
+                    self.config.http_request_timeout,
+                ))
                 .layer(TraceLayer::new_for_http()),
             self.key_event_watcher,
         )

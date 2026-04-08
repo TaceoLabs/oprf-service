@@ -49,12 +49,21 @@ pub struct OprfNodeServiceConfig {
     pub ws_max_message_size: usize,
     /// Max time a created session is valid.
     ///
-    /// This interval specifies how long a websocket connection is kept alive after a user initiates a session.
+    /// This interval specifies how long a websocket connection is kept alive after a user initiates a session. This time starts ticking after the peers finish the web-socket upgrade protocol.
     ///
     /// Defaults to `30 s`.
     #[serde(default = "OprfNodeServiceConfig::default_session_lifetime")]
     #[serde(with = "humantime_serde")]
     pub session_lifetime: Duration,
+
+    /// Max time for HTTP requests.
+    ///
+    /// In contrast to `session_lifetime`, this timeout addresses HTTP requests, e.g. `health`, `info` routes but also the web-socket upgrade requests.
+    ///
+    /// Defaults to `20 s`.
+    #[serde(default = "OprfNodeServiceConfig::default_http_request_timeout")]
+    #[serde(with = "humantime_serde")]
+    pub http_request_timeout: Duration,
     /// Max time to wait for oprf key material secret retrieval from secret manager during key-event processing.
     ///
     /// Defaults to `10 min`.
@@ -91,6 +100,11 @@ impl OprfNodeServiceConfig {
         Duration::from_secs(30)
     }
 
+    /// Default http request timeout (`20 s`).
+    fn default_http_request_timeout() -> Duration {
+        Duration::from_secs(20)
+    }
+
     /// Default get oprf key material timeout (`10 min`).
     fn default_get_oprf_key_material_timeout() -> Duration {
         Duration::from_secs(10 * 60)
@@ -115,6 +129,7 @@ impl OprfNodeServiceConfig {
             ws_max_message_size: Self::default_ws_max_message_size(),
             session_lifetime: Self::default_session_lifetime(),
             get_oprf_key_material_timeout: Self::default_get_oprf_key_material_timeout(),
+            http_request_timeout: Self::default_http_request_timeout(),
             start_block: None,
             i_am_alive_interval: Self::default_i_am_alive_interval(),
         }
