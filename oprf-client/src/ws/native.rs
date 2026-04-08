@@ -113,11 +113,12 @@ impl WebSocketSession {
         };
 
         match msg {
-            tungstenite::Message::Binary(bytes) => {
-                ciborium::from_reader(bytes.as_ref()).map_err(|_| NodeError::UnexpectedMessage {
-                    reason: "could not parse message from server".into(),
-                })
-            }
+            tungstenite::Message::Binary(bytes) => match ciborium::from_reader(bytes.as_ref()) {
+                Ok(msg) => Ok(msg),
+                Err(_) => Err(self
+                    .protocol_error("could not parse message from server")
+                    .await),
+            },
 
             tungstenite::Message::Close(frame) => {
                 self.best_effort_close(CloseCode::Normal, "").await;
