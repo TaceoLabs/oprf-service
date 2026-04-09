@@ -256,4 +256,4 @@ jobs:
           for file in *; do
             [ -f "$file" ] && mv "$file" "${PREFIX}_${file}"
           done
-          aws s3 sync "${{ runner.temp }}/sboms" "s3://${AWS_S3_BUCKET}/oprf-service/"
+          aws s3 sync "${{ runner.temp }}/sboms" "s3://${AWS_S3_BUCKET}/${{ inputs.image-name }}/"
