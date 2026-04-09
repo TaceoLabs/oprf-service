@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.8.0...taceo-oprf-key-gen-v0.9.0)
+
+### 🐛 Bug Fixes
+
+
+- Initialization order of tokio and tracing in key-gen binary ([#542](https://github.com/TaceoLabs/oprf-service/pull/542)) - ([a1a1af0](https://github.com/TaceoLabs/oprf-service/commit/a1a1af096bb92e682ec4ab594e06d9a9398643f1))
+
+### 🚜 Refactor
+
+
+- *(dev-client)* [**breaking**] Remove test-utils dep - ([bb5f8bf](https://github.com/TaceoLabs/oprf-service/commit/bb5f8bfe9f09cafd89158304bb08c67a212c8975))
+- Refactor!(test-utils): remvoe test-secert-manager macros - ([590b83a](https://github.com/TaceoLabs/oprf-service/commit/590b83a33dbe5d1aa7f8a994fc3eb9cac0326c14))
+
+
 ## [0.8.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.7.2...taceo-oprf-key-gen-v0.8.0)
 
 ### ⛰️ Features

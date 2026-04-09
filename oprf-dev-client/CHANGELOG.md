@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.9.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.8.1...taceo-oprf-dev-client-v0.9.0)
+
+### 🚜 Refactor
+
+
+- *(dev-client)* [**breaking**] Remove test-utils dep - ([bb5f8bf](https://github.com/TaceoLabs/oprf-service/commit/bb5f8bfe9f09cafd89158304bb08c67a212c8975))
+
+
 ## [0.8.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.8.0...taceo-oprf-dev-client-v0.8.1)
 
 ### ⚙️ Miscellaneous Tasks
