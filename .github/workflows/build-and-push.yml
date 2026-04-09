@@ -12,8 +12,8 @@ on:
         required: true
         type: string
     secrets:
-      S3_ACCOUNT_ID:
-        description: 'AWS account ID used for the SBOM upload role assumption'
+      AWS_ARCHIVE_ROLE:
+        description: 'AWS role used for the SBOM upload role assumption'
         required: true
       AWS_S3_BUCKET:
         description: 'S3 bucket name used for SBOM uploads'
@@ -23,13 +23,12 @@ env:
   REGISTRY: ghcr.io
   BUILDX_NO_DEFAULT_ATTESTATIONS: 1
 
-permissions:
-  contents: write
-  packages: write
-  id-token: write
 
 jobs:
   build:
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
@@ -118,7 +117,6 @@ jobs:
           format: spdx-json
           artifact-name: ${{ inputs.image-name }}-${{ matrix.arch }}-sbom.spdx.json
           output-file: ${{ runner.temp }}/${{ matrix.arch }}-sbom.spdx.json
-          dependency-snapshot: true
           upload-artifact: true
 
       - name: Run vulnerability scan
@@ -167,6 +165,8 @@ jobs:
           retention-days: 1
 
   merge:
+    permissions:
+      packages: write
     runs-on: ubuntu-latest
     needs:
       - build
@@ -225,6 +225,8 @@ jobs:
 
 
   upload-sbom:
+    permissions:
+      id-token: write
     runs-on: ubuntu-latest
     needs:
       - build
@@ -235,7 +237,7 @@ jobs:
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.S3_ACCOUNT_ID }}:role/oidc/github-actions-s3-role
+          role-to-assume: ${{ secrets.AWS_ARCHIVE_ROLE }}
           aws-region: eu-central-1
 
       - name: Download a single artifact
@@ -249,7 +251,7 @@ jobs:
         env:
           AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
         run: |
-          # Rename file to include date
+          # Rename file to include short git sha
           PREFIX="$(echo ${{ github.sha }} | cut -c1-7)"
 
           cd ${{ runner.temp }}/sboms
