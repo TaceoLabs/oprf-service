@@ -232,9 +232,6 @@ jobs:
     needs:
       - build
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
