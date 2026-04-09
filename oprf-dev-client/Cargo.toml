@@ -20,10 +20,10 @@ eyre.workspace = true
 humantime.workspace = true
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.9" }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5" }
-oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.9", default-features = false }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.12" }
 rand.workspace = true
 rand_chacha.workspace = true
+reqwest = { workspace = true }
 rustls.workspace = true
 secrecy.workspace = true
 serde.workspace = true

@@ -20,8 +20,7 @@ use oprf_core::{
     ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir},
     oprf::BlindedOprfRequest,
 };
-use oprf_test_utils::health_checks;
-use oprf_types::{OprfKeyId, ShareEpoch, api::OprfRequest, crypto::OprfPublicKey};
+use oprf_types::{OprfKeyId, ShareEpoch, api::OprfRequest, async_trait, crypto::OprfPublicKey};
 use rand::{CryptoRng, Rng, SeedableRng};
 use rustls::{ClientConfig, RootCertStore};
 use secrecy::ExposeSecret as _;
@@ -29,11 +28,10 @@ use serde::Serialize;
 use tokio::{sync::mpsc, task::JoinSet};
 use uuid::Uuid;
 
-pub use oprf_test_utils;
-
 pub(crate) mod config;
 pub use config::*;
-pub use oprf_types::async_trait;
+mod contract;
+pub mod health_checks;
 
 #[async_trait::async_trait]
 pub trait DevClient: Send + Sync + 'static {
@@ -99,12 +97,8 @@ pub async fn delete_test(config: DevClientConfig, provider: DynProvider) -> eyre
     )
     .await?;
     tracing::info!("created the key - now delete it..");
-    oprf_test_utils::delete_oprf_key_material(
-        provider,
-        config.oprf_key_registry_contract,
-        oprf_key_id,
-    )
-    .await?;
+    contract::delete_oprf_key_material(provider, config.oprf_key_registry_contract, oprf_key_id)
+        .await?;
     tracing::info!("sent delete event - ping nodes to check this works");
     health_checks::assert_key_id_unknown(oprf_key_id, &config.nodes, config.max_wait_time).await?;
     tracing::info!("successfully deleted key-material");
@@ -234,7 +228,7 @@ pub async fn init_key_gen(
     let oprf_key_id_u32: u32 = rand::random();
     let oprf_key_id = OprfKeyId::new(U160::from(oprf_key_id_u32));
     tracing::info!("init OPRF key gen with: {oprf_key_id}");
-    oprf_test_utils::init_key_gen(provider, oprf_key_registry, oprf_key_id).await?;
+    contract::init_key_gen(provider, oprf_key_registry, oprf_key_id).await?;
     tracing::info!("waiting for key-gen to finish..");
     let oprf_public_key = health_checks::oprf_public_key_from_services(
         oprf_key_id,
@@ -260,7 +254,7 @@ async fn stress_test_key_gen(
         let oprf_key_id_u32: u32 = rand::random();
         let oprf_key_id = OprfKeyId::new(U160::from(oprf_key_id_u32));
         tracing::debug!("init OPRF key gen with: {oprf_key_id}");
-        oprf_test_utils::init_key_gen(provider.clone(), oprf_key_registry, oprf_key_id).await?;
+        contract::init_key_gen(provider.clone(), oprf_key_registry, oprf_key_id).await?;
         key_gens.spawn({
             let nodes = nodes.to_vec();
             async move {
@@ -282,7 +276,7 @@ async fn stress_test_key_gen(
             .expect("Can join")
             .context("Could not fetch oprf-key-gen")?;
         tracing::debug!("init OPRF reshare for {key_id}");
-        oprf_test_utils::init_reshare(provider.clone(), oprf_key_registry, key_id).await?;
+        contract::init_reshare(provider.clone(), oprf_key_registry, key_id).await?;
         // do an oprf to check if correct
         reshares.spawn({
             let nodes = nodes.to_vec();
@@ -414,7 +408,7 @@ async fn reshare_test<T: DevClient>(
     });
 
     tracing::info!("Doing reshare!");
-    oprf_test_utils::init_reshare(
+    contract::init_reshare(
         provider.clone(),
         config.oprf_key_registry_contract,
         oprf_key_id,
@@ -427,7 +421,7 @@ async fn reshare_test<T: DevClient>(
     .await??;
 
     tracing::info!("Doing reshare!");
-    oprf_test_utils::init_reshare(
+    contract::init_reshare(
         provider.clone(),
         config.oprf_key_registry_contract,
         oprf_key_id,

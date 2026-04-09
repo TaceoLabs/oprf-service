@@ -4,13 +4,12 @@ use clap::Parser;
 use eyre::Context;
 use oprf_client::Connector;
 use oprf_core::oprf::BlindingFactor;
-use oprf_test_utils::health_checks;
 use oprf_types::{
     OprfKeyId, ShareEpoch, api::OprfRequest, async_trait::async_trait, crypto::OprfPublicKey,
 };
 use rand::{CryptoRng, Rng, SeedableRng as _};
 use serde::{Deserialize, Serialize};
-use taceo_oprf_dev_client::{DevClient, DevClientConfig, StressTestItem};
+use taceo_oprf_dev_client::{DevClient, DevClientConfig, StressTestItem, health_checks};
 use uuid::Uuid;
 
 const EXAMPLE_MODULE: &str = "example";

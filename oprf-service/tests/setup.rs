@@ -33,7 +33,9 @@ pub const INVALID_AUTH_MSG: &str = "invalid auth";
 
 oprf_node_test_secret_manager!(
     taceo_oprf_service::secret_manager::SecretManager,
-    NodeTestSecretManager
+    NodeTestSecretManager,
+    oprf_types,
+    oprf_core::ddlog_equality::shamir::DLogShareShamir
 );
 
 #[derive(Clone, Copy, Debug)]

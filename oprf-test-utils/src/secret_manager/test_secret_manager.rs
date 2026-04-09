@@ -15,12 +15,11 @@ use crate::TEST_TIMEOUT;
 
 #[macro_export]
 macro_rules! key_gen_test_secret_manager {
-    ($trait: path, $name: ident) => {
+    ($trait: path, $name: ident, $types:path, $dlog: path) => {
         mod impl_key_gen_secret_manager {
-            use $crate::async_trait::async_trait;
-            use $crate::eyre::Context;
-            use $crate::oprf_core::ddlog_equality::shamir::DLogShareShamir;
-            use $crate::oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
+            use eyre::Context;
+            use $dlog;
+            use $types::{OprfKeyId, ShareEpoch, async_trait::async_trait, crypto::OprfPublicKey};
 
             // need a new type to implement the trait
             pub struct $name(pub std::sync::Arc<$crate::test_secret_manager::TestSecretManager>);
@@ -33,7 +32,7 @@ macro_rules! key_gen_test_secret_manager {
 
             #[async_trait]
             impl $trait for $name {
-                async fn store_wallet_address(&self, address: String) -> $crate::eyre::Result<()> {
+                async fn store_wallet_address(&self, address: String) -> eyre::Result<()> {
                     self.0.store_wallet_address(address).await
                 }
                 async fn ping(&self) -> eyre::Result<()> {
@@ -45,16 +44,13 @@ macro_rules! key_gen_test_secret_manager {
                     &self,
                     oprf_key_id: OprfKeyId,
                     generated_epoch: ShareEpoch,
-                ) -> $crate::eyre::Result<Option<DLogShareShamir>> {
+                ) -> eyre::Result<Option<DLogShareShamir>> {
                     self.0
                         .get_share_by_epoch(oprf_key_id, generated_epoch)
                         .await
                 }
 
-                async fn remove_oprf_key_material(
-                    &self,
-                    rp_id: OprfKeyId,
-                ) -> $crate::eyre::Result<()> {
+                async fn remove_oprf_key_material(&self, rp_id: OprfKeyId) -> eyre::Result<()> {
                     self.0
                         .remove_oprf_key_material(rp_id)
                         .await
@@ -68,7 +64,7 @@ macro_rules! key_gen_test_secret_manager {
                     public_key: OprfPublicKey,
                     epoch: ShareEpoch,
                     share: DLogShareShamir,
-                ) -> $crate::eyre::Result<()> {
+                ) -> eyre::Result<()> {
                     self.0
                         .store_dlog_share(oprf_key_id, public_key, epoch, share)
                         .await
@@ -83,25 +79,26 @@ macro_rules! key_gen_test_secret_manager {
 
 #[macro_export]
 macro_rules! oprf_node_test_secret_manager {
-    ($secret_manager: path, $name: ident) => {
+    ($secret_manager: path, $name: ident, $types:path, $dlog: path) => {
         mod impl_node_secret_manager {
-            use $crate::alloy::primitives::Address;
-            use $crate::async_trait::async_trait;
-            use $crate::oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfKeyMaterial};
+            use alloy::primitives::Address;
+            use $dlog;
+            use $types::{
+                OprfKeyId, ShareEpoch, async_trait::async_trait, crypto::OprfKeyMaterial,
+            };
 
             // need a new type to implement the trait
             pub struct $name(pub std::sync::Arc<$crate::test_secret_manager::TestSecretManager>);
 
             #[async_trait]
             impl $secret_manager for $name {
-                async fn load_address(&self) -> $crate::eyre::Result<Address> {
+                async fn load_address(&self) -> eyre::Result<Address> {
                     self.0.load_address().await
                 }
 
                 async fn load_secrets(
                     &self,
-                ) -> $crate::eyre::Result<std::collections::HashMap<OprfKeyId, OprfKeyMaterial>>
-                {
+                ) -> eyre::Result<std::collections::HashMap<OprfKeyId, OprfKeyMaterial>> {
                     Ok(self.0.store.lock().clone())
                 }
 

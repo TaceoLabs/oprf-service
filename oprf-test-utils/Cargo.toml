@@ -47,9 +47,7 @@ sqlx = { workspace = true, features = [
   "postgres",
   "runtime-tokio",
 ], optional = true }
-testcontainers-modules = { workspace = true, features = [
-  "postgres"
-], optional = true }
+testcontainers-modules = { workspace = true, features = ["postgres"], optional = true }
 tokio = { workspace = true, features = [
   "net",
   "rt-multi-thread",

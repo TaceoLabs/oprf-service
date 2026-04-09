@@ -25,7 +25,9 @@ use crate::{
 
 key_gen_test_secret_manager!(
     crate::secret_manager::SecretManager,
-    KeyGenTestSecretManager
+    KeyGenTestSecretManager,
+    oprf_types,
+    oprf_core::ddlog_equality::shamir::DLogShareShamir
 );
 
 const INVALID_PROOF_KEY: usize = 43;

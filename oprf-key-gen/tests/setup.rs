@@ -20,7 +20,9 @@ pub struct TestKeyGen {
 
 key_gen_test_secret_manager!(
     taceo_oprf_key_gen::secret_manager::SecretManager,
-    KeyGenTestSecretManager
+    KeyGenTestSecretManager,
+    oprf_types,
+    oprf_core::ddlog_equality::shamir::DLogShareShamir
 );
 
 impl fmt::Debug for TestKeyGen {
