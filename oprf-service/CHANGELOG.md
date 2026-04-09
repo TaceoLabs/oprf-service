@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.13.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.12.0...taceo-oprf-service-v0.13.0)
+
+### 🚜 Refactor
+
+
+- *(dev-client)* [**breaking**] Remove test-utils dep - ([bb5f8bf](https://github.com/TaceoLabs/oprf-service/commit/bb5f8bfe9f09cafd89158304bb08c67a212c8975))
+- Refactor!(test-utils): remvoe test-secert-manager macros - ([590b83a](https://github.com/TaceoLabs/oprf-service/commit/590b83a33dbe5d1aa7f8a994fc3eb9cac0326c14))
+
+
 ## [0.12.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.11.0...taceo-oprf-service-v0.12.0)
 
 ### 🐛 Bug Fixes
