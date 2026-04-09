@@ -32,9 +32,7 @@ pub struct PartyId(pub u16);
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Hash, PartialEq, Eq)]
 #[serde(transparent)]
 pub struct EphemeralEncryptionPublicKey(
-    #[serde(serialize_with = "babyjubjub::serialize_affine")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
-    ark_babyjubjub::EdwardsAffine,
+    #[serde(with = "babyjubjub::affine")] ark_babyjubjub::EdwardsAffine,
 );
 
 /// The OPRF public-key.
@@ -53,11 +51,7 @@ pub struct EphemeralEncryptionPublicKey(
     CanonicalDeserialize,
 )]
 #[serde(transparent)]
-pub struct OprfPublicKey(
-    #[serde(serialize_with = "babyjubjub::serialize_affine")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
-    ark_babyjubjub::EdwardsAffine,
-);
+pub struct OprfPublicKey(#[serde(with = "babyjubjub::affine")] ark_babyjubjub::EdwardsAffine);
 
 /// The public contribution of one OPRF node for the first round of the OPRF-nullifier generation protocol.
 ///
@@ -70,12 +64,10 @@ pub struct OprfPublicKey(
 /// for more information about the OPRF-nullifier generation protocol.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecretGenCommitment {
-    #[serde(serialize_with = "babyjubjub::serialize_affine")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
+    #[serde(with = "babyjubjub::affine")]
     /// The commitment to the random value sampled by the node.
     pub comm_share: ark_babyjubjub::EdwardsAffine,
-    #[serde(serialize_with = "babyjubjub::serialize_fq")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_fq")]
+    #[serde(with = "ark_serde_compat::field")]
     /// The commitment to the polynomial used to hide the sampled secret.
     pub comm_coeffs: ark_babyjubjub::Fq,
     /// The ephemeral public key for this key generation.
@@ -100,16 +92,13 @@ pub struct SecretGenCiphertexts {
 /// Contains the [`EphemeralEncryptionPublicKey`] of the sender, the ciphertext itself, and a nonce.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecretGenCiphertext {
-    #[serde(serialize_with = "babyjubjub::serialize_fq")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_fq")]
+    #[serde(with = "ark_serde_compat::field")]
     /// The nonce used during encryption.
     pub nonce: ark_babyjubjub::Fq,
-    #[serde(serialize_with = "babyjubjub::serialize_fq")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_fq")]
+    #[serde(with = "ark_serde_compat::field")]
     /// The ciphertext.
     pub cipher: ark_babyjubjub::Fq,
-    #[serde(serialize_with = "babyjubjub::serialize_affine")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
+    #[serde(with = "babyjubjub::affine")]
     /// The commitment to the encrypted value. Computed as xG, where x
     /// is the plaintext and G the generator of `BabyJubJub`.
     pub commitment: ark_babyjubjub::EdwardsAffine,

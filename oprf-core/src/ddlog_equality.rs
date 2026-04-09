@@ -39,23 +39,18 @@ const FROST_2_NONCE_COMBINER_LABEL: &[u8] = b"FROST_2_NONCE_COMBINER";
 /// Each party sends these commitments, which consist of a split of the actual response and two nonce splits, for aggregation and creation of the global challenge hash.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartialDLogEqualityCommitments {
-    #[serde(serialize_with = "babyjubjub::serialize_affine")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
+    #[serde(with = "babyjubjub::affine")]
     pub(crate) c: Affine, // The share of the actual result C=B*x
-    #[serde(serialize_with = "babyjubjub::serialize_affine")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
+    #[serde(with = "babyjubjub::affine")]
     /// The share of G*d1, the first part of the two-nonce commitment to the randomness r1 = d1 + e1*b
     pub(crate) d1: Affine,
-    #[serde(serialize_with = "babyjubjub::serialize_affine")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
+    #[serde(with = "babyjubjub::affine")]
     /// The share of G*d2, the first part of the two-nonce commitment to the randomness r2 = d2 + e2*b
     pub(crate) d2: Affine,
-    #[serde(serialize_with = "babyjubjub::serialize_affine")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
+    #[serde(with = "babyjubjub::affine")]
     /// The share of G*e1, the second part of the two-nonce commitment to the randomness r1 = d1 + e1*b
     pub(crate) e1: Affine,
-    #[serde(serialize_with = "babyjubjub::serialize_affine")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
+    #[serde(with = "babyjubjub::affine")]
     /// The share of G*e2, the second part of the two-nonce commitment to the randomness r2 = d2 + e2*b
     pub(crate) e2: Affine,
 }
@@ -65,23 +60,18 @@ pub struct PartialDLogEqualityCommitments {
 /// This struct aggregates the per-party commitment shares, to be used as the challenge hash input, and to verify against the full proof after all shares are combined.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DLogEqualityCommitments {
-    #[serde(serialize_with = "babyjubjub::serialize_affine")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
+    #[serde(with = "babyjubjub::affine")]
     pub(crate) c: Affine,
-    #[serde(serialize_with = "babyjubjub::serialize_affine")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
+    #[serde(with = "babyjubjub::affine")]
     /// The aggregated G*d1.
     pub(crate) d1: Affine,
-    #[serde(serialize_with = "babyjubjub::serialize_affine")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
+    #[serde(with = "babyjubjub::affine")]
     /// The aggregated G*d2.
     pub(crate) d2: Affine,
-    #[serde(serialize_with = "babyjubjub::serialize_affine")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
+    #[serde(with = "babyjubjub::affine")]
     /// The aggregated G*e1.
     pub(crate) e1: Affine,
-    #[serde(serialize_with = "babyjubjub::serialize_affine")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
+    #[serde(with = "babyjubjub::affine")]
     /// The aggregated G*e2.
     pub(crate) e2: Affine,
     /// The parties that contributed to this commitment.
@@ -94,9 +84,7 @@ pub struct DLogEqualityCommitments {
 #[serde(transparent)]
 pub(crate) struct DLogEqualityProofShare(
     // The share of the response s
-    #[serde(serialize_with = "babyjubjub::serialize_fr")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_fr")]
-    pub(crate) ScalarField,
+    #[serde(with = "ark_serde_compat::field")] pub(crate) ScalarField,
 );
 
 /// The internal storage of a party in a distributed `DlogEqualityProof` protocol.

@@ -26,7 +26,6 @@ use crate::{
 };
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::Zero;
-use ark_serde_compat::babyjubjub;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -39,11 +38,7 @@ use zeroize::ZeroizeOnDrop;
 ///
 #[derive(Clone, Serialize, Deserialize, ZeroizeOnDrop)]
 #[serde(transparent)]
-pub struct DLogShareAdditive(
-    #[serde(serialize_with = "babyjubjub::serialize_fr")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_fr")]
-    ScalarField,
-);
+pub struct DLogShareAdditive(#[serde(with = "ark_serde_compat::field")] ScalarField);
 
 /// Wrapper for the internal `DLogEquality` session state in the additive sharing variant.
 ///
