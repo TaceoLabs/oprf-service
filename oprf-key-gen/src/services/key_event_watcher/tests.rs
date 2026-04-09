@@ -2,18 +2,21 @@ use std::{str::FromStr, sync::Arc, time::Duration};
 
 use alloy::{network::EthereumWallet, primitives::U160, signers::local::PrivateKeySigner};
 use groth16_material::circom::{CircomGroth16Material, CircomGroth16MaterialBuilder};
-use nodes_common::{Environment, web3::RpcProviderBuilder};
+use nodes_common::{Environment, postgres::PostgresConfig, web3::RpcProviderBuilder};
+use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_test_utils::{
-    DeploySetup, OPRF_PEER_PRIVATE_KEY_0, PEER_ADDRESSES, TestSetup, key_gen_test_secret_manager,
+    DeploySetup, OPRF_PEER_PRIVATE_KEY_0, PEER_ADDRESSES, TestSetup,
     test_secret_manager::TestSecretManager,
 };
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     chain::{OprfKeyRegistry, RevertError, Verifier::VerifierErrors},
+    crypto::OprfPublicKey,
 };
+use secrecy::SecretString;
 
 use crate::{
-    secret_manager::SecretManagerService,
+    secret_manager::{SecretManagerService, postgres::PostgresSecretManager},
     services::{
         key_event_watcher::{
             TransactionError, handle_abort, handle_delete, handle_not_enough_producers,
@@ -22,13 +25,6 @@ use crate::{
         transaction_handler::TransactionHandler,
     },
 };
-
-key_gen_test_secret_manager!(
-    crate::secret_manager::SecretManager,
-    KeyGenTestSecretManager,
-    oprf_types,
-    oprf_core::ddlog_equality::shamir::DLogShareShamir
-);
 
 const INVALID_PROOF_KEY: usize = 43;
 const WRONG_ROUND_LOAD_PEER_PUBLIC_KEYS: usize = 44;
@@ -93,28 +89,44 @@ async fn test_send_invalid_proof() -> eyre::Result<()> {
 async fn test_delete() -> eyre::Result<()> {
     let key_gen_material = key_gen_material(DeploySetup::TwoThree);
     let mut secret_gen = DLogSecretGenService::init(key_gen_material);
-    let secret_manager = Arc::new(TestSecretManager::new(OPRF_PEER_PRIVATE_KEY_0));
-    let key_gen_secret_manager: SecretManagerService =
-        Arc::new(KeyGenTestSecretManager(Arc::clone(&secret_manager)));
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager: SecretManagerService = Arc::new(
+        PostgresSecretManager::init(&PostgresConfig::with_default_values(
+            SecretString::from(connection_string),
+            "test".parse().expect("test should be valid schema"),
+        ))
+        .await?,
+    );
 
-    let oprf_key_id = secret_manager.add_random_key_material(&mut rand::thread_rng());
+    let oprf_key_id = OprfKeyId::new(U160::from(42));
+    let public_key = OprfPublicKey::new(rand::random());
+    let epoch = ShareEpoch::default();
+    let share = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
+
+    secret_manager
+        .store_dlog_share(oprf_key_id, public_key, epoch, share)
+        .await?;
     secret_gen.key_gen_round1(oprf_key_id, 2);
 
+    assert!(
+        secret_manager
+            .get_share_by_epoch(oprf_key_id, epoch)
+            .await?
+            .is_some()
+    );
     assert!(secret_gen.has_round1(oprf_key_id));
-    secret_manager
-        .is_key_id_stored(oprf_key_id, ShareEpoch::default())
-        .await
-        .expect("Should be able to check key-id");
 
-    handle_delete(oprf_key_id, &mut secret_gen, &key_gen_secret_manager)
+    handle_delete(oprf_key_id, &mut secret_gen, &secret_manager)
         .await
         .expect("Works");
 
     assert!(!secret_gen.has_round1(oprf_key_id));
-    secret_manager
-        .is_key_id_not_stored(oprf_key_id)
-        .await
-        .expect("Should be able to check key-id");
+    assert!(
+        secret_manager
+            .get_share_by_epoch(oprf_key_id, epoch)
+            .await?
+            .is_none()
+    );
 
     Ok(())
 }

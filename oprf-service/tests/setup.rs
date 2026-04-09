@@ -1,6 +1,7 @@
 use core::fmt;
 use std::{sync::Arc, time::Duration};
 
+use alloy::primitives::Address;
 use ark_ff::UniformRand as _;
 use async_trait::async_trait;
 use axum_test::{TestServer, TestWebSocket};
@@ -10,10 +11,10 @@ use nodes_common::{Environment, StartedServices};
 use oprf_core::ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir};
 use oprf_core::oprf::BlindingFactor;
 use oprf_test_utils::{
-    PEER_PRIVATE_KEYS, TEST_TIMEOUT, TestSetup, oprf_node_test_secret_manager,
-    test_secret_manager::TestSecretManager,
+    PEER_PRIVATE_KEYS, TEST_TIMEOUT, TestSetup, test_secret_manager::TestSecretManager,
 };
 use oprf_types::api::OprfRequestAuthenticatorError;
+use oprf_types::crypto::OprfKeyMaterial;
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     api::{OprfPublicKeyWithEpoch, OprfRequest, OprfRequestAuthenticator, OprfResponse},
@@ -21,6 +22,7 @@ use oprf_types::{
 };
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use taceo_oprf_service::secret_manager::SecretManager;
 use taceo_oprf_service::{OprfServiceBuilder, config::OprfNodeServiceConfig};
 use tokio_util::sync::CancellationToken;
 use tungstenite::protocol::CloseFrame;
@@ -31,13 +33,28 @@ pub const TEST_PROTOCOL_VERSION: &str = "1.3.101";
 pub const INVALID_AUTH_CODE: u16 = 4500;
 pub const INVALID_AUTH_MSG: &str = "invalid auth";
 
-oprf_node_test_secret_manager!(
-    taceo_oprf_service::secret_manager::SecretManager,
-    NodeTestSecretManager,
-    oprf_types,
-    oprf_core::ddlog_equality::shamir::DLogShareShamir
-);
+pub struct NodeTestSecretManager(Arc<TestSecretManager>);
 
+#[async_trait::async_trait]
+impl SecretManager for NodeTestSecretManager {
+    async fn load_address(&self) -> eyre::Result<Address> {
+        self.0.load_address().await
+    }
+
+    async fn load_secrets(
+        &self,
+    ) -> eyre::Result<std::collections::HashMap<OprfKeyId, OprfKeyMaterial>> {
+        Ok(self.0.store.lock().clone())
+    }
+
+    async fn get_oprf_key_material(
+        &self,
+        oprf_key_id: OprfKeyId,
+        epoch: ShareEpoch,
+    ) -> eyre::Result<Option<OprfKeyMaterial>> {
+        self.0.get_oprf_key_material(oprf_key_id, epoch).await
+    }
+}
 #[derive(Clone, Copy, Debug)]
 pub enum WireFormat {
     Json,

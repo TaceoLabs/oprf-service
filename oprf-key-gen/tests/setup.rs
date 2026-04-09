@@ -1,12 +1,17 @@
 use std::{fmt, sync::Arc};
 
 use axum_test::TestServer;
+use eyre::Context as _;
 use nodes_common::web3::RpcProviderConfig;
 use nodes_common::{Environment, StartedServices};
+use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_test_utils::test_secret_manager::TestSecretManager;
-use oprf_test_utils::{DeploySetup, PEER_PRIVATE_KEYS, TestSetup, key_gen_test_secret_manager};
+use oprf_test_utils::{DeploySetup, PEER_PRIVATE_KEYS, TestSetup};
+use oprf_types::crypto::OprfPublicKey;
+use oprf_types::{OprfKeyId, ShareEpoch};
 use taceo_oprf_key_gen::KeyGenTasks;
 use taceo_oprf_key_gen::config::{OprfKeyGenServiceConfig, OprfKeyGenServiceConfigMandatoryValues};
+use taceo_oprf_key_gen::secret_manager::SecretManager;
 use tokio_util::sync::CancellationToken;
 
 pub struct TestKeyGen {
@@ -18,12 +23,50 @@ pub struct TestKeyGen {
     pub cancellation_token: CancellationToken,
 }
 
-key_gen_test_secret_manager!(
-    taceo_oprf_key_gen::secret_manager::SecretManager,
-    KeyGenTestSecretManager,
-    oprf_types,
-    oprf_core::ddlog_equality::shamir::DLogShareShamir
-);
+pub struct KeyGenTestSecretManager(Arc<TestSecretManager>);
+
+#[async_trait::async_trait]
+impl SecretManager for KeyGenTestSecretManager {
+    async fn store_wallet_address(&self, address: String) -> eyre::Result<()> {
+        self.0.store_wallet_address(address).await
+    }
+    async fn ping(&self) -> eyre::Result<()> {
+        // noop
+        Ok(())
+    }
+
+    async fn get_share_by_epoch(
+        &self,
+        oprf_key_id: OprfKeyId,
+        generated_epoch: ShareEpoch,
+    ) -> eyre::Result<Option<DLogShareShamir>> {
+        self.0
+            .get_share_by_epoch(oprf_key_id, generated_epoch)
+            .await
+    }
+
+    async fn remove_oprf_key_material(&self, rp_id: OprfKeyId) -> eyre::Result<()> {
+        self.0
+            .remove_oprf_key_material(rp_id)
+            .await
+            .context("while remove oprf key material")?;
+        Ok(())
+    }
+
+    async fn store_dlog_share(
+        &self,
+        oprf_key_id: OprfKeyId,
+        public_key: OprfPublicKey,
+        epoch: ShareEpoch,
+        share: DLogShareShamir,
+    ) -> eyre::Result<()> {
+        self.0
+            .store_dlog_share(oprf_key_id, public_key, epoch, share)
+            .await
+            .context("while store DlogShare")?;
+        Ok(())
+    }
+}
 
 impl fmt::Debug for TestKeyGen {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
