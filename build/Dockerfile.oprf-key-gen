@@ -22,7 +22,7 @@ FROM rust:1.91-bookworm AS healthcheck-builder
 RUN cargo install simple-web-healthcheck
 
 
-FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
+FROM gcr.io/distroless/cc-debian13:nonroot AS runtime
 ARG GIT_HASH
 LABEL org.opencontainers.image.revision=$GIT_HASH
 LABEL org.opencontainers.image.vendor=TACEO
