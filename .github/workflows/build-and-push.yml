@@ -11,18 +11,24 @@ on:
         description: 'Path to the Dockerfile'
         required: true
         type: string
+    secrets:
+      AWS_ARCHIVE_ROLE:
+        description: 'AWS role used for the SBOM upload role assumption'
+        required: true
+      AWS_S3_BUCKET:
+        description: 'S3 bucket name used for SBOM uploads'
+        required: true
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/${{ inputs.image-name }}
   BUILDX_NO_DEFAULT_ATTESTATIONS: 1
 
-permissions:
-  contents: read # Required for the checkout action
-  packages: write
 
 jobs:
   build:
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
@@ -37,6 +43,8 @@ jobs:
         run: |
           platform=${{ matrix.arch }}
           echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+          image_name="${GITHUB_REPOSITORY,,}/${{ inputs.image-name }}"
+          echo "IMAGE_NAME=${image_name,,}" >> "$GITHUB_ENV"
 
       - name: Checkout code
         uses: actions/checkout@v6
@@ -77,25 +85,75 @@ jobs:
             org.opencontainers.image.description=Docker image for ${{ inputs.image-name }} from ${{ github.repository_owner }}/${{ github.repository }}
             org.opencontainers.image.vendor=${{ github.repository_owner }}
 
-      - name: Build and push
+      - name: Build image
         id: build
         uses: docker/build-push-action@v7
         with:
           context: .
-          push: true
+          load: true
           file: ${{ inputs.dockerfile }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,name-canonical=true
           cache-from: type=gha,scope=${{ github.repository }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ github.repository }}-${{ matrix.arch }}
           build-args: |
             GIT_HASH=${{ github.sha }}
 
+      - name: Select scan image
+        id: scan-image
+        shell: bash
+        run: |
+          scan_image="$(printf '%s\n' '${{ steps.meta.outputs.tags }}' | head -n1)"
+          if [[ -z "$scan_image" ]]; then
+            echo "No Docker tags were generated" >&2
+            exit 1
+          fi
+          echo "image=$scan_image" >> "$GITHUB_OUTPUT"
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.scan-image.outputs.image }}
+          format: spdx-json
+          artifact-name: ${{ inputs.image-name }}-${{ matrix.arch }}-sbom.spdx.json
+          output-file: ${{ runner.temp }}/${{ matrix.arch }}-sbom.spdx.json
+          upload-artifact: true
+
+      - name: Run vulnerability scan
+        uses: anchore/scan-action@v7
+        with:
+          sbom: ${{ runner.temp }}/${{ matrix.arch }}-sbom.spdx.json
+          fail-build: true
+          severity-cutoff: critical
+
+      - name: Push image tags
+        id: push-image
+        shell: bash
+        run: |
+          digest=""
+          while IFS= read -r tag; do
+            [[ -n "$tag" ]] || continue
+            push_output="$(docker push "$tag" 2>&1)"
+            printf '%s\n' "$push_output"
+            if [[ -z "$digest" ]]; then
+              digest="$(printf '%s\n' "$push_output" | sed -n 's/^.*digest: \(sha256:[[:xdigit:]]\{64\}\).*$/\1/p' | tail -n1)"
+            fi
+          done <<< '${{ steps.meta.outputs.tags }}'
+          if [[ -z "$digest" ]]; then
+            echo "Unable to determine pushed digest from docker push output" >&2
+            exit 1
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
       - name: Export digest
+        shell: bash
         run: |
           mkdir -p ${{ runner.temp }}/digests
-          digest="${{ steps.build.outputs.digest }}"
+          digest='${{ steps.push-image.outputs.digest }}'
+          if [[ -z "$digest" || "$digest" == "null" ]]; then
+            echo "Unable to determine pushed digest for ${{ steps.scan-image.outputs.image }}" >&2
+            exit 1
+          fi
           touch "${{ runner.temp }}/digests/${digest#sha256:}"
 
       - name: Upload digest
@@ -107,10 +165,17 @@ jobs:
           retention-days: 1
 
   merge:
+    permissions:
+      packages: write
     runs-on: ubuntu-latest
     needs:
       - build
     steps:
+      - name: Prepare image name
+        run: |
+          image_name="${GITHUB_REPOSITORY,,}/${{ inputs.image-name }}"
+          echo "IMAGE_NAME=${image_name,,}" >> "$GITHUB_ENV"
+
       - name: Download digests
         uses: actions/download-artifact@v8
         with:
@@ -156,4 +221,39 @@ jobs:
             --annotation "index:org.opencontainers.image.title=${{ inputs.image-name }}" \
             --annotation "index:org.opencontainers.image.description=Docker image for ${{ inputs.image-name }} from ${{ github.repository_owner }}/${{ github.repository }}" \
             --annotation "index:org.opencontainers.image.vendor=${{ github.repository_owner }}" \
-            $(printf '${{ env.REGISTRY }}/${{ steps.meta.outputs.tags }}@sha256:%s ' *)
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+
+
+  upload-sbom:
+    permissions:
+      id-token: write
+      contents: read
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    steps:
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ARCHIVE_ROLE }}
+          aws-region: eu-central-1
+
+      - name: Download a single artifact
+        uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/sboms
+          pattern: "*.spdx.json"
+          merge-multiple: true
+      
+      - name: Upload file to S3
+        env:
+          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+        run: |
+          # Rename file to include short git sha
+          PREFIX="$(echo ${{ github.sha }} | cut -c1-7)"
+
+          cd ${{ runner.temp }}/sboms
+          for file in *; do
+            [ -f "$file" ] && mv "$file" "${PREFIX}_${file}"
+          done
+          aws s3 sync "${{ runner.temp }}/sboms" "s3://${AWS_S3_BUCKET}/${{ inputs.image-name }}/"

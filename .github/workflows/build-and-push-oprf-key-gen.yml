@@ -1,5 +1,6 @@
 name: Build and Push (oprf-key-gen)
 
+
 on:
   workflow_dispatch:
   push:
@@ -14,8 +15,14 @@ permissions:
 
 jobs:
   workflow:
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     uses: ./.github/workflows/build-and-push.yml
     with:
       image-name: oprf-key-gen
       dockerfile: build/Dockerfile.oprf-key-gen
-
+    secrets:
+      AWS_ARCHIVE_ROLE: ${{ secrets.AWS_ARCHIVE_ROLE }}
+      AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
