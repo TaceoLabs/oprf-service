@@ -10,11 +10,11 @@ on:
       - 'oprf-key-gen-v*'
 
 jobs:
-  permissions:
-    contents: read
-    packages: write
-    id-token: write
   workflow:
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     uses: ./.github/workflows/build-and-push.yml
     with:
       image-name: oprf-key-gen
