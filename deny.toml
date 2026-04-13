@@ -74,6 +74,7 @@ ignore = [
     { id = "RUSTSEC-2024-0388", reason = "derivative crate is unmaintained, but arkworks is still using it." },
     { id = "RUSTSEC-2025-0055", reason = "ark-relations is using v0.2 of tracing-subscriber still, we do not use this functionality so it is not exploitable." },
     { id = "RUSTSEC-2026-0066", reason = "can't be upgraded with current version of testcontainers" },
+    { id = "RUSTSEC-2026-0097", reason = "can't upgrade due to transative deps. Doesn't affect us because we don't enable the log feature" },
 
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
