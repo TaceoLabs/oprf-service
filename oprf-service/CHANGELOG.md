@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.13.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.13.0...taceo-oprf-service-v0.13.1)
+
+### ⛰️ Features
+
+
+- *(node)* Add http level request timeout - ([fbaa405](https://github.com/TaceoLabs/oprf-service/commit/fbaa405b8c4b547a5293fa5e93ff045a2749eb4b))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Updated readme - ([e79b000](https://github.com/TaceoLabs/oprf-service/commit/e79b000f72a5beb2b6393e88e24414a3f1ea16dd))
+
+
 ## [0.13.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.12.0...taceo-oprf-service-v0.13.0)
 
 ### 🚜 Refactor
