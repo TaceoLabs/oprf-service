@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.9.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.9.0...taceo-oprf-dev-client-v0.9.1)
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Updated readme - ([e79b000](https://github.com/TaceoLabs/oprf-service/commit/e79b000f72a5beb2b6393e88e24414a3f1ea16dd))
+
+
 ## [0.9.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.8.1...taceo-oprf-dev-client-v0.9.0)
 
 ### 🚜 Refactor

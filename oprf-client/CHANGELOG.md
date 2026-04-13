@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [0.9.3](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.9.2...taceo-oprf-client-v0.9.3)
+
+### 🚜 Refactor
+
+
+- *(client)* Send best effort closes and mirror errors from native - ([97771ce](https://github.com/TaceoLabs/oprf-service/commit/97771ce90d4194cdce4c61786ee424f8182608ae))
+- *(client)* Changed error type for certain EOF events - ([2156b0a](https://github.com/TaceoLabs/oprf-service/commit/2156b0a472beb1e4a56de711e5dbcee55b6bb007))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(client)* Send no CloseFrame on unexpected Close from server - ([f8de2c3](https://github.com/TaceoLabs/oprf-service/commit/f8de2c3f655e75012e048da56d53cac066b9bf5a))
+- *(client)* Add best effort close when receiving invalid binary - ([9592439](https://github.com/TaceoLabs/oprf-service/commit/959243947cd0fbfae47d08fbb29518f1fd468643))
+- Updated readme - ([e79b000](https://github.com/TaceoLabs/oprf-service/commit/e79b000f72a5beb2b6393e88e24414a3f1ea16dd))
+
+
 ## [0.9.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.9.1...taceo-oprf-client-v0.9.2)
 
 ### 🐛 Bug Fixes
