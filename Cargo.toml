@@ -27,7 +27,7 @@ ark-bn254 = { version = "0.5" }
 ark-ec = "0.5"
 ark-ff = "0.5"
 ark-groth16 = "0.5"
-ark-serde-compat = { package = "taceo-ark-serde-compat", version = "0.4.1", default-features = false }
+ark-serde-compat = { package = "taceo-ark-serde-compat", version = "0.5", default-features = false }
 ark-serialize = "0.5"
 async-trait = "0.1"
 axum = "0.8"

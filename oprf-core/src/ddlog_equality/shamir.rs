@@ -24,7 +24,6 @@ use crate::dlog_equality::DLogEqualityProof;
 use ark_ec::CurveGroup;
 use ark_ec::{AffineRepr, VariableBaseMSM};
 use ark_ff::Zero;
-use ark_serde_compat::babyjubjub;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
 use rand::{CryptoRng, Rng};
@@ -45,11 +44,7 @@ type Projective = ark_babyjubjub::EdwardsProjective;
     Clone, Serialize, Deserialize, ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize,
 )]
 #[serde(transparent)]
-pub struct DLogShareShamir(
-    #[serde(serialize_with = "babyjubjub::serialize_fr")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_fr")]
-    ScalarField,
-);
+pub struct DLogShareShamir(#[serde(with = "ark_serde_compat::field")] ScalarField);
 
 /// Wrapper for the internal `DLogEquality` session state in the Shamir-sharing variant.
 ///

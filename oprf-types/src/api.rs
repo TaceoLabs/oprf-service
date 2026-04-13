@@ -201,8 +201,7 @@ pub struct OprfRequest<OprfRequestAuth> {
     /// Unique ID of the request (used to correlate responses).
     pub request_id: Uuid,
     /// Input point `B` of the OPRF, serialized as a `BabyJubJub` affine point.
-    #[serde(serialize_with = "babyjubjub::serialize_affine")]
-    #[serde(deserialize_with = "babyjubjub::deserialize_affine")]
+    #[serde(with = "babyjubjub::affine")]
     pub blinded_query: ark_babyjubjub::EdwardsAffine,
     /// The additional authentication info for this request
     pub auth: OprfRequestAuth,
