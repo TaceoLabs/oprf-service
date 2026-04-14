@@ -214,10 +214,15 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + 'static>(
         tracing::debug!("could not get enough sessions. I got the following sessions:");
         #[allow(
             clippy::iter_over_hash_type,
-            reason = "HashMap iter only used for logging"
+            reason = "HashMap iter only used for logging + error construction"
         )]
         for (epoch, sessions) in epoch_session_map {
             tracing::debug!("got for epoch {epoch} {} sessions", sessions.len());
+
+            // As we collapse each session into the epoch_session_map we need to add an EpochMismatch instance per session, otherwise the aggregate_error function will not work
+            for _ in sessions.party_ids {
+                session_errors.push(NodeError::EpochMismatch(epoch));
+            }
         }
     }
     Err(session_errors)

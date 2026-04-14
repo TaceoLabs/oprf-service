@@ -163,6 +163,11 @@ pub enum NodeError {
         /// Reason for closing websocket from our side
         reason: String,
     },
+    /// The servers could not agree on a [`ShareEpoch`].
+    ///
+    /// This node sent back the wrapped epoch.
+    #[error("ShareEpoch mismatch - got epoch: {0}")]
+    EpochMismatch(ShareEpoch),
     /// Represents an unknown or unexpected error.
     ///
     /// Primarily included for forward compatibility and future-proofing.
@@ -177,6 +182,7 @@ impl PartialEq for NodeError {
             (Self::UnexpectedMessage { reason: lhs }, Self::UnexpectedMessage { reason: rhs }) => {
                 lhs == rhs
             }
+            (Self::EpochMismatch(lhs), Self::EpochMismatch(rhs)) => lhs == rhs,
             _ => false,
         }
     }
@@ -222,6 +228,9 @@ pub enum Error {
     /// Services must be unique
     #[error("Services must be unique")]
     NonUniqueServices,
+    /// Services did not report an error but different epochs
+    #[error("The nodes could not agree on an epoch")]
+    EpochMismatch(Vec<ShareEpoch>),
     /// Invalid threshold for provided URIs.
     #[error(
         "Invalid combination num_peers {num_peers} and threshold {threshold}. Must be 0 < threshold <= num_peers"
@@ -270,6 +279,7 @@ pub enum Error {
 /// - If `threshold` nodes returned the same `ServiceError`, returns a consensus service error.
 /// - If `threshold` nodes returned the same `UnexpectedMessage`, returns that consensus.
 /// - If `threshold` nodes returned `WsError`s, collects them into a networking error.
+/// - If `threshold` nodes returned `EpochMismatch`, we return `EpochMismatch` containing all reported epochs.
 /// - Otherwise, returns `NodeErrorDisagreement`.
 ///
 /// Internal use only.
@@ -277,6 +287,7 @@ fn aggregate_error(threshold: usize, errors: Vec<NodeError>) -> Error {
     let mut service_errors = HashMap::new();
     let mut ws_errors_counters = 0;
     let mut unexpected_message = HashMap::new();
+    let mut epoch_mismatches = Vec::with_capacity(errors.len());
 
     for err in &errors {
         match err {
@@ -290,9 +301,6 @@ fn aggregate_error(threshold: usize, errors: Vec<NodeError>) -> Error {
             NodeError::WsError(_) => {
                 // can't check generic error for equality therefore we just collect them
                 ws_errors_counters += 1;
-                if ws_errors_counters >= threshold {
-                    break;
-                }
             }
             NodeError::UnexpectedMessage { reason } => {
                 let count = unexpected_message.entry(reason).or_insert(0);
@@ -303,12 +311,17 @@ fn aggregate_error(threshold: usize, errors: Vec<NodeError>) -> Error {
                     };
                 }
             }
+            NodeError::EpochMismatch(epoch) => {
+                epoch_mismatches.push(*epoch);
+            }
             // we ignore unknown for aggregation
             _ => {}
         }
     }
 
-    if ws_errors_counters >= threshold {
+    if epoch_mismatches.len() >= threshold {
+        return Error::EpochMismatch(epoch_mismatches);
+    } else if ws_errors_counters >= threshold {
         return Error::Networking(
             errors
                 .into_iter()
@@ -683,6 +696,73 @@ mod tests {
             assert_eq!(all.len(), len);
         } else {
             panic!("Expected NodeErrorDisagreement since unknowns are ignored");
+        }
+    }
+
+    #[test]
+    fn test_threshold_epoch_mismatch() {
+        let epoch_a = ShareEpoch::from(1u32);
+        let epoch_b = ShareEpoch::from(2u32);
+        let epoch_c = ShareEpoch::from(3u32);
+
+        let errors = vec![
+            NodeError::EpochMismatch(epoch_a),
+            NodeError::EpochMismatch(epoch_b),
+            NodeError::EpochMismatch(epoch_c),
+        ];
+
+        if let Error::EpochMismatch(epochs) = aggregate_error(3, errors) {
+            assert_eq!(epochs.len(), 3);
+            assert!(epochs.contains(&epoch_a));
+            assert!(epochs.contains(&epoch_b));
+            assert!(epochs.contains(&epoch_c));
+        } else {
+            panic!("Expected EpochMismatch error");
+        }
+    }
+
+    #[test]
+    fn test_epoch_mismatch_below_threshold_falls_through() {
+        let epoch_a = ShareEpoch::from(1u32);
+        let epoch_b = ShareEpoch::from(2u32);
+
+        // Only 2 epoch mismatches but threshold is 3 — should not return EpochMismatch
+        let errors = vec![
+            NodeError::EpochMismatch(epoch_a),
+            NodeError::EpochMismatch(epoch_b),
+            NodeError::Unknown(Box::new(std::io::Error::other("unknown"))),
+        ];
+
+        let res = aggregate_error(3, errors);
+        assert!(
+            matches!(res, Error::NodeErrorDisagreement(_)),
+            "Below-threshold epoch mismatches should fall through to NodeErrorDisagreement"
+        );
+    }
+
+    #[test]
+    fn test_epoch_mismatch_counts_nodes_not_distinct_epochs() {
+        let epoch_1 = ShareEpoch::from(1u32);
+        let epoch_2 = ShareEpoch::from(2u32);
+
+        let errors = vec![
+            NodeError::EpochMismatch(epoch_1),
+            NodeError::EpochMismatch(epoch_1),
+            NodeError::EpochMismatch(epoch_2),
+            NodeError::EpochMismatch(epoch_2),
+            NodeError::WsError(Box::new(std::io::Error::other("ws"))),
+        ];
+
+        if let Error::EpochMismatch(epochs) = aggregate_error(3, errors) {
+            assert_eq!(
+                epochs.len(),
+                4,
+                "Should contain one entry per node, not per distinct epoch"
+            );
+            assert_eq!(epochs.iter().filter(|&&e| e == epoch_1).count(), 2);
+            assert_eq!(epochs.iter().filter(|&&e| e == epoch_2).count(), 2);
+        } else {
+            panic!("Expected EpochMismatch — got NodeErrorDisagreement");
         }
     }
 
