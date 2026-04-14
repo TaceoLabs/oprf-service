@@ -58,8 +58,16 @@ fn segment_mul_fix_generator<let N: u32>(
 
             // Extract 3 bits for this window
             let bit0 = if (3 * i) < N { bits[3 * i] } else { false };
-            let bit1 = if (3 * i + 1) < N { bits[3 * i + 1] } else { false };
-            let bit2 = if (3 * i + 2) < N { bits[3 * i + 2] } else { false };
+            let bit1 = if (3 * i + 1) < N {
+                bits[3 * i + 1]
+            } else {
+                false
+            };
+            let bit2 = if (3 * i + 2) < N {
+                bits[3 * i + 2]
+            } else {
+                false
+            };
 
             let window_bits: [bool; 3] = [bit0, bit1, bit2];
             let selected = select_from_window(window_bits, table);
