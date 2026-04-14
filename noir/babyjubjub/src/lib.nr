@@ -29,15 +29,23 @@ global BABYJUBJUB_GENERATOR_Y: Field =
 global BABYJUBJUB_Fr: Field =
     2736030358979909402780800718157159386076813972158567259200215660948447373041;
 
-global BABYJUBJUB_CHARACTERISTIC: [u1; 251] = [
-    1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0,
-    0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 0,
-    0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0,
-    0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1,
-    1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1,
-    0, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0,
-    1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0,
-    0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1,
+global BABYJUBJUB_CHARACTERISTIC: [bool; 251] = [
+    true, false, false, false, true, true, true, true, false, true, true, false, false, true, false, false,
+    true, false, false, false, false, true, false, false, true, false, false, true, true, true, false, false,
+    false, false, true, true, true, false, true, true, true, true, true, false, true, false, false, true,
+    false, true, false, false, true, true, true, false, true, true, true, false, false, true, true, false,
+    false, true, false, true, false, false, false, false, false, true, true, true, false, true, true, true,
+    false, false, false, false, false, true, false, false, true, false, false, true, true, true, false, false,
+    false, false, false, true, true, true, false, true, true, false, true, true, false, true, true, true,
+    false, true, true, true, true, true, false, false, true, true, false, true, false, true, false, true,
+    true, true, false, true, false, false, false, false, true, true, false, true, false, true, false, false,
+    false, false, false, false, true, true, false, false, false, false, false, false, true, false, true, true,
+    false, true, true, false, true, true, false, true, false, false, false, true, false, false, false, false,
+    false, true, false, true, false, false, false, false, true, true, true, false, true, true, false, false,
+    true, false, true, false, false, false, false, false, false, false, true, false, true, true, false, false,
+    false, true, true, false, false, true, false, false, false, false, true, true, true, false, true, false,
+    false, true, true, true, false, false, true, true, true, false, false, true, false, false, false, true,
+    false, false, true, true, false, false, false, false, false, true, true,
 ];
 
 /// Represents a point on the BabyJubJub curve
@@ -145,7 +153,7 @@ impl BabyJubJubPoint {
             BabyJubJubPoint::identity()
         } else {
             // Decompose scalar into 251 bits (BabyJubJub scalar field size)
-            let bits: [u1; 251] = scalar.to_le_bits();
+            let bits: [bool; 251] = scalar.to_le_bits();
             self.scalar_mul_bits(bits)
         }
     }
@@ -161,7 +169,7 @@ impl BabyJubJubPoint {
     /// For Variable-base: use double-and-add (~N doubles, ~N/2 adds).
     /// Window-w needs a per-point table (2^w) and a select each window
     /// so windowing is reserved for fixed-base (generator) where the table is precomputed.
-    pub fn scalar_mul_bits<let N: u32>(self, bits: [u1; N]) -> Self {
+    pub fn scalar_mul_bits<let N: u32>(self, bits: [bool; N]) -> Self {
         assert(self.is_on_curve(), "Point must be on curve");
 
         let mut result = BabyJubJubPoint::identity();
@@ -169,7 +177,7 @@ impl BabyJubJubPoint {
         for i in 0..N {
             result = result.double();
 
-            if bits[N - 1 - i] == 1 {
+            if bits[N - 1 - i] {
                 result = result.add(self);
             }
         }
@@ -183,7 +191,7 @@ impl BabyJubJubPoint {
             BabyJubJubPoint::identity()
         } else {
             // Decompose to 254 bits
-            let bits: [u1; 254] = scalar_fq.to_le_bits();
+            let bits: [bool; 254] = scalar_fq.to_le_bits();
 
             self.scalar_mul_bits(bits)
         }
@@ -194,23 +202,23 @@ impl BabyJubJubPoint {
         bn254::assert_lt(field_element, BABYJUBJUB_Fr);
     }
 
-    pub fn validate_scalar_field_with_bits(field_element: Field) -> [u1; 251] {
+    pub fn validate_scalar_field_with_bits(field_element: Field) -> [bool; 251] {
         BabyJubJubPoint::validate_babyjubjub_field(field_element);
-        let bits: [u1; 251] = field_element.to_le_bits();
+        let bits: [bool; 251] = field_element.to_le_bits();
         bits
     }
 
     // Precondition: This method expects that the point is on-curve.
     pub fn check_sub_group(self) -> bool {
         static_assert(
-            BABYJUBJUB_CHARACTERISTIC[250] == 1,
+            BABYJUBJUB_CHARACTERISTIC[250],
             "Characteristic has high bit set",
         );
 
         let mut p = self;
         for i in 0..250 {
             p = p.double();
-            if BABYJUBJUB_CHARACTERISTIC[249 - i] == 1 {
+            if BABYJUBJUB_CHARACTERISTIC[249 - i] {
                 p = p.add(self);
             }
         }
