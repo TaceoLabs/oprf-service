@@ -279,6 +279,7 @@ pub enum Error {
 /// - If `threshold` nodes returned the same `ServiceError`, returns a consensus service error.
 /// - If `threshold` nodes returned the same `UnexpectedMessage`, returns that consensus.
 /// - If `threshold` nodes returned `WsError`s, collects them into a networking error.
+/// - If `threshold` nodes returned `EpochMismatch`, we return `EpochMismatch` containing all reported epochs.
 /// - Otherwise, returns `NodeErrorDisagreement`.
 ///
 /// Internal use only.
