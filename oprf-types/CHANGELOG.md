@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.12.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.12.0...taceo-oprf-types-v0.12.1)
+
+### 🚜 Refactor
+
+
+- *(core,types)* Bump ark-serde-compat ([#550](https://github.com/TaceoLabs/oprf-service/pull/550)) - ([5a8d417](https://github.com/TaceoLabs/oprf-service/commit/5a8d417af178803a5f6eaec556afb485dd5f3c74))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Updated readme - ([e79b000](https://github.com/TaceoLabs/oprf-service/commit/e79b000f72a5beb2b6393e88e24414a3f1ea16dd))
+
+
 ## [0.12.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.11.0...taceo-oprf-types-v0.12.0)
 
 ### 🚜 Refactor

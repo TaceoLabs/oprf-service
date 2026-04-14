@@ -1,6 +1,6 @@
 [package]
 name = "taceo-oprf-client"
-version = "0.9.2"
+version = "0.9.3"
 edition.workspace = true
 rust-version.workspace = true
 description = "Client for TACEO:OPRF"

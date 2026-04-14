@@ -1,6 +1,6 @@
 [package]
 name = "taceo-oprf"
-version = "0.12.0"
+version = "0.12.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "Everything you need to use TACEO:OPRF"

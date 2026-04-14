@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.10.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.10.0...taceo-oprf-test-utils-v0.10.1)
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Updated readme - ([e79b000](https://github.com/TaceoLabs/oprf-service/commit/e79b000f72a5beb2b6393e88e24414a3f1ea16dd))
+
+
 ## [0.10.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.9.0...taceo-oprf-test-utils-v0.10.0)
 
 ### 🚜 Refactor

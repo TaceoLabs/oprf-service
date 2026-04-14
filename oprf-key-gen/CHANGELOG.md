@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.9.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.9.0...taceo-oprf-key-gen-v0.9.1)
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(key-gen)* Log decode in one-line - ([72daa73](https://github.com/TaceoLabs/oprf-service/commit/72daa73378885b3fdcb6bded1d94b7e30985a8b0))
+- Updated readme - ([e79b000](https://github.com/TaceoLabs/oprf-service/commit/e79b000f72a5beb2b6393e88e24414a3f1ea16dd))
+
+
 ## [0.9.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.8.0...taceo-oprf-key-gen-v0.9.0)
 
 ### 🐛 Bug Fixes
