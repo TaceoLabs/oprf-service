@@ -124,6 +124,7 @@ jobs:
         with:
           sbom: ${{ runner.temp }}/${{ matrix.arch }}-sbom.spdx.json
           fail-build: true
+          output-format: table
           severity-cutoff: critical
 
       - name: Push image tags
@@ -238,7 +239,7 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ARCHIVE_ROLE }}
           aws-region: eu-central-1
 
-      - name: Download a single artifact
+      - name: Download SBOM artifacts
         uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/sboms
