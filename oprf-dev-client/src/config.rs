@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{num::NonZeroUsize, time::Duration};
 
 use alloy::primitives::Address;
 use clap::{Parser, Subcommand};
@@ -55,7 +55,7 @@ pub struct DevClientConfig {
 
     /// The threshold of services that need to respond
     #[clap(long, env = "OPRF_DEV_CLIENT_THRESHOLD", default_value = "2")]
-    pub threshold: usize,
+    pub threshold: NonZeroUsize,
 
     /// The Address of the OprfKeyRegistry contract.
     #[clap(long, env = "OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT")]
