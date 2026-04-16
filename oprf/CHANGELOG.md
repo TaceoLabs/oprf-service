@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.12.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.12.1...taceo-oprf-v0.12.2)
+
+### Build
+
+
+- *(oprf)* Pin concrete min versions for umbrella ([#559](https://github.com/TaceoLabs/oprf-service/pull/559)) - ([16c8cbc](https://github.com/TaceoLabs/oprf-service/commit/16c8cbc623d3bf6a4d475708923b0cc9602adb69))
+
+
 ## [0.12.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.12.0...taceo-oprf-v0.12.1)
 
 ### ⚙️ Miscellaneous Tasks

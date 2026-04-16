@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.10.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.10.1...taceo-oprf-test-utils-v0.10.2)
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Update Cargo.lock dependencies - ([0000000](https://github.com/TaceoLabs/oprf-service/commit/0000000))
+
+
 ## [0.10.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.10.0...taceo-oprf-test-utils-v0.10.1)
 
 ### ⚙️ Miscellaneous Tasks

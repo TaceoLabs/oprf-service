@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.13.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.13.1...taceo-oprf-service-v0.13.2)
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(key-gen,service)* Use from_mins over from_secs - ([5fc6ebe](https://github.com/TaceoLabs/oprf-service/commit/5fc6ebeb313d2ee1a0194f7417ce3a02375471c7))
+
+
 ## [0.13.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.13.0...taceo-oprf-service-v0.13.1)
 
 ### ⛰️ Features

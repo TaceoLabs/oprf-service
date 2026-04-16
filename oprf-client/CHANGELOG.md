@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.9.4](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.9.3...taceo-oprf-client-v0.9.4)
+
+### 🐛 Bug Fixes
+
+
+- *(client)* Add a dedicated ShareEpoch mismatch error [TAC-511] ([#556](https://github.com/TaceoLabs/oprf-service/pull/556)) - ([efcec8c](https://github.com/TaceoLabs/oprf-service/commit/efcec8c9bc758d2e164c34bcaac9de346c08f307))
+
+
 ## [0.9.3](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.9.2...taceo-oprf-client-v0.9.3)
 
 ### 🚜 Refactor
