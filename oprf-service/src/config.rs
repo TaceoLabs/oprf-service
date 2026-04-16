@@ -107,12 +107,12 @@ impl OprfNodeServiceConfig {
 
     /// Default get oprf key material timeout (`10 min`).
     fn default_get_oprf_key_material_timeout() -> Duration {
-        Duration::from_secs(10 * 60)
+        Duration::from_mins(10)
     }
 
     /// Default I-am-alive interval (`60 s`).
     fn default_i_am_alive_interval() -> Duration {
-        Duration::from_secs(60)
+        Duration::from_mins(1)
     }
 
     /// Construct with all default values except required fields.
