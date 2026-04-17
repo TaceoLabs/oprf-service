@@ -33,7 +33,6 @@ use crate::{
         METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_I_AM_ALIVE, METRICS_ID_KEY_GEN_WALLET_BALANCE,
     },
     services::{
-        key_event_watcher::KeyEventWatcherTaskConfig,
         secret_gen::DLogSecretGenService,
         secret_manager::SecretManagerService,
         transaction_handler::{TransactionHandler, TransactionHandlerArgs},
@@ -128,13 +127,14 @@ async fn contract_sanity_checks(
 ///
 /// # Initialization
 /// During startup the service performs several initialization steps:
-/// - Initializes the Ethereum wallet with the provided private key.
+/// - Initializes the Ethereum wallet from the configured private key.
+/// - Stores the derived wallet address in the configured secret manager.
 /// - Initializes the RPC provider used to interact with the configured blockchain.
 /// - Fetches and logs the wallet balance.
 /// - Loads the party ID from the `OprfKeyRegistry` contract to verify that this
 ///   node is registered as a participant.
 /// - Builds the Groth16 proving material required for the key generation protocol.
-/// - Initializes the `DLogSecretGenService`.
+/// - Initializes the `DLogSecretGenService`, which uses the secret manager to persist in-progress key-gen state between rounds.
 /// - Creates a `TransactionHandler` used for submitting and confirming on-chain transactions.
 ///
 /// # Spawned Tasks
@@ -151,7 +151,7 @@ async fn contract_sanity_checks(
 ///
 /// # Errors
 /// Returns an error if:
-/// - the wallet private key cannot be loaded,
+/// - the configured wallet private key cannot be parsed,
 /// - the RPC provider cannot be initialized,
 /// - the node is not registered in the `OprfKeyRegistry` contract,
 /// - the Groth16 proving material cannot be built.
@@ -207,7 +207,8 @@ pub async fn start(
     .await
     .context("while joining build groth16 task")?
     .context("while building groth16 material")?;
-    let dlog_secret_gen_service = DLogSecretGenService::init(key_gen_material);
+    let dlog_secret_gen_service =
+        DLogSecretGenService::init(key_gen_material, secret_manager.clone());
     let transaction_handler = TransactionHandler::new(TransactionHandlerArgs {
         max_wait_time_watch_transaction: config.max_wait_time_transaction_confirmation,
         confirmations_for_transaction: config.confirmations_for_transaction,
@@ -222,16 +223,15 @@ pub async fn start(
     let key_event_watcher = tokio::spawn({
         let contract_address = config.oprf_key_registry_contract;
         let cancellation_token = cancellation_token.clone();
-        services::key_event_watcher::key_event_watcher_task(KeyEventWatcherTaskConfig {
+        services::key_event_watcher::key_event_watcher_task(
+            rpc_provider,
             contract_address,
             dlog_secret_gen_service,
-            start_block: config.start_block,
-            secret_manager,
-            start_signal: started_services.new_service(),
-            cancellation_token,
-            rpc_provider,
+            config.start_block,
+            started_services.new_service(),
             transaction_handler,
-        })
+            cancellation_token,
+        )
     });
 
     let key_gen_router = api::routes(address, started_services.clone());

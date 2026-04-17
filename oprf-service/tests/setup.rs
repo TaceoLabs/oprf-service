@@ -44,7 +44,7 @@ impl SecretManager for NodeTestSecretManager {
     async fn load_secrets(
         &self,
     ) -> eyre::Result<std::collections::HashMap<OprfKeyId, OprfKeyMaterial>> {
-        Ok(self.0.store.lock().clone())
+        Ok(self.0.clone_key_materials())
     }
 
     async fn get_oprf_key_material(
@@ -126,7 +126,7 @@ impl TestNode {
             provider: _,
             oprf_key_registry,
             cancellation_token,
-            setup: _,
+            ..
         } = setup;
         assert!(party_id < 5, "can only spawn 5 nodes");
 

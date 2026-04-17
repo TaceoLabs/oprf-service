@@ -8,6 +8,7 @@
 
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM as _};
 use ark_ff::{PrimeField, UniformRand, Zero};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use itertools::izip;
 use rand::{CryptoRng, Rng};
 use zeroize::ZeroizeOnDrop;
@@ -39,7 +40,7 @@ const COEFF_DS: &[u8] = b"KeyGenPolyCoeff";
 /// During key generation, each party creates shares of this polynomial for their nodes. When all individual shares from different parties are accumulated, the resulting shares correspond to the final shared secret key (the sum of individual secrets).
 ///
 /// Parties shall forget the polynomial after key-generation.
-#[derive(ZeroizeOnDrop)]
+#[derive(ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize)]
 pub struct KeyGenPoly {
     poly: Vec<ScalarField>,
     comm_share: Affine,

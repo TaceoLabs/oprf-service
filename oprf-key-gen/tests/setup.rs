@@ -1,17 +1,24 @@
-use std::{fmt, sync::Arc};
+use std::{
+    collections::HashMap,
+    fmt,
+    sync::{Arc, Mutex},
+};
 
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use async_trait::async_trait;
 use axum_test::TestServer;
-use eyre::Context as _;
 use nodes_common::web3::RpcProviderConfig;
 use nodes_common::{Environment, StartedServices};
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_test_utils::test_secret_manager::TestSecretManager;
-use oprf_test_utils::{DeploySetup, PEER_PRIVATE_KEYS, TestSetup};
-use oprf_types::crypto::OprfPublicKey;
-use oprf_types::{OprfKeyId, ShareEpoch};
+use oprf_test_utils::{
+    DeploySetup, PEER_PRIVATE_KEYS, TestSetup, test_secret_manager::TestSecretManager,
+};
+use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 use taceo_oprf_key_gen::KeyGenTasks;
 use taceo_oprf_key_gen::config::{OprfKeyGenServiceConfig, OprfKeyGenServiceConfigMandatoryValues};
-use taceo_oprf_key_gen::secret_manager::SecretManager;
+use taceo_oprf_key_gen::secret_manager::{
+    KeyGenIntermediateValues, SecretManager, SecretManagerError, SecretManagerService,
+};
 use tokio_util::sync::CancellationToken;
 
 pub struct TestKeyGen {
@@ -23,49 +30,10 @@ pub struct TestKeyGen {
     pub cancellation_token: CancellationToken,
 }
 
-pub struct KeyGenTestSecretManager(Arc<TestSecretManager>);
-
-#[async_trait::async_trait]
-impl SecretManager for KeyGenTestSecretManager {
-    async fn store_wallet_address(&self, address: String) -> eyre::Result<()> {
-        self.0.store_wallet_address(address).await
-    }
-    async fn ping(&self) -> eyre::Result<()> {
-        // noop
-        Ok(())
-    }
-
-    async fn get_share_by_epoch(
-        &self,
-        oprf_key_id: OprfKeyId,
-        generated_epoch: ShareEpoch,
-    ) -> eyre::Result<Option<DLogShareShamir>> {
-        self.0
-            .get_share_by_epoch(oprf_key_id, generated_epoch)
-            .await
-    }
-
-    async fn remove_oprf_key_material(&self, rp_id: OprfKeyId) -> eyre::Result<()> {
-        self.0
-            .remove_oprf_key_material(rp_id)
-            .await
-            .context("while remove oprf key material")?;
-        Ok(())
-    }
-
-    async fn store_dlog_share(
-        &self,
-        oprf_key_id: OprfKeyId,
-        public_key: OprfPublicKey,
-        epoch: ShareEpoch,
-        share: DLogShareShamir,
-    ) -> eyre::Result<()> {
-        self.0
-            .store_dlog_share(oprf_key_id, public_key, epoch, share)
-            .await
-            .context("while store DlogShare")?;
-        Ok(())
-    }
+pub struct TestKeyGenSecretManager {
+    base: Arc<TestSecretManager>,
+    keygen_intermediates: Mutex<HashMap<(OprfKeyId, ShareEpoch), Vec<u8>>>,
+    pending_shares: Mutex<HashMap<(OprfKeyId, ShareEpoch), DLogShareShamir>>,
 }
 
 impl fmt::Debug for TestKeyGen {
@@ -80,17 +48,18 @@ impl TestKeyGen {
     pub async fn start(party_id: usize, test_setup: &TestSetup) -> eyre::Result<Self> {
         let TestSetup {
             anvil,
-            provider: _,
             oprf_key_registry,
             cancellation_token,
             setup,
+            ..
         } = test_setup;
 
         assert!(party_id < 5, "can only spawn 5 key-gens");
         let private_key = PEER_PRIVATE_KEYS[party_id];
         let child_token = cancellation_token.child_token();
         let secret_manager = Arc::new(TestSecretManager::new(private_key));
-        let keygen_secret_manager = Arc::new(KeyGenTestSecretManager(Arc::clone(&secret_manager)));
+        let keygen_secret_manager: SecretManagerService =
+            Arc::new(TestKeyGenSecretManager::new(Arc::clone(&secret_manager)));
         let (expected_threshold, expected_num_peers) = match test_setup.setup {
             DeploySetup::TwoThree => (2, 3),
             DeploySetup::ThreeFive => (3, 5),
@@ -159,6 +128,168 @@ impl TestKeyGen {
     }
 }
 
+impl TestKeyGenSecretManager {
+    fn new(base: Arc<TestSecretManager>) -> Self {
+        Self {
+            base,
+            keygen_intermediates: Mutex::new(HashMap::new()),
+            pending_shares: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn serialize_intermediates(
+        intermediate: &KeyGenIntermediateValues,
+    ) -> Result<Vec<u8>, SecretManagerError> {
+        let mut bytes = Vec::with_capacity(intermediate.uncompressed_size());
+        intermediate
+            .serialize_uncompressed(&mut bytes)
+            .map_err(|error| SecretManagerError::Internal(eyre::eyre!(error)))?;
+        Ok(bytes)
+    }
+
+    fn deserialize_intermediates(
+        bytes: &[u8],
+    ) -> Result<KeyGenIntermediateValues, SecretManagerError> {
+        KeyGenIntermediateValues::deserialize_uncompressed(bytes)
+            .map_err(|error| SecretManagerError::Internal(eyre::eyre!(error)))
+    }
+}
+
+#[async_trait]
+impl SecretManager for TestKeyGenSecretManager {
+    async fn store_wallet_address(&self, address: String) -> Result<(), SecretManagerError> {
+        self.base
+            .store_wallet_address(address)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn get_share_by_epoch(
+        &self,
+        oprf_key_id: OprfKeyId,
+        generated_epoch: ShareEpoch,
+    ) -> Result<Option<DLogShareShamir>, SecretManagerError> {
+        self.base
+            .get_share_by_epoch(oprf_key_id, generated_epoch)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn delete_oprf_key_material(
+        &self,
+        oprf_key_id: OprfKeyId,
+    ) -> Result<(), SecretManagerError> {
+        self.base.remove_key_material(oprf_key_id);
+        self.keygen_intermediates
+            .lock()
+            .expect("lock not poisoned")
+            .retain(|(key_id, _), _| *key_id != oprf_key_id);
+        self.pending_shares
+            .lock()
+            .expect("lock not poisoned")
+            .retain(|(key_id, _), _| *key_id != oprf_key_id);
+        Ok(())
+    }
+
+    async fn abort_keygen(&self, oprf_key_id: OprfKeyId) -> Result<(), SecretManagerError> {
+        self.keygen_intermediates
+            .lock()
+            .expect("lock not poisoned")
+            .retain(|(key_id, _), _| *key_id != oprf_key_id);
+        self.pending_shares
+            .lock()
+            .expect("lock not poisoned")
+            .retain(|(key_id, _), _| *key_id != oprf_key_id);
+        Ok(())
+    }
+
+    async fn try_store_keygen_intermediates(
+        &self,
+        oprf_key_id: OprfKeyId,
+        pending_epoch: ShareEpoch,
+        intermediate: KeyGenIntermediateValues,
+    ) -> Result<KeyGenIntermediateValues, SecretManagerError> {
+        let mut intermediates = self.keygen_intermediates.lock().expect("lock not poisoned");
+        let serialized = Self::serialize_intermediates(&intermediate)?;
+        Self::deserialize_intermediates(
+            intermediates
+                .entry((oprf_key_id, pending_epoch))
+                .or_insert(serialized),
+        )
+    }
+
+    async fn fetch_keygen_intermediates(
+        &self,
+        oprf_key_id: OprfKeyId,
+        pending_epoch: ShareEpoch,
+    ) -> Result<Option<KeyGenIntermediateValues>, SecretManagerError> {
+        self.keygen_intermediates
+            .lock()
+            .expect("lock not poisoned")
+            .get(&(oprf_key_id, pending_epoch))
+            .map(|bytes| Self::deserialize_intermediates(bytes))
+            .transpose()
+    }
+
+    async fn store_pending_dlog_share(
+        &self,
+        oprf_key_id: OprfKeyId,
+        pending_epoch: ShareEpoch,
+        share: DLogShareShamir,
+    ) -> Result<(), SecretManagerError> {
+        let has_intermediates = self
+            .keygen_intermediates
+            .lock()
+            .expect("lock not poisoned")
+            .contains_key(&(oprf_key_id, pending_epoch));
+        if !has_intermediates {
+            return Err(SecretManagerError::MissingIntermediates(
+                oprf_key_id,
+                pending_epoch,
+            ));
+        }
+        self.pending_shares
+            .lock()
+            .expect("lock not poisoned")
+            .insert((oprf_key_id, pending_epoch), share);
+        Ok(())
+    }
+
+    async fn confirm_dlog_share(
+        &self,
+        oprf_key_id: OprfKeyId,
+        epoch: ShareEpoch,
+        public_key: OprfPublicKey,
+    ) -> Result<(), SecretManagerError> {
+        let share = self
+            .pending_shares
+            .lock()
+            .expect("lock not poisoned")
+            .remove(&(oprf_key_id, epoch))
+            .ok_or(SecretManagerError::MissingIntermediates(oprf_key_id, epoch))?;
+
+        if let Some(existing) = self.base.get_key_material(oprf_key_id)
+            && existing.public_key_with_epoch().epoch >= epoch
+        {
+            return Err(SecretManagerError::RefusingToRollbackEpoch);
+        }
+
+        self.base.insert_key_material(
+            oprf_key_id,
+            oprf_types::crypto::OprfKeyMaterial::new(share, public_key, epoch),
+        );
+        self.keygen_intermediates
+            .lock()
+            .expect("lock not poisoned")
+            .retain(|(key_id, _), _| *key_id != oprf_key_id);
+        self.pending_shares
+            .lock()
+            .expect("lock not poisoned")
+            .retain(|(key_id, _), _| *key_id != oprf_key_id);
+        Ok(())
+    }
+}
+
 pub mod keygen_asserts {
     use std::sync::Arc;
 
@@ -185,7 +316,7 @@ pub mod keygen_asserts {
             .collect::<eyre::Result<Vec<_>>>()?;
         assert_eq!(keys.len(), instances.len());
         let oprf_public_key = keys.pop().expect("is there");
-        assert!(keys.into_iter().all(|hay| hay == oprf_public_key));
+        assert!(keys.into_iter().all(|key| key == oprf_public_key));
         Ok(oprf_public_key)
     }
 }

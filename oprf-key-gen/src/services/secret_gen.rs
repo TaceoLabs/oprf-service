@@ -1,10 +1,12 @@
 //! This service handles the distributed key-gen/reshare protocol.
 //!
-//! It maintains toxic waste for ongoing rounds. The service handles the destruction of this toxic waste during the lifecycle of protocol.
+//! It creates and consumes intermediate state for ongoing key-gen and reshare rounds.
 //!
-//! Currently, there is no timeout for a protocol run. Therefore, the toxic waste will not be cleaned up and will remain in memory.
+//! This intermediate state is persisted via the [`SecretManager`](crate::secret_manager::SecretManager)
+//! between protocol rounds and removed again when a run is finalized, aborted, or deleted.
 //!
-//! On the other hand, the toxic waste is not persisted anywhere other than RAM. This means that if an OPRF node shuts down during the protocol, the key-gen/reshare cannot be completed, as the data is lost.
+//! Currently, there is no timeout for a protocol run. Therefore, stale in-progress state is not
+//! cleaned up automatically if a run never finishes.
 //!
 //! **Important:** This service is **not thread-safe**. It is intended to be used
 //! only in contexts where a single dedicated task owns the struct. No internal
@@ -14,11 +16,13 @@
 //! We refer to [Appendix B.2 of our design document](https://github.com/TaceoLabs/oprf-service/blob/main/docs/oprf.pdf) for more information about the OPRF-nullifier
 //! generation protocol.
 
+use core::fmt;
 use std::{collections::HashMap, sync::Arc};
 
 use alloy::primitives::U256;
 use ark_ec::{AffineRepr as _, CurveGroup as _};
 use ark_ff::UniformRand as _;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use eyre::{Context, ContextCompat};
 use groth16_material::circom::CircomGroth16Material;
 use itertools::{Itertools as _, izip};
@@ -27,17 +31,17 @@ use oprf_core::{
     keygen::{self, KeyGenPoly},
 };
 use oprf_types::{
-    OprfKeyId,
-    chain::{
-        SecretGenRound1Contribution, SecretGenRound2Contribution, SecretGenRound3Contribution,
-    },
+    OprfKeyId, ShareEpoch,
+    chain::OprfKeyGen::Round1Contribution,
     crypto::{
-        EphemeralEncryptionPublicKey, SecretGenCiphertext, SecretGenCiphertexts,
+        EphemeralEncryptionPublicKey, OprfPublicKey, SecretGenCiphertext, SecretGenCiphertexts,
         SecretGenCommitment,
     },
 };
 use rand::{CryptoRng, Rng};
 use zeroize::ZeroizeOnDrop;
+
+use crate::secret_manager::{SecretManagerError, SecretManagerService};
 
 #[cfg(test)]
 mod tests;
@@ -57,10 +61,30 @@ pub(crate) enum Contributions {
 ///
 /// **Note:** Must only be used in a single-owner context. Do not share across tasks.
 pub(crate) struct DLogSecretGenService {
-    toxic_waste_round1: HashMap<OprfKeyId, ToxicWasteRound1>,
-    toxic_waste_round2: HashMap<OprfKeyId, ToxicWasteRound2>,
-    finished_shares: HashMap<OprfKeyId, DLogShareShamir>,
+    secret_manager: SecretManagerService,
     key_gen_material: Arc<CircomGroth16Material>,
+}
+
+/// Intermediate values generated during the key-generation (or reshare) protocol.
+///
+/// These are persisted between protocol rounds via the [`SecretManager`](crate::services::secret_manager::SecretManager) and consumed once the round completes.
+#[derive(CanonicalSerialize, CanonicalDeserialize)]
+pub struct KeyGenIntermediateValues {
+    /// Ephemeral secret key for this key-gen, used for encryption and decryption when communicating with peers over the chain.
+    ///
+    /// Must only be used for a single key-generation.
+    sk: EphemeralEncryptionPrivateKey,
+    /// The party's polynomial during key-generation, representing its randomness contribution.
+    ///
+    /// May be `None` during a reshare if the node registers as a consumer — this occurs
+    /// when the node does not hold a share from the previous epoch.
+    poly: Option<KeyGenPoly>,
+}
+
+impl fmt::Debug for KeyGenIntermediateValues {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("KeyGenIntermediates[REDACTED]")
+    }
 }
 
 /// The ephemeral private key of an OPRF node.
@@ -69,29 +93,8 @@ pub(crate) struct DLogSecretGenService {
 /// Not `Debug`/`Display` to avoid accidental leaks.
 ///
 /// **Note**: Don't reuse a key. One key per keygen/reshare.
-#[derive(ZeroizeOnDrop)]
+#[derive(ZeroizeOnDrop, CanonicalSerialize, CanonicalDeserialize)]
 struct EphemeralEncryptionPrivateKey(ark_babyjubjub::Fr);
-
-/// The toxic waste generated in round 1 of the key-gen/reshare protocol.
-///
-/// Contains the full polynomial and the ephemeral private key for a single protocol run.
-struct ToxicWasteRound1 {
-    poly: KeyGenPoly,
-    sk: EphemeralEncryptionPrivateKey,
-}
-
-/// The toxic waste generated in round 2 of the key-gen/reshare protocol.
-///
-/// Contains the ephemeral private key for a single key generation.
-struct ToxicWasteRound2 {
-    sk: EphemeralEncryptionPrivateKey,
-}
-
-impl From<EphemeralEncryptionPrivateKey> for ToxicWasteRound2 {
-    fn from(sk: EphemeralEncryptionPrivateKey) -> Self {
-        Self { sk }
-    }
-}
 
 impl EphemeralEncryptionPrivateKey {
     /// Generates a fresh private-key to be used in a single `DLog` generation.
@@ -112,12 +115,12 @@ impl EphemeralEncryptionPrivateKey {
     }
 }
 
-impl ToxicWasteRound1 {
-    /// Creates a new instance of `ToxicWasteRound1` intended to be used for key-gen (not reshare).
+impl KeyGenIntermediateValues {
+    /// Creates a new instance of `KeyGenIntermediateValues` for key generation.
     ///
-    /// Generates a secret-sharing polynomial with some randomly sampled secret and an ephemeral private key for the first round of the key generation protocol. For toxic-waste for resharing, see [`Self::reshare`].
+    /// Generates a secret-sharing polynomial with a freshly sampled secret and an ephemeral private key for the first round of the key-generation protocol. For resharing, see [`Self::reshare`].
     ///
-    /// **Note:** do not reuse the toxic waste.
+    /// **Note:** do not reuse these intermediate values.
     ///
     /// # Arguments
     ///
@@ -126,14 +129,17 @@ impl ToxicWasteRound1 {
     fn new<R: Rng + CryptoRng>(degree: usize, rng: &mut R) -> Self {
         let poly = KeyGenPoly::new(rng, degree);
         let sk = EphemeralEncryptionPrivateKey::generate(rng);
-        Self { poly, sk }
+        Self {
+            poly: Some(poly),
+            sk,
+        }
     }
 
-    /// Creates a new instance of `ToxicWasteRound1` intended to be used for reshare (not key-gen).
+    /// Creates a new instance of `KeyGenIntermediateValues` for resharing.
     ///
-    /// Generates a secret-sharing polynomial using the old share as the secret and an ephemeral private key for the first round of the reshare protocol. For toxic-waste for key-gen, see [`Self::new`].
+    /// Generates a secret-sharing polynomial using the old share as the secret and an ephemeral private key for the first round of the reshare protocol. For key generation, see [`Self::new`].
     ///
-    /// **Note:** do not reuse the toxic waste.
+    /// **Note:** do not reuse these intermediate values.
     ///
     /// # Arguments
     ///
@@ -142,86 +148,91 @@ impl ToxicWasteRound1 {
     fn reshare<R: Rng + CryptoRng>(old_share: DLogShareShamir, degree: usize, rng: &mut R) -> Self {
         let poly = KeyGenPoly::reshare(rng, old_share.into(), degree);
         let sk = EphemeralEncryptionPrivateKey::generate(rng);
-        Self { poly, sk }
+        Self {
+            poly: Some(poly),
+            sk,
+        }
     }
 
-    /// Advances to the second round of key-gen/reshare protocol.
-    ///
-    /// Consumes `self` and combines the secret material from round one with the public keys of all nodes.
-    ///
-    /// **Note:** do not reuse the toxic waste.
-    ///
-    /// # Returns
-    ///
-    /// A `ToxicWasteRound2` instance containing the ephemeral private key.
-    fn next(self) -> ToxicWasteRound2 {
-        ToxicWasteRound2 { sk: self.sk }
+    fn consumer<R: Rng + CryptoRng>(rng: &mut R) -> Self {
+        Self {
+            sk: EphemeralEncryptionPrivateKey::generate(rng),
+            poly: None,
+        }
+    }
+
+    fn build_round1_contribution(&self) -> Round1Contribution {
+        let Self { sk, poly } = self;
+        if let Some(poly) = poly {
+            Round1Contribution::from(SecretGenCommitment {
+                comm_share: poly.get_pk_share(),
+                comm_coeffs: poly.get_coeff_commitment(),
+                eph_pub_key: sk.get_public_key(),
+            })
+        } else {
+            Round1Contribution::from(sk.get_public_key())
+        }
     }
 }
 
 impl DLogSecretGenService {
     /// Initializes a new `DLog` secret generation service.
-    pub(crate) fn init(key_gen_material: CircomGroth16Material) -> Self {
+    pub(crate) fn init(
+        key_gen_material: CircomGroth16Material,
+        secret_manager: SecretManagerService,
+    ) -> Self {
         Self {
-            toxic_waste_round1: HashMap::new(),
-            toxic_waste_round2: HashMap::new(),
-            finished_shares: HashMap::new(),
             key_gen_material: Arc::new(key_gen_material),
+            secret_manager,
         }
-    }
-
-    /// Returns `true` iff contains round1 toxic waste associated with the [`OprfKeyId`].
-    #[cfg(test)]
-    pub(crate) fn has_round1(&self, oprf_key_id: OprfKeyId) -> bool {
-        self.toxic_waste_round1.contains_key(&oprf_key_id)
-    }
-
-    /// Returns `true` iff contains round2 toxic waste associated with the [`OprfKeyId`].
-    #[cfg(test)]
-    pub(crate) fn has_round2(&self, oprf_key_id: OprfKeyId) -> bool {
-        self.toxic_waste_round2.contains_key(&oprf_key_id)
     }
 
     /// Deletes all material associated with the [`OprfKeyId`].
-    /// This includes:
-    /// * [`ToxicWasteRound1`]
-    /// * [`ToxicWasteRound2`]
-    /// * Any finished shares that wait for finalize from all nodes
-    pub(crate) fn delete_oprf_key_material(&mut self, oprf_key_id: OprfKeyId) {
-        if self.toxic_waste_round1.remove(&oprf_key_id).is_some() {
-            tracing::trace!("removed {oprf_key_id:?} toxic waste round 1");
-        }
-        if self.toxic_waste_round2.remove(&oprf_key_id).is_some() {
-            tracing::trace!("removed {oprf_key_id:?} toxic waste round 2");
-        }
-        if self.finished_shares.remove(&oprf_key_id).is_some() {
-            tracing::trace!("removed {oprf_key_id:?} finished share");
-        }
+    pub(crate) async fn delete_oprf_key_material(
+        &self,
+        oprf_key_id: OprfKeyId,
+    ) -> Result<(), SecretManagerError> {
+        self.secret_manager
+            .delete_oprf_key_material(oprf_key_id)
+            .await
+    }
+
+    /// Aborts an in-process keygen.
+    pub(crate) async fn abort_keygen(
+        &self,
+        oprf_key_id: OprfKeyId,
+    ) -> Result<(), SecretManagerError> {
+        self.secret_manager.abort_keygen(oprf_key_id).await
     }
 
     /// Executes round 1 of the key-gen protocol.
     ///
-    /// Generates a random polynomial of the specified degree and stores it internally.
+    /// Generates a random polynomial of the specified degree and persists the resulting intermediate values via the secret manager.
     /// Returns a [`SecretGenRound1Contribution`] containing the commitment to share with other parties.
     ///
     /// # Arguments
     /// * `oprf_key_id` - Identifier of the OPRF key that we generate.
     /// * `threshold` - The threshold of the MPC-protocol.
-    pub(crate) fn key_gen_round1(
-        &mut self,
+    pub(crate) async fn key_gen_round1(
+        &self,
         oprf_key_id: OprfKeyId,
+        pending_epoch: ShareEpoch,
         threshold: u16,
-    ) -> SecretGenRound1Contribution {
-        tracing::trace!("secret gen round1..");
-        let mut rng = rand::thread_rng();
+    ) -> eyre::Result<Round1Contribution> {
+        tracing::trace!("secret gen round1 - creating new intermediates");
         let degree = usize::from(threshold - 1);
-        let toxic_waste = ToxicWasteRound1::new(degree, &mut rng);
-        self.round1_inner(oprf_key_id, toxic_waste)
+        let intermediates = KeyGenIntermediateValues::new(degree, &mut rand::thread_rng());
+        let intermediates = self
+            .secret_manager
+            .try_store_keygen_intermediates(oprf_key_id, pending_epoch, intermediates)
+            .await
+            .context("while storing key-gen intermediates")?;
+        Ok(intermediates.build_round1_contribution())
     }
 
     /// Executes the producer round 2 of the key-gen/reshare protocol.
     ///
-    /// Producers generate secret shares for all nodes based on the polynomial generated in round 1 and a proof of the encryptions. Consumers (receiving parties should call [`Self::consumer_round2`]).
+    /// Producers generate secret shares for all nodes based on the polynomial generated in round 1 and a proof of the encryptions.
     ///
     /// Returns a [`SecretGenRound2Contribution`] containing ciphertexts for all parties + the proof.
     ///
@@ -229,142 +240,122 @@ impl DLogSecretGenService {
     /// * `oprf_key_id` - Identifier of the OPRF key that we generate.
     /// * `pks` - List of public keys for nodes participating in the protocol.
     pub(crate) async fn producer_round2(
-        &mut self,
+        &self,
         oprf_key_id: OprfKeyId,
+        pending_epoch: ShareEpoch,
         pks: Vec<EphemeralEncryptionPublicKey>,
-    ) -> eyre::Result<SecretGenRound2Contribution> {
-        let toxic_waste_keys_and_commitments = self
-            .toxic_waste_round1
-            .remove(&oprf_key_id)
-            .context("Did not have round 1 toxic waste stored")?;
+    ) -> eyre::Result<Option<SecretGenCiphertexts>> {
+        let intermediate_values = self
+            .secret_manager
+            .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
+            .await
+            .context("while fetching intermediate values")?;
+        let Some(intermediate_values) = intermediate_values else {
+            tracing::warn!("no intermediate values stored for round 2 - this key-gen is stuck");
+            return Ok(None);
+        };
         let key_gen_material = Arc::clone(&self.key_gen_material);
-        let (contribution, toxic_waste_r2) = tokio::task::spawn_blocking(move || {
-            compute_keygen_proof(&key_gen_material, toxic_waste_keys_and_commitments, &pks)
+        let contribution = tokio::task::spawn_blocking(move || {
+            compute_keygen_proof(&key_gen_material, intermediate_values, &pks)
         })
         .await
         .context("while joining compute key-gen")?
         .context("while computing proof for round2")?;
-        self.toxic_waste_round2.insert(oprf_key_id, toxic_waste_r2);
-        Ok(SecretGenRound2Contribution {
-            oprf_key_id,
-            contribution,
-        })
+        Ok(Some(contribution))
     }
 
-    /// Finalizes the key-gen/reshare protocol by decrypting received ciphertexts and computing the final secret share for this party.
+    /// Decrypts received ciphertexts and stores the resulting pending share for this party.
     ///
     /// # Arguments
     /// * `oprf_key_id` - Identifier of the OPRF key that we generate.
     /// * `ciphers` - Ciphertexts received from other parties in round 2.
-    /// * `sharing_type` - Defines how the resulting share is secret-shared. `Linear` for key-gen, `Shamir` for reshare.
+    /// * `sharing_type` - Defines how the resulting share is combined. `Full` for key-gen, `Shamir` for reshare.
     /// * `pks` - The ephemeral public-keys of the producers needed for DHE.
-    pub(crate) fn round3(
-        &mut self,
+    pub(crate) async fn round3(
+        &self,
         oprf_key_id: OprfKeyId,
+        pending_epoch: ShareEpoch,
         ciphers: Vec<SecretGenCiphertext>,
         sharing_type: Contributions,
         pks: &[EphemeralEncryptionPublicKey],
-    ) -> eyre::Result<SecretGenRound3Contribution> {
+    ) -> eyre::Result<Option<()>> {
         tracing::trace!("calling round3 with {}", ciphers.len());
-        let toxic_waste_r2 = self
-            .toxic_waste_round2
-            .remove(&oprf_key_id)
-            .context("Did not have round 2 toxic waste stored")?;
-        let share = decrypt_key_gen_ciphertexts(ciphers, toxic_waste_r2, sharing_type, pks)
+        let intermediate_values = self
+            .secret_manager
+            .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
+            .await
+            .context("while fetching intermediate values")?;
+        let Some(intermediate_values) = intermediate_values else {
+            tracing::warn!("no intermediate values stored for round 3 - this key-gen is stuck");
+            return Ok(None);
+        };
+        let share = decrypt_key_gen_ciphertexts(ciphers, intermediate_values, sharing_type, pks)
             .context("while computing DLogShare")?;
-        // We need to store the computed share - as soon as we get ready
-        // event, we will store the share inside the crypto-device.
-        self.finished_shares.insert(oprf_key_id, share);
-        Ok(SecretGenRound3Contribution { oprf_key_id })
+        // Store the computed share as pending until the finalize event confirms it.
+        self.secret_manager
+            .store_pending_dlog_share(oprf_key_id, pending_epoch, share)
+            .await
+            .context("while storing pending share")?;
+        Ok(Some(()))
     }
 
     /// Marks the generated secret as finished.
     ///
     /// # Arguments
-    /// * `oprf_key_id` - Identifier of the RP for which the secret is being finalized.
-    pub(crate) fn finalize(&mut self, oprf_key_id: OprfKeyId) -> eyre::Result<DLogShareShamir> {
-        self.finished_shares
-            .remove(&oprf_key_id)
-            .context("cannot find computed DLogShare")
+    /// * `oprf_key_id` - Identifier of the OPRF key being finalized.
+    /// * `epoch` - The generated epoch.
+    /// * `public_key` - The generated [`OprfPublicKey`].
+    pub(crate) async fn finalize(
+        &self,
+        oprf_key_id: OprfKeyId,
+        epoch: ShareEpoch,
+        public_key: OprfPublicKey,
+    ) -> eyre::Result<()> {
+        self.secret_manager
+            .confirm_dlog_share(oprf_key_id, epoch, public_key)
+            .await
+            .context("while confirming dlog share")
     }
 
     /// Executes round 1 of the reshare protocol.
     ///
-    /// Generates a secret-sharing polynomial where the secret-value is the old dlog-share of the specified degree and stores it internally.
+    /// Generates a secret-sharing polynomial where the secret value is the previously confirmed share and persists the resulting intermediate values.
     /// Returns a [`SecretGenRound1Contribution`] containing the commitment to share with other parties.
     ///
     /// # Arguments
     /// * `oprf_key_id` - Identifier of the OPRF key that we generate.
     /// * `threshold` - The threshold of the MPC-protocol.
-    /// * `old_share` - The old share used as input for the resharing
-    pub(crate) fn reshare_round1(
-        &mut self,
+    /// * `pending_epoch` - The epoch being generated by the reshare flow.
+    /// * `threshold` - The threshold of the MPC protocol.
+    pub(crate) async fn reshare_round1(
+        &self,
         oprf_key_id: OprfKeyId,
+        pending_epoch: ShareEpoch,
         threshold: u16,
-        old_share: DLogShareShamir,
-    ) -> SecretGenRound1Contribution {
-        let mut rng = rand::thread_rng();
-        let degree = usize::from(threshold - 1);
-        let toxic_waste = ToxicWasteRound1::reshare(old_share, degree, &mut rng);
-        self.round1_inner(oprf_key_id, toxic_waste)
-    }
-
-    /// internal helper function for round1. Called by key-gen and reshare.
-    fn round1_inner(
-        &mut self,
-        oprf_key_id: OprfKeyId,
-        toxic_waste: ToxicWasteRound1,
-    ) -> SecretGenRound1Contribution {
-        let contribution = SecretGenCommitment {
-            comm_share: toxic_waste.poly.get_pk_share(),
-            comm_coeffs: toxic_waste.poly.get_coeff_commitment(),
-            eph_pub_key: toxic_waste.sk.get_public_key(),
-        };
-        let old_value = self.toxic_waste_round1.insert(oprf_key_id, toxic_waste);
-        // TODO handle this more gracefully
-        assert!(
-            old_value.is_none(),
-            "already had this round1 - this is a bug"
-        );
-        SecretGenRound1Contribution {
-            oprf_key_id,
-            contribution,
-        }
-    }
-
-    /// Executes the consumer round 1 of the reshare protocol.
-    ///
-    /// If a party does not have the share for an [`OprfKeyId`] it needs to participate as a consumer in the reshare protocol. In that case the node will only produce an encryption key-pair and sends this on-chain so that the producers generate the share for the node.
-    pub(crate) fn consumer_round1<R: Rng + CryptoRng>(
-        &mut self,
-        oprf_key_id: OprfKeyId,
-        rng: &mut R,
-    ) -> EphemeralEncryptionPublicKey {
-        tracing::trace!("computing ephemeral encryption key");
-        let sk = EphemeralEncryptionPrivateKey::generate(rng);
-        let pk = sk.get_public_key();
-        if self
-            .toxic_waste_round2
-            .insert(oprf_key_id, ToxicWasteRound2::from(sk))
-            .is_some()
-        {
-            tracing::warn!("overwriting toxic waste for {oprf_key_id}");
-        }
-        pk
-    }
-
-    /// Executes the consumer round 2 of the reshare protocol.
-    ///
-    /// Only relevant for reshare as everyone is a producer in key-gen. A consuming node simply drops the polynomial it created in round1 if it created one in round 1.
-    pub(crate) fn consumer_round2(&mut self, oprf_key_id: OprfKeyId) {
-        tracing::trace!("reverting reshare...");
-        if let Some(toxic_waste_round1) = self.toxic_waste_round1.remove(&oprf_key_id) {
-            self.toxic_waste_round2
-                .insert(oprf_key_id, toxic_waste_round1.next());
-            tracing::trace!("tried to be a producer in round 2 - dropping polynomial");
+    ) -> eyre::Result<Round1Contribution> {
+        tracing::trace!("creating new intermediates");
+        let old_share = self
+            .secret_manager
+            .get_share_by_epoch(oprf_key_id, pending_epoch.prev())
+            .await
+            .context("while loading previous epoch share for reshare")?;
+        let intermediates = if let Some(old_share) = old_share {
+            tracing::trace!("found share - we want to be PRODUCER");
+            let mut rng = rand::thread_rng();
+            let degree = usize::from(threshold - 1);
+            KeyGenIntermediateValues::reshare(old_share, degree, &mut rng)
         } else {
-            tracing::trace!("nothing to do as registered as consumer in round1");
-        }
+            tracing::trace!("did not find share - we want to be CONSUMER");
+            // Consumers still need an ephemeral key for the round-1 contribution.
+            KeyGenIntermediateValues::consumer(&mut rand::thread_rng())
+        };
+
+        let intermediates = self
+            .secret_manager
+            .try_store_keygen_intermediates(oprf_key_id, pending_epoch, intermediates)
+            .await
+            .context("while storing key-gen intermediates")?;
+        Ok(intermediates.build_round1_contribution())
     }
 }
 
@@ -373,11 +364,11 @@ impl DLogSecretGenService {
 /// Returns the share of the node's polynomial or an error if decryption fails.
 fn decrypt_key_gen_ciphertexts(
     ciphers: Vec<SecretGenCiphertext>,
-    toxic_waste: ToxicWasteRound2,
+    intermediates: KeyGenIntermediateValues,
     sharing_type: Contributions,
     pks: &[EphemeralEncryptionPublicKey],
 ) -> eyre::Result<DLogShareShamir> {
-    let ToxicWasteRound2 { sk } = toxic_waste;
+    let KeyGenIntermediateValues { sk, poly: _ } = intermediates;
     // In some later version, we maybe need some meaningful way
     // to tell which party produced a wrong ciphertext. Currently,
     // we trust the smart-contract to verify the proof, therefore
@@ -417,19 +408,19 @@ fn decrypt_key_gen_ciphertexts(
     }
 }
 
-/// Executes the `KeyGen` circom circuit
+/// Executes the key-generation Circom circuit.
 ///
 /// ## Security Considerations
 /// This method expects that the parameter `pks` contains exactly three [`EphemeralEncryptionPublicKey`]s that encapsulate valid `BabyJubJub` points on the correct subgroup.
 ///
 /// If `pks` were constructed without [`EphemeralEncryptionPublicKey::new_unchecked`], the points are on curve and the correct subgroup.
 ///
-/// This method consumes an instance of [`ToxicWasteRound1`] and, on success, produces an instance of [`ToxicWasteRound2`]. This enforces that the toxic waste from round 1 is in fact dropped when continuing with the `KeyGen` protocol.
+/// This method consumes [`KeyGenIntermediateValues`] from round 1 so they cannot be reused when continuing with the protocol.
 fn compute_keygen_proof(
     key_gen_material: &CircomGroth16Material,
-    toxic_waste: ToxicWasteRound1,
+    intermediates: KeyGenIntermediateValues,
     pks: &[EphemeralEncryptionPublicKey],
-) -> eyre::Result<(SecretGenCiphertexts, ToxicWasteRound2)> {
+) -> eyre::Result<SecretGenCiphertexts> {
     // compute the nonces for every party
     let num_parties = pks.len();
     let mut rng = rand::thread_rng();
@@ -445,20 +436,15 @@ fn compute_keygen_proof(
         })
         .collect::<Vec<U256>>();
 
-    let coeffs = toxic_waste
-        .poly
-        .coeffs()
-        .iter()
-        .map(Into::into)
-        .collect::<Vec<U256>>();
+    let KeyGenIntermediateValues { sk, poly } = intermediates;
+    let poly = poly.ok_or_else(|| eyre::eyre!("cannot compute keygen proof as consumer"))?;
+
+    let coeffs = poly.coeffs().iter().map(Into::into).collect::<Vec<U256>>();
 
     // build the input for the graph
     let mut inputs = HashMap::new();
-    inputs.insert(
-        String::from("degree"),
-        vec![U256::from(toxic_waste.poly.degree())],
-    );
-    inputs.insert(String::from("my_sk"), vec![toxic_waste.sk.inner().into()]);
+    inputs.insert(String::from("degree"), vec![U256::from(poly.degree())]);
+    inputs.insert(String::from("my_sk"), vec![sk.inner().into()]);
     inputs.insert(String::from("pks"), flattened_pks);
     inputs.insert(String::from("poly"), coeffs);
     inputs.insert(
@@ -493,18 +479,17 @@ fn compute_keygen_proof(
         .map(|(cipher, comm, nonce)| SecretGenCiphertext::new(*cipher, comm, nonce))
         .collect_vec();
 
-    if pk_computed != toxic_waste.sk.get_public_key().inner() {
+    if pk_computed != sk.get_public_key().inner() {
         eyre::bail!("computed public key does not match with my own!");
     }
 
-    if comm_share_computed != toxic_waste.poly.get_pk_share() {
+    if comm_share_computed != poly.get_pk_share() {
         eyre::bail!("computed commitment to share does not match with my own!");
     }
 
-    if comm_coeffs_computed != toxic_waste.poly.get_coeff_commitment() {
+    if comm_coeffs_computed != poly.get_coeff_commitment() {
         eyre::bail!("computed commitment to coeffs does not match with my own!");
     }
 
-    let ciphers = SecretGenCiphertexts::new(proof.into(), rp_ciphertexts);
-    Ok((ciphers, toxic_waste.next()))
+    Ok(SecretGenCiphertexts::new(proof.into(), rp_ciphertexts))
 }
