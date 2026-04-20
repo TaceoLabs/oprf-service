@@ -12,10 +12,8 @@ use std::fmt;
 
 use alloy::{primitives::U256, sol};
 use ark_ff::PrimeField as _;
-use serde::{Deserialize, Serialize};
 
 use crate::{
-    OprfKeyId,
     chain::{
         OprfKeyRegistry::{KeyGenConfirmation, OprfKeyRegistryErrors},
         Verifier::VerifierErrors,
@@ -142,40 +140,6 @@ impl fmt::Debug for OprfKeyRegistryErrors {
             Self::WrongRound(_) => f.debug_tuple("WrongRound").finish(),
         }
     }
-}
-
-/// A first-round key-generation contribution submitted on-chain.
-///
-/// Contains the relying-party identifier, the sending node’s identifier,
-/// and its first-round [`SecretGenCommitment`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SecretGenRound1Contribution {
-    /// Identifier of key this contribution belongs to.
-    pub oprf_key_id: OprfKeyId,
-    /// The node’s first-round commitment.
-    pub contribution: SecretGenCommitment,
-}
-
-/// A second-round key-generation contribution submitted on-chain.
-///
-/// Contains the relying-party identifier, the sending node’s identifier,
-/// and its second-round [`SecretGenCiphertexts`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SecretGenRound2Contribution {
-    /// Identifier this contribution belongs to.
-    pub oprf_key_id: OprfKeyId,
-    /// The node’s second-round ciphertexts.
-    pub contribution: SecretGenCiphertexts,
-}
-
-/// A finalization message for key generation submitted on-chain.
-///
-/// Contains only the relying-party identifier. Finalize simply notifies
-/// everyone that the sending node successfully computed its share.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SecretGenRound3Contribution {
-    /// Identifier this contribution belongs to.
-    pub oprf_key_id: OprfKeyId,
 }
 
 impl From<EphemeralEncryptionPublicKey> for BabyJubJub::Affine {
