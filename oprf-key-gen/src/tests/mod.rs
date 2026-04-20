@@ -1,14 +1,154 @@
+#![allow(clippy::large_futures, reason = "doesnt matter for tests")]
+use std::fmt;
 use std::time::Duration;
 
 use alloy::{primitives::U160, sol_types::SolEvent};
-use oprf_test_utils::{DeploySetup, OPRF_PEER_ADDRESS_0, TEST_TIMEOUT, TestSetup};
+use axum_test::TestServer;
+use nodes_common::web3::RpcProviderConfig;
+use nodes_common::{Environment, StartedServices};
+use oprf_test_utils::{DeploySetup, PEER_PRIVATE_KEYS, TestSetup};
+
+use oprf_test_utils::{OPRF_PEER_ADDRESS_0, TEST_TIMEOUT};
 use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
+use tokio_util::sync::CancellationToken;
 
-mod setup;
+use crate::{
+    KeyGenTasks,
+    config::{OprfKeyGenServiceConfig, OprfKeyGenServiceConfigMandatoryValues},
+    secret_manager::SecretManagerService,
+    start,
+    tests::keygen_test_secret_manager::TestKeyGenSecretManager,
+};
 
-pub(crate) use setup::TestKeyGen;
+pub(crate) mod keygen_test_secret_manager;
 
-use crate::setup::keygen_asserts;
+pub(crate) struct TestKeyGen {
+    pub(crate) party_id: usize,
+    pub(crate) secret_manager: TestKeyGenSecretManager,
+    pub(crate) server: TestServer,
+    pub(crate) key_gen_task: KeyGenTasks,
+    pub(crate) started_services: StartedServices,
+    pub(crate) cancellation_token: CancellationToken,
+}
+
+impl fmt::Debug for TestKeyGen {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TestKeyGen")
+            .field("party_id", &self.party_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl TestKeyGen {
+    pub(crate) async fn start(party_id: usize, test_setup: &TestSetup) -> eyre::Result<Self> {
+        let TestSetup {
+            anvil,
+            oprf_key_registry,
+            cancellation_token,
+            setup,
+            ..
+        } = test_setup;
+
+        assert!(party_id < 5, "can only spawn 5 key-gens");
+        let private_key = PEER_PRIVATE_KEYS[party_id];
+        let child_token = cancellation_token.child_token();
+        let secret_manager = TestKeyGenSecretManager::new(private_key);
+        let keygen_secret_manager: SecretManagerService = secret_manager.service();
+        let (expected_threshold, expected_num_peers) = match test_setup.setup {
+            DeploySetup::TwoThree => (2, 3),
+            DeploySetup::ThreeFive => (3, 5),
+        };
+
+        let mut config =
+            OprfKeyGenServiceConfig::with_default_values(OprfKeyGenServiceConfigMandatoryValues {
+                environment: Environment::Dev,
+                oprf_key_registry_contract: *oprf_key_registry,
+                wallet_private_key: private_key.into(),
+                zkey_path: setup.key_gen_path(),
+                witness_graph_path: setup.witness_path(),
+                expected_threshold: expected_threshold.try_into().expect("Is non-zero"),
+                expected_num_peers: expected_num_peers.try_into().expect("Is non-zero"),
+                rpc_provider_config: RpcProviderConfig::with_default_values(
+                    vec![anvil.endpoint_url()],
+                    anvil.ws_endpoint_url(),
+                ),
+            });
+
+        // anvil doesn't work with confirmations
+        config.confirmations_for_transaction = 0;
+        config.rpc_provider_config.chain_id = Some(31_337);
+
+        let started_services = StartedServices::new();
+        let (router, key_gen_task) = start(
+            config,
+            keygen_secret_manager,
+            started_services.clone(),
+            child_token.clone(),
+        )
+        .await?;
+        let server = TestServer::builder()
+            .http_transport()
+            .build(router)
+            .expect("can build test-server");
+        Ok(Self {
+            party_id,
+            secret_manager,
+            server,
+            key_gen_task,
+            started_services,
+            cancellation_token: child_token,
+        })
+    }
+
+    pub(crate) async fn start_three(test_setup: &TestSetup) -> eyre::Result<[Self; 3]> {
+        let (keygen0, keygen1, keygen2) = tokio::join!(
+            Self::start(0, test_setup),
+            Self::start(1, test_setup),
+            Self::start(2, test_setup)
+        );
+        Ok([keygen0?, keygen1?, keygen2?])
+    }
+
+    pub(crate) async fn start_five(test_setup: &TestSetup) -> eyre::Result<[Self; 5]> {
+        let (keygen0, keygen1, keygen2, keygen3, keygen4) = tokio::join!(
+            Self::start(0, test_setup),
+            Self::start(1, test_setup),
+            Self::start(2, test_setup),
+            Self::start(3, test_setup),
+            Self::start(4, test_setup)
+        );
+        Ok([keygen0?, keygen1?, keygen2?, keygen3?, keygen4?])
+    }
+}
+
+pub(crate) mod keygen_asserts {
+    use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
+    use tokio::task::JoinSet;
+
+    use super::TestKeyGen;
+
+    pub(crate) async fn all_have_key(
+        instances: &[TestKeyGen],
+        oprf_key_id: OprfKeyId,
+        epoch: ShareEpoch,
+    ) -> eyre::Result<OprfPublicKey> {
+        let mut keys = instances
+            .iter()
+            .map(|instance| {
+                let secret_manager = instance.secret_manager.clone();
+                async move { secret_manager.is_key_id_stored(oprf_key_id, epoch).await }
+            })
+            .collect::<JoinSet<_>>()
+            .join_all()
+            .await
+            .into_iter()
+            .collect::<eyre::Result<Vec<_>>>()?;
+        assert_eq!(keys.len(), instances.len());
+        let oprf_public_key = keys.pop().expect("is there");
+        assert!(keys.into_iter().all(|key| key == oprf_public_key));
+        Ok(oprf_public_key)
+    }
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_delete_oprf_key() -> eyre::Result<()> {
@@ -114,9 +254,7 @@ async fn test_reshare_with_consumer_inner(
     let oprf_public_key_key_gen =
         keygen_asserts::all_have_key(key_gens, oprf_key_id, epoch).await?;
 
-    // init reshare shall work even if we reset the secret manager from a random party
     for party in 0..5 {
-        // now reset the secret manager from key-gen 2
         for i in 0..consumer {
             key_gens[(party + i) % key_gens.len()]
                 .secret_manager
@@ -142,7 +280,6 @@ async fn test_reshare_emits_stuck_if_two_consumer() -> eyre::Result<()> {
     let oprf_public_key_key_gen =
         keygen_asserts::all_have_key(&key_gens, oprf_key_id, epoch).await?;
 
-    // we clear one secret manager completely and one we simply take the shares
     let secret_manager0 = key_gens[0].secret_manager.take();
     key_gens[1].secret_manager.clear();
 
@@ -150,12 +287,10 @@ async fn test_reshare_emits_stuck_if_two_consumer() -> eyre::Result<()> {
         .expect_event(OprfKeyRegistry::NotEnoughProducers::SIGNATURE_HASH)
         .await?;
     setup.init_reshare(oprf_key_id).await?;
-    assert!(signal.await.is_ok());
-    // abort and restart
+    signal.await.expect("Should receive signal");
     setup.abort_keygen(oprf_key_id).await?;
-    // restore secret manager for 0
     key_gens[0].secret_manager.put(secret_manager0);
-    // now reshare should work
+
     epoch = epoch.next();
     setup.init_reshare(oprf_key_id).await?;
     let oprf_public_key_reshare =
@@ -167,7 +302,6 @@ async fn test_reshare_emits_stuck_if_two_consumer() -> eyre::Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_not_a_participant() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    // for this setup this node is not registered
     let is_error = TestKeyGen::start(4, &setup).await.expect_err("Should fail");
     assert_eq!(is_error.to_string(), "while doing sanity checks");
     Ok(())
