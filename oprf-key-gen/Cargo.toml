@@ -13,10 +13,12 @@ publish = true
 
 [dependencies]
 alloy = { workspace = true, features = [
-  "full",
-  "reqwest",
-  "rpc",
-  "rpc-client-ws"
+  "contract",
+  "provider-http",
+  "provider-ws",
+  "rpc-types-eth",
+  "signer-local",
+  "sol-types"
 ] }
 ark-babyjubjub = { workspace = true }
 ark-bn254.workspace = true

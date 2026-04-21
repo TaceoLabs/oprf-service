@@ -18,10 +18,13 @@ required-features = ["generate-test-transcript"]
 
 [dependencies]
 alloy = { workspace = true, features = [
-  "full",
+  "contract",
   "node-bindings",
-  "rpc",
-  "rpc-client-ws"
+  "provider-http",
+  "provider-ws",
+  "rpc-types-eth",
+  "signer-local",
+  "sol-types"
 ] }
 ark-babyjubjub = { workspace = true }
 ark-bn254 = { workspace = true, optional = true }
@@ -68,6 +71,7 @@ generate-test-transcript = [
   "dep:askama",
   "dep:clap",
   "dep:groth16-material",
+  "groth16-material/circom",
   "dep:groth16-sol",
   "dep:nodes-observability"
 ]
