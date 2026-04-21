@@ -165,6 +165,10 @@ where
     F: Fn() -> CallBuilder<P, D, N>,
     R: ReceiptResponse + std::fmt::Debug,
 {
+    tracing::trace!(
+        "transaction with hash: {} confirmed",
+        receipt.transaction_hash()
+    );
     if receipt.status() {
         handle_success_receipt(receipt);
         Ok(())
