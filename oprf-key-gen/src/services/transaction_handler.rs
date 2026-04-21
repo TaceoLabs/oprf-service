@@ -108,7 +108,7 @@ impl TransactionHandler {
         }
         match transaction_result {
             Ok(receipt) => {
-                return check_receipt(transaction, receipt).await;
+                return check_receipt(transaction, &receipt).await;
             }
             Err(err) => {
                 if matches!(
@@ -136,18 +136,7 @@ impl TransactionHandler {
                                 tracing::debug!(
                                     "got receipt for transaction after null response error, additional tries: {tries}"
                                 );
-                                if receipt.status() {
-                                    handle_success_receipt(&receipt);
-                                    return Ok(());
-                                }
-                                tracing::debug!(
-                                    "could not send transaction - do a call to get revert data"
-                                );
-                                transaction().call().await?;
-                                // if we are here the call afterwards succeeded - we don't really know why the receipt failed so just return the wrapped receipt
-                                return Err(TransactionError::Rpc(eyre::eyre!(
-                                    "cannot finish transaction for unknown reason: {receipt:?}"
-                                )));
+                                return check_receipt(transaction, &receipt).await;
                             }
                             Ok(None) => {
                                 tracing::debug!(
@@ -164,25 +153,23 @@ impl TransactionHandler {
                         }
                     }
                 }
-                return Err(TransactionError::Rpc(eyre::eyre!(err)));
+                return Err(TransactionError::Rpc(eyre::Report::from(err)));
             }
         }
     }
 }
 
 /// Helper function to get the revert data in case the transaction failed.
-async fn check_receipt<P, D, N, F>(
-    transaction: F,
-    receipt: N::ReceiptResponse,
-) -> Result<(), TransactionError>
+async fn check_receipt<P, D, N, F, R>(transaction: F, receipt: &R) -> Result<(), TransactionError>
 where
     P: Provider<N>,
     D: CallDecoder + Unpin,
     N: Network,
     F: Fn() -> CallBuilder<P, D, N>,
+    R: ReceiptResponse + std::fmt::Debug,
 {
     if receipt.status() {
-        handle_success_receipt(&receipt);
+        handle_success_receipt(receipt);
         Ok(())
     } else {
         tracing::debug!("could not send transaction - do a call to get revert data");
