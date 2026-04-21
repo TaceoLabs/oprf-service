@@ -19,6 +19,8 @@
 //! | `max_wait_time_transaction_confirmation` | 300 s       |
 //! | `max_gas_per_transaction`                | 8 000 000   |
 //! | `confirmations_for_transaction`          | 5           |
+//! | `max_tries_fetching_receipt`             | 5           |
+//! | `sleep_between_get_receipt`              | 5 s         |
 //! | `i_am_alive_interval`                    | 60 s        |
 
 use std::num::NonZeroU16;

@@ -4,7 +4,7 @@ use alloy::{
     contract::{CallBuilder, CallDecoder},
     network::{Network, ReceiptResponse},
     primitives::Address,
-    providers::Provider,
+    providers::{PendingTransactionError, Provider},
     transports::TransportError,
 };
 use backon::{BackoffBuilder as _, ConstantBackoff, ConstantBuilder, Retryable as _};
@@ -28,8 +28,8 @@ use crate::{
 pub(crate) struct TransactionHandler {
     max_wait_time_watch_transaction: Duration,
     confirmations_for_transaction: u64,
-    sleep_between_null_get_receipt: Duration,
-    max_tries_null_get_receipt: usize,
+    sleep_between_get_receipt: Duration,
+    max_tries_fetching_receipt: usize,
     max_gas_per_transaction: u64,
     rpc_provider: web3::RpcProvider,
     wallet_address: Address,
@@ -50,8 +50,8 @@ impl From<TransactionHandlerArgs> for TransactionHandler {
         let TransactionHandlerArgs {
             max_wait_time_watch_transaction,
             confirmations_for_transaction,
-            sleep_between_get_receipt: sleep_between_null_get_receipt,
-            max_tries_fetching_receipt: max_tries_null_get_receipt,
+            sleep_between_get_receipt,
+            max_tries_fetching_receipt,
             max_gas_per_transaction,
             rpc_provider,
             wallet_address,
@@ -59,8 +59,8 @@ impl From<TransactionHandlerArgs> for TransactionHandler {
         Self {
             max_wait_time_watch_transaction,
             confirmations_for_transaction,
-            sleep_between_null_get_receipt,
-            max_tries_null_get_receipt,
+            sleep_between_get_receipt,
+            max_tries_fetching_receipt,
             max_gas_per_transaction,
             rpc_provider,
             wallet_address,
@@ -75,8 +75,8 @@ impl TransactionHandler {
 
     fn backoff_strategy(&self) -> ConstantBackoff {
         ConstantBuilder::new()
-            .with_delay(self.sleep_between_null_get_receipt)
-            .with_max_times(self.max_tries_null_get_receipt)
+            .with_delay(self.sleep_between_get_receipt)
+            .with_max_times(self.max_tries_fetching_receipt)
             .build()
     }
 
@@ -111,16 +111,16 @@ impl TransactionHandler {
         N: Network,
         F: Fn() -> CallBuilder<P, D, N>,
     {
-        let tx_hash = transaction()
+        let pending_transaction = transaction()
             .gas(self.max_gas_per_transaction)
             .send()
             .await
             .context("while broadcasting to network")?
             .with_required_confirmations(self.confirmations_for_transaction)
-            .with_timeout(Some(self.max_wait_time_watch_transaction))
-            .watch()
-            .await
-            .context("while waiting for confirmation")?;
+            .with_timeout(Some(self.max_wait_time_watch_transaction));
+        let tx_hash = pending_transaction.tx_hash().to_owned();
+        let receipt_result = pending_transaction.get_receipt().await;
+
         tracing::trace!("transaction with hash: {tx_hash} confirmed");
 
         if let Ok(balance) = self
@@ -136,32 +136,51 @@ impl TransactionHandler {
         } else {
             tracing::warn!("could not fetch current wallet balance");
         }
-        let receipt = (|| async {
-            self.rpc_provider
-                .http()
-                .get_transaction_receipt(tx_hash)
-                .await?
-                .ok_or(TransportError::NullResp)
-        })
-        .retry(self.backoff_strategy())
-        .sleep(tokio::time::sleep)
-        .when(|e| matches!(e, TransportError::NullResp))
-        .notify(|_e, duration| {
-            tracing::warn!("Retrying getTransactionReceipt due to NullResp after {duration:?}");
-        })
-        .await
-        .context("while fetching getReceipt")?;
-        if receipt.status() {
-            handle_success_receipt(&receipt);
-            Ok(())
-        } else {
-            tracing::debug!("could not send transaction - do a call to get revert data");
-            transaction().call().await?;
-            // if we are here the call afterwards succeeded - we don't really know why the receipt failed so just return the wrapped receipt
-            Err(TransactionError::Rpc(eyre::eyre!(
-                "cannot finish transaction for unknown reason: {receipt:?}"
-            )))
+        match receipt_result {
+            Ok(receipt) => check_receipt(transaction, &receipt).await,
+            Err(PendingTransactionError::TransportError(TransportError::NullResp)) => {
+                let receipt = (|| async {
+                    self.rpc_provider
+                        .http()
+                        .get_transaction_receipt(tx_hash)
+                        .await?
+                        .ok_or(TransportError::NullResp)
+                })
+                .retry(self.backoff_strategy())
+                .sleep(tokio::time::sleep)
+                .when(|e| matches!(e, TransportError::NullResp))
+                .notify(|_e, duration| {
+                    tracing::warn!(
+                        "Retrying eth_getTransactionReceipt in {duration:?} due to NullResp"
+                    );
+                })
+                .await
+                .context("while fetching getReceipt")?;
+                check_receipt(transaction, &receipt).await
+            }
+            Err(err) => Err(TransactionError::Rpc(eyre::Report::from(err))),
         }
+    }
+}
+
+async fn check_receipt<P, D, N, F, R>(transaction: F, receipt: &R) -> Result<(), TransactionError>
+where
+    P: Provider<N>,
+    D: CallDecoder + Unpin,
+    N: Network,
+    F: Fn() -> CallBuilder<P, D, N>,
+    R: ReceiptResponse + std::fmt::Debug,
+{
+    if receipt.status() {
+        handle_success_receipt(receipt);
+        Ok(())
+    } else {
+        tracing::debug!("could not send transaction - do a call to get revert data");
+        transaction().call().await?;
+        // if we are here the call afterwards succeeded - we don't really know why the receipt failed so just return the wrapped receipt
+        Err(TransactionError::Rpc(eyre::eyre!(
+            "cannot finish transaction for unknown reason: {receipt:?}"
+        )))
     }
 }
 
