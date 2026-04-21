@@ -37,8 +37,8 @@
 
 use std::fmt;
 
-use alloy::primitives::{U160, U256};
 use ark_ff::PrimeField;
+use ruint::aliases::{U160, U256};
 use serde::{Deserialize, Serialize};
 
 pub use ark_babyjubjub;

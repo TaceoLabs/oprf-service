@@ -6406,6 +6406,7 @@ dependencies = [
  "async-trait",
  "eyre",
  "http",
+ "ruint",
  "serde",
  "taceo-ark-babyjubjub",
  "taceo-ark-serde-compat",
