@@ -4,7 +4,8 @@ use alloy::{
     contract::{CallBuilder, CallDecoder},
     network::{Network, ReceiptResponse},
     primitives::Address,
-    providers::Provider,
+    providers::{PendingTransactionError, Provider},
+    transports::RpcError,
 };
 use eyre::Context as _;
 use nodes_common::web3;
@@ -79,11 +80,15 @@ impl TransactionHandler {
         N: Network,
         F: Fn() -> CallBuilder<P, D, N>,
     {
-        let transaction_result = transaction()
+        let pending_tx = transaction()
             .gas(self.max_gas_per_transaction)
             .send()
             .await
-            .context("while broadcasting to network")?
+            .context("while broadcasting to network")?;
+
+        let pending_tx_hash = pending_tx.tx_hash().to_owned();
+
+        let transaction_result = pending_tx
             .with_required_confirmations(self.confirmations_for_transaction)
             .with_timeout(Some(self.max_wait_time))
             .get_receipt()
@@ -106,6 +111,59 @@ impl TransactionHandler {
                 return check_receipt(transaction, receipt).await;
             }
             Err(err) => {
+                if matches!(
+                    err,
+                    PendingTransactionError::TransportError(RpcError::NullResp)
+                ) {
+                    // we got a null response. This can mean the transaction was accepted but the provider failed to return a proper responser.
+                    let mut tries = 0;
+                    loop {
+                        tries += 1;
+                        if tries > 5 {
+                            return Err(TransactionError::Rpc(eyre::eyre!(
+                                "transaction might have been accepted but could not get receipt after multiple tries: {pending_tx_hash}, last error: {err:?}"
+                            )));
+                        }
+
+                        let maybe_receipt = self
+                            .rpc_provider
+                            .http()
+                            .get_transaction_receipt(pending_tx_hash)
+                            .await;
+
+                        match maybe_receipt {
+                            Ok(Some(receipt)) => {
+                                tracing::debug!(
+                                    "got receipt for transaction after null response error, additional tries: {tries}"
+                                );
+                                if receipt.status() {
+                                    handle_success_receipt(&receipt);
+                                    return Ok(());
+                                }
+                                tracing::debug!(
+                                    "could not send transaction - do a call to get revert data"
+                                );
+                                transaction().call().await?;
+                                // if we are here the call afterwards succeeded - we don't really know why the receipt failed so just return the wrapped receipt
+                                return Err(TransactionError::Rpc(eyre::eyre!(
+                                    "cannot finish transaction for unknown reason: {receipt:?}"
+                                )));
+                            }
+                            Ok(None) => {
+                                tracing::debug!(
+                                    "transaction receipt not available yet after null response error, additional tries: {tries}"
+                                );
+                                tokio::time::sleep(Duration::from_secs(2)).await;
+                            }
+                            Err(err) => {
+                                tracing::debug!(
+                                    "error while fetching receipt for transaction after null response error, additional tries: {tries}, error: {err:?}"
+                                );
+                                tokio::time::sleep(Duration::from_secs(2)).await;
+                            }
+                        }
+                    }
+                }
                 return Err(TransactionError::Rpc(eyre::eyre!(err)));
             }
         }
