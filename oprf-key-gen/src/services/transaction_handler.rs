@@ -4,9 +4,10 @@ use alloy::{
     contract::{CallBuilder, CallDecoder},
     network::{Network, ReceiptResponse},
     primitives::Address,
-    providers::{PendingTransactionError, Provider},
-    transports::RpcError,
+    providers::Provider,
+    transports::TransportError,
 };
+use backon::{BackoffBuilder as _, ConstantBackoff, ConstantBuilder, Retryable as _};
 use eyre::Context as _;
 use nodes_common::web3;
 use tracing::instrument;
@@ -25,28 +26,58 @@ use crate::{
 /// performing a static call to extract revert data for diagnostics.
 #[derive(Clone)]
 pub(crate) struct TransactionHandler {
-    max_wait_time: Duration,
-    max_gas_per_transaction: u64,
+    max_wait_time_watch_transaction: Duration,
     confirmations_for_transaction: u64,
+    sleep_between_null_get_receipt: Duration,
+    max_tries_null_get_receipt: usize,
+    max_gas_per_transaction: u64,
     rpc_provider: web3::RpcProvider,
     wallet_address: Address,
 }
 
-impl TransactionHandler {
-    pub(crate) fn new(
-        max_wait_time: Duration,
-        max_gas_per_transaction: u64,
-        confirmations_for_transaction: u64,
-        rpc_provider: web3::RpcProvider,
-        wallet_address: Address,
-    ) -> Self {
-        Self {
-            max_wait_time,
-            max_gas_per_transaction,
+pub(crate) struct TransactionHandlerArgs {
+    pub(crate) max_wait_time_watch_transaction: Duration,
+    pub(crate) confirmations_for_transaction: u64,
+    pub(crate) sleep_between_get_receipt: Duration,
+    pub(crate) max_tries_fetching_receipt: usize,
+    pub(crate) max_gas_per_transaction: u64,
+    pub(crate) rpc_provider: web3::RpcProvider,
+    pub(crate) wallet_address: Address,
+}
+
+impl From<TransactionHandlerArgs> for TransactionHandler {
+    fn from(value: TransactionHandlerArgs) -> Self {
+        let TransactionHandlerArgs {
+            max_wait_time_watch_transaction,
             confirmations_for_transaction,
+            sleep_between_get_receipt: sleep_between_null_get_receipt,
+            max_tries_fetching_receipt: max_tries_null_get_receipt,
+            max_gas_per_transaction,
+            rpc_provider,
+            wallet_address,
+        } = value;
+        Self {
+            max_wait_time_watch_transaction,
+            confirmations_for_transaction,
+            sleep_between_null_get_receipt,
+            max_tries_null_get_receipt,
+            max_gas_per_transaction,
             rpc_provider,
             wallet_address,
         }
+    }
+}
+
+impl TransactionHandler {
+    pub(crate) fn new(args: TransactionHandlerArgs) -> Self {
+        Self::from(args)
+    }
+
+    fn backoff_strategy(&self) -> ConstantBackoff {
+        ConstantBuilder::new()
+            .with_delay(self.sleep_between_null_get_receipt)
+            .with_max_times(self.max_tries_null_get_receipt)
+            .build()
     }
 
     /// Attempts to send a transaction and waits for the receipt.
@@ -80,19 +111,18 @@ impl TransactionHandler {
         N: Network,
         F: Fn() -> CallBuilder<P, D, N>,
     {
-        let pending_tx = transaction()
+        let tx_hash = transaction()
             .gas(self.max_gas_per_transaction)
             .send()
             .await
-            .context("while broadcasting to network")?;
-
-        let pending_tx_hash = pending_tx.tx_hash().to_owned();
-
-        let transaction_result = pending_tx
+            .context("while broadcasting to network")?
             .with_required_confirmations(self.confirmations_for_transaction)
-            .with_timeout(Some(self.max_wait_time))
-            .get_receipt()
-            .await;
+            .with_timeout(Some(self.max_wait_time_watch_transaction))
+            .watch()
+            .await
+            .context("while waiting for confirmation")?;
+        tracing::trace!("transaction with hash: {tx_hash} confirmed");
+
         if let Ok(balance) = self
             .rpc_provider
             .http()
@@ -106,78 +136,32 @@ impl TransactionHandler {
         } else {
             tracing::warn!("could not fetch current wallet balance");
         }
-        match transaction_result {
-            Ok(receipt) => {
-                return check_receipt(transaction, &receipt).await;
-            }
-            Err(err) => {
-                if matches!(
-                    err,
-                    PendingTransactionError::TransportError(RpcError::NullResp)
-                ) {
-                    // we got a null response. This can mean the transaction was accepted but the provider failed to return a proper responser.
-                    let mut tries = 0;
-                    loop {
-                        tries += 1;
-                        if tries > 5 {
-                            return Err(TransactionError::Rpc(eyre::eyre!(
-                                "transaction might have been accepted but could not get receipt after multiple tries: {pending_tx_hash}, last error: {err:?}"
-                            )));
-                        }
-
-                        let maybe_receipt = self
-                            .rpc_provider
-                            .http()
-                            .get_transaction_receipt(pending_tx_hash)
-                            .await;
-
-                        match maybe_receipt {
-                            Ok(Some(receipt)) => {
-                                tracing::debug!(
-                                    "got receipt for transaction after null response error, additional tries: {tries}"
-                                );
-                                return check_receipt(transaction, &receipt).await;
-                            }
-                            Ok(None) => {
-                                tracing::debug!(
-                                    "transaction receipt not available yet after null response error, additional tries: {tries}"
-                                );
-                                tokio::time::sleep(Duration::from_secs(2)).await;
-                            }
-                            Err(err) => {
-                                tracing::debug!(
-                                    "error while fetching receipt for transaction after null response error, additional tries: {tries}, error: {err:?}"
-                                );
-                                tokio::time::sleep(Duration::from_secs(2)).await;
-                            }
-                        }
-                    }
-                }
-                return Err(TransactionError::Rpc(eyre::Report::from(err)));
-            }
+        let receipt = (|| async {
+            self.rpc_provider
+                .http()
+                .get_transaction_receipt(tx_hash)
+                .await?
+                .ok_or(TransportError::NullResp)
+        })
+        .retry(self.backoff_strategy())
+        .sleep(tokio::time::sleep)
+        .when(|e| matches!(e, TransportError::NullResp))
+        .notify(|_e, duration| {
+            tracing::warn!("Retrying getTransactionReceipt due to NullResp after {duration:?}");
+        })
+        .await
+        .context("while fetching getReceipt")?;
+        if receipt.status() {
+            handle_success_receipt(&receipt);
+            Ok(())
+        } else {
+            tracing::debug!("could not send transaction - do a call to get revert data");
+            transaction().call().await?;
+            // if we are here the call afterwards succeeded - we don't really know why the receipt failed so just return the wrapped receipt
+            Err(TransactionError::Rpc(eyre::eyre!(
+                "cannot finish transaction for unknown reason: {receipt:?}"
+            )))
         }
-    }
-}
-
-/// Helper function to get the revert data in case the transaction failed.
-async fn check_receipt<P, D, N, F, R>(transaction: F, receipt: &R) -> Result<(), TransactionError>
-where
-    P: Provider<N>,
-    D: CallDecoder + Unpin,
-    N: Network,
-    F: Fn() -> CallBuilder<P, D, N>,
-    R: ReceiptResponse + std::fmt::Debug,
-{
-    if receipt.status() {
-        handle_success_receipt(receipt);
-        Ok(())
-    } else {
-        tracing::debug!("could not send transaction - do a call to get revert data");
-        transaction().call().await?;
-        // if we are here the call afterwards succeeded - we don't really know why the receipt failed so just return the wrapped receipt
-        Err(TransactionError::Rpc(eyre::eyre!(
-            "cannot finish transaction for unknown reason: {receipt:?}"
-        )))
     }
 }
 
