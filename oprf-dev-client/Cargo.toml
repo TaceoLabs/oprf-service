@@ -12,7 +12,12 @@ keywords = ["client", "development", "mpc", "oprf"]
 publish = true
 
 [dependencies]
-alloy = { workspace = true, features = ["full", "rpc", "rpc-client-ws"] }
+alloy = { workspace = true, features = [
+  "contract",
+  "provider-http",
+  "provider-ws",
+  "signer-local"
+] }
 ark-babyjubjub.workspace = true
 ark-ff.workspace = true
 clap = { workspace = true, features = ["derive", "env"] }
