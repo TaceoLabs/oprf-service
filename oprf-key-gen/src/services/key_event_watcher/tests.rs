@@ -22,7 +22,7 @@ use crate::{
             TransactionError, handle_abort, handle_delete, handle_not_enough_producers,
         },
         secret_gen::DLogSecretGenService,
-        transaction_handler::TransactionHandler,
+        transaction_handler::{TransactionHandler, TransactionHandlerArgs},
     },
 };
 
@@ -51,13 +51,15 @@ async fn test_config(setup: &TestSetup) -> (CircomGroth16Material, TransactionHa
     .await
     .expect("can build RPC providers");
 
-    let transaction_handler = TransactionHandler::new(
-        Duration::from_secs(10),
-        10_000_000,
-        1,
+    let transaction_handler = TransactionHandler::new(TransactionHandlerArgs {
+        max_wait_time_watch_transaction: Duration::from_secs(10),
+        confirmations_for_transaction: 1,
+        sleep_between_get_receipt: Duration::from_millis(500),
+        max_tries_fetching_receipt: 5,
+        max_gas_per_transaction: 10_000_000,
         rpc_provider,
-        PEER_ADDRESSES[0],
-    );
+        wallet_address: PEER_ADDRESSES[0],
+    });
 
     (key_gen_material(setup.setup), transaction_handler)
 }

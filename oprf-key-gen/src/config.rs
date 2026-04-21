@@ -19,6 +19,8 @@
 //! | `max_wait_time_transaction_confirmation` | 300 s       |
 //! | `max_gas_per_transaction`                | 8 000 000   |
 //! | `confirmations_for_transaction`          | 5           |
+//! | `max_tries_fetching_receipt`             | 5           |
+//! | `sleep_between_get_receipt`              | 5 s         |
 //! | `i_am_alive_interval`                    | 60 s        |
 
 use std::num::NonZeroU16;
@@ -87,6 +89,19 @@ pub struct OprfKeyGenServiceConfig {
     #[serde(default = "OprfKeyGenServiceConfig::default_confirmations_for_transaction")]
     pub confirmations_for_transaction: u64,
 
+    /// Number of times we try to fetch the receipt after a confirmed transaction with `eth_getTransactionReceipt`.
+    ///
+    /// Defaults to `5`.
+    #[serde(default = "OprfKeyGenServiceConfig::default_max_tries_fetching_receipt")]
+    pub max_tries_fetching_receipt: usize,
+
+    /// Time to sleep between `eth_getTransactionReceipt` calls when getting a `NullResponse` on a confirmed transaction.
+    ///
+    /// Defaults to `5s`.
+    #[serde(default = "OprfKeyGenServiceConfig::default_sleep_between_get_receipt")]
+    #[serde(with = "humantime_serde")]
+    pub sleep_between_get_receipt: Duration,
+
     /// Interval in which we emit "I am alive" metric.
     ///
     /// Defaults to `60 s`.
@@ -153,6 +168,16 @@ impl OprfKeyGenServiceConfig {
         5
     }
 
+    /// Default max tries for fetching receipt after confirmed transaction (`5`).
+    fn default_max_tries_fetching_receipt() -> usize {
+        5
+    }
+
+    /// Default time we sleep between trying to fetch receipt of a confirmed transaction (`5s`).
+    fn default_sleep_between_get_receipt() -> Duration {
+        Duration::from_secs(5)
+    }
+
     /// Default I-am-alive interval (`60 s`).
     fn default_i_am_alive_interval() -> Duration {
         Duration::from_secs(60)
@@ -186,6 +211,8 @@ impl OprfKeyGenServiceConfig {
             max_gas_per_transaction: Self::default_max_gas_per_transaction(),
             confirmations_for_transaction: Self::default_confirmations_for_transaction(),
             i_am_alive_interval: Self::default_i_am_alive_interval(),
+            max_tries_fetching_receipt: Self::default_max_tries_fetching_receipt(),
+            sleep_between_get_receipt: Self::default_sleep_between_get_receipt(),
         }
     }
 }
