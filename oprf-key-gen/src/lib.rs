@@ -33,8 +33,10 @@ use crate::{
         METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_I_AM_ALIVE, METRICS_ID_KEY_GEN_WALLET_BALANCE,
     },
     services::{
-        key_event_watcher::KeyEventWatcherTaskConfig, secret_gen::DLogSecretGenService,
-        secret_manager::SecretManagerService, transaction_handler::TransactionHandler,
+        key_event_watcher::KeyEventWatcherTaskConfig,
+        secret_gen::DLogSecretGenService,
+        secret_manager::SecretManagerService,
+        transaction_handler::{TransactionHandler, TransactionHandlerArgs},
     },
 };
 use alloy::{
@@ -206,13 +208,15 @@ pub async fn start(
     .context("while joining build groth16 task")?
     .context("while building groth16 material")?;
     let dlog_secret_gen_service = DLogSecretGenService::init(key_gen_material);
-    let transaction_handler = TransactionHandler::new(
-        config.max_wait_time_transaction_confirmation,
-        config.max_gas_per_transaction,
-        config.confirmations_for_transaction,
-        rpc_provider.clone(),
-        address,
-    );
+    let transaction_handler = TransactionHandler::new(TransactionHandlerArgs {
+        max_wait_time_watch_transaction: config.max_wait_time_transaction_confirmation,
+        confirmations_for_transaction: config.confirmations_for_transaction,
+        sleep_between_get_receipt: config.sleep_between_get_receipt,
+        max_tries_fetching_receipt: config.max_tries_fetching_receipt,
+        max_gas_per_transaction: config.max_gas_per_transaction,
+        rpc_provider: rpc_provider.clone(),
+        wallet_address: address,
+    });
 
     tracing::info!("spawning key event watcher..");
     let key_event_watcher = tokio::spawn({
