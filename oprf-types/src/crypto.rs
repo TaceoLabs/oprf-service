@@ -9,13 +9,14 @@
 //! * [`EphemeralEncryptionPublicKey`]
 //! * [`OprfPublicKey`]
 //! * [`SecretGenCommitment`]
-//! * [`SecretGenCiphertexts`] / [`SecretGenCiphertext`]
+//! * `SecretGenCiphertexts` / `SecretGenCiphertext` (requires the `chain` feature)
 
 use std::fmt;
 
 use ark_serde_compat::babyjubjub;
 use ark_serialize::CanonicalDeserialize;
 use ark_serialize::CanonicalSerialize;
+#[cfg(feature = "chain")]
 use circom_types::{ark_bn254::Bn254, groth16::Proof};
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use serde::{Deserialize, Serialize};
@@ -78,7 +79,8 @@ pub struct SecretGenCommitment {
 ///
 /// Contains ciphertexts for all OPRF nodes (including the node itself) with the evaluations
 /// of the polynomial generated in the first round. The ciphertexts of the nodes
-/// is sorted according to their respective party ID.  
+/// is sorted according to their respective party ID.
+#[cfg(feature = "chain")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecretGenCiphertexts {
     /// The proof that the ciphertexts were computed correctly
@@ -90,6 +92,7 @@ pub struct SecretGenCiphertexts {
 /// A ciphertext for an OPRF node used in round 2 of the OPRF-nullifier generation protocol.
 ///
 /// Contains the [`EphemeralEncryptionPublicKey`] of the sender, the ciphertext itself, and a nonce.
+#[cfg(feature = "chain")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecretGenCiphertext {
     #[serde(with = "ark_serde_compat::field")]
@@ -185,6 +188,7 @@ impl fmt::Display for EphemeralEncryptionPublicKey {
     }
 }
 
+#[cfg(feature = "chain")]
 impl SecretGenCiphertexts {
     /// Creates a new instance by wrapping the provided value.
     #[must_use]
@@ -193,6 +197,7 @@ impl SecretGenCiphertexts {
     }
 }
 
+#[cfg(feature = "chain")]
 impl SecretGenCiphertext {
     /// Creates a new ciphertext contribution for an OPRF node by wrapping a nonce, a ciphertext and a commitment to the plain text.
     #[must_use]

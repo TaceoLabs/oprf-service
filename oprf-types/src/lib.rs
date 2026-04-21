@@ -28,8 +28,8 @@
 //!   identifiers, and Merkle roots, with consistent serialization and
 //!   display implementations.
 //! * Cryptographic types used in the OPRF protocol (see [`crypto`] module).
-//! * On-chain contribution types exchanged during key generation (see
-//!   [`chain`] module).
+//! * On-chain contribution types exchanged during key generation (see the
+//!   `chain` module, available with the `chain` feature).
 //! * API versioned types for client/server communication (see [`api`] module).
 //!
 //! Use these types to pass, store, and (de)serialize identifiers and
@@ -45,6 +45,7 @@ pub use ark_babyjubjub;
 pub use async_trait;
 
 pub mod api;
+#[cfg(feature = "chain")]
 pub mod chain;
 pub mod crypto;
 

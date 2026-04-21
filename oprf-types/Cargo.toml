@@ -12,7 +12,7 @@ keywords = ["cryptography", "mpc", "oprf"]
 publish = true
 
 [dependencies]
-alloy = { workspace = true, features = ["contract"] }
+alloy = { workspace = true, features = ["contract"], optional = true }
 ark-babyjubjub = { workspace = true }
 ark-ff = { workspace = true }
 ark-serde-compat = { workspace = true }
@@ -23,11 +23,15 @@ circom-types = { workspace = true, features = [
   "groth16",
   "proof",
   "zkey"
-] }
+], optional = true }
 eyre = { workspace = true }
-groth16-sol = { workspace = true }
+groth16-sol = { workspace = true, optional = true }
 http = { workspace = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5" }
 ruint = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 uuid = { workspace = true, features = ["serde", "v4"] }
+
+[features]
+default = ["chain"]
+chain = ["dep:alloy", "dep:groth16-sol", "dep:circom-types"]
