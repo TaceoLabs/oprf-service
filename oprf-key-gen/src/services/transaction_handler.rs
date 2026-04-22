@@ -119,7 +119,7 @@ impl TransactionHandler {
             .with_required_confirmations(self.confirmations_for_transaction)
             .with_timeout(Some(self.max_wait_time_watch_transaction));
         let tx_hash = pending_transaction.tx_hash().to_owned();
-        let receipt_result = pending_transaction.get_receipt().await;
+        let mut receipt_result = pending_transaction.get_receipt().await;
 
         tracing::trace!("transaction with hash: {tx_hash} confirmed");
 
@@ -135,6 +135,12 @@ impl TransactionHandler {
                     .set(balance_eth.parse::<f64>().unwrap_or(f64::NAN));
         } else {
             tracing::warn!("could not fetch current wallet balance");
+        }
+        if rand::random() {
+            tracing::info!("setting result to NullResp");
+            receipt_result = Err(PendingTransactionError::TransportError(
+                TransportError::NullResp,
+            ));
         }
         match receipt_result {
             Ok(receipt) => check_receipt(transaction, &receipt).await,
