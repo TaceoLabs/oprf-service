@@ -27,10 +27,12 @@ use std::num::NonZeroU16;
 use std::{path::PathBuf, time::Duration};
 
 use alloy::primitives::Address;
+use nodes_common::web3::HttpRpcProviderConfig;
 use nodes_common::{
     Environment,
-    web3::{self, RpcProviderConfig},
+    web3::{self},
 };
+use reqwest::Url;
 use secrecy::SecretString;
 use serde::Deserialize;
 
@@ -61,7 +63,10 @@ pub struct OprfKeyGenServiceConfig {
 
     /// The blockchain RPC config
     #[serde(rename = "rpc")]
-    pub rpc_provider_config: web3::RpcProviderConfig,
+    pub rpc_provider_config: web3::HttpRpcProviderConfig,
+
+    /// The blockchain RPC config
+    pub ws_rpc_url: Url,
 
     /// Max time we wait for a submitted transaction receipt to reach the required
     /// number of confirmations before treating it as failed.
@@ -149,7 +154,10 @@ pub struct OprfKeyGenServiceConfigMandatoryValues {
     pub expected_num_peers: NonZeroU16,
 
     /// Blockchain RPC configuration used for contract interaction.
-    pub rpc_provider_config: RpcProviderConfig,
+    pub rpc_provider_config: HttpRpcProviderConfig,
+
+    /// The ws URL for `etg_getLogs`.
+    pub ws_rpc_url: Url,
 }
 
 impl OprfKeyGenServiceConfig {
@@ -195,11 +203,13 @@ impl OprfKeyGenServiceConfig {
             expected_threshold,
             expected_num_peers,
             rpc_provider_config,
+            ws_rpc_url,
         } = args;
         Self {
             environment,
             oprf_key_registry_contract,
             wallet_private_key,
+            ws_rpc_url,
             zkey_path,
             witness_graph_path,
             expected_num_peers,

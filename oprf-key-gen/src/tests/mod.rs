@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use alloy::{primitives::U160, sol_types::SolEvent};
 use axum_test::TestServer;
-use nodes_common::web3::RpcProviderConfig;
+use nodes_common::web3::HttpRpcProviderConfig;
 use nodes_common::{Environment, StartedServices};
 use oprf_test_utils::{DeploySetup, PEER_PRIVATE_KEYS, TestSetup};
 
@@ -68,10 +68,10 @@ impl TestKeyGen {
                 witness_graph_path: setup.witness_path(),
                 expected_threshold: expected_threshold.try_into().expect("Is non-zero"),
                 expected_num_peers: expected_num_peers.try_into().expect("Is non-zero"),
-                rpc_provider_config: RpcProviderConfig::with_default_values(
-                    vec![anvil.endpoint_url()],
-                    anvil.ws_endpoint_url(),
-                ),
+                rpc_provider_config: HttpRpcProviderConfig::with_default_values(vec![
+                    anvil.endpoint_url(),
+                ]),
+                ws_rpc_url: anvil.ws_endpoint_url(),
             });
 
         // anvil doesn't work with confirmations

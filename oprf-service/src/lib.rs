@@ -55,6 +55,7 @@ use crate::services::key_event_watcher::KeyEventWatcherTaskArgs;
 use crate::services::open_sessions::OpenSessions;
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
 use crate::{config::OprfNodeServiceConfig, services::secret_manager::SecretManagerService};
+use alloy::providers::{Provider as _, ProviderBuilder, WsConnect};
 use axum::Router;
 use eyre::Context as _;
 use http::StatusCode;
@@ -116,7 +117,7 @@ impl OprfServiceBuilder {
     pub async fn init(
         config: OprfNodeServiceConfig,
         secret_manager: SecretManagerService,
-        rpc_provider: web3::RpcProvider,
+        http_rpc_provider: web3::HttpRpcProvider,
         started_services: StartedServices,
         cancellation_token: CancellationToken,
     ) -> eyre::Result<Self> {
@@ -128,8 +129,16 @@ impl OprfServiceBuilder {
             .await
             .context("while loading address")?;
 
+        tracing::info!("connecting with ws provider..");
+        // Build WebSocket provider
+        let ws_rpc_provider = ProviderBuilder::new()
+            .connect_ws(WsConnect::new(config.ws_rpc_url.clone()))
+            .await?
+            .erased();
+
         tracing::info!("loading party id with address {address}..");
-        let contract = OprfKeyRegistry::new(config.oprf_key_registry_contract, rpc_provider.http());
+        let contract =
+            OprfKeyRegistry::new(config.oprf_key_registry_contract, http_rpc_provider.inner());
         let party_id = PartyId(
             contract
                 .getPartyIdForParticipant(address)
@@ -158,11 +167,12 @@ impl OprfServiceBuilder {
 
         tracing::info!("spawning key event watcher..");
         let key_event_watcher = tokio::spawn({
-            let rpc_provider = rpc_provider.clone();
+            let http_rpc_provider = http_rpc_provider.clone();
             let contract_address = config.oprf_key_registry_contract;
             let cancellation_token = cancellation_token.clone();
             services::key_event_watcher::key_event_watcher_task(KeyEventWatcherTaskArgs {
-                rpc_provider,
+                http_rpc_provider,
+                ws_rpc_provider,
                 contract_address,
                 secret_manager,
                 oprf_key_material_store: oprf_key_material_store.clone(),

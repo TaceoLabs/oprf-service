@@ -15,7 +15,7 @@ use std::{
 use alloy::{
     eips::BlockNumberOrTag,
     primitives::{Address, LogData},
-    providers::Provider as _,
+    providers::{DynProvider, Provider as _},
     rpc::types::{Filter, Log},
     sol_types::SolEvent as _,
 };
@@ -56,7 +56,8 @@ enum FetchOprfKeyMaterialError {
 
 /// The arguments to start the key-even-watcher.
 pub(crate) struct KeyEventWatcherTaskArgs {
-    pub(crate) rpc_provider: web3::RpcProvider,
+    pub(crate) http_rpc_provider: web3::HttpRpcProvider,
+    pub(crate) ws_rpc_provider: DynProvider,
     pub(crate) contract_address: Address,
     pub(crate) secret_manager: SecretManagerService,
     pub(crate) oprf_key_material_store: OprfKeyMaterialStore,
@@ -89,7 +90,8 @@ pub(crate) async fn key_event_watcher_task(
 /// Filters for various key generation event signatures and handles them
 async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> eyre::Result<()> {
     let KeyEventWatcherTaskArgs {
-        rpc_provider,
+        http_rpc_provider,
+        ws_rpc_provider,
         contract_address,
         secret_manager,
         oprf_key_material_store,
@@ -107,7 +109,7 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
         .from_block(BlockNumberOrTag::Latest)
         .event_signature(event_signatures.clone());
     // subscribe now so we don't miss any events between now and when we start processing past events
-    let sub = rpc_provider.subscriptions().subscribe_logs(&filter).await?;
+    let sub = ws_rpc_provider.subscribe_logs(&filter).await?;
     let mut latest_block = 0;
 
     // if start_block is set, load past events from there to head
@@ -118,8 +120,7 @@ async fn handle_events(key_event_watcher_task_args: KeyEventWatcherTaskArgs) -> 
             .from_block(BlockNumberOrTag::Number(start_block))
             .to_block(BlockNumberOrTag::Latest)
             .event_signature(event_signatures);
-        let logs = rpc_provider
-            .http()
+        let logs = http_rpc_provider
             .get_logs(&filter)
             .await
             .context("while loading past logs")?;

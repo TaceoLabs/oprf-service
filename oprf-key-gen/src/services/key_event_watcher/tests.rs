@@ -13,7 +13,7 @@ use crate::{
 };
 use alloy::{network::EthereumWallet, primitives::U160, signers::local::PrivateKeySigner};
 use groth16_material::circom::{CircomGroth16Material, CircomGroth16MaterialBuilder};
-use nodes_common::{Environment, web3::RpcProviderBuilder};
+use nodes_common::{Environment, web3::HttpRpcProviderBuilder};
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_test_utils::{DeploySetup, OPRF_PEER_PRIVATE_KEY_0, PEER_ADDRESSES, TestSetup};
 use oprf_types::{
@@ -44,19 +44,16 @@ fn random_public_key() -> OprfPublicKey {
     OprfPublicKey::new(rand::random())
 }
 
-async fn test_config(setup: &TestSetup) -> (CircomGroth16Material, TransactionHandler) {
-    let rpc_provider = RpcProviderBuilder::with_default_values(
-        vec![setup.anvil.endpoint_url()],
-        setup.anvil.ws_endpoint_url(),
-    )
-    .environment(Environment::Dev)
-    .chain_id(31_337)
-    .wallet(EthereumWallet::new(
-        PrivateKeySigner::from_str(OPRF_PEER_PRIVATE_KEY_0).expect("works"),
-    ))
-    .build()
-    .await
-    .expect("can build RPC providers");
+fn test_config(setup: &TestSetup) -> (CircomGroth16Material, TransactionHandler) {
+    let rpc_provider =
+        HttpRpcProviderBuilder::with_default_values(vec![setup.anvil.endpoint_url()])
+            .environment(Environment::Dev)
+            .chain_id(31_337)
+            .wallet(EthereumWallet::new(
+                PrivateKeySigner::from_str(OPRF_PEER_PRIVATE_KEY_0).expect("works"),
+            ))
+            .build()
+            .expect("can build RPC providers");
 
     let transaction_handler = TransactionHandler::new(TransactionHandlerArgs {
         max_wait_time_watch_transaction: Duration::from_secs(10),
@@ -74,7 +71,7 @@ async fn test_config(setup: &TestSetup) -> (CircomGroth16Material, TransactionHa
 #[tokio::test]
 async fn test_send_invalid_proof() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let (key_gen_material, transaction_handler) = test_config(&setup).await;
+    let (key_gen_material, transaction_handler) = test_config(&setup);
     let secret_manager = test_secret_manager();
     let secret_manager_service: SecretManagerService = secret_manager.service();
     let secret_gen = DLogSecretGenService::init(key_gen_material, secret_manager_service);
@@ -168,7 +165,7 @@ async fn test_delete() -> eyre::Result<()> {
 #[tokio::test]
 async fn test_round2_in_wrong_round_during_load_public_keys() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let (key_gen_material, transaction_handler) = test_config(&setup).await;
+    let (key_gen_material, transaction_handler) = test_config(&setup);
     let secret_manager = test_secret_manager();
     let secret_manager_service: SecretManagerService = secret_manager.service();
     let secret_gen = DLogSecretGenService::init(key_gen_material, secret_manager_service);

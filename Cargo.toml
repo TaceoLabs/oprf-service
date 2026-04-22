@@ -21,7 +21,7 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [workspace.dependencies]
-alloy = { version = "1.6", default-features = false }
+alloy = { version = "2", default-features = false }
 ark-babyjubjub = { package = "taceo-ark-babyjubjub", version = "^0.5.3" }
 ark-bn254 = { version = "0.5" }
 ark-ec = "0.5"
@@ -50,7 +50,7 @@ humantime-serde = "1.1.1"
 itertools = "0.14"
 k256 = "0.13"
 metrics = "0.24"
-nodes-common = { package = "taceo-nodes-common", version = "0.4.3", default-features = false }
+nodes-common = { package = "taceo-nodes-common", version = "0.5", default-features = false }
 nodes-observability = { package = "taceo-nodes-observability", version = "0.1" }
 num-bigint = "0.4"
 parking_lot = "0.12"

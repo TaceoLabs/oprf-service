@@ -21,7 +21,7 @@
 
 use std::time::Duration;
 
-use alloy::primitives::Address;
+use alloy::{primitives::Address, transports::http::reqwest::Url};
 use nodes_common::Environment;
 use semver::VersionReq;
 use serde::{
@@ -37,6 +37,9 @@ pub struct OprfNodeServiceConfig {
     pub environment: Environment,
     /// The Address of the `OprfKeyRegistry` contract.
     pub oprf_key_registry_contract: Address,
+
+    /// The ws URL for `eth_subscribe`.
+    pub ws_rpc_url: Url,
 
     /// Accepted `SemVer` versions of clients.
     #[serde(deserialize_with = "deserialize_version_req")]
@@ -120,12 +123,14 @@ impl OprfNodeServiceConfig {
     pub fn with_default_values(
         environment: Environment,
         oprf_key_registry_contract: Address,
+        ws_rpc_url: Url,
         version_req: VersionReq,
     ) -> Self {
         Self {
             environment,
             oprf_key_registry_contract,
             version_req,
+            ws_rpc_url,
             ws_max_message_size: Self::default_ws_max_message_size(),
             session_lifetime: Self::default_session_lifetime(),
             get_oprf_key_material_timeout: Self::default_get_oprf_key_material_timeout(),

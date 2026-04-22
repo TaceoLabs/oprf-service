@@ -38,10 +38,10 @@ itertools = { workspace = true }
 k256 = { workspace = true, features = ["ecdsa", "serde"] }
 metrics = { workspace = true }
 nodes-common = { workspace = true, features = [
-  "alloy",
   "api",
   "postgres",
-  "serde"
+  "serde",
+  "web3"
 ] }
 nodes-observability = { workspace = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5" }

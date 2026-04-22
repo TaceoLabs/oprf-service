@@ -75,46 +75,43 @@ impl From<alloy::contract::Error> for TransactionError {
     }
 }
 
+pub(crate) struct KeyEventWatcherTaskConfig {
+    pub(crate) http_provider: web3::HttpRpcProvider,
+    pub(crate) ws_provider: DynProvider,
+    pub(crate) contract_address: Address,
+    pub(crate) dlog_secret_gen_service: DLogSecretGenService,
+    pub(crate) start_block: Option<u64>,
+    pub(crate) start_signal: Arc<AtomicBool>,
+    pub(crate) transaction_handler: TransactionHandler,
+    pub(crate) cancellation_token: CancellationToken,
+}
+
 /// Background task that subscribes to key generation events and handles them.
 ///
 /// Connects to the blockchain via WebSocket and verifies that the
 /// `OprfKeyRegistry` contract is ready.
-pub(crate) async fn key_event_watcher_task(
-    rpc_provider: web3::RpcProvider,
-    contract_address: Address,
-    dlog_secret_gen_service: DLogSecretGenService,
-    start_block: Option<u64>,
-    start_signal: Arc<AtomicBool>,
-    transaction_handler: TransactionHandler,
-    cancellation_token: CancellationToken,
-) -> eyre::Result<()> {
+pub(crate) async fn key_event_watcher_task(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
     // shutdown service if event watcher encounters an error and drops this guard
-    let _drop_guard = cancellation_token.clone().drop_guard();
+    let _drop_guard = args.cancellation_token.clone().drop_guard();
     tracing::info!("start handling events");
-    handle_events(
-        rpc_provider,
+    handle_events(args)
+        .await
+        .inspect(|()| tracing::info!("successfully closed key_event_watcher without error"))
+}
+
+/// Filters for various key generation event signatures and handles them
+async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
+    let KeyEventWatcherTaskConfig {
+        http_provider,
+        ws_provider,
         contract_address,
         dlog_secret_gen_service,
         start_block,
         start_signal,
         transaction_handler,
         cancellation_token,
-    )
-    .await
-    .inspect(|()| tracing::info!("successfully closed key_event_watcher without error"))
-}
-
-/// Filters for various key generation event signatures and handles them
-async fn handle_events(
-    rpc_provider: web3::RpcProvider,
-    contract_address: Address,
-    dlog_secret_gen_service: DLogSecretGenService,
-    start_block: Option<u64>,
-    start_signal: Arc<AtomicBool>,
-    transaction_handler: TransactionHandler,
-    cancellation_token: CancellationToken,
-) -> eyre::Result<()> {
-    let contract = OprfKeyRegistry::new(contract_address, rpc_provider.http());
+    } = args;
+    let contract = OprfKeyRegistry::new(contract_address, http_provider.inner());
     let event_signatures = vec![
         OprfKeyRegistry::SecretGenRound1::SIGNATURE_HASH,
         OprfKeyRegistry::SecretGenRound2::SIGNATURE_HASH,
@@ -131,7 +128,7 @@ async fn handle_events(
         .from_block(BlockNumberOrTag::Latest)
         .event_signature(event_signatures.clone());
     // subscribe now so we don't miss any events between now and when we start processing past events
-    let sub = rpc_provider.subscriptions().subscribe_logs(&filter).await?;
+    let sub = ws_provider.subscribe_logs(&filter).await?;
     let mut latest_block = 0;
 
     // if start_block is set, load past events from there to head
@@ -142,8 +139,7 @@ async fn handle_events(
             .from_block(BlockNumberOrTag::Number(start_block))
             .to_block(BlockNumberOrTag::Latest)
             .event_signature(event_signatures);
-        let logs = rpc_provider
-            .http()
+        let logs = http_provider
             .get_logs(&filter)
             .await
             .context("while loading past logs")?;

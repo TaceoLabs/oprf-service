@@ -90,7 +90,7 @@ start_keygen() {
         local db_conn="postgres://postgres:postgres@localhost:5432/postgres"
 
         RUST_LOG="taceo=trace,warn" \
-        TACEO_OPRF_KEY_GEN__BIND_ADDR=127.0.0.1:$port \
+        TACEO_OPRF_KEY_GEN__BIND_ADDR=0.0.0.0:$port \
         TACEO_OPRF_KEY_GEN__SERVICE__WALLET_PRIVATE_KEY=${node_private_keys[$i]} \
         TACEO_OPRF_KEY_GEN__SERVICE__ENVIRONMENT=dev \
         TACEO_OPRF_KEY_GEN__SERVICE__ZKEY_PATH=./circom/main/key-gen/OPRFKeyGen.13.arks.zkey \
@@ -99,8 +99,8 @@ start_keygen() {
         TACEO_OPRF_KEY_GEN__SERVICE__CONFIRMATIONS_FOR_TRANSACTION=1 \
         TACEO_OPRF_KEY_GEN__SERVICE__EXPECTED_THRESHOLD=2 \
         TACEO_OPRF_KEY_GEN__SERVICE__EXPECTED_NUM_PEERS=3 \
+        TACEO_OPRF_KEY_GEN__SERVICE__WS_RPC_URL=ws://127.0.0.1:8545 \
         TACEO_OPRF_KEY_GEN__SERVICE__RPC__HTTP_URLS=http://127.0.0.1:8545 \
-        TACEO_OPRF_KEY_GEN__SERVICE__RPC__WS_URL=ws://127.0.0.1:8545 \
         TACEO_OPRF_KEY_GEN__SERVICE__RPC__CHAIN_ID=31337 \
         TACEO_OPRF_KEY_GEN__POSTGRES__CONNECTION_STRING=$db_conn \
         TACEO_OPRF_KEY_GEN__POSTGRES__SCHEMA=oprf$i \
@@ -133,11 +133,11 @@ start_nodes() {
         TACEO_OPRF_NODE__POSTGRES__SCHEMA=oprf$i \
         TACEO_OPRF_NODE__SERVICE__ENVIRONMENT=dev \
         TACEO_OPRF_NODE__SERVICE__OPRF_KEY_REGISTRY_CONTRACT=$oprf_key_registry \
+        TACEO_OPRF_NODE__SERVICE__WS_RPC_URL=ws://127.0.0.1:8545 \
         TACEO_OPRF_NODE__RPC__HTTP_URLS=http://127.0.0.1:8545 \
-        TACEO_OPRF_NODE__RPC__WS_URL=ws://127.0.0.1:8545 \
         TACEO_OPRF_NODE__RPC__CHAIN_ID=31337 \
         TACEO_OPRF_NODE__SERVICE__VERSION_REQ=">=0.0.0" \
-        TACEO_OPRF_NODE__BIND_ADDR=127.0.0.1:$port \
+        TACEO_OPRF_NODE__BIND_ADDR=0.0.0.0:$port \
         ./target/release/examples/taceo-oprf-service-example > logs/node$i.log 2>&1 &
         nodes_pids+=($!)
         echo "started node$i with PID ${nodes_pids[$i]}"

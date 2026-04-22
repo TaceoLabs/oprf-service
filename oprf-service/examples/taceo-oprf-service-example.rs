@@ -38,7 +38,7 @@ pub struct ExampleOprfNodeConfig {
 
     /// The blockchain RPC config
     #[serde(rename = "rpc")]
-    pub rpc_provider_config: web3::RpcProviderConfig,
+    pub rpc_provider_config: web3::HttpRpcProviderConfig,
 
     /// The OPRF service config
     #[serde(rename = "service")]
@@ -92,10 +92,9 @@ async fn main() -> eyre::Result<ExitCode> {
 
     tracing::info!("connect to chain RPC...");
     let rpc_provider =
-        nodes_common::web3::RpcProviderBuilder::with_config(&config.rpc_provider_config)
+        nodes_common::web3::HttpRpcProviderBuilder::with_config(&config.rpc_provider_config)
             .environment(config.node_config.environment)
             .build()
-            .await
             .context("while init blockchain connection")?;
     let result = start_service(
         config,
@@ -119,7 +118,7 @@ async fn main() -> eyre::Result<ExitCode> {
 
 pub async fn start_service(
     config: ExampleOprfNodeConfig,
-    rpc_provider: web3::RpcProvider,
+    rpc_provider: web3::HttpRpcProvider,
     secret_manager: SecretManagerService,
     shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> eyre::Result<()> {

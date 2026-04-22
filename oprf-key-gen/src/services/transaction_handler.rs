@@ -31,7 +31,7 @@ pub(crate) struct TransactionHandler {
     sleep_between_get_receipt: Duration,
     max_tries_fetching_receipt: usize,
     max_gas_per_transaction: u64,
-    rpc_provider: web3::RpcProvider,
+    rpc_provider: web3::HttpRpcProvider,
     wallet_address: Address,
 }
 
@@ -41,7 +41,7 @@ pub(crate) struct TransactionHandlerArgs {
     pub(crate) sleep_between_get_receipt: Duration,
     pub(crate) max_tries_fetching_receipt: usize,
     pub(crate) max_gas_per_transaction: u64,
-    pub(crate) rpc_provider: web3::RpcProvider,
+    pub(crate) rpc_provider: web3::HttpRpcProvider,
     pub(crate) wallet_address: Address,
 }
 
@@ -123,12 +123,7 @@ impl TransactionHandler {
 
         tracing::trace!("transaction with hash: {tx_hash} confirmed");
 
-        if let Ok(balance) = self
-            .rpc_provider
-            .http()
-            .get_balance(self.wallet_address)
-            .await
-        {
+        if let Ok(balance) = self.rpc_provider.get_balance(self.wallet_address).await {
             let balance_eth = alloy::primitives::utils::format_ether(balance);
             tracing::trace!("current wallet balance: {balance_eth} ETH",);
             ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ATTRID_WALLET_ADDRESS => self.wallet_address.to_string())
@@ -141,7 +136,6 @@ impl TransactionHandler {
             Err(PendingTransactionError::TransportError(TransportError::NullResp)) => {
                 let receipt = (|| async {
                     self.rpc_provider
-                        .http()
                         .get_transaction_receipt(tx_hash)
                         .await?
                         .ok_or(TransportError::NullResp)

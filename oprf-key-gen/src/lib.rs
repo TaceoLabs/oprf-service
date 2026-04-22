@@ -39,12 +39,15 @@ use crate::{
     },
 };
 use alloy::{
-    consensus::constants::ETH_TO_WEI, network::EthereumWallet, primitives::Address,
-    providers::Provider as _, signers::local::PrivateKeySigner,
+    consensus::constants::ETH_TO_WEI,
+    network::EthereumWallet,
+    primitives::Address,
+    providers::{Provider as _, ProviderBuilder, WsConnect},
+    signers::local::PrivateKeySigner,
 };
 use eyre::Context as _;
 use groth16_material::circom::CircomGroth16MaterialBuilder;
-use nodes_common::web3::RpcProvider;
+use nodes_common::web3::{self};
 use oprf_types::{chain::OprfKeyRegistry, crypto::PartyId};
 
 pub(crate) mod api;
@@ -78,7 +81,7 @@ impl KeyGenTasks {
 }
 
 async fn contract_sanity_checks(
-    rpc_provider: &RpcProvider,
+    rpc_provider: &web3::HttpRpcProvider,
     key_gen_wallet_address: Address,
     config: &OprfKeyGenServiceConfig,
 ) -> eyre::Result<()> {
@@ -87,7 +90,7 @@ async fn contract_sanity_checks(
         config.expected_threshold,
         config.expected_num_peers
     );
-    let contract = OprfKeyRegistry::new(config.oprf_key_registry_contract, rpc_provider.http());
+    let contract = OprfKeyRegistry::new(config.oprf_key_registry_contract, rpc_provider.inner());
     // Fetch the party ID and log it.
     // This call verifies whether we are registered at the contract as participant and serves as early failing point if not
     let get_party_id_call = contract.getPartyIdForParticipant(key_gen_wallet_address);
@@ -176,16 +179,20 @@ pub async fn start(
     tracing::info!("my wallet address: {address}");
     let wallet = EthereumWallet::from(private_key);
 
-    let rpc_provider =
-        nodes_common::web3::RpcProviderBuilder::with_config(&config.rpc_provider_config)
+    let http_provider =
+        nodes_common::web3::HttpRpcProviderBuilder::with_config(&config.rpc_provider_config)
             .environment(config.environment)
             .wallet(wallet)
             .build()
-            .await
             .context("while init blockchain connection")?;
 
-    let balance = rpc_provider
-        .http()
+    // Build WebSocket provider
+    let ws_provider = ProviderBuilder::new()
+        .connect_ws(WsConnect::new(config.ws_rpc_url.clone()))
+        .await?
+        .erased();
+
+    let balance = http_provider
         .get_balance(address)
         .await
         .context("while get_balance")?;
@@ -197,7 +204,7 @@ pub async fn start(
     ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ATTRID_WALLET_ADDRESS => address.to_string())
         .set(f64::from(balance) / ETH_TO_WEI as f64);
 
-    contract_sanity_checks(&rpc_provider, address, &config)
+    contract_sanity_checks(&http_provider, address, &config)
         .await
         .context("while doing sanity checks")?;
 
@@ -218,7 +225,7 @@ pub async fn start(
         sleep_between_get_receipt: config.sleep_between_get_receipt,
         max_tries_fetching_receipt: config.max_tries_fetching_receipt,
         max_gas_per_transaction: config.max_gas_per_transaction,
-        rpc_provider: rpc_provider.clone(),
+        rpc_provider: http_provider.clone(),
         wallet_address: address,
     });
 
@@ -227,13 +234,16 @@ pub async fn start(
         let contract_address = config.oprf_key_registry_contract;
         let cancellation_token = cancellation_token.clone();
         services::key_event_watcher::key_event_watcher_task(
-            rpc_provider,
-            contract_address,
-            dlog_secret_gen_service,
-            config.start_block,
-            started_services.new_service(),
-            transaction_handler,
-            cancellation_token,
+            services::key_event_watcher::KeyEventWatcherTaskConfig {
+                http_provider,
+                ws_provider,
+                contract_address,
+                dlog_secret_gen_service,
+                start_block: config.start_block,
+                start_signal: started_services.new_service(),
+                transaction_handler,
+                cancellation_token,
+            },
         )
     });
 
