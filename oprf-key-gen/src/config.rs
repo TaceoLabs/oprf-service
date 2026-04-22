@@ -153,9 +153,9 @@ pub struct OprfKeyGenServiceConfigMandatoryValues {
 }
 
 impl OprfKeyGenServiceConfig {
-    /// Default max wait time for transaction confirmation (`300 s`).
+    /// Default max wait time for transaction confirmation (`5 min`).
     fn default_max_wait_time_transaction_confirmation() -> Duration {
-        Duration::from_secs(300) // 5min
+        Duration::from_mins(5) // 5min
     }
 
     /// Default max gas per transaction (`8_000_000`).
@@ -178,9 +178,9 @@ impl OprfKeyGenServiceConfig {
         Duration::from_secs(5)
     }
 
-    /// Default I-am-alive interval (`60 s`).
+    /// Default I-am-alive interval (`1 min`).
     fn default_i_am_alive_interval() -> Duration {
-        Duration::from_secs(60)
+        Duration::from_mins(1)
     }
 
     /// Construct with all default values except required fields.
