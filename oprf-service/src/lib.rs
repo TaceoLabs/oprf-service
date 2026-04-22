@@ -71,6 +71,9 @@ pub mod config;
 pub mod metrics;
 pub(crate) mod services;
 
+#[cfg(test)]
+mod tests;
+
 pub use nodes_common::Environment;
 pub use nodes_common::StartedServices;
 pub use nodes_common::web3;

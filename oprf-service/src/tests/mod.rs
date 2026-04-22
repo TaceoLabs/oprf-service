@@ -1,11 +1,12 @@
-use std::{sync::Arc, time::Duration};
+#![allow(clippy::large_futures, reason = "doesnt matter for tests")]
+
+use std::time::Duration;
 
 use axum::extract::ws::close_code;
 use http::StatusCode;
 use oprf_core::ddlog_equality::shamir::DLogProofShareShamir;
 use oprf_test_utils::{
     DeploySetup, OPRF_PEER_ADDRESS_0, OPRF_PEER_PRIVATE_KEY_0, TEST_TIMEOUT, TestSetup,
-    test_secret_manager::TestSecretManager,
 };
 use oprf_types::{
     OprfKeyId, ShareEpoch,
@@ -15,11 +16,17 @@ use serde::{Deserialize, Serialize};
 use tungstenite::protocol::{CloseFrame, frame::coding::CloseCode};
 use uuid::Uuid;
 
-use crate::setup::{
-    INVALID_AUTH_CODE, INVALID_AUTH_MSG, TEST_PROTOCOL_VERSION, TestNode, WireFormat,
+use self::setup::{
+    INVALID_AUTH_CODE, INVALID_AUTH_MSG, NodeTestSecretManager, TEST_PROTOCOL_VERSION, TestNode,
+    WireFormat, wait_until_started,
 };
 
 mod setup;
+
+#[derive(Default, Serialize, Deserialize)]
+struct BadRequest {
+    uuid: Uuid,
+}
 
 #[tokio::test]
 async fn test_can_fetch_new_key() -> eyre::Result<()> {
@@ -27,7 +34,7 @@ async fn test_can_fetch_new_key() -> eyre::Result<()> {
     let node = TestNode::start_with_secret_manager(
         0,
         &setup,
-        Arc::new(TestSecretManager::new(OPRF_PEER_PRIVATE_KEY_0)),
+        NodeTestSecretManager::new(OPRF_PEER_PRIVATE_KEY_0),
     )
     .await?;
     let new_oprf_key_id = OprfKeyId::from(setup::OPRF_KEY_ID);
@@ -63,16 +70,7 @@ async fn shutdown_if_cancellation_token_cancelled() -> eyre::Result<()> {
 async fn test_health_route() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let node = TestNode::start(0, &setup).await?;
-    let started_services = node.started_services.clone();
-    tokio::time::timeout(TEST_TIMEOUT, async {
-        loop {
-            if started_services.all_started() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-    })
-    .await?;
+    wait_until_started(&node.started_services).await?;
     let result = node.server.get("/health").expect_success().await;
     result.assert_status_ok();
     result.assert_text("healthy");
@@ -302,11 +300,11 @@ async fn session_timeout_no_message() -> eyre::Result<()> {
         reason: "timeout".into(),
     };
     tokio::select! {
-        _ = tokio::time::sleep(Duration::from_secs(15)) => {
+        () = tokio::time::sleep(Duration::from_secs(15)) => {
             panic!("should receive close frame within 10 seconds")
         }
         is_message = ws.receive_message() => {
-            setup::assert_close_frame(is_message, should_close_frame);
+            setup::assert_close_frame(is_message, &should_close_frame);
         }
     }
     Ok(())
@@ -343,7 +341,7 @@ async fn message_too_large_inner(format: WireFormat) -> eyre::Result<()> {
         reason: "size exceeds max frame length".into(),
     };
     let is_message = ws.receive_message().await;
-    setup::assert_close_frame(is_message, should_close_frame);
+    setup::assert_close_frame(is_message, &should_close_frame);
 
     Ok(())
 }
@@ -407,11 +405,11 @@ async fn session_timeout_after_init_inner(format: WireFormat) -> eyre::Result<()
         reason: "timeout".into(),
     };
     tokio::select! {
-        _ = tokio::time::sleep(Duration::from_secs(15)) => {
+        () = tokio::time::sleep(Duration::from_secs(15)) => {
             panic!("should receive close frame within 10 seconds")
         }
         is_message = ws.receive_message() => {
-            setup::assert_close_frame(is_message, should_close_frame);
+            setup::assert_close_frame(is_message, &should_close_frame);
         }
     }
     Ok(())
@@ -434,7 +432,7 @@ async fn switch_encoding_failed_inner(
         reason: "unexpected ws message".into(),
     };
 
-    node.challenge_expect_error(&mut ws, challenge, challenge_format, should_close_frame)
+    node.challenge_expect_error(&mut ws, challenge, challenge_format, &should_close_frame)
         .await;
     Ok(())
 }
@@ -450,7 +448,7 @@ async fn auth_failed_inner(format: WireFormat) -> eyre::Result<()> {
         code: CloseCode::from(INVALID_AUTH_CODE),
         reason: INVALID_AUTH_MSG.into(),
     };
-    node.init_expect_error(&request, format, should_close_frame)
+    node.init_expect_error(&request, format, &should_close_frame)
         .await;
     Ok(())
 }
@@ -474,7 +472,7 @@ async fn delete_oprf_key_inner(format: WireFormat) -> eyre::Result<()> {
     node.init_expect_error(
         setup::request(&mut rand::thread_rng()),
         format,
-        should_close_frame,
+        &should_close_frame,
     )
     .await;
 
@@ -498,7 +496,7 @@ async fn init_session_reuse_inner(format: WireFormat) -> eyre::Result<()> {
         code: oprf_error_codes::SESSION_REUSE.into(),
         reason: "session already in use".into(),
     };
-    node.init_expect_error(request1, format, should_close_frame)
+    node.init_expect_error(request1, format, &should_close_frame)
         .await;
 
     Ok(())
@@ -517,7 +515,7 @@ async fn init_bad_blinded_query_inner(format: WireFormat) -> eyre::Result<()> {
         reason: "blinded query must not be identity".into(),
     };
 
-    node.init_expect_error(request, format, should_close_frame)
+    node.init_expect_error(request, format, &should_close_frame)
         .await;
     Ok(())
 }
@@ -526,11 +524,6 @@ async fn init_bad_blinded_query_inner(format: WireFormat) -> eyre::Result<()> {
 async fn init_bad_request_inner(format: WireFormat) -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let node = TestNode::start(0, &setup).await?;
-
-    #[derive(Default, Serialize, Deserialize)]
-    struct BadRequest {
-        uuid: Uuid,
-    }
 
     let mut ws = node
         .server
@@ -565,11 +558,6 @@ async fn init_bad_request_inner(format: WireFormat) -> eyre::Result<()> {
 async fn challenge_bad_request_inner(format: WireFormat) -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let node = TestNode::start(0, &setup).await?;
-
-    #[derive(Default, Serialize, Deserialize)]
-    struct BadRequest {
-        uuid: Uuid,
-    }
 
     let mut ws = node
         .send_success_init_request(format, &mut rand::thread_rng())
@@ -608,7 +596,7 @@ async fn challenge_bad_contributing_parties_inner(format: WireFormat) -> eyre::R
         reason: "not exactly threshold many contributions".into(),
     };
 
-    node.challenge_expect_error(&mut ws, challenge, format, should_close_frame)
+    node.challenge_expect_error(&mut ws, challenge, format, &should_close_frame)
         .await;
 
     Ok(())
@@ -628,7 +616,7 @@ async fn challenge_challenge_not_contributing_party_inner(format: WireFormat) ->
         reason: "contributing parties does not contain my coefficient".into(),
     };
 
-    node.challenge_expect_error(&mut ws, challenge, format, should_close_frame)
+    node.challenge_expect_error(&mut ws, challenge, format, &should_close_frame)
         .await;
 
     Ok(())
@@ -647,7 +635,7 @@ async fn challenge_contributing_parties_not_sorted_inner(format: WireFormat) -> 
         reason: "contributing parties are not sorted".into(),
     };
 
-    node.challenge_expect_error(&mut ws, challenge, format, should_close_frame)
+    node.challenge_expect_error(&mut ws, challenge, format, &should_close_frame)
         .await;
     Ok(())
 }
@@ -665,145 +653,88 @@ async fn challenge_duplicate_contributions_inner(format: WireFormat) -> eyre::Re
         reason: "contributing parties contains duplicate coefficients".into(),
     };
 
-    node.challenge_expect_error(&mut ws, challenge, format, should_close_frame)
+    node.challenge_expect_error(&mut ws, challenge, format, &should_close_frame)
         .await;
     Ok(())
 }
 
-#[tokio::test]
-async fn happy_path_json() -> eyre::Result<()> {
-    happy_path_inner(WireFormat::Json).await
+macro_rules! format_test_pair {
+    ($json_name:ident, $cbor_name:ident, $inner:ident) => {
+        #[tokio::test]
+        async fn $json_name() -> eyre::Result<()> {
+            $inner(WireFormat::Json).await
+        }
+
+        #[tokio::test]
+        async fn $cbor_name() -> eyre::Result<()> {
+            $inner(WireFormat::Cbor).await
+        }
+    };
 }
 
-#[tokio::test]
-async fn happy_path_cbor() -> eyre::Result<()> {
-    happy_path_inner(WireFormat::Cbor).await
-}
-
-#[tokio::test]
-async fn auth_failed_json() -> eyre::Result<()> {
-    auth_failed_inner(WireFormat::Json).await
-}
-
-#[tokio::test]
-async fn auth_failed_cbor() -> eyre::Result<()> {
-    auth_failed_inner(WireFormat::Cbor).await
-}
-
-#[tokio::test]
-async fn delete_oprf_key_json() -> eyre::Result<()> {
-    delete_oprf_key_inner(WireFormat::Json).await
-}
-
-#[tokio::test]
-async fn delete_oprf_key_cbor() -> eyre::Result<()> {
-    delete_oprf_key_inner(WireFormat::Cbor).await
-}
-
-#[tokio::test]
-async fn init_session_reuse_json() -> eyre::Result<()> {
-    init_session_reuse_inner(WireFormat::Json).await
-}
-
-#[tokio::test]
-async fn init_session_reuse_cbor() -> eyre::Result<()> {
-    init_session_reuse_inner(WireFormat::Cbor).await
-}
-
-#[tokio::test]
-async fn init_bad_blinded_query_json() -> eyre::Result<()> {
-    init_bad_blinded_query_inner(WireFormat::Json).await
-}
-
-#[tokio::test]
-async fn init_bad_blinded_query_cbor() -> eyre::Result<()> {
-    init_bad_blinded_query_inner(WireFormat::Cbor).await
-}
-
-#[tokio::test]
-async fn init_bad_request_json() -> eyre::Result<()> {
-    init_bad_request_inner(WireFormat::Json).await
-}
-
-#[tokio::test]
-async fn init_bad_request_cbor() -> eyre::Result<()> {
-    init_bad_request_inner(WireFormat::Cbor).await
-}
-
-#[tokio::test]
-async fn challenge_bad_request_json() -> eyre::Result<()> {
-    challenge_bad_request_inner(WireFormat::Json).await
-}
-
-#[tokio::test]
-async fn challenge_bad_request_cbor() -> eyre::Result<()> {
-    challenge_bad_request_inner(WireFormat::Cbor).await
-}
-
-#[tokio::test]
-async fn challenge_bad_contributing_parties_json() -> eyre::Result<()> {
-    challenge_bad_contributing_parties_inner(WireFormat::Json).await
-}
-
-#[tokio::test]
-async fn challenge_bad_contributing_parties_cbor() -> eyre::Result<()> {
-    challenge_bad_contributing_parties_inner(WireFormat::Cbor).await
-}
-
-#[tokio::test]
-async fn challenge_challenge_not_contributing_party_json() -> eyre::Result<()> {
-    challenge_challenge_not_contributing_party_inner(WireFormat::Json).await
-}
-
-#[tokio::test]
-async fn challenge_challenge_not_contributing_party_cbor() -> eyre::Result<()> {
-    challenge_challenge_not_contributing_party_inner(WireFormat::Cbor).await
-}
-
-#[tokio::test]
-async fn challenge_contributing_parties_not_sorted_json() -> eyre::Result<()> {
-    challenge_contributing_parties_not_sorted_inner(WireFormat::Json).await
-}
-
-#[tokio::test]
-async fn challenge_contributing_parties_not_sorted_cbor() -> eyre::Result<()> {
-    challenge_contributing_parties_not_sorted_inner(WireFormat::Cbor).await
-}
-
-#[tokio::test]
-async fn challenge_duplicate_contributions_json() -> eyre::Result<()> {
-    challenge_duplicate_contributions_inner(WireFormat::Json).await
-}
-
-#[tokio::test]
-async fn challenge_duplicate_contributions_cbor() -> eyre::Result<()> {
-    challenge_duplicate_contributions_inner(WireFormat::Cbor).await
-}
+format_test_pair!(happy_path_json, happy_path_cbor, happy_path_inner);
+format_test_pair!(auth_failed_json, auth_failed_cbor, auth_failed_inner);
+format_test_pair!(
+    delete_oprf_key_json,
+    delete_oprf_key_cbor,
+    delete_oprf_key_inner
+);
+format_test_pair!(
+    init_session_reuse_json,
+    init_session_reuse_cbor,
+    init_session_reuse_inner
+);
+format_test_pair!(
+    init_bad_blinded_query_json,
+    init_bad_blinded_query_cbor,
+    init_bad_blinded_query_inner
+);
+format_test_pair!(
+    init_bad_request_json,
+    init_bad_request_cbor,
+    init_bad_request_inner
+);
+format_test_pair!(
+    challenge_bad_request_json,
+    challenge_bad_request_cbor,
+    challenge_bad_request_inner
+);
+format_test_pair!(
+    challenge_bad_contributing_parties_json,
+    challenge_bad_contributing_parties_cbor,
+    challenge_bad_contributing_parties_inner
+);
+format_test_pair!(
+    challenge_challenge_not_contributing_party_json,
+    challenge_challenge_not_contributing_party_cbor,
+    challenge_challenge_not_contributing_party_inner
+);
+format_test_pair!(
+    challenge_contributing_parties_not_sorted_json,
+    challenge_contributing_parties_not_sorted_cbor,
+    challenge_contributing_parties_not_sorted_inner
+);
+format_test_pair!(
+    challenge_duplicate_contributions_json,
+    challenge_duplicate_contributions_cbor,
+    challenge_duplicate_contributions_inner
+);
 
 #[tokio::test]
 async fn session_timeout_after_init_json() -> eyre::Result<()> {
     session_timeout_after_init_inner(WireFormat::Json).await
 }
 
-#[tokio::test]
-async fn drop_session_id_cbor() -> eyre::Result<()> {
-    drop_session_id_inner(WireFormat::Cbor).await
-}
-
-#[tokio::test]
-async fn drop_session_id_json() -> eyre::Result<()> {
-    drop_session_id_inner(WireFormat::Json).await
-}
-
-#[tokio::test]
-async fn message_too_large_json() -> eyre::Result<()> {
-    message_too_large_inner(WireFormat::Json).await
-}
-
-#[tokio::test]
-async fn message_too_large_cbor() -> eyre::Result<()> {
-    message_too_large_inner(WireFormat::Cbor).await
-}
+format_test_pair!(
+    drop_session_id_json,
+    drop_session_id_cbor,
+    drop_session_id_inner
+);
+format_test_pair!(
+    message_too_large_json,
+    message_too_large_cbor,
+    message_too_large_inner
+);
 
 #[tokio::test]
 async fn switch_encoding_failed_json_cbor() -> eyre::Result<()> {

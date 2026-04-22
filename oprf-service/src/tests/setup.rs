@@ -20,31 +20,71 @@ use oprf_types::{
     api::{OprfPublicKeyWithEpoch, OprfRequest, OprfRequestAuthenticator, OprfResponse},
     crypto::OprfPublicKey,
 };
+use parking_lot::Mutex;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use taceo_oprf_service::secret_manager::SecretManager;
-use taceo_oprf_service::{OprfServiceBuilder, config::OprfNodeServiceConfig};
 use tokio_util::sync::CancellationToken;
 use tungstenite::protocol::CloseFrame;
 use uuid::Uuid;
+
+use crate::secret_manager::SecretManager;
+use crate::{OprfServiceBuilder, config::OprfNodeServiceConfig};
 
 pub const OPRF_KEY_ID: u32 = 42;
 pub const TEST_PROTOCOL_VERSION: &str = "1.3.101";
 pub const INVALID_AUTH_CODE: u16 = 4500;
 pub const INVALID_AUTH_MSG: &str = "invalid auth";
 
-pub struct NodeTestSecretManager(Arc<TestSecretManager>);
+#[derive(Clone)]
+pub struct NodeTestSecretManager(Arc<Mutex<TestSecretManager>>);
+
+impl NodeTestSecretManager {
+    pub fn new(wallet_private_key: &str) -> Self {
+        Self(Arc::new(Mutex::new(TestSecretManager::new(
+            wallet_private_key,
+        ))))
+    }
+
+    pub fn service(&self) -> crate::secret_manager::SecretManagerService {
+        Arc::new(self.clone())
+    }
+
+    pub fn add_random_key_material_with_id<R: Rng + CryptoRng>(
+        &self,
+        oprf_key_id: OprfKeyId,
+        rng: &mut R,
+    ) {
+        self.0
+            .lock()
+            .add_random_key_material_with_id(oprf_key_id, rng);
+    }
+
+    pub fn add_random_key_material_with_id_epoch<R: Rng + CryptoRng>(
+        &self,
+        oprf_key_id: OprfKeyId,
+        epoch: ShareEpoch,
+        rng: &mut R,
+    ) {
+        self.0
+            .lock()
+            .add_random_key_material_with_id_epoch(oprf_key_id, epoch, rng);
+    }
+
+    pub fn get_key_material(&self, oprf_key_id: OprfKeyId) -> Option<OprfKeyMaterial> {
+        self.0.lock().get_key_material(oprf_key_id)
+    }
+}
 
 #[async_trait::async_trait]
 impl SecretManager for NodeTestSecretManager {
     async fn load_address(&self) -> eyre::Result<Address> {
-        self.0.load_address().await
+        Ok(self.0.lock().load_address())
     }
 
     async fn load_secrets(
         &self,
     ) -> eyre::Result<std::collections::HashMap<OprfKeyId, OprfKeyMaterial>> {
-        Ok(self.0.clone_key_materials())
+        Ok(self.0.lock().clone_key_materials())
     }
 
     async fn get_oprf_key_material(
@@ -52,7 +92,7 @@ impl SecretManager for NodeTestSecretManager {
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
     ) -> eyre::Result<Option<OprfKeyMaterial>> {
-        self.0.get_oprf_key_material(oprf_key_id, epoch).await
+        Ok(self.0.lock().get_oprf_key_material(oprf_key_id, epoch))
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -88,7 +128,7 @@ impl OprfRequestAuthenticator for ConfigurableTestAuthenticator {
 
 pub struct TestNode {
     pub party_id: usize,
-    pub secret_manager: Arc<TestSecretManager>,
+    pub secret_manager: NodeTestSecretManager,
     pub server: Arc<TestServer>,
     pub started_services: StartedServices,
     pub key_event_watcher_task: tokio::task::JoinHandle<eyre::Result<()>>,
@@ -99,7 +139,7 @@ impl fmt::Debug for TestNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TestNode")
             .field("party_id", &self.party_id)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -119,7 +159,7 @@ impl TestNode {
     pub async fn start_with_secret_manager(
         party_id: usize,
         setup: &TestSetup,
-        secret_manager: Arc<TestSecretManager>,
+        secret_manager: NodeTestSecretManager,
     ) -> eyre::Result<Self> {
         let TestSetup {
             anvil,
@@ -152,7 +192,7 @@ impl TestNode {
         let started_services = StartedServices::new();
         let (service, key_event_watcher_task) = OprfServiceBuilder::init(
             config,
-            Arc::new(NodeTestSecretManager(Arc::clone(&secret_manager))),
+            secret_manager.service(),
             rpc_provider,
             started_services.clone(),
             child_token.clone(),
@@ -183,7 +223,7 @@ impl TestNode {
         setup: &TestSetup,
         oprf_key_id: u32,
     ) -> eyre::Result<Self> {
-        let secret_manager = Arc::new(TestSecretManager::new(PEER_PRIVATE_KEYS[party_id]));
+        let secret_manager = NodeTestSecretManager::new(PEER_PRIVATE_KEYS[party_id]);
         let key_id = OprfKeyId::from(oprf_key_id);
         secret_manager.add_random_key_material_with_id(key_id, &mut rand::thread_rng());
         Self::start_with_secret_manager(party_id, setup, secret_manager).await
@@ -274,7 +314,7 @@ impl TestNode {
         &self,
         oprf_req: T,
         format: WireFormat,
-        should_close_frame: CloseFrame,
+        should_close_frame: &CloseFrame,
     ) {
         let mut websocket = self.create_websocket().await;
         ws_send(&mut websocket, &oprf_req, format).await;
@@ -287,7 +327,7 @@ impl TestNode {
         websocket: &mut TestWebSocket,
         oprf_req: T,
         format: WireFormat,
-        should_close_frame: CloseFrame,
+        should_close_frame: &CloseFrame,
     ) {
         ws_send(websocket, &oprf_req, format).await;
         let is_message = websocket.receive_message().await;
@@ -295,10 +335,23 @@ impl TestNode {
     }
 }
 
-pub fn assert_close_frame(is_message: tungstenite::Message, should_close_frame: CloseFrame) {
+pub async fn wait_until_started(started_services: &StartedServices) -> eyre::Result<()> {
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        loop {
+            if started_services.all_started() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await?;
+    Ok(())
+}
+
+pub fn assert_close_frame(is_message: tungstenite::Message, should_close_frame: &CloseFrame) {
     match is_message {
         tungstenite::Message::Close(Some(is_close_frame)) => {
-            assert_eq!(is_close_frame, should_close_frame)
+            assert_eq!(is_close_frame, *should_close_frame);
         }
         _ => panic!("unexpected message - expected CloseFrame"),
     }
