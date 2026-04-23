@@ -16,6 +16,7 @@ alloy = { workspace = true, features = [
   "contract",
   "provider-http",
   "provider-ws",
+  "reqwest-rustls-tls",
   "rpc-types-eth",
   "sol-types"
 ] }
