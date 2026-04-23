@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+## [0.14.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.13.1...taceo-oprf-service-v0.14.0)
+
+### 🚜 Refactor
+
+
+- *(key-gen)* [**breaking**] Persist intermediates in secret-manager - ([43a8a32](https://github.com/TaceoLabs/oprf-service/commit/43a8a322d4ca1ff7f28ad7dfe40674bacb580807))
+
+### 🏗️ Build
+
+
+- *(deps)* Reduce alloy deps to minimal needed feature sets ([#567](https://github.com/TaceoLabs/oprf-service/pull/567)) - ([ce56cff](https://github.com/TaceoLabs/oprf-service/commit/ce56cffe9e1a4143f6c5a8e2c4e6bbaa57e5867e))
+- *(key-gen,service)* Add rustls feature for alloy - ([94e48cb](https://github.com/TaceoLabs/oprf-service/commit/94e48cb6e8c634ab290e7f917960cbfed60f5a2a))
+- *(key-gen,service)* [**breaking**] Bump to alloy version 2.0.0 and nodes-common 0.5 - ([4388bd9](https://github.com/TaceoLabs/oprf-service/commit/4388bd9e87b132faed0e2e1fbbefc31e2a60bae2))
+
+### 🧪 Testing
+
+
+- *(service)* Cleanup tests move integration -> unit - ([dce68f4](https://github.com/TaceoLabs/oprf-service/commit/dce68f40610f9904bd30c24ee394c95f8233ac05))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(client)* Remove unnecessary silent close on CloseFrame - ([d6180a4](https://github.com/TaceoLabs/oprf-service/commit/d6180a4c0c5cbfcad31dec2640ff3ab9e83b3a50))
+- *(key-gen,service)* Use from_mins over from_secs - ([5fc6ebe](https://github.com/TaceoLabs/oprf-service/commit/5fc6ebeb313d2ee1a0194f7417ce3a02375471c7))
+
+
 ## [0.13.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.13.0...taceo-oprf-service-v0.13.1)
 
 ### ⛰️ Features

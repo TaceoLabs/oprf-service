@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.13.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.12.1...taceo-oprf-types-v0.13.0)
+
+### 🚜 Refactor
+
+
+- *(oprf-types)* Introduce 'chain' feature, mark alloy/circom-types/groth16-sol optional - ([ca8d253](https://github.com/TaceoLabs/oprf-service/commit/ca8d2533ef80761d0b41ff29dcd3dfb907b4ecb8))
+- *(oprf-types)* Use ruint::aliases instead of alloy::primitives for U160/U256 - ([05feef5](https://github.com/TaceoLabs/oprf-service/commit/05feef50e8a105f8eaaaf673763f33e1308366e5))
+- *(types)* [**breaking**] Removed dead structs - ([81a5728](https://github.com/TaceoLabs/oprf-service/commit/81a572815db6650a3cbf751356ba96d11f0eeb5f))
+
+
 ## [0.12.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.12.0...taceo-oprf-types-v0.12.1)
 
 ### 🚜 Refactor

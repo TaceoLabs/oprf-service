@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.9.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.9.1...taceo-oprf-dev-client-v0.9.2)
+
+### 🏗️ Build
+
+
+- *(deps)* Reduce alloy deps to minimal needed feature sets ([#567](https://github.com/TaceoLabs/oprf-service/pull/567)) - ([ce56cff](https://github.com/TaceoLabs/oprf-service/commit/ce56cffe9e1a4143f6c5a8e2c4e6bbaa57e5867e))
+
+
 ## [0.9.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.9.0...taceo-oprf-dev-client-v0.9.1)
 
 ### ⚙️ Miscellaneous Tasks

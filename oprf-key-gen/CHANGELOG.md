@@ -2,6 +2,39 @@
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.9.1...taceo-oprf-key-gen-v0.10.0)
+
+### ⛰️ Features
+
+
+- Add additional retries for null responses ([#568](https://github.com/TaceoLabs/oprf-service/pull/568)) - ([feea138](https://github.com/TaceoLabs/oprf-service/commit/feea138670b87c0412ff827c9bf073be215b4c4f))
+
+### 🚜 Refactor
+
+
+- *(key-gen)* [**breaking**] Persist intermediates in secret-manager - ([43a8a32](https://github.com/TaceoLabs/oprf-service/commit/43a8a322d4ca1ff7f28ad7dfe40674bacb580807))
+- *(types)* [**breaking**] Removed dead structs - ([81a5728](https://github.com/TaceoLabs/oprf-service/commit/81a572815db6650a3cbf751356ba96d11f0eeb5f))
+
+### 🏗️ Build
+
+
+- *(deps)* Reduce alloy deps to minimal needed feature sets ([#567](https://github.com/TaceoLabs/oprf-service/pull/567)) - ([ce56cff](https://github.com/TaceoLabs/oprf-service/commit/ce56cffe9e1a4143f6c5a8e2c4e6bbaa57e5867e))
+- *(key-gen,service)* Add rustls feature for alloy - ([94e48cb](https://github.com/TaceoLabs/oprf-service/commit/94e48cb6e8c634ab290e7f917960cbfed60f5a2a))
+- *(key-gen,service)* [**breaking**] Bump to alloy version 2.0.0 and nodes-common 0.5 - ([4388bd9](https://github.com/TaceoLabs/oprf-service/commit/4388bd9e87b132faed0e2e1fbbefc31e2a60bae2))
+
+### 🧪 Testing
+
+
+- *(key-gen)* Cleanup tests move integration -> unit - ([ee74cc3](https://github.com/TaceoLabs/oprf-service/commit/ee74cc3332aa6004946411d36f58914da0ff130d))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(client)* Remove unnecessary silent close on CloseFrame - ([d6180a4](https://github.com/TaceoLabs/oprf-service/commit/d6180a4c0c5cbfcad31dec2640ff3ab9e83b3a50))
+- *(key-gen)* Fix trace msg in transaction handler ([#569](https://github.com/TaceoLabs/oprf-service/pull/569)) - ([e7ad671](https://github.com/TaceoLabs/oprf-service/commit/e7ad6716d3ae871da10dfd7a8287b4607d566a5a))
+- *(key-gen,service)* Use from_mins over from_secs - ([5fc6ebe](https://github.com/TaceoLabs/oprf-service/commit/5fc6ebeb313d2ee1a0194f7417ce3a02375471c7))
+
+
 ## [0.9.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.9.0...taceo-oprf-key-gen-v0.9.1)
 
 ### ⚙️ Miscellaneous Tasks
