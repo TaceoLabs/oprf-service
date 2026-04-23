@@ -4,8 +4,6 @@ name: Build and Push (oprf-key-gen)
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
     tags:
       - 'oprf-key-gen-v*'
 
