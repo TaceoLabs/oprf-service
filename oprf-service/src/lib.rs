@@ -130,10 +130,10 @@ impl OprfServiceBuilder {
             .context("while loading address")?;
 
         tracing::info!("connecting with ws provider..");
-        // Build WebSocket provider
         let ws_rpc_provider = ProviderBuilder::new()
             .connect_ws(WsConnect::new(config.ws_rpc_url.clone()))
-            .await?
+            .await
+            .context("while connecting ws provider")?
             .erased();
 
         tracing::info!("loading party id with address {address}..");

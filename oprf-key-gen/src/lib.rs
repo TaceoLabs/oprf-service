@@ -179,20 +179,20 @@ pub async fn start(
     tracing::info!("my wallet address: {address}");
     let wallet = EthereumWallet::from(private_key);
 
-    let http_provider =
+    let http_rpc_provider =
         nodes_common::web3::HttpRpcProviderBuilder::with_config(&config.rpc_provider_config)
             .environment(config.environment)
             .wallet(wallet)
             .build()
             .context("while init blockchain connection")?;
 
-    // Build WebSocket provider
-    let ws_provider = ProviderBuilder::new()
+    let ws_rpc_provider = ProviderBuilder::new()
         .connect_ws(WsConnect::new(config.ws_rpc_url.clone()))
-        .await?
+        .await
+        .context("while connecting ws provider")?
         .erased();
 
-    let balance = http_provider
+    let balance = http_rpc_provider
         .get_balance(address)
         .await
         .context("while get_balance")?;
@@ -204,7 +204,7 @@ pub async fn start(
     ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ATTRID_WALLET_ADDRESS => address.to_string())
         .set(f64::from(balance) / ETH_TO_WEI as f64);
 
-    contract_sanity_checks(&http_provider, address, &config)
+    contract_sanity_checks(&http_rpc_provider, address, &config)
         .await
         .context("while doing sanity checks")?;
 
@@ -225,7 +225,7 @@ pub async fn start(
         sleep_between_get_receipt: config.sleep_between_get_receipt,
         max_tries_fetching_receipt: config.max_tries_fetching_receipt,
         max_gas_per_transaction: config.max_gas_per_transaction,
-        rpc_provider: http_provider.clone(),
+        rpc_provider: http_rpc_provider.clone(),
         wallet_address: address,
     });
 
@@ -235,8 +235,8 @@ pub async fn start(
         let cancellation_token = cancellation_token.clone();
         services::key_event_watcher::key_event_watcher_task(
             services::key_event_watcher::KeyEventWatcherTaskConfig {
-                http_provider,
-                ws_provider,
+                http_rpc_provider,
+                ws_rpc_provider,
                 contract_address,
                 dlog_secret_gen_service,
                 start_block: config.start_block,

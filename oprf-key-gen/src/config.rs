@@ -9,8 +9,8 @@
 //! - Optional fields with sensible defaults (see below).
 //! - Serde deserialization (with [`humantime_serde`] for durations).
 //!
-//! RPC connectivity (HTTP and WebSocket URLs, chain ID) is configured separately
-//! via `nodes_common::web3::RpcProviderConfig`.
+//! HTTP RPC connectivity is configured via `nodes_common::web3::HttpRpcProviderConfig`.
+//! The WebSocket URL for event subscriptions is a separate top-level field (`ws_rpc_url`).
 //!
 //! # Defaults
 //!
@@ -65,7 +65,7 @@ pub struct OprfKeyGenServiceConfig {
     #[serde(rename = "rpc")]
     pub rpc_provider_config: web3::HttpRpcProviderConfig,
 
-    /// The blockchain RPC config
+    /// The websocket RPC url used for `eth_subscribe`.
     pub ws_rpc_url: Url,
 
     /// Max time we wait for a submitted transaction receipt to reach the required
@@ -156,7 +156,7 @@ pub struct OprfKeyGenServiceConfigMandatoryValues {
     /// Blockchain RPC configuration used for contract interaction.
     pub rpc_provider_config: HttpRpcProviderConfig,
 
-    /// The ws URL for `etg_getLogs`.
+    /// The websocket RPC url used for `eth_subscribe`.
     pub ws_rpc_url: Url,
 }
 

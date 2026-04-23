@@ -5,7 +5,7 @@
 //!
 //! The struct supports:
 //! - Required fields: `environment`, `oprf_key_registry_contract`,
-//!   `chain_ws_rpc_url`, and `version_req`.
+//!   `ws_rpc_url`, and `version_req`.
 //! - Optional fields with sensible defaults (see below).
 //! - Serde deserialization (with [`humantime_serde`] for durations).
 //!

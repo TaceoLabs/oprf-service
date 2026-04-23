@@ -52,16 +52,6 @@ impl WebSocketSession {
         }
     }
 
-    /// Tries to close the websocket on a best effort basis without sending a close-frame to the server and initiating tear down.
-    async fn silent_close(&mut self) {
-        if let Err(err) = self.inner.close(None).await {
-            tracing::trace!(
-                "Received an error when trying to best effort close {}: {err:?}",
-                self.service
-            );
-        }
-    }
-
     /// Calls [`Self::best_effort_close`] and returns an [`NodeError::UnexpectedMessage`] with the provided reason.
     async fn protocol_error<T>(&mut self, reason: T) -> NodeError
     where
@@ -131,8 +121,6 @@ impl WebSocketSession {
             },
 
             tungstenite::Message::Close(frame) => {
-                self.silent_close().await;
-
                 if let Some(frame) = frame
                     && frame.code != CloseCode::Normal
                 {

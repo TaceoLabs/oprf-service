@@ -76,8 +76,8 @@ impl From<alloy::contract::Error> for TransactionError {
 }
 
 pub(crate) struct KeyEventWatcherTaskConfig {
-    pub(crate) http_provider: web3::HttpRpcProvider,
-    pub(crate) ws_provider: DynProvider,
+    pub(crate) http_rpc_provider: web3::HttpRpcProvider,
+    pub(crate) ws_rpc_provider: DynProvider,
     pub(crate) contract_address: Address,
     pub(crate) dlog_secret_gen_service: DLogSecretGenService,
     pub(crate) start_block: Option<u64>,
@@ -102,8 +102,8 @@ pub(crate) async fn key_event_watcher_task(args: KeyEventWatcherTaskConfig) -> e
 /// Filters for various key generation event signatures and handles them
 async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
     let KeyEventWatcherTaskConfig {
-        http_provider,
-        ws_provider,
+        http_rpc_provider,
+        ws_rpc_provider,
         contract_address,
         dlog_secret_gen_service,
         start_block,
@@ -111,7 +111,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
         transaction_handler,
         cancellation_token,
     } = args;
-    let contract = OprfKeyRegistry::new(contract_address, http_provider.inner());
+    let contract = OprfKeyRegistry::new(contract_address, http_rpc_provider.inner());
     let event_signatures = vec![
         OprfKeyRegistry::SecretGenRound1::SIGNATURE_HASH,
         OprfKeyRegistry::SecretGenRound2::SIGNATURE_HASH,
@@ -128,7 +128,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
         .from_block(BlockNumberOrTag::Latest)
         .event_signature(event_signatures.clone());
     // subscribe now so we don't miss any events between now and when we start processing past events
-    let sub = ws_provider.subscribe_logs(&filter).await?;
+    let sub = ws_rpc_provider.subscribe_logs(&filter).await?;
     let mut latest_block = 0;
 
     // if start_block is set, load past events from there to head
@@ -139,7 +139,7 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
             .from_block(BlockNumberOrTag::Number(start_block))
             .to_block(BlockNumberOrTag::Latest)
             .event_signature(event_signatures);
-        let logs = http_provider
+        let logs = http_rpc_provider
             .get_logs(&filter)
             .await
             .context("while loading past logs")?;
