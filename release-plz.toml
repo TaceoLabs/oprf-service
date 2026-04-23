@@ -44,11 +44,11 @@ body = """
 commit_parsers = [
   { message = "^feat", group = "<!-- 0 -->⛰️ Features" },
   { message = "^fix", group = "<!-- 1 -->🐛 Bug Fixes" },
+  { message = "^refactor\\(clippy\\)", skip = true },
   { message = "^refactor", group = "<!-- 2 -->🚜 Refactor" },
   { message = "^build", group = "<!-- 3 -->🏗️ Build" },
   { message = "^doc", group = "<!-- 4 -->📚 Documentation" },
   { message = "^perf", group = "<!-- 5 -->⚡ Performance" },
-  { message = "^refactor\\(clippy\\)", skip = true },
   { message = "^style", group = "<!-- 6 -->🎨 Styling" },
   { message = "^test", group = "<!-- 7 -->🧪 Testing" },
   { message = "^chore\\(release\\):", skip = true },
