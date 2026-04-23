@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.11.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.10.1...taceo-oprf-test-utils-v0.11.0)
+
+### 🚜 Refactor
+
+
+- *(key-gen)* [**breaking**] Persist intermediates in secret-manager - ([43a8a32](https://github.com/TaceoLabs/oprf-service/commit/43a8a322d4ca1ff7f28ad7dfe40674bacb580807))
+
+### 🏗️ Build
+
+
+- *(deps)* Reduce alloy deps to minimal needed feature sets ([#567](https://github.com/TaceoLabs/oprf-service/pull/567)) - ([ce56cff](https://github.com/TaceoLabs/oprf-service/commit/ce56cffe9e1a4143f6c5a8e2c4e6bbaa57e5867e))
+
+### 🧪 Testing
+
+
+- *(key-gen)* Cleanup tests move integration -> unit - ([ee74cc3](https://github.com/TaceoLabs/oprf-service/commit/ee74cc3332aa6004946411d36f58914da0ff130d))
+
+
 ## [0.10.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.10.0...taceo-oprf-test-utils-v0.10.1)
 
 ### ⚙️ Miscellaneous Tasks

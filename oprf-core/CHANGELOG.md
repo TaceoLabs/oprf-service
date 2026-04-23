@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.5.3](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-core-v0.5.2...taceo-oprf-core-v0.5.3)
+
+### 🚜 Refactor
+
+
+- Make one type serializable - ([43a8a32](https://github.com/TaceoLabs/oprf-service/commit/43a8a322d4ca1ff7f28ad7dfe40674bacb580807))
+
+
 ## [0.5.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-core-v0.5.1...taceo-oprf-core-v0.5.2)
 
 ### 🚜 Refactor

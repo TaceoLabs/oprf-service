@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.9.4](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.9.3...taceo-oprf-client-v0.9.4)
+
+### 🐛 Bug Fixes
+
+
+- *(client)* Add a dedicated ShareEpoch mismatch error [TAC-511] ([#556](https://github.com/TaceoLabs/oprf-service/pull/556)) - ([efcec8c](https://github.com/TaceoLabs/oprf-service/commit/efcec8c9bc758d2e164c34bcaac9de346c08f307))
+
+### 🚜 Refactor
+
+
+- *(oprf-client)* Disable default features on oprf-types - ([4655d04](https://github.com/TaceoLabs/oprf-service/commit/4655d04aeee2e715eb0dc6d26e03dd439a724efc))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(client)* Remove unnecessary silent close on CloseFrame - ([d6180a4](https://github.com/TaceoLabs/oprf-service/commit/d6180a4c0c5cbfcad31dec2640ff3ab9e83b3a50))
+
+
 ## [0.9.3](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.9.2...taceo-oprf-client-v0.9.3)
 
 ### 🚜 Refactor
