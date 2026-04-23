@@ -45,7 +45,7 @@ nodes-common = { workspace = true, features = [
   "web3"
 ] }
 nodes-observability = { workspace = true }
-oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
+oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5" }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.13" }
 rand.workspace = true
 reqwest = { workspace = true, features = ["json"] }

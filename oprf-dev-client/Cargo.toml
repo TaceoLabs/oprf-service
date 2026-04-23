@@ -24,7 +24,7 @@ clap = { workspace = true, features = ["derive", "env"] }
 eyre.workspace = true
 humantime.workspace = true
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.9" }
-oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
+oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5" }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.13" }
 rand.workspace = true
 rand_chacha.workspace = true

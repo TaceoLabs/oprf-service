@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [0.12.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.12.1...taceo-oprf-v0.12.2)
+## [0.13.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.12.1...taceo-oprf-v0.13.0)
 
 ### 🏗️ Build
 

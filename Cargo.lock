@@ -6188,7 +6188,7 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf"
-version = "0.12.2"
+version = "0.13.0"
 dependencies = [
  "taceo-oprf-client",
  "taceo-oprf-core",
@@ -6224,7 +6224,7 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf-core"
-version = "0.6.0"
+version = "0.5.3"
 dependencies = [
  "ark-bn254",
  "ark-ec",
