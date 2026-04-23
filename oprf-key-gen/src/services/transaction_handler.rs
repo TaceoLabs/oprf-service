@@ -100,7 +100,7 @@ impl TransactionHandler {
     ///     })
     ///     .await?;
     /// ```
-    #[instrument(level = "info", skip_all)]
+    #[instrument(level = "info", skip_all, fields(tx_hash = tracing::field::Empty))]
     pub(crate) async fn attempt_transaction<P, D, N, F>(
         &self,
         transaction: F,
@@ -119,9 +119,9 @@ impl TransactionHandler {
             .with_required_confirmations(self.confirmations_for_transaction)
             .with_timeout(Some(self.max_wait_time_watch_transaction));
         let tx_hash = pending_transaction.tx_hash().to_owned();
+        let current_span = tracing::Span::current();
+        current_span.record("tx_hash", tx_hash.to_string());
         let receipt_result = pending_transaction.get_receipt().await;
-
-        tracing::trace!("transaction with hash: {tx_hash} confirmed");
 
         if let Ok(balance) = self.rpc_provider.get_balance(self.wallet_address).await {
             let balance_eth = alloy::primitives::utils::format_ether(balance);
@@ -179,6 +179,10 @@ where
 }
 
 fn handle_success_receipt<R: ReceiptResponse>(receipt: &R) {
+    tracing::trace!(
+        "transaction with hash: {} confirmed",
+        receipt.transaction_hash()
+    );
     let gas_used = receipt
         .gas_used()
         .to_string()
