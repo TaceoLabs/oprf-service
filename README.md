@@ -18,6 +18,11 @@ This is a monorepo containing:
 * `oprf-test-utils`: A crate implementing test utils.
 * `oprf-types`: A crate implementing types that are shared between client, service, and the blockchain.
 
+## Other repositories
+
+* [oprf-key-registry](https://github.com/TaceoLabs/oprf-key-registry): A repository containing the smart contracts in the `contracts` submodule.
+* [oprf-nr](https://github.com/TaceoLabs/oprf-nr): A repository containing audited Noir circuits for proving the OPRF operations in zero-knowledge.
+
 ## Dev Dependencies
 
 * [just](https://github.com/casey/just?tab=readme-ov-file#installation)
