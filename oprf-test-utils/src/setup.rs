@@ -33,7 +33,7 @@ impl DeploySetup {
             DeploySetup::ThreeFive => "OPRFKeyGen.25.arks.zkey",
         };
         let path = PathBuf::from(std::env!("CARGO_MANIFEST_DIR"));
-        path.join(format!("../circom/main/key-gen/{file}"))
+        path.join(format!("../artifacts/{file}"))
     }
 
     pub fn witness_path(&self) -> PathBuf {
@@ -42,7 +42,7 @@ impl DeploySetup {
             DeploySetup::ThreeFive => "OPRFKeyGenGraph.25.bin",
         };
         let path = PathBuf::from(std::env!("CARGO_MANIFEST_DIR"));
-        path.join(format!("../circom/main/key-gen/{file}"))
+        path.join(format!("../artifacts/{file}"))
     }
 
     pub fn addresses(&self) -> Vec<Address> {

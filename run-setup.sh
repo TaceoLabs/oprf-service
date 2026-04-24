@@ -93,8 +93,8 @@ start_keygen() {
         TACEO_OPRF_KEY_GEN__BIND_ADDR=0.0.0.0:$port \
         TACEO_OPRF_KEY_GEN__SERVICE__WALLET_PRIVATE_KEY=${node_private_keys[$i]} \
         TACEO_OPRF_KEY_GEN__SERVICE__ENVIRONMENT=dev \
-        TACEO_OPRF_KEY_GEN__SERVICE__ZKEY_PATH=./circom/main/key-gen/OPRFKeyGen.13.arks.zkey \
-        TACEO_OPRF_KEY_GEN__SERVICE__WITNESS_GRAPH_PATH=./circom/main/key-gen/OPRFKeyGenGraph.13.bin \
+        TACEO_OPRF_KEY_GEN__SERVICE__ZKEY_PATH=./artifacts/OPRFKeyGen.13.arks.zkey \
+        TACEO_OPRF_KEY_GEN__SERVICE__WITNESS_GRAPH_PATH=./artifacts/OPRFKeyGenGraph.13.bin \
         TACEO_OPRF_KEY_GEN__SERVICE__OPRF_KEY_REGISTRY_CONTRACT=$oprf_key_registry \
         TACEO_OPRF_KEY_GEN__SERVICE__CONFIRMATIONS_FOR_TRANSACTION=1 \
         TACEO_OPRF_KEY_GEN__SERVICE__EXPECTED_THRESHOLD=2 \

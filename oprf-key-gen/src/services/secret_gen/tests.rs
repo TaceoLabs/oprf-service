@@ -64,11 +64,11 @@ async fn test_secret_gen() -> eyre::Result<()> {
     let mut rng = rand::thread_rng();
     let oprf_key_id = OprfKeyId::new(rng.r#gen());
     let threshold = 2;
-    let graph = PathBuf::from(std::env!("CARGO_MANIFEST_DIR"))
-        .join("../circom/main/key-gen/OPRFKeyGenGraph.13.bin");
+    let graph =
+        PathBuf::from(std::env!("CARGO_MANIFEST_DIR")).join("../artifacts/OPRFKeyGenGraph.13.bin");
     let graph = std::fs::read(graph)?;
-    let key_gen_zkey = PathBuf::from(std::env!("CARGO_MANIFEST_DIR"))
-        .join("../circom/main/key-gen/OPRFKeyGen.13.arks.zkey");
+    let key_gen_zkey =
+        PathBuf::from(std::env!("CARGO_MANIFEST_DIR")).join("../artifacts/OPRFKeyGen.13.arks.zkey");
     let key_gen_zkey = std::fs::read(key_gen_zkey)?;
     let key_gen_material = CircomGroth16MaterialBuilder::new()
         .validate(Validate::No)

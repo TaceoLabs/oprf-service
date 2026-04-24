@@ -68,11 +68,11 @@ async fn load_wallet_private_key_returns_correct_key() -> eyre::Result<()> {
 }
 
 fn key_gen_material() -> eyre::Result<CircomGroth16Material> {
-    let graph = PathBuf::from(std::env!("CARGO_MANIFEST_DIR"))
-        .join("../circom/main/key-gen/OPRFKeyGenGraph.13.bin");
+    let graph =
+        PathBuf::from(std::env!("CARGO_MANIFEST_DIR")).join("../artifacts/OPRFKeyGenGraph.13.bin");
     let graph = std::fs::read(graph)?;
-    let key_gen_zkey = PathBuf::from(std::env!("CARGO_MANIFEST_DIR"))
-        .join("../circom/main/key-gen/OPRFKeyGen.13.arks.zkey");
+    let key_gen_zkey =
+        PathBuf::from(std::env!("CARGO_MANIFEST_DIR")).join("../artifacts/OPRFKeyGen.13.arks.zkey");
     let key_gen_zkey = std::fs::read(key_gen_zkey)?;
     CircomGroth16MaterialBuilder::new()
         .validate(Validate::No)

@@ -6,7 +6,6 @@
 
 This is a monorepo containing:
 
-* `circom`: A collection of Circom circuits and test vectors for them.
 * `contracts`: An implementation of the required smart contracts.
 * `docs`: A typst document serving as a writeup of the overall scheme.
 * `oprf`: A meta-crate (`taceo-oprf`) that re-exports all other crates for convenience.
