@@ -6,6 +6,7 @@
 
 This is a monorepo containing:
 
+* `artifacts`: KeyGen proving keys, generated with a distributed ceremony.
 * `contracts`: An implementation of the required smart contracts.
 * `docs`: A typst document serving as a writeup of the overall scheme.
 * `oprf`: A meta-crate (`taceo-oprf`) that re-exports all other crates for convenience.
@@ -20,6 +21,7 @@ This is a monorepo containing:
 ## Other repositories
 
 * [oprf-key-registry](https://github.com/TaceoLabs/oprf-key-registry): A repository containing the smart contracts in the `contracts` submodule.
+* [oprf-circom](https://github.com/TaceoLabs/oprf-circom): A repository containing audited Circom circuits for proving the OPRF operations in zero-knowledge.
 * [oprf-nr](https://github.com/TaceoLabs/oprf-nr): A repository containing audited Noir circuits for proving the OPRF operations in zero-knowledge.
 
 ## Dev Dependencies
