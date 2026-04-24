@@ -9,7 +9,6 @@ This is a monorepo containing:
 * `circom`: A collection of Circom circuits and test vectors for them.
 * `contracts`: An implementation of the required smart contracts.
 * `docs`: A typst document serving as a writeup of the overall scheme.
-* `noir`: A collection of Noir circuits.
 * `oprf`: A meta-crate (`taceo-oprf`) that re-exports all other crates for convenience.
 * `oprf-client`: A crate implementing a client lib for the OPRF service.
 * `oprf-core`: A crate implementing a verifiable OPRF based on the TwoHashDH OPRF construction + a threshold variant of it.
