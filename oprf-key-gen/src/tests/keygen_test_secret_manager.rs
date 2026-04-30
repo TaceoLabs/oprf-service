@@ -2,6 +2,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use async_trait::async_trait;
+use nodes_common::web3::event_stream::ChainCursor;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_test_utils::{TEST_TIMEOUT, test_secret_manager::TestSecretManager};
 use oprf_types::{
@@ -11,7 +12,10 @@ use oprf_types::{
 use parking_lot::Mutex;
 use rand::{CryptoRng, Rng};
 
-use crate::secret_manager::{KeyGenIntermediateValues, SecretManager, SecretManagerError};
+use crate::{
+    event_cursor_store::ChainCursorStorage,
+    secret_manager::{KeyGenIntermediateValues, SecretManager, SecretManagerError},
+};
 
 struct TestKeyGenSecretManagerState {
     base: TestSecretManager,
@@ -20,8 +24,29 @@ struct TestKeyGenSecretManagerState {
     deleted_keys: HashMap<OprfKeyId, ShareEpoch>,
 }
 
+#[derive(Clone, Default)]
+pub(crate) struct TestChainCursorService(Arc<Mutex<ChainCursor>>);
+
 #[derive(Clone)]
 pub(crate) struct TestKeyGenSecretManager(Arc<Mutex<TestKeyGenSecretManagerState>>);
+
+impl TestChainCursorService {
+    pub(crate) fn service() -> crate::ChainCursorService {
+        Arc::new(Self::default())
+    }
+}
+
+#[async_trait]
+impl ChainCursorStorage for TestChainCursorService {
+    async fn load_chain_cursor(&self) -> eyre::Result<ChainCursor> {
+        Ok(*self.0.lock())
+    }
+
+    async fn store_chain_cursor(&self, chain_cursor: ChainCursor) -> eyre::Result<()> {
+        *self.0.lock() = chain_cursor;
+        Ok(())
+    }
+}
 
 impl TestKeyGenSecretManager {
     pub(crate) fn new(wallet_private_key: &str) -> Self {

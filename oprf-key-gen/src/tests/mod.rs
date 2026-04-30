@@ -12,6 +12,7 @@ use oprf_test_utils::{OPRF_PEER_ADDRESS_0, TEST_TIMEOUT};
 use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
 use tokio_util::sync::CancellationToken;
 
+use crate::tests::keygen_test_secret_manager::TestChainCursorService;
 use crate::{
     KeyGenTasks,
     config::{OprfKeyGenServiceConfig, OprfKeyGenServiceConfigMandatoryValues},
@@ -82,6 +83,7 @@ impl TestKeyGen {
         let (router, key_gen_task) = start(
             config,
             keygen_secret_manager,
+            TestChainCursorService::service(),
             started_services.clone(),
             child_token.clone(),
         )

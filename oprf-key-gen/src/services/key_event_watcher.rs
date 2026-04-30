@@ -1,7 +1,12 @@
 //! Alloy-based Key Generation Event Watcher
 //!
-//! This module provides [`key_event_watcher_task`], an task than can be spawned to monitor an on-chain `OprfKeyRegistry` contract for key generation events.
+//! This module provides [`key_event_watcher_task`], a task that can be spawned to monitor an
+//! on-chain `OprfKeyRegistry` contract for key generation events.
 //!
+//! The watcher loads the persisted [`ChainCursor`](nodes_common::web3::event_stream::ChainCursor)
+//! from the [`ChainCursorService`](crate::event_cursor_store::ChainCursorService) on startup and
+//! passes it to the event stream so backfill resumes from the last processed `(block, log_index)`.
+//! After each handled log the cursor is stored unconditionally before propagating any handler error.
 //! The watcher subscribes to various key generation events and reports contributions back to the contract.
 
 use std::sync::{
@@ -10,6 +15,7 @@ use std::sync::{
 };
 
 use crate::{
+    event_cursor_store::ChainCursorService,
     metrics::{
         METRICS_ATTRID_PROTOCOL, METRICS_ATTRID_ROLE, METRICS_ATTRVAL_PROTOCOL_KEY_GEN,
         METRICS_ATTRVAL_PROTOCOL_RESHARE, METRICS_ATTRVAL_ROLE_CONSUMER,
@@ -26,15 +32,17 @@ use crate::{
     },
 };
 use alloy::{
-    eips::BlockNumberOrTag,
     primitives::{Address, LogData, U256},
-    providers::{DynProvider, Provider},
-    rpc::types::{Filter, Log},
+    providers::DynProvider,
+    rpc::types::Log,
     sol_types::SolEvent as _,
 };
 use eyre::Context;
-use futures::StreamExt as _;
-use nodes_common::web3;
+use futures::StreamExt;
+use nodes_common::web3::{
+    self,
+    event_stream::{ChainCursor, EventStreamBuilder, EventStreamConfig},
+};
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     chain::{
@@ -80,9 +88,10 @@ pub(crate) struct KeyEventWatcherTaskConfig {
     pub(crate) ws_rpc_provider: DynProvider,
     pub(crate) contract_address: Address,
     pub(crate) dlog_secret_gen_service: DLogSecretGenService,
-    pub(crate) start_block: Option<u64>,
+    pub(crate) chain_cursor_service: ChainCursorService,
     pub(crate) start_signal: Arc<AtomicBool>,
     pub(crate) transaction_handler: TransactionHandler,
+    pub(crate) event_stream_config: EventStreamConfig,
     pub(crate) cancellation_token: CancellationToken,
 }
 
@@ -94,23 +103,24 @@ pub(crate) async fn key_event_watcher_task(args: KeyEventWatcherTaskConfig) -> e
     // shutdown service if event watcher encounters an error and drops this guard
     let _drop_guard = args.cancellation_token.clone().drop_guard();
     tracing::info!("start handling events");
-    handle_events(args)
-        .await
-        .inspect(|()| tracing::info!("successfully closed key_event_watcher without error"))
-}
-
-/// Filters for various key generation event signatures and handles them
-async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
     let KeyEventWatcherTaskConfig {
         http_rpc_provider,
         ws_rpc_provider,
         contract_address,
         dlog_secret_gen_service,
-        start_block,
+        chain_cursor_service,
         start_signal,
         transaction_handler,
+        event_stream_config,
         cancellation_token,
     } = args;
+
+    tracing::info!("loading chain-cursor");
+    let chain_cursor = chain_cursor_service
+        .load_chain_cursor()
+        .await
+        .context("while loading chain cursor")?;
+    tracing::info!("chain cursor at: {chain_cursor}");
     let contract = OprfKeyRegistry::new(contract_address, http_rpc_provider.inner());
     let event_signatures = vec![
         OprfKeyRegistry::SecretGenRound1::SIGNATURE_HASH,
@@ -123,75 +133,44 @@ async fn handle_events(args: KeyEventWatcherTaskConfig) -> eyre::Result<()> {
         OprfKeyRegistry::KeyGenAbort::SIGNATURE_HASH,
         OprfKeyRegistry::NotEnoughProducers::SIGNATURE_HASH,
     ];
-    let filter = Filter::new()
-        .address(contract_address)
-        .from_block(BlockNumberOrTag::Latest)
-        .event_signature(event_signatures.clone());
-    // subscribe now so we don't miss any events between now and when we start processing past events
-    let sub = ws_rpc_provider.subscribe_logs(&filter).await?;
-    let mut latest_block = 0;
 
-    // if start_block is set, load past events from there to head
-    if let Some(start_block) = start_block {
-        tracing::info!("loading past events from block {start_block}..");
-        let filter = Filter::new()
-            .address(contract_address)
-            .from_block(BlockNumberOrTag::Number(start_block))
-            .to_block(BlockNumberOrTag::Latest)
-            .event_signature(event_signatures);
-        let logs = http_rpc_provider
-            .get_logs(&filter)
-            .await
-            .context("while loading past logs")?;
-        for log in logs {
-            let block_number = log.block_number.unwrap_or_default();
-            latest_block = block_number;
-            tracing::info!("handling past event from block {block_number}..");
-            key_gen_event(
-                log,
-                &contract,
-                &dlog_secret_gen_service,
-                &transaction_handler,
-            )
-            .await
-            .context("while handling past log")?;
-        }
-    }
+    let mut event_stream = EventStreamBuilder::with_config(
+        chain_cursor,
+        contract_address,
+        http_rpc_provider,
+        ws_rpc_provider.clone(),
+        event_signatures,
+        event_stream_config,
+    )
+    .build()
+    .await
+    .context("while building event-stream")?;
 
-    let mut stream = sub.into_stream();
     start_signal.store(true, Ordering::Relaxed);
-    tracing::info!("key event watcher is ready");
     loop {
         let log = tokio::select! {
-            log = stream.next() => {
-                log.ok_or_else(||eyre::eyre!("logs subscribe stream was closed"))?
+            log = event_stream.next() => {
+                log.ok_or_else(||eyre::eyre!("logs subscribe stream was closed"))?.context("while fetching event from event_stream")?
             }
             () = cancellation_token.cancelled() => {
                 break;
             }
         };
-        // skip logs from blocks we've already handled with get_logs
-        if let Some(block_number) = log.block_number
-            && block_number <= latest_block
-        {
-            tracing::info!(
-                "skipping event from block {block_number} - already handled up to {latest_block}"
-            );
-            continue;
-        }
         key_gen_event(
             log,
             &contract,
             &dlog_secret_gen_service,
+            &chain_cursor_service,
             &transaction_handler,
         )
-        .await
-        .context("while handling log")?;
+        .await?;
     }
+
+    tracing::info!("successfully closed key_event_watcher without error");
     Ok(())
 }
 
-#[instrument(level = "info", skip_all, fields(oprf_key_id=tracing::field::Empty, epoch=tracing::field::Empty, event=tracing::field::Empty))]
+#[instrument(level = "info", skip_all, fields(oprf_key_id=tracing::field::Empty, epoch=tracing::field::Empty, event=tracing::field::Empty, block=tracing::field::Empty,index=tracing::field::Empty))]
 #[allow(
     clippy::too_many_lines,
     reason = "Is easier to have one large match instead of many single methods"
@@ -200,8 +179,20 @@ async fn key_gen_event(
     log: Log<LogData>,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &DLogSecretGenService,
+    chain_cursor_service: &ChainCursorService,
     transaction_handler: &TransactionHandler,
 ) -> Result<()> {
+    let block = log
+        .block_number
+        .ok_or_else(|| eyre::eyre!("block number empty in log"))?;
+    let index = log
+        .log_index
+        .ok_or_else(|| eyre::eyre!("index empty in log"))?;
+    let new_chain_cursor = ChainCursor::new(block, index);
+
+    let handle_span = tracing::Span::current();
+    handle_span.record("block", block);
+    handle_span.record("index", index);
     let result = match log.topic0() {
         Some(&OprfKeyRegistry::SecretGenRound1::SIGNATURE_HASH) => {
             let OprfKeyRegistry::SecretGenRound1 {
@@ -212,7 +203,6 @@ async fn key_gen_event(
                 .context("while decoding key-gen round1 event")?
                 .inner
                 .data;
-            let handle_span = tracing::Span::current();
             handle_span.record("oprf_key_id", oprfKeyId.to_string());
             handle_span.record("epoch", "0");
             handle_span.record("event", "key-gen round 1");
@@ -369,6 +359,12 @@ async fn key_gen_event(
             return Ok(());
         }
     };
+    // we store the chain_event_cursor irrelevant if we encountered an error or not.
+    // TODO This needs some fine tuning in a follow up PR though.
+    chain_cursor_service
+        .store_chain_cursor(new_chain_cursor)
+        .await
+        .context("while storing new event cursor")?;
     match result {
         Ok(()) => Ok(()),
         Err(TransactionError::Revert(RevertError::OprfKeyRegistry(

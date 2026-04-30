@@ -12,7 +12,7 @@ use itertools::Itertools;
 use oprf_types::crypto::{EphemeralEncryptionPublicKey, SecretGenCiphertexts};
 use rand::Rng;
 
-use crate::secret_manager::{SecretManager, postgres};
+use crate::{postgres, secret_manager::SecretManager};
 
 use super::*;
 

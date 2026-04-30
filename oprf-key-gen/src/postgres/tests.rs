@@ -2,7 +2,8 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use crate::secret_manager::postgres::{PostgresSecretManager, to_db_ark_serialize_uncompressed};
+use crate::event_cursor_store::ChainCursorStorage;
+use crate::postgres::{PostgresDb, to_db_ark_serialize_uncompressed};
 use crate::secret_manager::{SecretManager as _, SecretManagerError};
 use crate::services::secret_gen::DLogSecretGenService;
 use alloy::{primitives::U160, signers::local::PrivateKeySigner, sol_types::SolValue as _};
@@ -10,6 +11,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize as _};
 use eyre::Context;
 use groth16_material::circom::{CircomGroth16Material, CircomGroth16MaterialBuilder, Validate};
 use nodes_common::postgres::{PostgresConfig, SanitizedSchema};
+use nodes_common::web3::event_stream::ChainCursor;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_test_utils::{TEST_ETH_ADDRESS, TEST_ETH_PRIVATE_KEY, TEST_SCHEMA};
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
@@ -17,9 +19,7 @@ use secrecy::SecretString;
 use sqlx::Row;
 use sqlx::{PgConnection, postgres::PgRow};
 
-pub(crate) async fn postgres_secret_manager(
-    connection_string: &str,
-) -> eyre::Result<PostgresSecretManager> {
+pub(crate) async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<PostgresDb> {
     postgres_secret_manager_with_schema(
         connection_string,
         TEST_SCHEMA.parse().expect("Is a valid schema"),
@@ -30,14 +30,14 @@ pub(crate) async fn postgres_secret_manager(
 pub(crate) async fn postgres_secret_manager_with_schema(
     connection_string: &str,
     schema: SanitizedSchema,
-) -> eyre::Result<PostgresSecretManager> {
+) -> eyre::Result<PostgresDb> {
     let mut pg_connection =
         oprf_test_utils::open_pg_connection(connection_string, TEST_SCHEMA).await?;
     sqlx::migrate!("./migrations")
         .run(&mut pg_connection)
         .await?;
 
-    PostgresSecretManager::init(&PostgresConfig::with_default_values(
+    PostgresDb::init(&PostgresConfig::with_default_values(
         SecretString::from(connection_string.to_owned()),
         schema,
     ))
@@ -211,7 +211,7 @@ async fn key_gen_round1_is_idempotent() -> eyre::Result<()> {
         .fetch_keygen_intermediates(oprf_key_id, epoch)
         .await?
         .expect("intermediates should be present");
-    let serialized_intermediates = to_db_ark_serialize_uncompressed(&intermediates);
+    let serialized_intermediates = super::to_db_ark_serialize_uncompressed(&intermediates);
 
     let retried_contribution = dlog_secret_gen
         .key_gen_round1(oprf_key_id, epoch, 2)
@@ -798,6 +798,71 @@ async fn test_delete() -> eyre::Result<()> {
             .get_share_by_epoch(oprf_key_id, epoch42)
             .await?
             .is_none()
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_load_chain_cursor_on_empty_db() -> eyre::Result<()> {
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager = postgres_secret_manager(&connection_string).await?;
+
+    let should_genesis_cursor = secret_manager.load_chain_cursor().await?;
+    assert!(
+        should_genesis_cursor.is_genesis(),
+        "Should be genesis cursor on empty DB"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_insert_chain_cursor_then_load() -> eyre::Result<()> {
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager = postgres_secret_manager(&connection_string).await?;
+
+    let should_chain_cursor = ChainCursor::new(42, 0x42);
+    secret_manager
+        .store_chain_cursor(should_chain_cursor)
+        .await?;
+    let is_chain_cursor = secret_manager.load_chain_cursor().await?;
+    assert_eq!(
+        is_chain_cursor, should_chain_cursor,
+        "Should load inserted chain cursor"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_insert_chain_cursor_refusing_rollback() -> eyre::Result<()> {
+    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
+    let secret_manager = postgres_secret_manager(&connection_string).await?;
+
+    let should_chain_cursor = ChainCursor::new(42, 0x42);
+    let chain_cursor_earlier_block = ChainCursor::new(41, 0x42);
+    let chain_cursor_earlier_index = ChainCursor::new(42, 0x41);
+
+    secret_manager
+        .store_chain_cursor(should_chain_cursor)
+        .await?;
+
+    secret_manager
+        .store_chain_cursor(chain_cursor_earlier_block)
+        .await?;
+
+    assert_eq!(
+        should_chain_cursor,
+        secret_manager.load_chain_cursor().await?,
+        "Should have refused insertions of older cursor"
+    );
+
+    secret_manager
+        .store_chain_cursor(chain_cursor_earlier_index)
+        .await?;
+
+    assert_eq!(
+        should_chain_cursor,
+        secret_manager.load_chain_cursor().await?,
+        "Should have refused insertions of older cursor"
     );
     Ok(())
 }

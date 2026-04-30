@@ -14,6 +14,8 @@
 //!
 //! # Defaults
 //!
+//! For the backfill defaults, we refer to `nodes_common::web3::event_stream`.
+//!
 //! | Field                                    | Default     |
 //! |------------------------------------------|-------------|
 //! | `max_wait_time_transaction_confirmation` | 300 s       |
@@ -28,6 +30,7 @@ use std::{path::PathBuf, time::Duration};
 
 use alloy::primitives::Address;
 use nodes_common::web3::HttpRpcProviderConfig;
+use nodes_common::web3::event_stream::EventStreamConfig;
 use nodes_common::{
     Environment,
     web3::{self},
@@ -76,9 +79,12 @@ pub struct OprfKeyGenServiceConfig {
     #[serde(with = "humantime_serde")]
     pub max_wait_time_transaction_confirmation: Duration,
 
-    /// The block number to start listening for events from the `OprfKeyRegistry` contract.
-    /// If not set, will start from the latest block.
-    pub start_block: Option<u64>,
+    /// Additional config for backfill.
+    ///
+    /// See `nodes-common` for the optional values that might be configured.
+    #[serde(default)]
+    #[serde(rename = "backfill")]
+    pub event_stream_config: EventStreamConfig,
 
     /// Maximum amount of gas a single transaction is allowed to consume.
     /// This acts as a safety limit to prevent transactions from exceeding expected execution costs. The default value is set to approximately 2× the average gas used by a round-2 transaction, which is currently the most gas-intensive round.
@@ -217,12 +223,12 @@ impl OprfKeyGenServiceConfig {
             rpc_provider_config,
             max_wait_time_transaction_confirmation:
                 Self::default_max_wait_time_transaction_confirmation(),
-            start_block: None,
             max_gas_per_transaction: Self::default_max_gas_per_transaction(),
             confirmations_for_transaction: Self::default_confirmations_for_transaction(),
             i_am_alive_interval: Self::default_i_am_alive_interval(),
             max_tries_fetching_receipt: Self::default_max_tries_fetching_receipt(),
             sleep_between_get_receipt: Self::default_sleep_between_get_receipt(),
+            event_stream_config: EventStreamConfig::default(),
         }
     }
 }

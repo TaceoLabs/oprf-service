@@ -50,7 +50,7 @@ humantime-serde = "1.1.1"
 itertools = "0.14"
 k256 = "0.13"
 metrics = "0.24"
-nodes-common = { package = "taceo-nodes-common", version = "0.5", default-features = false }
+nodes-common = { package = "taceo-nodes-common", path = "../nodes-helpers/nodes-common", version = "0.5", default-features = false }
 nodes-observability = { package = "taceo-nodes-observability", version = "0.1" }
 num-bigint = "0.4"
 parking_lot = "0.12"

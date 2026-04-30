@@ -14,8 +14,6 @@ use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 
 pub use crate::services::secret_gen::KeyGenIntermediateValues;
 
-pub mod postgres;
-
 /// Dynamic trait object for secret manager service.
 ///
 /// Must be `Send + Sync` to work with async contexts (e.g., Axum).
