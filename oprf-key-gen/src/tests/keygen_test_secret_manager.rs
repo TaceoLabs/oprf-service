@@ -31,8 +31,12 @@ pub(crate) struct TestChainCursorService(Arc<Mutex<ChainCursor>>);
 pub(crate) struct TestKeyGenSecretManager(Arc<Mutex<TestKeyGenSecretManagerState>>);
 
 impl TestChainCursorService {
-    pub(crate) fn service() -> crate::ChainCursorService {
-        Arc::new(Self::default())
+    pub(crate) fn with_cursor(cursor: ChainCursor) -> Self {
+        Self(Arc::new(Mutex::new(cursor)))
+    }
+
+    pub(crate) fn service(&self) -> crate::ChainCursorService {
+        Arc::new(self.clone())
     }
 }
 
@@ -43,7 +47,10 @@ impl ChainCursorStorage for TestChainCursorService {
     }
 
     async fn store_chain_cursor(&self, chain_cursor: ChainCursor) -> eyre::Result<()> {
-        *self.0.lock() = chain_cursor;
+        let mut stored_cursor = self.0.lock();
+        if stored_cursor.is_before(chain_cursor) {
+            *stored_cursor = chain_cursor;
+        }
         Ok(())
     }
 }

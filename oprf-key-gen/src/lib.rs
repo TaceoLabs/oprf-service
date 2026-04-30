@@ -1,4 +1,4 @@
-// #![deny(missing_docs)]
+#![deny(missing_docs)]
 #![deny(clippy::all, clippy::pedantic)]
 #![deny(
     clippy::allow_attributes_without_reason,
@@ -71,7 +71,7 @@ pub use services::secret_manager;
 pub struct KeyGenTasks {
     key_event_watcher: tokio::task::JoinHandle<eyre::Result<()>>,
 
-    // keep the providers as long alive as the task are alive
+    // keep the providers alive as long as the tasks are
     _http_rpc_provider: web3::HttpRpcProvider,
     _ws_rpc_provider: DynProvider,
 }

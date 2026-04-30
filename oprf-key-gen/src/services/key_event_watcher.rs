@@ -3,8 +3,8 @@
 //! This module provides [`key_event_watcher_task`], a task that can be spawned to monitor an
 //! on-chain `OprfKeyRegistry` contract for key generation events.
 //!
-//! The watcher loads the persisted [`ChainCursor`](nodes_common::web3::event_stream::ChainCursor)
-//! from the [`ChainCursorService`](crate::event_cursor_store::ChainCursorService) on startup and
+//! The watcher loads the persisted [`ChainCursor`]
+//! from the [`ChainCursorService`] on startup and
 //! passes it to the event stream so backfill resumes from the last processed `(block, log_index)`.
 //! After each handled log the cursor is stored unconditionally before propagating any handler error.
 //! The watcher subscribes to various key generation events and reports contributions back to the contract.
@@ -221,7 +221,6 @@ async fn key_gen_event(
                 .context("while decoding key-gen round2 event")?
                 .inner
                 .data;
-            let handle_span = tracing::Span::current();
             handle_span.record("oprf_key_id", oprfKeyId.to_string());
             handle_span.record("epoch", epoch.to_string());
             let epoch = ShareEpoch::from(epoch);
@@ -246,7 +245,6 @@ async fn key_gen_event(
                 .inner
                 .data;
             let oprf_key_id = OprfKeyId::from(oprfKeyId);
-            let handle_span = tracing::Span::current();
             handle_span.record("oprf_key_id", oprf_key_id.to_string());
             handle_span.record("epoch", "0");
             handle_span.record("event", "key-gen round 3");
@@ -260,7 +258,6 @@ async fn key_gen_event(
                 .data;
             let oprf_key_id = OprfKeyId::from(oprfKeyId);
             let epoch = ShareEpoch::from(epoch);
-            let handle_span = tracing::Span::current();
             handle_span.record("oprf_key_id", oprf_key_id.to_string());
             handle_span.record("epoch", epoch.to_string());
             handle_span.record("event", "finalize");
@@ -278,7 +275,6 @@ async fn key_gen_event(
                 .data;
             let oprf_key_id = OprfKeyId::from(oprfKeyId);
             let epoch = ShareEpoch::from(epoch);
-            let handle_span = tracing::Span::current();
             handle_span.record("oprf_key_id", oprf_key_id.to_string());
             handle_span.record("epoch", epoch.to_string());
             handle_span.record("event", "reshare round 1");
@@ -304,7 +300,6 @@ async fn key_gen_event(
                 .data;
             let oprf_key_id = OprfKeyId::from(oprfKeyId);
             let epoch = ShareEpoch::from(epoch);
-            let handle_span = tracing::Span::current();
             handle_span.record("oprf_key_id", oprf_key_id.to_string());
             handle_span.record("epoch", epoch.to_string());
             handle_span.record("event", "reshare round 3");
@@ -325,7 +320,6 @@ async fn key_gen_event(
                 .inner
                 .data;
             let oprf_key_id = OprfKeyId::from(oprfKeyId);
-            let handle_span = tracing::Span::current();
             handle_span.record("oprf_key_id", oprf_key_id.to_string());
             handle_span.record("event", "abort");
             handle_abort(oprf_key_id, secret_gen).await
@@ -337,7 +331,6 @@ async fn key_gen_event(
                 .inner
                 .data;
             let oprf_key_id = OprfKeyId::from(oprfKeyId);
-            let handle_span = tracing::Span::current();
             handle_span.record("oprf_key_id", oprf_key_id.to_string());
             handle_span.record("event", "delete");
             handle_delete(oprf_key_id, secret_gen).await
@@ -349,7 +342,6 @@ async fn key_gen_event(
                 .inner
                 .data;
             let oprf_key_id = OprfKeyId::from(oprfKeyId);
-            let handle_span = tracing::Span::current();
             handle_span.record("oprf_key_id", oprf_key_id.to_string());
             handle_span.record("event", "not enough producers");
             handle_not_enough_producers(oprf_key_id, secret_gen).await

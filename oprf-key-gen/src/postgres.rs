@@ -64,8 +64,6 @@ enum PostgresDbError {
 impl PostgresDb {
     /// Initializes a [`PostgresDb`] by building the connection pool, ensuring the configured schema exists, and running all pending migrations.
     ///
-    /// Creates the Postgres connection pool, ensures the configured schema exists, and runs all pending database migrations.
-    ///
     /// # Errors
     /// Returns an error if creating the database pool fails, or if running the migrations fails.
     #[instrument(level = "debug", skip_all)]
