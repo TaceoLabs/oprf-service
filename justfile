@@ -17,10 +17,14 @@ contract-tests:
 
 [group('test')]
 e2e-test:
-    @bash run-setup.sh e2e-test || { echo -e "\033[1;41m===== TEST FAILED =====\033[0m" ; exit 1; }
+    @bash scripts/run-setup.sh e2e-test || { echo -e "\033[1;41m===== TEST FAILED =====\033[0m" ; exit 1; }
 
 [group('test')]
-all-tests: rust-tests contract-tests e2e-test
+backfill-monkey-test:
+    @bash scripts/run-backfill-monkey-test.sh || { echo -e "\033[1;41m===== BACKFILL MONKEY TEST FAILED =====\033[0m" ; exit 1; }
+
+[group('test')]
+all-tests: rust-tests contract-tests e2e-test backfill-monkey-test
 
 [group('test')]
 generate-contract-kats:
@@ -29,7 +33,7 @@ generate-contract-kats:
 
 [group('local-setup')]
 run-setup:
-    @bash run-setup.sh sleep
+    @bash scripts/run-setup.sh sleep
 
 [group('ci')]
 check-pr: lint all-tests
