@@ -115,7 +115,7 @@ impl ChainCursorStorage for PostgresDb {
     #[instrument(level = "debug", skip_all)]
     #[allow(
         clippy::cast_sign_loss,
-        reason = "We want to loose the sign because sqlx can only store i64, but we have u64"
+        reason = "We serialize the u64 as i64 due sqlx limitations. We deserialize it then to u64 which is ok"
     )]
     async fn load_chain_cursor(&self) -> eyre::Result<ChainCursor> {
         tracing::trace!("loading chain event cursor...");

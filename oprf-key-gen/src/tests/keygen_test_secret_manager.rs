@@ -49,7 +49,7 @@ impl ChainCursorStorage for TestChainCursorService {
     async fn store_chain_cursor(&self, chain_cursor: ChainCursor) -> eyre::Result<()> {
         let mut stored_cursor = self.0.lock();
         if stored_cursor.is_before(chain_cursor) {
-            *stored_cursor = chain_cursor;
+            eyre::bail!("trying to rewind cursor")
         }
         Ok(())
     }
