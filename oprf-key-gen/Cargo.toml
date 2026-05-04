@@ -19,7 +19,7 @@ alloy = { workspace = true, features = [
   "reqwest-rustls-tls",
   "rpc-types-eth",
   "signer-local",
-  "sol-types"
+  "sol-types",
 ] }
 ark-babyjubjub = { workspace = true }
 ark-bn254.workspace = true
@@ -42,7 +42,7 @@ nodes-common = { workspace = true, features = [
   "api",
   "postgres",
   "serde",
-  "web3"
+  "web3",
 ] }
 nodes-observability = { workspace = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5" }
@@ -57,7 +57,7 @@ sqlx = { workspace = true, features = [
   "migrate",
   "postgres",
   "runtime-tokio",
-  "tls-rustls-aws-lc-rs"
+  "tls-rustls-aws-lc-rs",
 ] }
 thiserror.workspace = true
 tokio = { workspace = true, features = [
@@ -72,6 +72,9 @@ tokio-util = { workspace = true }
 tower-http = { workspace = true, features = ["set-header", "trace"] }
 tracing.workspace = true
 zeroize = { workspace = true, features = ["derive"] }
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = "0.6"
 
 [dev-dependencies]
 axum-test = { workspace = true, features = ["ws"] }
