@@ -1,9 +1,9 @@
 use crate::secret_manager::{SecretManager, postgres::PostgresSecretManager};
 use alloy::primitives::U160;
 use ark_serialize::CanonicalSerialize;
-use nodes_common::postgres::PostgresConfig;
+use nodes_common::postgres::{PostgresConfig, SanitizedSchema};
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_test_utils::{OPRF_PEER_ADDRESS_0, TEST_SCHEMA};
+use oprf_test_utils::OPRF_PEER_ADDRESS_0;
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 use secrecy::SecretString;
 use sqlx::PgConnection;
@@ -15,17 +15,20 @@ fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: &T) -> Vec<u8> {
     bytes
 }
 
-async fn postgres_secret_manager(connection_string: &str) -> eyre::Result<PostgresSecretManager> {
-    let mut pg_connection =
-        oprf_test_utils::open_pg_connection(connection_string, TEST_SCHEMA).await?;
+async fn postgres_secret_manager()
+-> eyre::Result<(PostgresSecretManager, &'static str, SanitizedSchema)> {
+    let conn = oprf_test_utils::shared_postgres_testcontainer().await?;
+    let schema = oprf_test_utils::next_test_schema();
+    let mut pg_connection = oprf_test_utils::open_pg_connection(conn, &schema.to_string()).await?;
     sqlx::migrate!("../oprf-key-gen/migrations")
         .run(&mut pg_connection)
         .await?;
-    PostgresSecretManager::init(&PostgresConfig::with_default_values(
-        SecretString::from(connection_string),
-        TEST_SCHEMA.parse().expect("Is a valid schema"),
+    let mgr = PostgresSecretManager::init(&PostgresConfig::with_default_values(
+        SecretString::from(conn.to_owned()),
+        schema.clone(),
     ))
-    .await
+    .await?;
+    Ok((mgr, conn, schema))
 }
 
 async fn insert_row(
@@ -82,8 +85,7 @@ async fn insert_address(address: &str, connection: &mut PgConnection) -> eyre::R
 
 #[tokio::test]
 async fn test_load_all_secret_empty() -> eyre::Result<()> {
-    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
-    let secret_manager = postgres_secret_manager(&connection_string).await?;
+    let (secret_manager, _, _) = postgres_secret_manager().await?;
     let key_material_store = secret_manager.load_secrets().await?;
     assert!(key_material_store.is_empty());
     Ok(())
@@ -91,8 +93,7 @@ async fn test_load_all_secret_empty() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn load_address_empty() -> eyre::Result<()> {
-    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
-    let secret_manager = postgres_secret_manager(&connection_string).await?;
+    let (secret_manager, _, _) = postgres_secret_manager().await?;
     let report = secret_manager
         .load_address()
         .await
@@ -106,10 +107,10 @@ async fn load_address_empty() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn load_address_corrupt() -> eyre::Result<()> {
-    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
-    let secret_manager = postgres_secret_manager(&connection_string).await?;
+    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
 
-    let mut conn = oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
+    let mut conn =
+        oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
     insert_address("SomethingThatIsNotAnAddress", &mut conn).await?;
 
     let report = secret_manager
@@ -122,11 +123,11 @@ async fn load_address_corrupt() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn load_address_success() -> eyre::Result<()> {
-    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
-    let secret_manager = postgres_secret_manager(&connection_string).await?;
+    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
 
     let should_address = OPRF_PEER_ADDRESS_0;
-    let mut conn = oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
+    let mut conn =
+        oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
     insert_address(&should_address.to_string(), &mut conn).await?;
 
     let is_address = secret_manager.load_address().await.expect("Should work");
@@ -136,11 +137,9 @@ async fn load_address_success() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_load_all_secret_three_shares() -> eyre::Result<()> {
-    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
-    // runs migrations
-    let secret_manager = postgres_secret_manager(&connection_string).await?;
-
-    let mut conn = oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
+    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
+    let mut conn =
+        oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
 
     let oprf_key_id0 = OprfKeyId::new(U160::from(42));
     let oprf_key_id1 = OprfKeyId::new(U160::from(128));
@@ -181,11 +180,9 @@ async fn test_load_all_secret_three_shares() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_get_oprf_key_material() -> eyre::Result<()> {
-    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
-    // runs migrations
-    let secret_manager = postgres_secret_manager(&connection_string).await?;
-
-    let mut conn = oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
+    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
+    let mut conn =
+        oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
 
     let oprf_key_id0 = OprfKeyId::new(U160::from(42));
     let oprf_key_id1 = OprfKeyId::new(U160::from(128));
@@ -251,8 +248,7 @@ async fn test_get_oprf_key_material() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_load_all_secret_with_deleted() -> eyre::Result<()> {
-    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
-    let secret_manager = postgres_secret_manager(&connection_string).await?;
+    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
     let oprf_key_id0 = OprfKeyId::new(U160::from(42));
     let oprf_key_id1 = OprfKeyId::new(U160::from(128));
     let oprf_key_id2 = OprfKeyId::new(U160::from(6891));
@@ -266,7 +262,8 @@ async fn test_load_all_secret_with_deleted() -> eyre::Result<()> {
     let share1 = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
     let share2 = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
 
-    let mut conn = oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
+    let mut conn =
+        oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
     insert_row(oprf_key_id0, share0.clone(), epoch0, public_key0, &mut conn).await?;
     insert_row(oprf_key_id1, share1.clone(), epoch1, public_key1, &mut conn).await?;
     insert_row(oprf_key_id2, share2.clone(), epoch2, public_key2, &mut conn).await?;
@@ -295,14 +292,14 @@ async fn test_load_all_secret_with_deleted() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_get_deleted_secret() -> eyre::Result<()> {
-    let (_postgres, connection_string) = oprf_test_utils::postgres_testcontainer().await?;
-    let secret_manager = postgres_secret_manager(&connection_string).await?;
+    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
     let epoch = ShareEpoch::new(42);
     let share = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
 
-    let mut conn = oprf_test_utils::open_pg_connection(&connection_string, TEST_SCHEMA).await?;
+    let mut conn =
+        oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
     insert_row(oprf_key_id, share.clone(), epoch, public_key, &mut conn).await?;
 
     delete_row(oprf_key_id, &mut conn).await?;

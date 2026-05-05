@@ -38,6 +38,7 @@ futures = { workspace = true }
 groth16-material = { workspace = true, optional = true }
 groth16-sol = { workspace = true, optional = true }
 itertools.workspace = true
+nodes-common = { workspace = true, features = ["postgres"], optional = true }
 nodes-observability = { workspace = true, optional = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5" }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.13" }
@@ -75,4 +76,4 @@ generate-test-transcript = [
   "dep:groth16-sol",
   "dep:nodes-observability"
 ]
-postgres-test-container = ["dep:sqlx", "dep:testcontainers-modules"]
+postgres-test-container = ["dep:sqlx", "dep:testcontainers-modules", "dep:nodes-common"]

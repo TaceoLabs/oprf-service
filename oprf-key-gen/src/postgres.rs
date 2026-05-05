@@ -1,34 +1,56 @@
-//! This module provides an implementation of [`SecretManager`] using a Postgres database to store shares.
+//! Postgres backend for the OPRF key-gen service.
 //!
-//! The node wallet address, in-progress key-gen state, pending shares, and finalized shares are
-//! persisted in Postgres so the service can resume protocol rounds across process restarts.
+//! This module provides [`PostgresDb`], a single Postgres-backed store that implements both
+//! [`SecretManager`] and [`ChainCursorStorage`] on one shared [`sqlx::PgPool`].
+//!
+//! - [`SecretManager`]: persists the node wallet address, in-progress key-gen state,
+//!   pending shares, and finalized shares so the service can resume protocol rounds across
+//!   process restarts.
+//! - [`ChainCursorStorage`]: persists the `(block, log_index)` cursor used by the
+//!   `key_event_watcher` service to resume event-log backfill after a restart.
+//!
+//! The schema is managed by the embedded migrations in `./migrations`, applied automatically
+//! during [`PostgresDb::init`].
 
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-
 use async_trait::async_trait;
+use nodes_common::web3::event_stream::ChainCursor;
+use oprf_core::ddlog_equality::shamir::DLogShareShamir;
+use oprf_types::crypto::OprfPublicKey;
+use sqlx::Acquire;
+use sqlx::PgExecutor;
+use sqlx::Row as _;
+use tracing::instrument;
+
+use crate::secret_manager;
+use crate::secret_manager::KeyGenIntermediateValues;
+use crate::secret_manager::SecretManager;
+use crate::secret_manager::SecretManagerError;
+use crate::services::event_cursor_store::ChainCursorStorage;
 use backon::BackoffBuilder;
 use backon::ConstantBackoff;
 use backon::ConstantBuilder;
 use backon::Retryable;
 use eyre::Context;
 use nodes_common::postgres::{CreateSchema, PostgresConfig};
-use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
-use sqlx::Acquire;
-use sqlx::PgExecutor;
+use oprf_types::{OprfKeyId, ShareEpoch};
 use sqlx::PgPool;
-use tracing::instrument;
 
-use crate::secret_manager::SecretManager;
-use crate::secret_manager::SecretManagerError;
-use crate::services::secret_gen::KeyGenIntermediateValues;
+type Result<T> = std::result::Result<T, PostgresDbError>;
+
+/// Postgres-backed store implementing both [`SecretManager`] and [`ChainCursorStorage`] on a shared `PgPool`.
+#[derive(Clone, Debug)]
+pub struct PostgresDb {
+    pool: PgPool,
+    max_retries: NonZeroUsize,
+    retry_delay: Duration,
+}
 
 #[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-enum PostgresSecretManagerError {
+enum PostgresDbError {
     #[error("Intermediates NOT stored for {0}/{1} - stuck")]
     MissingIntermediates(OprfKeyId, ShareEpoch),
     #[error("Refusing to overwrite newer share")]
@@ -39,42 +61,8 @@ enum PostgresSecretManagerError {
     Internal(#[from] eyre::Report),
 }
 
-impl From<PostgresSecretManagerError> for super::SecretManagerError {
-    fn from(value: PostgresSecretManagerError) -> Self {
-        match value {
-            PostgresSecretManagerError::MissingIntermediates(oprf_key_id, share_epoch) => {
-                Self::MissingIntermediates(oprf_key_id, share_epoch)
-            }
-            PostgresSecretManagerError::RefusingToRollbackEpoch => Self::RefusingToRollbackEpoch,
-            PostgresSecretManagerError::DbError(error) => {
-                if let Some(error) = error.as_database_error()
-                    && error.is_check_violation()
-                {
-                    // we tried to store on deleted share
-                    Self::StoreOnDeletedShare
-                } else {
-                    Self::Internal(eyre::Report::from(error))
-                }
-            }
-            PostgresSecretManagerError::Internal(report) => Self::Internal(report),
-        }
-    }
-}
-
-type Result<T> = std::result::Result<T, PostgresSecretManagerError>;
-
-/// The postgres secret manager wrapping a `PgPool`.
-#[derive(Debug)]
-pub struct PostgresSecretManager {
-    pool: PgPool,
-    max_retries: NonZeroUsize,
-    retry_delay: Duration,
-}
-
-impl PostgresSecretManager {
-    /// Initializes the `PostgresSecretManager`.
-    ///
-    /// Creates the Postgres connection pool, ensures the configured schema exists, and runs all pending database migrations.
+impl PostgresDb {
+    /// Initializes a [`PostgresDb`] by building the connection pool, ensuring the configured schema exists, and running all pending migrations.
     ///
     /// # Errors
     /// Returns an error if creating the database pool fails, or if running the migrations fails.
@@ -97,12 +85,114 @@ impl PostgresSecretManager {
             retry_delay: db_config.retry_delay,
         })
     }
+
+    #[inline]
+    fn backoff_strategy(&self) -> ConstantBackoff {
+        ConstantBuilder::new()
+            .with_delay(self.retry_delay)
+            .with_max_times(self.max_retries.get())
+            .build()
+    }
+
+    async fn with_retry<F, Fut, T>(&self, op_name: &str, f: F) -> Result<T>
+    where
+        F: Fn() -> Fut,
+        Fut: Future<Output = Result<T>>,
+    {
+        f.retry(self.backoff_strategy())
+            .sleep(tokio::time::sleep)
+            .when(is_retryable_error)
+            .notify(|e, duration| {
+                tracing::warn!("Retrying {op_name} in db: {e} after {duration:?}");
+            })
+            .await
+    }
 }
 
 #[async_trait]
-impl SecretManager for PostgresSecretManager {
+impl ChainCursorStorage for PostgresDb {
+    /// Loads the `ChainEventCursor` for backfill.
+    #[instrument(level = "debug", skip_all)]
+    #[allow(
+        clippy::cast_sign_loss,
+        reason = "We serialize the u64 as i64 due sqlx limitations. We deserialize it then to u64 which is ok"
+    )]
+    async fn load_chain_cursor(&self) -> eyre::Result<ChainCursor> {
+        tracing::trace!("loading chain event cursor...");
+        let get_chain_cursor = || async {
+            let row = sqlx::query(
+                "
+                    SELECT block, idx
+                    FROM chain_cursor
+                ",
+            )
+            .fetch_one(&self.pool)
+            .await?;
+            let block = row.get::<i64, _>(0) as u64;
+            let index = row.get::<i64, _>(1) as u64;
+            Ok(ChainCursor::new(block, index))
+        };
+        Ok(self
+            .with_retry("load-chain-cursor", get_chain_cursor)
+            .await?)
+    }
+
+    #[allow(
+        clippy::cast_possible_wrap,
+        reason = "We want to wrap the value because sqlx can only store i64, but we have u64"
+    )]
+    async fn store_chain_cursor(&self, chain_cursor: ChainCursor) -> eyre::Result<()> {
+        let store_chain_cursor = || async {
+            Ok(sqlx::query(
+                "
+                    UPDATE chain_cursor
+                    SET block = $1, idx = $2
+                    WHERE id = TRUE
+                      AND ($1 > block OR ($1 = block AND $2 > idx));
+                ",
+            )
+            .bind(chain_cursor.block() as i64)
+            .bind(chain_cursor.index() as i64)
+            .execute(&self.pool)
+            .await?
+            .rows_affected())
+        };
+        let rows_affected = self
+            .with_retry("store-chain-cursor", store_chain_cursor)
+            .await?;
+        if rows_affected == 0 {
+            tracing::warn!("did not update chain-event cursor - refusing to rollback");
+        }
+        Ok(())
+    }
+}
+
+impl From<PostgresDbError> for SecretManagerError {
+    fn from(value: PostgresDbError) -> Self {
+        match value {
+            PostgresDbError::MissingIntermediates(oprf_key_id, share_epoch) => {
+                Self::MissingIntermediates(oprf_key_id, share_epoch)
+            }
+            PostgresDbError::RefusingToRollbackEpoch => Self::RefusingToRollbackEpoch,
+            PostgresDbError::DbError(error) => {
+                if let Some(error) = error.as_database_error()
+                    && error.is_check_violation()
+                {
+                    // we tried to store on deleted share
+                    Self::StoreOnDeletedShare
+                } else {
+                    Self::Internal(eyre::Report::from(error))
+                }
+            }
+            PostgresDbError::Internal(report) => Self::Internal(report),
+        }
+    }
+}
+
+#[async_trait]
+impl SecretManager for PostgresDb {
     #[instrument(level = "info", skip(self))]
-    async fn store_wallet_address(&self, address: String) -> super::Result<()> {
+    async fn store_wallet_address(&self, address: String) -> secret_manager::Result<()> {
         tracing::trace!("storing wallet address...");
         let store_address = || async {
             sqlx::query(
@@ -129,14 +219,14 @@ impl SecretManager for PostgresSecretManager {
         &self,
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
-    ) -> super::Result<Option<DLogShareShamir>> {
+    ) -> secret_manager::Result<Option<DLogShareShamir>> {
         tracing::trace!("loading share...");
         let get_share = || Self::get_share_by_epoch_inner(oprf_key_id, epoch, &self.pool);
         Ok(self.with_retry("get-share-by-epoch", get_share).await?)
     }
 
     #[instrument(level = "debug", skip(self))]
-    async fn delete_oprf_key_material(&self, oprf_key_id: OprfKeyId) -> super::Result<()> {
+    async fn delete_oprf_key_material(&self, oprf_key_id: OprfKeyId) -> secret_manager::Result<()> {
         tracing::trace!("trying to delete key-material..");
 
         let delete_transaction = || async {
@@ -169,7 +259,7 @@ impl SecretManager for PostgresSecretManager {
         oprf_key_id: OprfKeyId,
         pending_epoch: ShareEpoch,
         intermediate: KeyGenIntermediateValues,
-    ) -> super::Result<KeyGenIntermediateValues> {
+    ) -> secret_manager::Result<KeyGenIntermediateValues> {
         tracing::trace!("trying to store intermediates...");
         let store_intermediates = || async {
             sqlx::query_scalar(
@@ -200,7 +290,7 @@ impl SecretManager for PostgresSecretManager {
         &self,
         oprf_key_id: OprfKeyId,
         pending_epoch: ShareEpoch,
-    ) -> super::Result<Option<KeyGenIntermediateValues>> {
+    ) -> secret_manager::Result<Option<KeyGenIntermediateValues>> {
         tracing::trace!("trying to fetch intermediates...");
 
         let fetch_keygen = || async {
@@ -234,7 +324,7 @@ impl SecretManager for PostgresSecretManager {
     }
 
     #[instrument(level = "debug", skip(self))]
-    async fn abort_keygen(&self, oprf_key_id: OprfKeyId) -> super::Result<()> {
+    async fn abort_keygen(&self, oprf_key_id: OprfKeyId) -> secret_manager::Result<()> {
         tracing::trace!("trying to abort key-gen...");
 
         let abort_keygen = || Self::delete_intermediates_inner(oprf_key_id, &self.pool);
@@ -250,7 +340,7 @@ impl SecretManager for PostgresSecretManager {
         oprf_key_id: OprfKeyId,
         pending_epoch: ShareEpoch,
         share: DLogShareShamir,
-    ) -> super::Result<()> {
+    ) -> secret_manager::Result<()> {
         tracing::trace!("store pending dlog-share..");
         let store_pending = || async {
             Ok(sqlx::query(
@@ -291,7 +381,7 @@ impl SecretManager for PostgresSecretManager {
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
         public_key: OprfPublicKey,
-    ) -> super::Result<()> {
+    ) -> secret_manager::Result<()> {
         tracing::trace!("storing share...");
 
         let confirm_dlog_share = || async {
@@ -317,9 +407,7 @@ impl SecretManager for PostgresSecretManager {
             }
             let pending_share = Self::fetch_pending_share_inner(oprf_key_id, epoch, &mut *conn)
                 .await?
-                .ok_or_else(|| {
-                    PostgresSecretManagerError::MissingIntermediates(oprf_key_id, epoch)
-                })?;
+                .ok_or_else(|| PostgresDbError::MissingIntermediates(oprf_key_id, epoch))?;
 
             let rows_affected = Self::store_confirmed_dlog_share_inner(
                 oprf_key_id,
@@ -330,7 +418,7 @@ impl SecretManager for PostgresSecretManager {
             )
             .await?;
             if rows_affected != 1 {
-                return Err(PostgresSecretManagerError::RefusingToRollbackEpoch);
+                return Err(PostgresDbError::RefusingToRollbackEpoch);
             }
             Self::delete_intermediates_inner(oprf_key_id, &mut *conn).await?;
             tx.commit().await?;
@@ -342,15 +430,7 @@ impl SecretManager for PostgresSecretManager {
     }
 }
 
-impl PostgresSecretManager {
-    #[inline]
-    fn backoff_strategy(&self) -> ConstantBackoff {
-        ConstantBuilder::new()
-            .with_delay(self.retry_delay)
-            .with_max_times(self.max_retries.get())
-            .build()
-    }
-
+impl PostgresDb {
     async fn get_share_by_epoch_inner(
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
@@ -458,26 +538,26 @@ impl PostgresSecretManager {
         .await?
         .rows_affected())
     }
-
-    async fn with_retry<F, Fut, T>(&self, op_name: &str, f: F) -> Result<T>
-    where
-        F: Fn() -> Fut,
-        Fut: Future<Output = Result<T>>,
-    {
-        f.retry(self.backoff_strategy())
-            .sleep(tokio::time::sleep)
-            .when(is_retryable_error)
-            .notify(|e, duration| {
-                tracing::warn!("Retrying {op_name} in db: {e} after {duration:?}");
-            })
-            .await
-    }
 }
 
 #[inline]
-fn is_retryable_error(e: &PostgresSecretManagerError) -> bool {
+fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: &T) -> zeroize::Zeroizing<Vec<u8>> {
+    let mut bytes = Vec::with_capacity(t.uncompressed_size());
+    t.serialize_uncompressed(&mut bytes).expect("Can serialize");
+    zeroize::Zeroizing::from(bytes)
+}
+
+#[inline]
+fn from_db_ark_serialize_uncompressed<T: CanonicalDeserialize>(b: Vec<u8>) -> Result<T> {
+    T::deserialize_uncompressed(zeroize::Zeroizing::from(b).as_slice()).map_err(|e| {
+        PostgresDbError::from(eyre::eyre!("Cannot deserialize bytes: DB not sane: {e}"))
+    })
+}
+
+#[inline]
+fn is_retryable_error(e: &PostgresDbError) -> bool {
     match e {
-        PostgresSecretManagerError::DbError(err) => match err {
+        PostgresDbError::DbError(err) => match err {
             // structural / driver-level errors
             sqlx::Error::PoolTimedOut
             | sqlx::Error::Io(_)
@@ -497,20 +577,6 @@ fn is_retryable_error(e: &PostgresSecretManagerError) -> bool {
 
         _ => false,
     }
-}
-
-#[inline]
-fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: &T) -> zeroize::Zeroizing<Vec<u8>> {
-    let mut bytes = Vec::with_capacity(t.uncompressed_size());
-    t.serialize_uncompressed(&mut bytes).expect("Can serialize");
-    zeroize::Zeroizing::from(bytes)
-}
-
-#[inline]
-fn from_db_ark_serialize_uncompressed<T: CanonicalDeserialize>(b: Vec<u8>) -> Result<T> {
-    T::deserialize_uncompressed(zeroize::Zeroizing::from(b).as_slice()).map_err(|e| {
-        PostgresSecretManagerError::from(eyre::eyre!("Cannot deserialize bytes: DB not sane: {e}"))
-    })
 }
 
 #[cfg(test)]

@@ -11,7 +11,9 @@
 //! - [`key_event_watcher`] – watches the blockchain for key-generation events.
 //! - [`secret_gen`] – handles multi-round secret generation protocols.
 //! - [`secret_manager`] – stores and retrieves secrets.
-//! - [`transaction_handler`] – handles transaction submitting including error handling and retry when the RPC breaks down
+//! - [`transaction_handler`] – handles transaction submitting including error handling and retry when the RPC breaks down.
+//! - [`event_cursor_store`] – persists the chain event cursor so that `key_event_watcher` can resume backfill from the last processed `(block, log_index)` after a restart.
+pub mod event_cursor_store;
 pub(crate) mod key_event_watcher;
 pub(crate) mod secret_gen;
 pub mod secret_manager;
