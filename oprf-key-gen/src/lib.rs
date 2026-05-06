@@ -48,7 +48,7 @@ use alloy::{
 };
 use eyre::Context as _;
 use groth16_material::circom::CircomGroth16MaterialBuilder;
-use nodes_common::web3::{self};
+use nodes_common::web3::{self, event_stream::ChainCursor};
 use oprf_types::{chain::OprfKeyRegistry, crypto::PartyId};
 use secrecy::ExposeSecret;
 use tokio_util::sync::CancellationToken;
@@ -70,6 +70,8 @@ pub use services::secret_manager;
 /// The tasks spawned by the key-gen library. Should call [`KeyGenTasks::join`] when shutting down for graceful shutdown.
 pub struct KeyGenTasks {
     key_event_watcher: tokio::task::JoinHandle<eyre::Result<()>>,
+    i_am_alive_task: tokio::task::JoinHandle<()>,
+    cursor_checkpoint_task: tokio::task::JoinHandle<()>,
 
     // keep the providers alive as long as the tasks are
     _http_rpc_provider: web3::HttpRpcProvider,
@@ -83,6 +85,8 @@ impl KeyGenTasks {
     /// Returns the error from the inner tasks or an error if the task panicked.
     pub async fn join(self) -> eyre::Result<()> {
         self.key_event_watcher.await??;
+        self.i_am_alive_task.await?;
+        self.cursor_checkpoint_task.await?;
         Ok(())
     }
 }
@@ -256,7 +260,7 @@ pub async fn start(
                 ws_rpc_provider: ws_rpc_provider.clone(),
                 contract_address,
                 dlog_secret_gen_service,
-                chain_cursor_service,
+                chain_cursor_service: chain_cursor_service.clone(),
                 start_signal: started_services.new_service(),
                 transaction_handler,
                 event_stream_config: config.event_stream_config,
@@ -267,9 +271,16 @@ pub async fn start(
 
     let key_gen_router = api::routes(address, started_services.clone());
 
-    tokio::task::spawn(start_i_am_alive_task(
+    let i_am_alive_task = tokio::task::spawn(start_i_am_alive_task(
         started_services,
         config.i_am_alive_interval,
+        cancellation_token.clone(),
+    ));
+
+    let cursor_checkpoint_task = tokio::task::spawn(start_cursor_checkpoint_task(
+        config.cursor_checkpoint_interval,
+        http_rpc_provider.clone(),
+        chain_cursor_service,
         cancellation_token,
     ));
 
@@ -277,10 +288,54 @@ pub async fn start(
         key_gen_router,
         KeyGenTasks {
             key_event_watcher,
+            i_am_alive_task,
+            cursor_checkpoint_task,
             _http_rpc_provider: http_rpc_provider,
             _ws_rpc_provider: ws_rpc_provider,
         },
     ))
+}
+
+async fn start_cursor_checkpoint_task(
+    checkpoint_interval: Duration,
+    rpc_provider: web3::HttpRpcProvider,
+    chain_cursor_service: ChainCursorService,
+    cancellation_token: CancellationToken,
+) {
+    let mut interval = tokio::time::interval(checkpoint_interval);
+    // first interval ticks immediately
+    interval.tick().await;
+    tracing::info!("starting cursor checkpoint task");
+    loop {
+        let checkpoint = match rpc_provider.get_block_number().await {
+            Ok(checkpoint) => Some(ChainCursor::new(checkpoint, 0)),
+            Err(err) => {
+                tracing::warn!(%err, "cannot fetch checkpoint for cursor");
+                tracing::warn!("tying again in {checkpoint_interval:?}");
+                None
+            }
+        };
+        tokio::select! {
+            _ = interval.tick() => {
+            }
+            () = cancellation_token.cancelled() => {
+                break;
+            }
+        }
+        if let Some(checkpoint) = checkpoint {
+            tracing::info!("persisting chain-cursor checkpoint: {checkpoint}");
+            match chain_cursor_service.store_chain_cursor(checkpoint).await {
+                Ok(()) => {
+                    tracing::info!("successfully called store_chain_cursor");
+                }
+                Err(err) => {
+                    tracing::warn!(%err, "cannot persist checkpoint to DB");
+                    tracing::warn!("tying again in {checkpoint_interval:?}");
+                }
+            }
+        }
+    }
+    tracing::info!("shutting down cursor checkpoint task");
 }
 
 async fn start_i_am_alive_task(
