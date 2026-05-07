@@ -119,6 +119,15 @@ pub struct OprfKeyGenServiceConfig {
     #[serde(default = "OprfKeyGenServiceConfig::default_i_am_alive_interval")]
     #[serde(with = "humantime_serde")]
     pub i_am_alive_interval: Duration,
+
+    /// Interval in which we persist a [`ChainCursor`](nodes_common::web3::event_stream::ChainCursor) checkpoint.
+    ///
+    /// The implementation will fetch the current block number, then sleep for this configured period, and then call [`ChainCursorStorage::store_chain_cursor`](crate::event_cursor_store::ChainCursorStorage::store_chain_cursor) with the fetched block number. This should prevent very large backfills in case of idle key-gens.
+    ///
+    /// Defaults to `1 day`.
+    #[serde(default = "OprfKeyGenServiceConfig::default_cursor_checkpoint_interval")]
+    #[serde(with = "humantime_serde")]
+    pub cursor_checkpoint_interval: Duration,
 }
 
 /// Subset of [`OprfKeyGenServiceConfig`] containing all values that must be
@@ -197,6 +206,11 @@ impl OprfKeyGenServiceConfig {
         Duration::from_mins(1)
     }
 
+    /// Default cursor checkpoint interval (`1 day`).
+    fn default_cursor_checkpoint_interval() -> Duration {
+        Duration::from_hours(24)
+    }
+
     /// Construct with all default values except required fields.
     #[must_use]
     pub fn with_default_values(args: OprfKeyGenServiceConfigMandatoryValues) -> Self {
@@ -229,6 +243,7 @@ impl OprfKeyGenServiceConfig {
             max_tries_fetching_receipt: Self::default_max_tries_fetching_receipt(),
             sleep_between_get_receipt: Self::default_sleep_between_get_receipt(),
             event_stream_config: EventStreamConfig::default(),
+            cursor_checkpoint_interval: Self::default_cursor_checkpoint_interval(),
         }
     }
 }

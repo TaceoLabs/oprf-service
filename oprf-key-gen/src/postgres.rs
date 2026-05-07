@@ -137,11 +137,13 @@ impl ChainCursorStorage for PostgresDb {
             .await?)
     }
 
+    #[instrument(level = "debug", skip_all, fields(chain_cursor=%chain_cursor))]
     #[allow(
         clippy::cast_possible_wrap,
         reason = "We want to wrap the value because sqlx can only store i64, but we have u64"
     )]
     async fn store_chain_cursor(&self, chain_cursor: ChainCursor) -> eyre::Result<()> {
+        tracing::trace!("trying to store chain cursor...");
         let store_chain_cursor = || async {
             Ok(sqlx::query(
                 "
@@ -161,7 +163,7 @@ impl ChainCursorStorage for PostgresDb {
             .with_retry("store-chain-cursor", store_chain_cursor)
             .await?;
         if rows_affected == 0 {
-            tracing::warn!("did not update chain-event cursor - refusing to rollback");
+            tracing::info!("did not update chain-event cursor - refusing to rollback");
         }
         Ok(())
     }
