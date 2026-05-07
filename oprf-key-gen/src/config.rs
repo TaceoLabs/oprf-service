@@ -120,9 +120,9 @@ pub struct OprfKeyGenServiceConfig {
     #[serde(with = "humantime_serde")]
     pub i_am_alive_interval: Duration,
 
-    /// Interval in which we persist a [`ChainCursor`] checkpoint.
+    /// Interval in which we persist a [`ChainCursor`](nodes_common::web3::event_stream::ChainCursor) checkpoint.
     ///
-    /// The implementation will fetch the current block number, then sleep for this configured period, and then call [`ChainCursorService::store_chain_cursor`] with the fetched block number. This should prevent very large backfills in case of idle key-gens.
+    /// The implementation will fetch the current block number, then sleep for this configured period, and then call [`ChainCursorStorage::store_chain_cursor`](crate::event_cursor_store::ChainCursorStorage::store_chain_cursor) with the fetched block number. This should prevent very large backfills in case of idle key-gens.
     ///
     /// Defaults to `1 day`.
     #[serde(default = "OprfKeyGenServiceConfig::default_cursor_checkpoint_interval")]
