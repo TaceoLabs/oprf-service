@@ -656,6 +656,7 @@ async fn test_cursor_checkpoint_persists() -> eyre::Result<()> {
         }
         eyre::Ok(())
     })
-    .await??;
+    .await
+    .context("while waiting for cursor-service to store checkpoint")??;
     Ok(())
 }
