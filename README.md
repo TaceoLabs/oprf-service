@@ -101,7 +101,7 @@ Both the OPRF service and key-gen are configured via environment variables using
 * **OPRF service:** `TACEO_OPRF_NODE__*` (e.g., `TACEO_OPRF_NODE__BIND_ADDR`, `TACEO_OPRF_NODE__SERVICE__ENVIRONMENT`)
 * **Key generation:** `TACEO_OPRF_KEY_GEN__*` (e.g., `TACEO_OPRF_KEY_GEN__BIND_ADDR`, `TACEO_OPRF_KEY_GEN__SERVICE__WALLET_PRIVATE_KEY`)
 
-See `run-setup.sh` for a complete example of all required environment variables.
+See `scripts/run-setup.sh` for a complete example of all required environment variables.
 
 ## Architecture
 

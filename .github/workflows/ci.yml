@@ -83,22 +83,44 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1
       - run: cd contracts && forge install && forge build
       - name: E2E test
-        run: bash run-setup.sh e2e-test
+        run: bash scripts/run-setup.sh e2e-test
+
+  backfill-monkey-test:
+    name: Backfill
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          lfs: true
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --locked --no-default-features --features postgres
+      - run: cd contracts && forge install && forge build
+      - name: Backfill Monkey Test
+        run: bash scripts/run-backfill-monkey-test.sh
 
   # Aggregator job — make this the single required check in branch protection.
   ci-success:
     name: CI success
     if: always()
     runs-on: ubuntu-latest
-    needs: [lint, test, e2e]
+    needs: [lint, test, e2e, backfill-monkey-test]
     steps:
       - name: Verify all jobs succeeded
         run: |
           if [[ "${{ needs.lint.result }}" != "success" \
              || "${{ needs.test.result }}" != "success" \
+             || "${{ needs.backfill-monkey-test.result }}" != "success" \
              || "${{ needs.e2e.result  }}" != "success" ]]; then
             echo "lint: ${{ needs.lint.result }}"
             echo "test: ${{ needs.test.result }}"
+            echo "backfill: ${{ needs.backfill-monkey-test.result }}"
             echo "e2e:  ${{ needs.e2e.result  }}"
             exit 1
           fi
