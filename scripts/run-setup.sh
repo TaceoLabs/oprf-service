@@ -32,11 +32,10 @@ main() {
     require_setup_commands
     validate_peer_config
     reset_log_dir
-
-    compose_up_anvil_postgres
-
+    
     trap setup_teardown EXIT SIGINT SIGTERM
 
+    compose_up_anvil_postgres
     run_deploy
 
     if [[ "$RUN_MODE" == "e2e-test" ]]; then
