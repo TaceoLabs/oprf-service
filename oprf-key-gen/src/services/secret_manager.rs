@@ -97,7 +97,7 @@ pub trait SecretManager {
         &self,
         oprf_key_id: OprfKeyId,
         pending_epoch: ShareEpoch,
-    ) -> Result<Option<KeyGenIntermediateValues>>;
+    ) -> Result<KeyGenIntermediateValues>;
 
     /// Stores a pending share for the given key/epoch pair.
     ///

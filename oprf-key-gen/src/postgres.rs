@@ -292,7 +292,7 @@ impl SecretManager for PostgresDb {
         &self,
         oprf_key_id: OprfKeyId,
         pending_epoch: ShareEpoch,
-    ) -> secret_manager::Result<Option<KeyGenIntermediateValues>> {
+    ) -> secret_manager::Result<KeyGenIntermediateValues> {
         tracing::trace!("trying to fetch intermediates...");
 
         let fetch_keygen = || async {
@@ -313,16 +313,10 @@ impl SecretManager for PostgresDb {
             .transpose()
         };
 
-        let maybe_intermediates = self
+        Ok(self
             .with_retry("fetch-keygen-intermediates", fetch_keygen)
-            .await?;
-
-        if maybe_intermediates.is_some() {
-            tracing::trace!("found intermediates!");
-        } else {
-            tracing::trace!("Cannot find intermediates for requested key and epoch");
-        }
-        Ok(maybe_intermediates)
+            .await?
+            .ok_or_else(|| PostgresDbError::MissingIntermediates(oprf_key_id, pending_epoch))?)
     }
 
     #[instrument(level = "debug", skip(self))]

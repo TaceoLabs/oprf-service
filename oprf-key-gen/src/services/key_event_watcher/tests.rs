@@ -4,7 +4,7 @@ use crate::{
     secret_manager::{SecretManager, SecretManagerError, SecretManagerService},
     services::{
         key_event_watcher::{
-            TransactionError, handle_abort, handle_delete, handle_not_enough_producers,
+            KeyRegistryEventError, handle_abort, handle_delete, handle_not_enough_producers,
         },
         secret_gen::DLogSecretGenService,
         transaction_handler::{TransactionHandler, TransactionHandlerArgs},
@@ -63,6 +63,7 @@ fn test_config(setup: &TestSetup) -> (CircomGroth16Material, TransactionHandler)
         max_gas_per_transaction: 10_000_000,
         rpc_provider,
         wallet_address: PEER_ADDRESSES[0],
+        contract_address: setup.oprf_key_registry,
     });
 
     (key_gen_material(setup.setup), transaction_handler)
@@ -77,7 +78,11 @@ async fn test_send_invalid_proof() -> eyre::Result<()> {
     let secret_gen = DLogSecretGenService::init(key_gen_material, secret_manager_service);
     let key_id = U160::from(INVALID_PROOF_KEY);
     secret_gen
-        .key_gen_round1(key_id.into(), ShareEpoch::default(), 2)
+        .key_gen_round1(
+            key_id.into(),
+            ShareEpoch::default(),
+            2.try_into().expect("1 is non-zero"),
+        )
         .await?;
     let error = super::handle_round2(
         OprfKeyId::from(key_id),
@@ -90,7 +95,7 @@ async fn test_send_invalid_proof() -> eyre::Result<()> {
     .expect_err("should fail");
     assert!(matches!(
         error,
-        TransactionError::Revert(RevertError::Verifier(VerifierErrors::ProofInvalid(_)))
+        KeyRegistryEventError::Revert(RevertError::Verifier(VerifierErrors::ProofInvalid(_)))
     ));
     Ok(())
 }
@@ -125,12 +130,9 @@ async fn test_delete() -> eyre::Result<()> {
             .await?
             .is_some()
     );
-    assert!(
-        secret_manager
-            .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
-            .await?
-            .is_some()
-    );
+    secret_manager
+        .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
+        .await?;
 
     handle_delete(oprf_key_id, &secret_gen)
         .await
@@ -142,11 +144,17 @@ async fn test_delete() -> eyre::Result<()> {
             .await?
             .is_none()
     );
+    let should_err = secret_manager
+        .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
+        .await
+        .expect_err("Should have missing intermediates");
+
     assert!(
-        secret_manager
-            .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
-            .await?
-            .is_none()
+        matches!(
+            should_err,
+            SecretManagerError::MissingIntermediates(is_oprf_key, is_epoch) if is_oprf_key == oprf_key_id && is_epoch == pending_epoch
+        ),
+        "Should be MissingIntermediates but is {should_err}"
     );
 
     let error = secret_manager
@@ -172,13 +180,12 @@ async fn test_round2_in_wrong_round_during_load_public_keys() -> eyre::Result<()
     let key_id = OprfKeyId::from(U160::from(WRONG_ROUND_LOAD_PEER_PUBLIC_KEYS));
     let epoch = ShareEpoch::default();
 
-    secret_gen.key_gen_round1(key_id, epoch, 2).await?;
-    assert!(
-        secret_manager
-            .fetch_keygen_intermediates(key_id, epoch)
-            .await?
-            .is_some()
-    );
+    secret_gen
+        .key_gen_round1(key_id, epoch, 2.try_into().expect("2 is non-zero"))
+        .await?;
+    secret_manager
+        .fetch_keygen_intermediates(key_id, epoch)
+        .await?;
 
     super::handle_round2(
         key_id,
@@ -190,13 +197,9 @@ async fn test_round2_in_wrong_round_during_load_public_keys() -> eyre::Result<()
     .await
     .expect("Should still work");
 
-    assert!(
-        secret_manager
-            .fetch_keygen_intermediates(key_id, epoch)
-            .await?
-            .is_some(),
-        "consumer path must keep round-1 intermediates for round 3"
-    );
+    secret_manager
+        .fetch_keygen_intermediates(key_id, epoch)
+        .await?;
     assert!(
         secret_manager
             .get_share_by_epoch(key_id, epoch)
@@ -230,12 +233,9 @@ async fn test_abort() -> eyre::Result<()> {
         .store_pending_dlog_share(oprf_key_id, pending_epoch, random_share())
         .await?;
 
-    assert!(
-        secret_manager
-            .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
-            .await?
-            .is_some()
-    );
+    secret_manager
+        .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
+        .await?;
     assert!(
         secret_manager
             .get_share_by_epoch(oprf_key_id, confirmed_epoch)
@@ -245,12 +245,15 @@ async fn test_abort() -> eyre::Result<()> {
 
     handle_abort(oprf_key_id, &secret_gen).await?;
 
-    assert!(
-        secret_manager
-            .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
-            .await?
-            .is_none()
-    );
+    let error = secret_manager
+        .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
+        .await
+        .expect_err("Intermediates must be gone now");
+    assert!(matches!(
+        error,
+        SecretManagerError::MissingIntermediates(id, epoch)
+            if id == oprf_key_id && epoch == pending_epoch
+    ));
     assert!(
         secret_manager
             .get_share_by_epoch(oprf_key_id, confirmed_epoch)
@@ -295,12 +298,9 @@ async fn test_not_enough_producers() -> eyre::Result<()> {
         .store_pending_dlog_share(oprf_key_id, pending_epoch, random_share())
         .await?;
 
-    assert!(
-        secret_manager
-            .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
-            .await?
-            .is_some()
-    );
+    secret_manager
+        .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
+        .await?;
     assert!(
         secret_manager
             .get_share_by_epoch(oprf_key_id, confirmed_epoch)
@@ -310,12 +310,16 @@ async fn test_not_enough_producers() -> eyre::Result<()> {
 
     handle_not_enough_producers(oprf_key_id, &secret_gen).await?;
 
-    assert!(
-        secret_manager
-            .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
-            .await?
-            .is_none()
-    );
+    let error = secret_manager
+        .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
+        .await
+        .expect_err("Should be an error");
+
+    assert!(matches!(
+        error,
+        SecretManagerError::MissingIntermediates(id, epoch)
+            if id == oprf_key_id && epoch == pending_epoch
+    ));
     assert!(
         secret_manager
             .get_share_by_epoch(oprf_key_id, confirmed_epoch)

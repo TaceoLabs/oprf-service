@@ -9,9 +9,12 @@
 //! After each handled log the cursor is stored unconditionally before propagating any handler error.
 //! The watcher subscribes to various key generation events and reports contributions back to the contract.
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    num::NonZeroU16,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use crate::{
@@ -26,16 +29,19 @@ use crate::{
         METRICS_ID_KEY_GEN_ROUND_3_START, METRICS_ID_KEY_GEN_ROUND_4_FINISH,
         METRICS_ID_KEY_GEN_ROUND_4_START,
     },
+    secret_manager::SecretManagerError,
     services::{
-        secret_gen::{Contributions, DLogSecretGenService},
+        secret_gen::{Contributions, DLogSecretGenService, SecretGenError},
         transaction_handler::TransactionHandler,
     },
 };
 use alloy::{
+    network::primitives::TransactionFailedError,
     primitives::{Address, LogData, U256},
     providers::DynProvider,
     rpc::types::Log,
     sol_types::SolEvent as _,
+    transports::TransportErrorKind,
 };
 use eyre::Context;
 use futures::StreamExt;
@@ -47,7 +53,9 @@ use oprf_types::{
     OprfKeyId, ShareEpoch,
     chain::{
         OprfKeyGen::Round2Contribution,
-        OprfKeyRegistry::{self, OprfKeyRegistryErrors, OprfKeyRegistryInstance, WrongRound},
+        OprfKeyRegistry::{
+            self, AlreadySubmitted, OprfKeyRegistryErrors, OprfKeyRegistryInstance, WrongRound,
+        },
         RevertError,
         Verifier::VerifierErrors,
     },
@@ -59,26 +67,47 @@ use tracing::instrument;
 #[cfg(test)]
 mod tests;
 
-type Result<T> = std::result::Result<T, TransactionError>;
+type Result<T> = std::result::Result<T, KeyRegistryEventError>;
 
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum TransactionError {
+pub(crate) enum KeyRegistryEventError {
     #[error("RevertReason: {0}")]
     Revert(RevertError),
+    #[error("Error when interacting with contract - source: {0}")]
+    Contract(#[source] alloy::contract::Error),
     #[error(transparent)]
-    Rpc(#[from] eyre::Report),
+    Rpc(#[from] alloy::transports::RpcError<TransportErrorKind>),
+    #[error(transparent)]
+    TransactionFailedError(#[from] TransactionFailedError),
+    #[error("Cannot handle event due to secret-manager error: {0}")]
+    SecretManagerError(#[source] SecretManagerError),
+    #[error(transparent)]
+    Internal(#[from] eyre::Report),
 }
 
-impl From<alloy::contract::Error> for TransactionError {
+impl From<SecretGenError> for KeyRegistryEventError {
+    fn from(value: SecretGenError) -> Self {
+        match value {
+            SecretGenError::SecretManagerError(secret_manager_error) => {
+                if let SecretManagerError::Internal(report) = secret_manager_error {
+                    Self::Internal(report)
+                } else {
+                    Self::SecretManagerError(secret_manager_error)
+                }
+            }
+            SecretGenError::Internal(report) => Self::Internal(report),
+        }
+    }
+}
+
+impl From<alloy::contract::Error> for KeyRegistryEventError {
     fn from(value: alloy::contract::Error) -> Self {
         if let Some(err) = value.as_decoded_interface_error::<OprfKeyRegistryErrors>() {
-            TransactionError::Revert(RevertError::OprfKeyRegistry(err))
+            KeyRegistryEventError::Revert(RevertError::OprfKeyRegistry(err))
         } else if let Some(err) = value.as_decoded_interface_error::<VerifierErrors>() {
-            TransactionError::Revert(RevertError::Verifier(err))
+            KeyRegistryEventError::Revert(RevertError::Verifier(err))
         } else {
-            TransactionError::Rpc(eyre::eyre!(
-                "cannot finish transaction and call afterwards failed as well: {value:?}"
-            ))
+            KeyRegistryEventError::Contract(value)
         }
     }
 }
@@ -156,14 +185,18 @@ pub(crate) async fn key_event_watcher_task(args: KeyEventWatcherTaskConfig) -> e
                 break;
             }
         };
-        key_gen_event(
+        let new_chain_cursor = key_gen_event(
             log,
             &contract,
             &dlog_secret_gen_service,
-            &chain_cursor_service,
             &transaction_handler,
         )
         .await?;
+
+        chain_cursor_service
+            .store_chain_cursor(new_chain_cursor)
+            .await
+            .context("while storing new event cursor")?;
     }
 
     tracing::info!("successfully closed key_event_watcher without error");
@@ -179,16 +212,14 @@ async fn key_gen_event(
     log: Log<LogData>,
     contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &DLogSecretGenService,
-    chain_cursor_service: &ChainCursorService,
     transaction_handler: &TransactionHandler,
-) -> Result<()> {
+) -> Result<ChainCursor> {
     let block = log
         .block_number
         .ok_or_else(|| eyre::eyre!("block number empty in log"))?;
     let index = log
         .log_index
         .ok_or_else(|| eyre::eyre!("index empty in log"))?;
-    let new_chain_cursor = ChainCursor::new(block, index);
 
     let handle_span = tracing::Span::current();
     handle_span.record("block", block);
@@ -209,7 +240,6 @@ async fn key_gen_event(
             handle_keygen_round1(
                 OprfKeyId::from(oprfKeyId),
                 threshold,
-                contract,
                 secret_gen,
                 transaction_handler,
             )
@@ -282,7 +312,6 @@ async fn key_gen_event(
                 oprf_key_id,
                 threshold,
                 epoch,
-                contract,
                 secret_gen,
                 transaction_handler,
             )
@@ -348,36 +377,54 @@ async fn key_gen_event(
         }
         x => {
             tracing::warn!("unknown event: {x:?}");
-            return Ok(());
-        }
-    };
-    // we store the chain_event_cursor irrelevant if we encountered an error or not.
-    // TODO This needs some fine tuning in a follow up PR though.
-    chain_cursor_service
-        .store_chain_cursor(new_chain_cursor)
-        .await
-        .context("while storing new event cursor")?;
-    match result {
-        Ok(()) => Ok(()),
-        Err(TransactionError::Revert(RevertError::OprfKeyRegistry(
-            OprfKeyRegistryErrors::WrongRound(WrongRound(round)),
-        ))) => {
-            tracing::info!(
-                "Reverted event with wrong round - most likely this key-gen was aborted: we are in {round}"
-            );
             Ok(())
         }
-        Err(err) => {
-            tracing::error!("{err}; {err:?}");
-            Err(err)
+    };
+    let new_chain_cursor = ChainCursor::new(block, index);
+    match result {
+        Ok(()) => Ok(new_chain_cursor),
+        Err(KeyRegistryEventError::Revert(RevertError::OprfKeyRegistry(
+            OprfKeyRegistryErrors::WrongRound(WrongRound(round)),
+        ))) => {
+            tracing::warn!(
+                "Reverted event with wrong round - most likely this key-gen was aborted: we are in {round}"
+            );
+            Ok(new_chain_cursor)
         }
+
+        Err(KeyRegistryEventError::Revert(RevertError::OprfKeyRegistry(
+            OprfKeyRegistryErrors::AlreadySubmitted(AlreadySubmitted),
+        ))) => {
+            tracing::warn!(
+                "Already submitted for this round - we continue and mark this event as success"
+            );
+            Ok(new_chain_cursor)
+        }
+        Err(KeyRegistryEventError::SecretManagerError(
+            SecretManagerError::MissingIntermediates(oprf_key_id, epoch),
+        )) => {
+            // TODO as soon as we release contract version 2 we call the appropriate function to mark this key-gen as stuck
+            tracing::error!(
+                "Cannot find intermediates for key-id {oprf_key_id} in epoch {epoch} - this key-gen is stuck"
+            );
+            Ok(new_chain_cursor)
+        }
+
+        Err(KeyRegistryEventError::SecretManagerError(
+            SecretManagerError::RefusingToRollbackEpoch,
+        )) => {
+            tracing::warn!(
+                "SecretManager refusing to rollback to older share - maybe we got an event out of order?"
+            );
+            Ok(new_chain_cursor)
+        }
+        Err(err) => Err(err),
     }
 }
 
 async fn handle_keygen_round1(
     oprf_key_id: OprfKeyId,
     threshold: U256,
-    contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &DLogSecretGenService,
     transaction_handler: &TransactionHandler,
 ) -> Result<()> {
@@ -387,16 +434,16 @@ async fn handle_keygen_round1(
     .increment(1);
 
     // wrap everything in a future to log to log the the potential error inside this span
-    let threshold = u16::try_from(threshold).context("while parsing threshold")?;
+    let threshold =
+        NonZeroU16::try_from(u16::try_from(threshold).context("while parsing threshold")?)
+            .context("threshold from contract is zero")?;
     let contribution = secret_gen
         .key_gen_round1(oprf_key_id, ShareEpoch::default(), threshold)
         .await
         .context("while doing key-gen round1")?;
     tracing::trace!("finished round1 - now reporting to chain..");
     transaction_handler
-        .attempt_transaction(|| {
-            contract.addRound1KeyGenContribution(oprf_key_id.into_inner(), contribution.clone())
-        })
+        .add_round1_keygen_contribution(oprf_key_id, contribution)
         .await?;
     ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_1_FINISH,
         METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_KEY_GEN)
@@ -448,20 +495,13 @@ async fn handle_round2(
             .into_iter()
             .map(EphemeralEncryptionPublicKey::try_from)
             .collect::<eyre::Result<Vec<_>>>()?;
-        let res = secret_gen
+        let contribution = secret_gen
             .producer_round2(oprf_key_id, epoch, nodes)
-            .await
-            .context("while doing round2")?;
-        let contribution = res.ok_or_else(|| {
-            // TODO here we will report that the key-gen is stuck, but this will happen in a dedicated PR
-            eyre::eyre!("key-gen is stuck in round2")
-        })?;
+            .await?;
         tracing::trace!("finished round 2 - now reporting");
         let contribution = Round2Contribution::from(contribution);
         transaction_handler
-            .attempt_transaction(|| {
-                contract.addRound2Contribution(oprf_key_id.into_inner(), contribution.clone())
-            })
+            .add_round2_contribution(oprf_key_id, contribution)
             .await?;
         METRICS_ATTRVAL_ROLE_PRODUCER
     };
@@ -530,7 +570,7 @@ async fn handle_finalize(
                 );
                 return Ok(());
             }
-            return Err(TransactionError::from(err));
+            return Err(KeyRegistryEventError::from(err));
         }
     };
     let oprf_public_key = OprfPublicKey::new(oprf_public_key.try_into()?);
@@ -549,7 +589,6 @@ async fn handle_reshare_round1(
     oprf_key_id: OprfKeyId,
     threshold: U256,
     epoch: ShareEpoch,
-    contract: &OprfKeyRegistryInstance<DynProvider>,
     secret_gen: &DLogSecretGenService,
     transaction_handler: &TransactionHandler,
 ) -> Result<()> {
@@ -565,9 +604,7 @@ async fn handle_reshare_round1(
         .await
         .context("while doing round 1 reshare")?;
     transaction_handler
-        .attempt_transaction(|| {
-            contract.addRound1ReshareContribution(oprf_key_id.into_inner(), contribution.clone())
-        })
+        .add_round1_reshare_contribution(oprf_key_id, contribution)
         .await?;
     ::metrics::counter!(METRICS_ID_KEY_GEN_ROUND_1_FINISH,
             METRICS_ATTRID_PROTOCOL => METRICS_ATTRVAL_PROTOCOL_RESHARE)
@@ -685,14 +722,10 @@ async fn handle_round3_inner(
         .collect::<eyre::Result<Vec<_>>>()?;
     secret_gen
         .round3(oprf_key_id, epoch, ciphers, contributions, &pks)
-        .await
-        .context("while doing round3")?
-        .ok_or_else(||
-            // TODO here we will report that the key-gen is stuck, but this will happen in a dedicated PR
-            eyre::eyre!("key-gen is stuck in round3"))?;
+        .await?;
     tracing::trace!("finished round 3 - now reporting");
     transaction_handler
-        .attempt_transaction(|| contract.addRound3Contribution(oprf_key_id.into_inner()))
+        .add_round3_contribution(oprf_key_id)
         .await?;
     Ok(())
 }

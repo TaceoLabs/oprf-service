@@ -248,6 +248,7 @@ pub async fn start(
         max_gas_per_transaction: config.max_gas_per_transaction,
         rpc_provider: http_rpc_provider.clone(),
         wallet_address: address,
+        contract_address: config.oprf_key_registry_contract,
     });
 
     tracing::info!("spawning key event watcher..");

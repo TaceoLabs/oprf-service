@@ -2,21 +2,28 @@ use std::{f64, time::Duration};
 
 use alloy::{
     contract::{CallBuilder, CallDecoder},
-    network::{Network, ReceiptResponse},
+    network::ReceiptResponse,
     primitives::Address,
-    providers::{PendingTransactionError, Provider},
+    providers::{DynProvider, Provider},
+    rpc::types::TransactionReceipt,
     transports::TransportError,
 };
 use backon::{BackoffBuilder as _, ConstantBackoff, ConstantBuilder, Retryable as _};
-use eyre::Context as _;
 use nodes_common::web3;
+use oprf_types::{
+    OprfKeyId,
+    chain::{
+        OprfKeyGen::Round1Contribution, OprfKeyGen::Round2Contribution,
+        OprfKeyRegistry::OprfKeyRegistryInstance,
+    },
+};
 use tracing::instrument;
 
 use crate::{
     metrics::{
         METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_GAS_PRICE, METRICS_ID_KEY_GEN_WALLET_BALANCE,
     },
-    services::key_event_watcher::TransactionError,
+    services::key_event_watcher::KeyRegistryEventError,
 };
 
 /// Service that handles transaction submission and receipt confirmation.
@@ -33,6 +40,7 @@ pub(crate) struct TransactionHandler {
     max_gas_per_transaction: u64,
     rpc_provider: web3::HttpRpcProvider,
     wallet_address: Address,
+    contract: OprfKeyRegistryInstance<DynProvider>,
 }
 
 pub(crate) struct TransactionHandlerArgs {
@@ -43,6 +51,7 @@ pub(crate) struct TransactionHandlerArgs {
     pub(crate) max_gas_per_transaction: u64,
     pub(crate) rpc_provider: web3::HttpRpcProvider,
     pub(crate) wallet_address: Address,
+    pub(crate) contract_address: Address,
 }
 
 impl From<TransactionHandlerArgs> for TransactionHandler {
@@ -55,6 +64,7 @@ impl From<TransactionHandlerArgs> for TransactionHandler {
             max_gas_per_transaction,
             rpc_provider,
             wallet_address,
+            contract_address,
         } = value;
         Self {
             max_wait_time_watch_transaction,
@@ -62,8 +72,9 @@ impl From<TransactionHandlerArgs> for TransactionHandler {
             sleep_between_get_receipt,
             max_tries_fetching_receipt,
             max_gas_per_transaction,
-            rpc_provider,
             wallet_address,
+            contract: OprfKeyRegistryInstance::new(contract_address, rpc_provider.inner()),
+            rpc_provider,
         }
     }
 }
@@ -80,60 +91,40 @@ impl TransactionHandler {
             .build()
     }
 
-    /// Attempts to send a transaction and waits for the receipt.
-    ///
-    /// Broadcasts the transaction to the network and waits for the configured number of
-    /// confirmations, up to `max_wait_time`. If the receipt indicates success, returns `Ok`.
-    /// If the receipt indicates failure, performs a static call to extract revert data for
-    /// diagnostics (this is best-effort and should not be taken at face value).
-    ///
-    /// If the transaction could not be sent or the confirmation times out, returns an error.
-    ///
-    /// Takes an `Fn` that produces a `CallBuilder`. This can be done e.g., with
-    /// ```rust,ignore
-    /// transaction_handler
-    ///     .attempt_transaction(|| {
-    ///         contract.addRound1KeyGenContribution(
-    ///             oprf_key_id.into_inner(),
-    ///             contribution.clone().into(),
-    ///         )
-    ///     })
-    ///     .await?;
-    /// ```
-    #[instrument(level = "info", skip_all, fields(tx_hash = tracing::field::Empty))]
-    pub(crate) async fn attempt_transaction<P, D, N, F>(
+    async fn simulate_transaction<D>(
         &self,
-        transaction: F,
-    ) -> Result<(), TransactionError>
+        transaction: CallBuilder<&DynProvider, D>,
+    ) -> Result<(), KeyRegistryEventError>
     where
-        P: Provider<N>,
         D: CallDecoder + Unpin,
-        N: Network,
-        F: Fn() -> CallBuilder<P, D, N>,
     {
-        let pending_transaction = transaction()
+        tracing::trace!("simulating transaction before submitting");
+        transaction.gas(self.max_gas_per_transaction).call().await?;
+        Ok(())
+    }
+
+    async fn send_transaction<D>(
+        &self,
+        transaction: CallBuilder<&DynProvider, D>,
+    ) -> Result<TransactionReceipt, KeyRegistryEventError>
+    where
+        D: CallDecoder + Unpin,
+    {
+        tracing::trace!("sending transaction");
+        let pending_transaction = transaction
             .gas(self.max_gas_per_transaction)
             .send()
-            .await
-            .context("while broadcasting to network")?
+            .await?
             .with_required_confirmations(self.confirmations_for_transaction)
             .with_timeout(Some(self.max_wait_time_watch_transaction));
         let tx_hash = pending_transaction.tx_hash().to_owned();
         let current_span = tracing::Span::current();
         current_span.record("tx_hash", tx_hash.to_string());
-        let receipt_result = pending_transaction.get_receipt().await;
-
-        if let Ok(balance) = self.rpc_provider.get_balance(self.wallet_address).await {
-            let balance_eth = alloy::primitives::utils::format_ether(balance);
-            tracing::trace!("current wallet balance: {balance_eth} ETH",);
-            ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ATTRID_WALLET_ADDRESS => self.wallet_address.to_string())
-                    .set(balance_eth.parse::<f64>().unwrap_or(f64::NAN));
-        } else {
-            tracing::warn!("could not fetch current wallet balance");
-        }
-        match receipt_result {
-            Ok(receipt) => check_receipt(transaction, &receipt).await,
-            Err(PendingTransactionError::TransportError(TransportError::NullResp)) => {
+        let get_receipt_result = pending_transaction.get_receipt().await;
+        match get_receipt_result {
+            Ok(receipt) => Ok(receipt),
+            Err(err) => {
+                tracing::warn!(%err, "initial get_receipt failed - starting backon");
                 let receipt = (|| async {
                     self.rpc_provider
                         .get_transaction_receipt(tx_hash)
@@ -148,56 +139,105 @@ impl TransactionHandler {
                         "Retrying eth_getTransactionReceipt in {duration:?} due to NullResp"
                     );
                 })
-                .await
-                .context("while fetching getReceipt")?;
-                check_receipt(transaction, &receipt).await
+                .await?;
+                tracing::info!("successfully fetched receipt after initial fail");
+                Ok(receipt)
             }
-            Err(err) => Err(TransactionError::Rpc(eyre::Report::from(err))),
         }
     }
-}
 
-async fn check_receipt<P, D, N, F, R>(transaction: F, receipt: &R) -> Result<(), TransactionError>
-where
-    P: Provider<N>,
-    D: CallDecoder + Unpin,
-    N: Network,
-    F: Fn() -> CallBuilder<P, D, N>,
-    R: ReceiptResponse + std::fmt::Debug,
-{
-    if receipt.status() {
-        handle_success_receipt(receipt);
+    async fn record_metrics(
+        &self,
+        receipt: TransactionReceipt,
+    ) -> Result<(), KeyRegistryEventError> {
+        tracing::trace!(
+            "transaction with hash: {} confirmed",
+            receipt.transaction_hash()
+        );
+
+        if let Ok(balance) = self.rpc_provider.get_balance(self.wallet_address).await {
+            let balance_eth = alloy::primitives::utils::format_ether(balance);
+            tracing::trace!("current wallet balance: {balance_eth} ETH",);
+            ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ATTRID_WALLET_ADDRESS => self.wallet_address.to_string())
+                    .set(balance_eth.parse::<f64>().unwrap_or(f64::NAN));
+        } else {
+            tracing::warn!("could not fetch current wallet balance");
+        }
+        let gas_used = receipt
+            .gas_used()
+            .to_string()
+            .parse::<f64>()
+            .unwrap_or(f64::NAN);
+        let cost_eth = alloy::primitives::utils::format_ether(receipt.cost());
+        // we do this to_string -> parse hop to have easy way to call to NAN if too large
+        let gas_price_wei = receipt
+            .effective_gas_price()
+            .to_string()
+            .parse::<f64>()
+            .unwrap_or(f64::NAN);
+        let gas_price_eth = alloy::primitives::utils::format_ether(receipt.effective_gas_price());
+        tracing::trace!(
+            "gas used: {gas_used}; transaction cost: {cost_eth} ETH; transaction gas price: {gas_price_eth} ETH"
+        );
+        metrics::gauge!(METRICS_ID_GAS_PRICE).set(gas_price_wei);
         Ok(())
-    } else {
-        tracing::debug!("could not send transaction - do a call to get revert data");
-        transaction().call().await?;
-        // if we are here the call afterwards succeeded - we don't really know why the receipt failed so just return the wrapped receipt
-        Err(TransactionError::Rpc(eyre::eyre!(
-            "cannot finish transaction for unknown reason: {receipt:?}"
-        )))
     }
-}
 
-fn handle_success_receipt<R: ReceiptResponse>(receipt: &R) {
-    tracing::trace!(
-        "transaction with hash: {} confirmed",
-        receipt.transaction_hash()
-    );
-    let gas_used = receipt
-        .gas_used()
-        .to_string()
-        .parse::<f64>()
-        .unwrap_or(f64::NAN);
-    let cost_eth = alloy::primitives::utils::format_ether(receipt.cost());
-    // we do this to_string -> parse hop to have easy way to call to NAN if too large
-    let gas_price_wei = receipt
-        .effective_gas_price()
-        .to_string()
-        .parse::<f64>()
-        .unwrap_or(f64::NAN);
-    let gas_price_eth = alloy::primitives::utils::format_ether(receipt.effective_gas_price());
-    tracing::debug!(
-        "gas used: {gas_used}; transaction cost: {cost_eth} ETH; transaction gas price: {gas_price_eth} ETH"
-    );
-    metrics::gauge!(METRICS_ID_GAS_PRICE).set(gas_price_wei);
+    #[instrument(level = "info", skip_all, fields(tx_hash = tracing::field::Empty))]
+    async fn submit<D>(
+        &self,
+        transaction: CallBuilder<&DynProvider, D>,
+    ) -> Result<(), KeyRegistryEventError>
+    where
+        D: CallDecoder + Unpin + Clone,
+    {
+        // first we simulate the transaction
+        self.simulate_transaction(transaction.clone()).await?;
+        let receipt = self.send_transaction(transaction).await?;
+        receipt.ensure_success()?;
+        self.record_metrics(receipt).await
+    }
+
+    pub(crate) async fn add_round1_keygen_contribution(
+        &self,
+        oprf_key_id: OprfKeyId,
+        contribution: Round1Contribution,
+    ) -> Result<(), KeyRegistryEventError> {
+        let transaction = self
+            .contract
+            .addRound1KeyGenContribution(oprf_key_id.into_inner(), contribution);
+        self.submit(transaction).await
+    }
+
+    pub(crate) async fn add_round1_reshare_contribution(
+        &self,
+        oprf_key_id: OprfKeyId,
+        contribution: Round1Contribution,
+    ) -> Result<(), KeyRegistryEventError> {
+        let transaction = self
+            .contract
+            .addRound1ReshareContribution(oprf_key_id.into_inner(), contribution);
+        self.submit(transaction).await
+    }
+
+    pub(crate) async fn add_round2_contribution(
+        &self,
+        oprf_key_id: OprfKeyId,
+        contribution: Round2Contribution,
+    ) -> Result<(), KeyRegistryEventError> {
+        let transaction = self
+            .contract
+            .addRound2Contribution(oprf_key_id.into_inner(), contribution);
+        self.submit(transaction).await
+    }
+
+    pub(crate) async fn add_round3_contribution(
+        &self,
+        oprf_key_id: OprfKeyId,
+    ) -> Result<(), KeyRegistryEventError> {
+        let transaction = self
+            .contract
+            .addRound3Contribution(oprf_key_id.into_inner());
+        self.submit(transaction).await
+    }
 }

@@ -63,7 +63,7 @@ fn build_public_inputs(
 async fn test_secret_gen() -> eyre::Result<()> {
     let mut rng = rand::thread_rng();
     let oprf_key_id = OprfKeyId::new(rng.r#gen());
-    let threshold = 2;
+    let threshold = 2.try_into().expect("2 is non-zero");
     let graph =
         PathBuf::from(std::env!("CARGO_MANIFEST_DIR")).join("../artifacts/OPRFKeyGenGraph.13.bin");
     let graph = std::fs::read(graph)?;
@@ -154,35 +154,29 @@ async fn test_secret_gen() -> eyre::Result<()> {
         dlog_secret_gen1.producer_round2(oprf_key_id, epoch, pks.clone()),
         dlog_secret_gen2.producer_round2(oprf_key_id, epoch, pks.clone())
     );
-    let dlog_secret_gen0_round2 = dlog_secret_gen0_round2
-        .context("while doing round2")?
-        .expect("Should be Some");
-    let dlog_secret_gen1_round2 = dlog_secret_gen1_round2
-        .context("while doing round2")?
-        .expect("Should be Some");
-    let dlog_secret_gen2_round2 = dlog_secret_gen2_round2
-        .context("while doing round2")?
-        .expect("Should be Some");
+    let dlog_secret_gen0_round2 = dlog_secret_gen0_round2.context("while doing round2")?;
+    let dlog_secret_gen1_round2 = dlog_secret_gen1_round2.context("while doing round2")?;
+    let dlog_secret_gen2_round2 = dlog_secret_gen2_round2.context("while doing round2")?;
 
     let [pk0, pk1, pk2] = pks.clone().try_into().expect("Should be three keys");
     // verify the proofs
     // build public inputs for proof0
     let public_inputs0 = build_public_inputs(
-        threshold - 1,
+        threshold.get() - 1,
         pk0,
         &dlog_secret_gen0_round2,
         &flattened_pks,
         &commitments0,
     );
     let public_inputs1 = build_public_inputs(
-        threshold - 1,
+        threshold.get() - 1,
         pk1,
         &dlog_secret_gen1_round2,
         &flattened_pks,
         &commitments1,
     );
     let public_inputs2 = build_public_inputs(
-        threshold - 1,
+        threshold.get() - 1,
         pk2,
         &dlog_secret_gen2_round2,
         &flattened_pks,
@@ -207,16 +201,13 @@ async fn test_secret_gen() -> eyre::Result<()> {
     let [ciphers0, ciphers1, ciphers2] = ciphers.try_into().expect("len is 3");
     dlog_secret_gen0
         .round3(oprf_key_id, epoch, ciphers0, Contributions::Full, &pks)
-        .await?
-        .expect("Should be Some");
+        .await?;
     dlog_secret_gen1
         .round3(oprf_key_id, epoch, ciphers1, Contributions::Full, &pks)
-        .await?
-        .expect("Should be Some");
+        .await?;
     dlog_secret_gen2
         .round3(oprf_key_id, epoch, ciphers2, Contributions::Full, &pks)
-        .await?
-        .expect("Should be Some");
+        .await?;
 
     // finalize round
     dlog_secret_gen0
@@ -254,27 +245,33 @@ async fn test_secret_gen() -> eyre::Result<()> {
 
     assert_eq!(is_public_key, should_public_key);
     // check that shares are removed correctly
-    assert!(
-        secret_manager0
-            .fetch_keygen_intermediates(oprf_key_id, epoch)
-            .await?
-            .is_none(),
-        "Intermediates must be gone now"
-    );
-    assert!(
-        secret_manager1
-            .fetch_keygen_intermediates(oprf_key_id, epoch)
-            .await?
-            .is_none(),
-        "Intermediates must be gone now"
-    );
-    assert!(
-        secret_manager2
-            .fetch_keygen_intermediates(oprf_key_id, epoch)
-            .await?
-            .is_none(),
-        "Intermediates must be gone now"
-    );
+    let error0 = secret_manager0
+        .fetch_keygen_intermediates(oprf_key_id, epoch)
+        .await
+        .expect_err("Intermediates must be gone now");
+    let error1 = secret_manager1
+        .fetch_keygen_intermediates(oprf_key_id, epoch)
+        .await
+        .expect_err("Intermediates must be gone now");
+    let error2 = secret_manager2
+        .fetch_keygen_intermediates(oprf_key_id, epoch)
+        .await
+        .expect_err("Intermediates must be gone now");
+    assert!(matches!(
+        error0,
+        SecretManagerError::MissingIntermediates(id, epoch)
+            if id == oprf_key_id && epoch == epoch
+    ));
+    assert!(matches!(
+        error1,
+        SecretManagerError::MissingIntermediates(id, epoch)
+            if id == oprf_key_id && epoch == epoch
+    ));
+    assert!(matches!(
+        error2,
+        SecretManagerError::MissingIntermediates(id, epoch)
+            if id == oprf_key_id && epoch == epoch
+    ));
 
     Ok(())
 }
