@@ -155,10 +155,7 @@ impl TransactionHandler {
         }
     }
 
-    async fn record_metrics(
-        &self,
-        receipt: &TransactionReceipt,
-    ) -> Result<(), KeyRegistryEventError> {
+    async fn record_metrics(&self, receipt: &TransactionReceipt) {
         tracing::trace!(
             "transaction with hash: {} confirmed",
             receipt.transaction_hash()
@@ -167,7 +164,7 @@ impl TransactionHandler {
         if let Ok(balance) = self.rpc_provider.get_balance(self.wallet_address).await {
             let balance_eth = alloy::primitives::utils::format_ether(balance);
             tracing::trace!("current wallet balance: {balance_eth} ETH",);
-            metrics::wallet::set_wallet_ballance(&balance_eth);
+            metrics::wallet::set_wallet_balance(&balance_eth);
         } else {
             tracing::warn!("could not fetch current wallet balance");
         }
@@ -183,7 +180,6 @@ impl TransactionHandler {
             "gas used: {gas_used}; transaction cost: {cost_eth} ETH; transaction gas price: {gas_price_eth} ETH"
         );
         metrics::wallet::set_gas_price_from_wei(receipt.effective_gas_price());
-        Ok(())
     }
 
     /// Full transaction lifecycle: simulate → send → confirm → ensure success → record metrics.
@@ -206,8 +202,8 @@ impl TransactionHandler {
         // first we simulate the transaction
         self.simulate_transaction(transaction.clone()).await?;
         let receipt = self.send_transaction(transaction).await?;
+        self.record_metrics(&receipt).await;
         receipt.ensure_success()?;
-        self.record_metrics(&receipt).await?;
         Ok(receipt.transaction_hash)
     }
 
