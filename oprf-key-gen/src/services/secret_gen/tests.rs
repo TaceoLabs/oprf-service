@@ -257,21 +257,30 @@ async fn test_secret_gen() -> eyre::Result<()> {
         .fetch_keygen_intermediates(oprf_key_id, epoch)
         .await
         .expect_err("Intermediates must be gone now");
-    assert!(matches!(
-        error0,
-        SecretManagerError::MissingIntermediates(id, epoch)
-            if id == oprf_key_id && epoch == epoch
-    ));
-    assert!(matches!(
-        error1,
-        SecretManagerError::MissingIntermediates(id, epoch)
-            if id == oprf_key_id && epoch == epoch
-    ));
-    assert!(matches!(
-        error2,
-        SecretManagerError::MissingIntermediates(id, epoch)
-            if id == oprf_key_id && epoch == epoch
-    ));
+    assert!(
+        matches!(
+            error0,
+            SecretManagerError::MissingIntermediates(id, is_epoch)
+                if id == oprf_key_id && epoch == is_epoch
+        ),
+        "should be Missing Intermediates but is {error0}"
+    );
+    assert!(
+        matches!(
+            error1,
+            SecretManagerError::MissingIntermediates(id, is_epoch)
+                if id == oprf_key_id && epoch == is_epoch
+        ),
+        "should be Missing Intermediates but is {error1}"
+    );
+    assert!(
+        matches!(
+            error2,
+            SecretManagerError::MissingIntermediates(id, is_epoch)
+                if id == oprf_key_id && epoch == is_epoch
+        ),
+        "should be Missing Intermediates but is {error2}"
+    );
 
     Ok(())
 }

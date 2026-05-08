@@ -121,7 +121,7 @@ impl KeyRegistryEventHandler {
         let nodes = self.fetch_producer_public_keys(oprf_key_id).await?;
         if nodes.is_empty() {
             metrics::chain_events::inc_consumer();
-            tracing::info!("Finished round 2 for {oprf_key_id} and epoch {epoch} as producer");
+            tracing::info!("Finished round 2 for {oprf_key_id} and epoch {epoch} as CONSUMER");
         } else {
             let contribution = self
                 .secret_gen
@@ -135,7 +135,7 @@ impl KeyRegistryEventHandler {
                 .await?;
             record_tx_hash(tx_hash, event_span);
             metrics::chain_events::inc_producer();
-            tracing::info!("Finished round 2 for {oprf_key_id} and epoch {epoch} as producer");
+            tracing::info!("Finished round 2 for {oprf_key_id} and epoch {epoch} as PRODUCER");
         }
         metrics::chain_events::inc_round2();
         Ok(())
