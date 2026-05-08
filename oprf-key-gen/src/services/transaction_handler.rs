@@ -19,12 +19,7 @@ use oprf_types::{
 };
 use tracing::instrument;
 
-use crate::{
-    metrics::{
-        METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_GAS_PRICE, METRICS_ID_KEY_GEN_WALLET_BALANCE,
-    },
-    services::key_event_watcher::KeyRegistryEventError,
-};
+use crate::{metrics, services::key_event_watcher::KeyRegistryEventError};
 
 /// Service that handles transaction submission and receipt confirmation.
 ///
@@ -172,8 +167,7 @@ impl TransactionHandler {
         if let Ok(balance) = self.rpc_provider.get_balance(self.wallet_address).await {
             let balance_eth = alloy::primitives::utils::format_ether(balance);
             tracing::trace!("current wallet balance: {balance_eth} ETH",);
-            ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ATTRID_WALLET_ADDRESS => self.wallet_address.to_string())
-                    .set(balance_eth.parse::<f64>().unwrap_or(f64::NAN));
+            metrics::wallet::set_wallet_ballance(&balance_eth);
         } else {
             tracing::warn!("could not fetch current wallet balance");
         }
@@ -184,16 +178,11 @@ impl TransactionHandler {
             .unwrap_or(f64::NAN);
         let cost_eth = alloy::primitives::utils::format_ether(receipt.cost());
         // we do this to_string -> parse hop to have easy way to call to NAN if too large
-        let gas_price_wei = receipt
-            .effective_gas_price()
-            .to_string()
-            .parse::<f64>()
-            .unwrap_or(f64::NAN);
         let gas_price_eth = alloy::primitives::utils::format_ether(receipt.effective_gas_price());
         tracing::trace!(
             "gas used: {gas_used}; transaction cost: {cost_eth} ETH; transaction gas price: {gas_price_eth} ETH"
         );
-        metrics::gauge!(METRICS_ID_GAS_PRICE).set(gas_price_wei);
+        metrics::wallet::set_gas_price_from_wei(receipt.effective_gas_price());
         Ok(())
     }
 

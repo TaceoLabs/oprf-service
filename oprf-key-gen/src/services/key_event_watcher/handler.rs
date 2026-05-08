@@ -11,6 +11,7 @@ use oprf_types::{
     crypto::{EphemeralEncryptionPublicKey, OprfPublicKey, SecretGenCiphertext},
 };
 
+use crate::metrics;
 use crate::services::{
     key_event_watcher::{KeyRegistryEvent, KeyRegistryEventError},
     secret_gen::{Contributions, DLogSecretGenService},
@@ -71,13 +72,14 @@ impl KeyRegistryEventHandler {
             } => self.round3(key_id, epoch, contributions, event_span).await,
             KeyRegistryEvent::Finalize { key_id, epoch } => self.finalize(key_id, epoch).await,
             KeyRegistryEvent::ReshareRound1 { key_id, epoch } => {
-                self.reshare_round1(key_id, epoch).await
+                self.reshare_round1(key_id, epoch, event_span).await
             }
             KeyRegistryEvent::Delete { key_id } => self.delete(key_id).await,
             KeyRegistryEvent::Abort { key_id } => self.abort(key_id).await,
             KeyRegistryEvent::NotEnoughProducers { key_id } => {
                 // we simply log an error to trigger a page
                 tracing::error!("Received not-enough-producers for {key_id:?}");
+                metrics::chain_events::inc_not_enough_producers();
                 Ok(())
             }
             KeyRegistryEvent::Unknown => {
@@ -102,7 +104,9 @@ impl KeyRegistryEventHandler {
             .tx
             .add_round1_keygen_contribution(oprf_key_id, contribution)
             .await?;
+
         record_tx_hash(tx_hash, event_span);
+        metrics::chain_events::inc_keygen_round1();
         tracing::info!("Finished key-gen 1 for {oprf_key_id}");
         Ok(())
     }
@@ -116,6 +120,7 @@ impl KeyRegistryEventHandler {
         tracing::trace!("Received SecretGenRound2 event");
         let nodes = self.fetch_producer_public_keys(oprf_key_id).await?;
         if nodes.is_empty() {
+            metrics::chain_events::inc_consumer();
             tracing::info!("Finished round 2 for {oprf_key_id} and epoch {epoch} as producer");
         } else {
             let contribution = self
@@ -129,8 +134,10 @@ impl KeyRegistryEventHandler {
                 .add_round2_contribution(oprf_key_id, contribution)
                 .await?;
             record_tx_hash(tx_hash, event_span);
+            metrics::chain_events::inc_producer();
             tracing::info!("Finished round 2 for {oprf_key_id} and epoch {epoch} as producer");
         }
+        metrics::chain_events::inc_round2();
         Ok(())
     }
 
@@ -152,6 +159,7 @@ impl KeyRegistryEventHandler {
         tracing::trace!("finished round 3 - now reporting");
         let tx_hash = self.tx.add_round3_contribution(oprf_key_id).await?;
         record_tx_hash(tx_hash, event_span);
+        metrics::chain_events::inc_round3();
         tracing::info!("Finished round 3 for {oprf_key_id} and epoch {epoch} as producer");
 
         Ok(())
@@ -168,18 +176,27 @@ impl KeyRegistryEventHandler {
         } else {
             tracing::info!("Received finalize on deleted key - continue and mark as done");
         }
+        metrics::chain_events::inc_finalize();
         Ok(())
     }
 
-    async fn reshare_round1(&self, oprf_key_id: OprfKeyId, epoch: ShareEpoch) -> Result<()> {
+    async fn reshare_round1(
+        &self,
+        oprf_key_id: OprfKeyId,
+        epoch: ShareEpoch,
+        event_span: &tracing::Span,
+    ) -> Result<()> {
         tracing::trace!("Received ReshareRound1 event");
         let contribution = self
             .secret_gen
             .reshare_round1(oprf_key_id, epoch, self.threshold)
             .await?;
-        self.tx
+        let tx_hash = self
+            .tx
             .add_round1_reshare_contribution(oprf_key_id, contribution)
             .await?;
+        record_tx_hash(tx_hash, event_span);
+        metrics::chain_events::inc_reshare_round1();
         tracing::info!("Finished reshare round 1 for {oprf_key_id:?} with epoch {epoch}");
         Ok(())
     }
@@ -190,6 +207,7 @@ impl KeyRegistryEventHandler {
         self.secret_gen
             .delete_oprf_key_material(oprf_key_id)
             .await?;
+        metrics::chain_events::inc_delete();
         tracing::info!("successfully deleted {oprf_key_id:?}");
         Ok(())
     }
@@ -197,6 +215,7 @@ impl KeyRegistryEventHandler {
     async fn abort(&self, oprf_key_id: OprfKeyId) -> Result<()> {
         // In contrast to delete, abort only removes in-progress state and keeps finalized shares.
         self.secret_gen.abort_keygen(oprf_key_id).await?;
+        metrics::chain_events::inc_abort();
         tracing::info!("successfully aborted {oprf_key_id:?}");
         Ok(())
     }
