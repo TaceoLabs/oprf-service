@@ -165,11 +165,7 @@ fn main() -> ExitCode {
         .build()
         .expect("Can build Tokio runtime");
     runtime.block_on(async {
-        // nodes_observability already needs a tokio reactor to set up the logs/metrics exporter
-        let tracing_config =
-            nodes_observability::TracingConfig::try_from_env().expect("Can create TracingConfig");
-        let _tracing_handle = nodes_observability::initialize_tracing(&tracing_config)
-            .expect("Can get tracing handle");
+        let _guard = telemetry_batteries::init().expect("Can initialize tracing");
 
         // load the config
         let config = match maybe_config {

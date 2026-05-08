@@ -3,7 +3,7 @@ default:
     @just --justfile {{ justfile() }} --list --list-heading $'Project commands:\n'
 
 [private]
-[working-directory('logs')]
+[working-directory('logs/setup')]
 load-key-registry:
     grep -oP 'OprfKeyRegistry proxy deployed to: \K0x[a-fA-F0-9]+' deploy_oprf_key_registry.log
 
@@ -49,4 +49,4 @@ lint:
 
 [group('dev-client')]
 run-dev-client *args:
-    OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$(just load-key-registry) cargo run --release --example dev-client-example {{ args }}
+    RUST_LOG="taceo=trace,dev_client_example=trace,warn" OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$(just load-key-registry) cargo run --release --example dev-client-example {{ args }}

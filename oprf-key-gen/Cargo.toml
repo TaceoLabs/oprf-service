@@ -44,7 +44,6 @@ nodes-common = { workspace = true, features = [
   "serde",
   "web3"
 ] }
-nodes-observability = { workspace = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5" }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.13" }
 rand.workspace = true
@@ -59,6 +58,7 @@ sqlx = { workspace = true, features = [
   "runtime-tokio",
   "tls-rustls-aws-lc-rs"
 ] }
+telemetry-batteries.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = [
   "net",

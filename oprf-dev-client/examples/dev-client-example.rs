@@ -37,9 +37,7 @@ struct ExampleDevClientSetup {
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
-    nodes_observability::install_tracing(
-        "taceo_oprf_dev_client=trace,dev_client_example=trace,warn",
-    );
+    let _guard = telemetry_batteries::init().expect("Can initialize tracing");
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
         .expect("can install");

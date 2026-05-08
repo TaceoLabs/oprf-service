@@ -39,7 +39,6 @@ groth16-material = { workspace = true, optional = true }
 groth16-sol = { workspace = true, optional = true }
 itertools.workspace = true
 nodes-common = { workspace = true, features = ["postgres"], optional = true }
-nodes-observability = { workspace = true, optional = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5" }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.13" }
 parking_lot = { workspace = true }
@@ -72,8 +71,11 @@ generate-test-transcript = [
   "dep:askama",
   "dep:clap",
   "dep:groth16-material",
-  "groth16-material/circom",
   "dep:groth16-sol",
-  "dep:nodes-observability"
+  "groth16-material/circom"
 ]
-postgres-test-container = ["dep:sqlx", "dep:testcontainers-modules", "dep:nodes-common"]
+postgres-test-container = [
+  "dep:nodes-common",
+  "dep:sqlx",
+  "dep:testcontainers-modules"
+]

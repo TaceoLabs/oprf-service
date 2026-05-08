@@ -73,13 +73,13 @@ ark-ff = { workspace = true }
 axum-test = { workspace = true, features = ["ws"] }
 config = { workspace = true }
 itertools = { workspace = true }
-nodes-observability = { workspace = true }
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.9" }
 oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.11", default-features = false, features = [
   "deploy-anvil",
   "postgres-test-container"
 ] }
 rustls = { workspace = true }
+telemetry-batteries.workspace = true
 
 [features]
 default = ["postgres"]
