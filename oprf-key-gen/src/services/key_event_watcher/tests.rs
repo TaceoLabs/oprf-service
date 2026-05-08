@@ -118,7 +118,11 @@ async fn test_delete() -> eyre::Result<()> {
         &mut rand::thread_rng(),
     );
     secret_gen
-        .reshare_round1(oprf_key_id, pending_epoch, 2)
+        .reshare_round1(
+            oprf_key_id,
+            pending_epoch,
+            2.try_into().expect("2 is non-zero"),
+        )
         .await?;
     secret_manager
         .store_pending_dlog_share(oprf_key_id, pending_epoch, random_share())
@@ -227,7 +231,11 @@ async fn test_abort() -> eyre::Result<()> {
         &mut rand::thread_rng(),
     );
     secret_gen
-        .reshare_round1(oprf_key_id, pending_epoch, 2)
+        .reshare_round1(
+            oprf_key_id,
+            pending_epoch,
+            2.try_into().expect("2 is non-zero"),
+        )
         .await?;
     secret_manager
         .store_pending_dlog_share(oprf_key_id, pending_epoch, random_share())
@@ -292,7 +300,11 @@ async fn test_not_enough_producers() -> eyre::Result<()> {
         &mut rand::thread_rng(),
     );
     secret_gen
-        .reshare_round1(oprf_key_id, pending_epoch, 2)
+        .reshare_round1(
+            oprf_key_id,
+            pending_epoch,
+            2.try_into().expect("2 is non-zero"),
+        )
         .await?;
     secret_manager
         .store_pending_dlog_share(oprf_key_id, pending_epoch, random_share())

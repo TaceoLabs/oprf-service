@@ -92,7 +92,10 @@ pub trait SecretManager {
 
     /// Retrieves the intermediate values needed for key generation (or reshare).
     ///
-    /// Returns `None` if no intermediate values are stored for the provided key/epoch pair.
+    /// # Errors
+    ///
+    /// Returns [`SecretManagerError::MissingIntermediates`]`(oprf_key_id, epoch)` when no
+    /// intermediate values are stored for the provided key/epoch pair.
     async fn fetch_keygen_intermediates(
         &self,
         oprf_key_id: OprfKeyId,

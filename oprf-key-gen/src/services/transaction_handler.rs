@@ -3,7 +3,7 @@ use std::{f64, time::Duration};
 use alloy::{
     contract::{CallBuilder, CallDecoder},
     network::ReceiptResponse,
-    primitives::Address,
+    primitives::{Address, TxHash},
     providers::{DynProvider, Provider},
     rpc::types::TransactionReceipt,
     transports::TransportError,
@@ -28,9 +28,11 @@ use crate::{
 
 /// Service that handles transaction submission and receipt confirmation.
 ///
-/// Submits transactions to the blockchain via the configured RPC provider, waits for the
-/// required number of confirmations up to `max_wait_time`, and handles failure cases by
-/// performing a static call to extract revert data for diagnostics.
+/// Simulates each call first (`eth_call` pre-flight via [`submit`](TransactionHandler::submit)),
+/// then broadcasts the transaction and polls for receipts, retrying on `NullResp` responses up
+/// to `max_tries_fetching_receipt` times.  On receipt, [`ReceiptResponse::ensure_success`] is
+/// called to surface reverts.  Gas price and wallet balance are recorded as metrics after every
+/// confirmed transaction.
 #[derive(Clone)]
 pub(crate) struct TransactionHandler {
     max_wait_time_watch_transaction: Duration,
@@ -43,14 +45,25 @@ pub(crate) struct TransactionHandler {
     contract: OprfKeyRegistryInstance<DynProvider>,
 }
 
+/// Construction arguments for [`TransactionHandler`].
 pub(crate) struct TransactionHandlerArgs {
+    /// Maximum time to wait for enough block confirmations before treating the transaction as
+    /// timed out.
     pub(crate) max_wait_time_watch_transaction: Duration,
+    /// Number of block confirmations required before a receipt is considered final.
     pub(crate) confirmations_for_transaction: u64,
+    /// Delay between each manual `eth_getTransactionReceipt` retry after an initial
+    /// `NullResp`.
     pub(crate) sleep_between_get_receipt: Duration,
+    /// Maximum number of `eth_getTransactionReceipt` retries when receiving `NullResp`.
     pub(crate) max_tries_fetching_receipt: usize,
+    /// Gas limit applied to every call and send, in gas units.
     pub(crate) max_gas_per_transaction: u64,
+    /// HTTP provider used for transaction submission, balance queries, and receipt polling.
     pub(crate) rpc_provider: web3::HttpRpcProvider,
+    /// Wallet address used to query the on-chain balance after each confirmed transaction.
     pub(crate) wallet_address: Address,
+    /// Address of the `OprfKeyRegistry` contract.
     pub(crate) contract_address: Address,
 }
 
@@ -80,6 +93,7 @@ impl From<TransactionHandlerArgs> for TransactionHandler {
 }
 
 impl TransactionHandler {
+    /// Construct a [`TransactionHandler`] from its arguments.
     pub(crate) fn new(args: TransactionHandlerArgs) -> Self {
         Self::from(args)
     }
@@ -148,7 +162,7 @@ impl TransactionHandler {
 
     async fn record_metrics(
         &self,
-        receipt: TransactionReceipt,
+        receipt: &TransactionReceipt,
     ) -> Result<(), KeyRegistryEventError> {
         tracing::trace!(
             "transaction with hash: {} confirmed",
@@ -183,11 +197,20 @@ impl TransactionHandler {
         Ok(())
     }
 
-    #[instrument(level = "info", skip_all, fields(tx_hash = tracing::field::Empty))]
+    /// Full transaction lifecycle: simulate → send → confirm → ensure success → record metrics.
+    ///
+    /// Runs a pre-flight `eth_call` via [`simulate_transaction`](Self::simulate_transaction) to
+    /// surface reverts before spending gas, then broadcasts via
+    /// [`send_transaction`](Self::send_transaction), calls
+    /// [`ReceiptResponse::ensure_success`] to assert the receipt status, and
+    /// emits gas/balance metrics via [`record_metrics`](Self::record_metrics).
+    ///
+    /// Returns the `TxHash` of the confirmed transaction.
+    #[instrument(level = "info", skip_all)]
     async fn submit<D>(
         &self,
         transaction: CallBuilder<&DynProvider, D>,
-    ) -> Result<(), KeyRegistryEventError>
+    ) -> Result<TxHash, KeyRegistryEventError>
     where
         D: CallDecoder + Unpin + Clone,
     {
@@ -195,46 +218,75 @@ impl TransactionHandler {
         self.simulate_transaction(transaction.clone()).await?;
         let receipt = self.send_transaction(transaction).await?;
         receipt.ensure_success()?;
-        self.record_metrics(receipt).await
+        self.record_metrics(&receipt).await?;
+        Ok(receipt.transaction_hash)
     }
 
+    /// Submits a round-1 key-gen contribution to `OprfKeyRegistry::addRound1KeyGenContribution`.
+    ///
+    /// Returns the `TxHash` of the confirmed transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KeyRegistryEventError`] on revert, RPC failure, or receipt timeout.
     pub(crate) async fn add_round1_keygen_contribution(
         &self,
         oprf_key_id: OprfKeyId,
         contribution: Round1Contribution,
-    ) -> Result<(), KeyRegistryEventError> {
+    ) -> Result<TxHash, KeyRegistryEventError> {
         let transaction = self
             .contract
             .addRound1KeyGenContribution(oprf_key_id.into_inner(), contribution);
         self.submit(transaction).await
     }
 
+    /// Submits a round-1 reshare contribution to `OprfKeyRegistry::addRound1ReshareContribution`.
+    ///
+    /// Returns the `TxHash` of the confirmed transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KeyRegistryEventError`] on revert, RPC failure, or receipt timeout.
     pub(crate) async fn add_round1_reshare_contribution(
         &self,
         oprf_key_id: OprfKeyId,
         contribution: Round1Contribution,
-    ) -> Result<(), KeyRegistryEventError> {
+    ) -> Result<TxHash, KeyRegistryEventError> {
         let transaction = self
             .contract
             .addRound1ReshareContribution(oprf_key_id.into_inner(), contribution);
         self.submit(transaction).await
     }
 
+    /// Submits a round-2 contribution to `OprfKeyRegistry::addRound2Contribution`.
+    ///
+    /// Returns the `TxHash` of the confirmed transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KeyRegistryEventError`] on revert, RPC failure, or receipt timeout.
     pub(crate) async fn add_round2_contribution(
         &self,
         oprf_key_id: OprfKeyId,
         contribution: Round2Contribution,
-    ) -> Result<(), KeyRegistryEventError> {
+    ) -> Result<TxHash, KeyRegistryEventError> {
         let transaction = self
             .contract
             .addRound2Contribution(oprf_key_id.into_inner(), contribution);
         self.submit(transaction).await
     }
 
+    /// Submits a round-3 contribution to `OprfKeyRegistry::addRound3Contribution`.
+    ///
+    /// Returns the `TxHash` of the confirmed transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KeyRegistryEventError`] on revert, RPC failure, or receipt timeout.
     pub(crate) async fn add_round3_contribution(
         &self,
         oprf_key_id: OprfKeyId,
-    ) -> Result<(), KeyRegistryEventError> {
+    ) -> Result<TxHash, KeyRegistryEventError> {
         let transaction = self
             .contract
             .addRound3Contribution(oprf_key_id.into_inner());

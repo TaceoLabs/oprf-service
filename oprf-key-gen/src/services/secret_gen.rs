@@ -46,6 +46,7 @@ use crate::secret_manager::{SecretManagerError, SecretManagerService};
 #[cfg(test)]
 mod tests;
 
+/// Error type returned by [`DLogSecretGenService`] methods.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum SecretGenError {
     #[error(transparent)]
@@ -330,7 +331,7 @@ impl DLogSecretGenService {
         &self,
         oprf_key_id: OprfKeyId,
         pending_epoch: ShareEpoch,
-        threshold: u16,
+        threshold: NonZeroU16,
     ) -> SecretGenResult<Round1Contribution> {
         tracing::trace!("creating new intermediates");
         let old_share = self
@@ -340,7 +341,7 @@ impl DLogSecretGenService {
         let intermediates = if let Some(old_share) = old_share {
             tracing::trace!("found share - we want to be PRODUCER");
             let mut rng = rand::thread_rng();
-            let degree = usize::from(threshold - 1);
+            let degree = usize::from(threshold.get() - 1);
             KeyGenIntermediateValues::reshare(old_share, degree, &mut rng)
         } else {
             tracing::trace!("did not find share - we want to be CONSUMER");

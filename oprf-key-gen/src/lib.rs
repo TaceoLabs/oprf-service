@@ -265,6 +265,7 @@ pub async fn start(
                 start_signal: started_services.new_service(),
                 transaction_handler,
                 event_stream_config: config.event_stream_config,
+                threshold: config.expected_threshold,
                 cancellation_token,
             },
         )
