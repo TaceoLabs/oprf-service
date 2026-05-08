@@ -72,6 +72,7 @@ pub(crate) enum Contributions {
 /// Service for managing the distributed key-gen/reshare protocol.
 ///
 /// **Note:** Must only be used in a single-owner context. Do not share across tasks.
+#[derive(Clone)]
 pub(crate) struct DLogSecretGenService {
     secret_manager: SecretManagerService,
     key_gen_material: Arc<CircomGroth16Material>,

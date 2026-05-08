@@ -59,8 +59,8 @@ use oprf_types::chain::{
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
-// #[cfg(test)]
-// mod tests;
+#[cfg(test)]
+mod tests;
 
 mod events;
 mod handler;
