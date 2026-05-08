@@ -1,6 +1,6 @@
 # OPRF Service
 
-[![CI](https://github.com/TaceoLabs/oprf-service/actions/workflows/rust_test.yml/badge.svg)](https://github.com/TaceoLabs/oprf-service/actions/workflows/rust_test.yml)
+[![CI](https://github.com/TaceoLabs/oprf-service/actions/workflows/ci.yml/badge.svg)](https://github.com/TaceoLabs/oprf-service/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.91%2B-orange.svg)](https://www.rust-lang.org)
 
