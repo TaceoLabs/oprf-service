@@ -1,4 +1,5 @@
 #![allow(clippy::too_many_lines, reason = "doesn't matter for tests")]
+use std::num::NonZeroU16;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -207,7 +208,11 @@ async fn key_gen_round1_is_idempotent() -> eyre::Result<()> {
     let epoch = ShareEpoch::default();
 
     let first_contribution = dlog_secret_gen
-        .key_gen_round1(oprf_key_id, epoch, 2.try_into().expect("2 is non-zero"))
+        .key_gen_round1(
+            oprf_key_id,
+            epoch,
+            NonZeroU16::new(2).expect("2 is non-zero"),
+        )
         .await?;
     let intermediates = secret_manager
         .fetch_keygen_intermediates(oprf_key_id, epoch)
@@ -216,7 +221,11 @@ async fn key_gen_round1_is_idempotent() -> eyre::Result<()> {
     let serialized_intermediates = super::to_db_ark_serialize_uncompressed(&intermediates);
 
     let retried_contribution = dlog_secret_gen
-        .key_gen_round1(oprf_key_id, epoch, 2.try_into().expect("2 is non-zero"))
+        .key_gen_round1(
+            oprf_key_id,
+            epoch,
+            NonZeroU16::new(2).expect("2 is non-zero"),
+        )
         .await
         .expect("retrying round 1 should reuse stored intermediates");
 

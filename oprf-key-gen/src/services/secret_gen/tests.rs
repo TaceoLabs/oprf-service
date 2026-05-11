@@ -63,7 +63,7 @@ fn build_public_inputs(
 async fn test_secret_gen() -> eyre::Result<()> {
     let mut rng = rand::thread_rng();
     let oprf_key_id = OprfKeyId::new(rng.r#gen());
-    let threshold = 2.try_into().expect("2 is non-zero");
+    let threshold = NonZeroU16::new(2).expect("2 is non-zero");
     let graph =
         PathBuf::from(std::env!("CARGO_MANIFEST_DIR")).join("../artifacts/OPRFKeyGenGraph.13.bin");
     let graph = std::fs::read(graph)?;

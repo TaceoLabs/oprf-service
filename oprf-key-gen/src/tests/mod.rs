@@ -1,6 +1,6 @@
 #![allow(clippy::large_futures, reason = "doesnt matter for tests")]
 use std::fmt;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU16, NonZeroUsize};
 use std::time::Duration;
 
 use alloy::{primitives::U160, sol_types::SolEvent};
@@ -138,8 +138,8 @@ impl TestKeyGen {
                 wallet_private_key: private_key.into(),
                 zkey_path: setup.key_gen_path(),
                 witness_graph_path: setup.witness_path(),
-                expected_threshold: expected_threshold.try_into().expect("Is non-zero"),
-                expected_num_peers: expected_num_peers.try_into().expect("Is non-zero"),
+                expected_threshold: NonZeroU16::new(expected_threshold).expect("Is non-zero"),
+                expected_num_peers: NonZeroU16::new(expected_num_peers).expect("Is non-zero"),
                 rpc_provider_config: HttpRpcProviderConfig::with_default_values(vec![
                     anvil.endpoint_url(),
                 ]),
@@ -150,7 +150,7 @@ impl TestKeyGen {
         config.rpc_provider_config.chain_id = Some(31_337);
         config.event_stream_config.skip_backfill = skip_backfill;
         config.event_stream_config.confirmations_after_sync_block =
-            NonZeroUsize::try_from(2).expect("2 is non-zero");
+            NonZeroUsize::new(2).expect("2 is non-zero");
         if let Some(interval) = cursor_checkpoint_interval {
             config.cursor_checkpoint_interval = interval;
         }

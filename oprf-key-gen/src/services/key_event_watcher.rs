@@ -41,7 +41,7 @@ use crate::{
 use alloy::{
     network::primitives::TransactionFailedError,
     primitives::{Address, LogData},
-    providers::DynProvider,
+    providers::{DynProvider, PendingTransactionError},
     rpc::types::Log,
     sol_types::SolEvent as _,
     transports::TransportErrorKind,
@@ -77,6 +77,8 @@ pub(crate) enum KeyRegistryEventError {
     Contract(#[source] alloy::contract::Error),
     #[error(transparent)]
     Rpc(#[from] alloy::transports::RpcError<TransportErrorKind>),
+    #[error(transparent)]
+    PendingTransactionError(#[from] PendingTransactionError),
     #[error(transparent)]
     TransactionFailedError(#[from] TransactionFailedError),
     #[error("Cannot handle event due to secret-manager error: {0}")]

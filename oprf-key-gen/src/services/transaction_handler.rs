@@ -4,9 +4,9 @@ use alloy::{
     contract::{CallBuilder, CallDecoder},
     network::ReceiptResponse,
     primitives::{Address, TxHash},
-    providers::{DynProvider, Provider},
+    providers::{DynProvider, PendingTransactionError, Provider, WatchTxError},
     rpc::types::TransactionReceipt,
-    transports::TransportError,
+    transports::{RpcError, TransportError},
 };
 use backon::{BackoffBuilder as _, ConstantBackoff, ConstantBuilder, Retryable as _};
 use nodes_common::web3;
@@ -127,13 +127,14 @@ impl TransactionHandler {
             .with_required_confirmations(self.confirmations_for_transaction)
             .with_timeout(Some(self.max_wait_time_watch_transaction));
         let tx_hash = pending_transaction.tx_hash().to_owned();
-        let current_span = tracing::Span::current();
-        current_span.record("tx_hash", tx_hash.to_string());
         let get_receipt_result = pending_transaction.get_receipt().await;
         match get_receipt_result {
             Ok(receipt) => Ok(receipt),
-            Err(err) => {
-                tracing::warn!(%err, "initial get_receipt failed - starting backon");
+            Err(
+                err @ (PendingTransactionError::TransportError(RpcError::NullResp)
+                | PendingTransactionError::TxWatcher(WatchTxError::Timeout)),
+            ) => {
+                tracing::warn!(%err, "initial get_receipt failed - starting backoff");
                 let receipt = (|| async {
                     self.rpc_provider
                         .get_transaction_receipt(tx_hash)
@@ -152,6 +153,7 @@ impl TransactionHandler {
                 tracing::info!("successfully fetched receipt after initial fail");
                 Ok(receipt)
             }
+            Err(err) => Err(KeyRegistryEventError::from(err)),
         }
     }
 

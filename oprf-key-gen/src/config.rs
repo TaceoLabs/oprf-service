@@ -24,6 +24,7 @@
 //! | `max_tries_fetching_receipt`             | 5           |
 //! | `sleep_between_get_receipt`              | 5 s         |
 //! | `i_am_alive_interval`                    | 60 s        |
+//! | `cursor_checkpoint_interval`             | 1 day       |
 
 use std::num::NonZeroU16;
 use std::{path::PathBuf, time::Duration};
@@ -123,6 +124,8 @@ pub struct OprfKeyGenServiceConfig {
     /// Interval in which we persist a [`ChainCursor`](nodes_common::web3::event_stream::ChainCursor) checkpoint.
     ///
     /// The implementation will fetch the current block number, then sleep for this configured period, and then call [`ChainCursorStorage::store_chain_cursor`](crate::event_cursor_store::ChainCursorStorage::store_chain_cursor) with the fetched block number. This should prevent very large backfills in case of idle key-gens.
+    ///
+    /// This should not be smaller than 12 hours. The implementation expect that the block fetched in this interval is for sure already handled. Setting this to a small value (like 5 seconds) might result in loss of events.
     ///
     /// Defaults to `1 day`.
     #[serde(default = "OprfKeyGenServiceConfig::default_cursor_checkpoint_interval")]

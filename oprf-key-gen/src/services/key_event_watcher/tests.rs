@@ -1,4 +1,4 @@
-use std::{str::FromStr, time::Duration};
+use std::{num::NonZeroU16, str::FromStr, time::Duration};
 
 use crate::{
     secret_manager::{SecretManager, SecretManagerError},
@@ -69,7 +69,7 @@ fn fixture(setup: &TestSetup) -> HandlerFixture {
     });
 
     let contract = OprfKeyRegistry::new(setup.oprf_key_registry, setup.provider.clone());
-    let threshold = 2.try_into().expect("non-zero");
+    let threshold = NonZeroU16::new(2).expect("2 is non-zero");
     let handler =
         KeyRegistryEventHandler::new(contract, secret_gen.clone(), threshold, transaction_handler);
 
@@ -94,7 +94,7 @@ async fn test_round2_invalid_proof() -> eyre::Result<()> {
     // Generate local intermediates (TestOprfKeyRegistry returns hardcoded EPKs for key 43,
     // so producer_round2 will produce a proof whose public inputs mismatch on-chain → ProofInvalid).
     fx.secret_gen
-        .key_gen_round1(key_id, epoch, 2.try_into().expect("non-zero"))
+        .key_gen_round1(key_id, epoch, NonZeroU16::new(2).expect("non-zero"))
         .await?;
 
     let error = fx
@@ -121,7 +121,7 @@ async fn test_round2_consumer_path_when_contract_in_wrong_round() -> eyre::Resul
     let epoch = ShareEpoch::default();
 
     fx.secret_gen
-        .key_gen_round1(key_id, epoch, 2.try_into().expect("non-zero"))
+        .key_gen_round1(key_id, epoch, NonZeroU16::new(2).expect("non-zero"))
         .await?;
 
     // TestOprfKeyRegistry reverts with WrongRound for key 44; handler takes the consumer path → Ok(()).
@@ -160,7 +160,7 @@ async fn test_delete() -> eyre::Result<()> {
         &mut rand::thread_rng(),
     );
     fx.secret_gen
-        .reshare_round1(key_id, pending_epoch, 2.try_into().expect("non-zero"))
+        .reshare_round1(key_id, pending_epoch, NonZeroU16::new(2).expect("non-zero"))
         .await?;
     fx.secret_manager
         .store_pending_dlog_share(key_id, pending_epoch, random_share())
@@ -217,7 +217,7 @@ async fn test_abort() -> eyre::Result<()> {
         &mut rand::thread_rng(),
     );
     fx.secret_gen
-        .reshare_round1(key_id, pending_epoch, 2.try_into().expect("non-zero"))
+        .reshare_round1(key_id, pending_epoch, NonZeroU16::new(2).expect("non-zero"))
         .await?;
     fx.secret_manager
         .store_pending_dlog_share(key_id, pending_epoch, random_share())

@@ -98,7 +98,7 @@ pub(crate) mod chain_events {
             "Number of time the node participated as CONSUMER in the key-gen protocol"
         );
 
-        metrics::describe_counter!(
+        metrics::describe_gauge!(
             METRIC_CURRENT_BLOCK,
             metrics::Unit::Count,
             "Last block where we observed a key-gen event"
@@ -149,7 +149,11 @@ pub(crate) mod chain_events {
         metrics::counter!(METRIC_CONSUMER_ROLE).increment(1);
     }
 
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "We accept precision loss as we don't expect to have a block number > f64::MAX"
+    )]
     pub(crate) fn record_current_block(chain_cursor: ChainCursor) {
-        metrics::counter!(METRIC_CURRENT_BLOCK).absolute(chain_cursor.block());
+        metrics::gauge!(METRIC_CURRENT_BLOCK).set(chain_cursor.block() as f64);
     }
 }
