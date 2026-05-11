@@ -1,4 +1,5 @@
 #![allow(clippy::too_many_lines, reason = "doesn't matter for tests")]
+use std::num::NonZeroU16;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -185,10 +186,17 @@ async fn fetch_keygen_intermediates_missing_returns_none() -> eyre::Result<()> {
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let epoch = ShareEpoch::new(12);
 
-    let fetched = secret_manager
+    let should_err = secret_manager
         .fetch_keygen_intermediates(oprf_key_id, epoch)
-        .await?;
-    assert!(fetched.is_none());
+        .await
+        .expect_err("Should be an error");
+    assert!(
+        matches!(
+            should_err,
+            SecretManagerError::MissingIntermediates(is_oprf_key, is_epoch) if is_oprf_key == oprf_key_id && is_epoch == epoch
+        ),
+        "Should be MissingIntermediates but is {should_err}"
+    );
     Ok(())
 }
 
@@ -200,23 +208,30 @@ async fn key_gen_round1_is_idempotent() -> eyre::Result<()> {
     let epoch = ShareEpoch::default();
 
     let first_contribution = dlog_secret_gen
-        .key_gen_round1(oprf_key_id, epoch, 2)
+        .key_gen_round1(
+            oprf_key_id,
+            epoch,
+            NonZeroU16::new(2).expect("2 is non-zero"),
+        )
         .await?;
     let intermediates = secret_manager
         .fetch_keygen_intermediates(oprf_key_id, epoch)
-        .await?
-        .expect("intermediates should be present");
+        .await?;
+
     let serialized_intermediates = super::to_db_ark_serialize_uncompressed(&intermediates);
 
     let retried_contribution = dlog_secret_gen
-        .key_gen_round1(oprf_key_id, epoch, 2)
+        .key_gen_round1(
+            oprf_key_id,
+            epoch,
+            NonZeroU16::new(2).expect("2 is non-zero"),
+        )
         .await
         .expect("retrying round 1 should reuse stored intermediates");
 
     let stored_after_retry = secret_manager
         .fetch_keygen_intermediates(oprf_key_id, epoch)
-        .await?
-        .expect("intermediates should still be present");
+        .await?;
 
     assert_eq!(
         serialized_intermediates,
@@ -263,11 +278,14 @@ async fn confirm_without_pending_share_fails() -> eyre::Result<()> {
         .confirm_dlog_share(oprf_key_id, epoch, public_key)
         .await
         .expect_err("confirm without pending share should fail");
-    assert!(matches!(
-        err,
-        SecretManagerError::MissingIntermediates(id, pending_epoch)
-            if id == oprf_key_id && pending_epoch == epoch
-    ));
+    assert!(
+        matches!(
+            err,
+            SecretManagerError::MissingIntermediates(id, pending_epoch)
+                if id == oprf_key_id && pending_epoch == epoch
+        ),
+        "Should be missing intermediates but is {err}"
+    );
     assert_eq!(intermediate_count(oprf_key_id, &mut conn).await?, 1);
     Ok(())
 }

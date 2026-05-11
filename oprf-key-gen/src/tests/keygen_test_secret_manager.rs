@@ -224,13 +224,13 @@ impl SecretManager for TestKeyGenSecretManager {
         &self,
         oprf_key_id: OprfKeyId,
         pending_epoch: ShareEpoch,
-    ) -> Result<Option<KeyGenIntermediateValues>, SecretManagerError> {
+    ) -> Result<KeyGenIntermediateValues, SecretManagerError> {
         let state = self.0.lock();
         state
             .keygen_intermediates
             .get(&(oprf_key_id, pending_epoch))
             .map(|bytes| Self::deserialize_intermediates(bytes))
-            .transpose()
+            .ok_or_else(|| SecretManagerError::MissingIntermediates(oprf_key_id, pending_epoch))?
     }
 
     async fn store_pending_dlog_share(

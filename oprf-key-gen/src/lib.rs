@@ -29,9 +29,6 @@ use std::{str::FromStr as _, time::Duration};
 
 use crate::{
     config::OprfKeyGenServiceConfig,
-    metrics::{
-        METRICS_ATTRID_WALLET_ADDRESS, METRICS_ID_I_AM_ALIVE, METRICS_ID_KEY_GEN_WALLET_BALANCE,
-    },
     services::{
         event_cursor_store::ChainCursorService,
         secret_gen::DLogSecretGenService,
@@ -40,7 +37,6 @@ use crate::{
     },
 };
 use alloy::{
-    consensus::constants::ETH_TO_WEI,
     network::EthereumWallet,
     primitives::Address,
     providers::{DynProvider, Provider as _, ProviderBuilder, WsConnect},
@@ -216,13 +212,10 @@ pub async fn start(
         .get_balance(address)
         .await
         .context("while get_balance")?;
-    tracing::info!(
-        "wallet balance: {} ETH",
-        alloy::primitives::utils::format_ether(balance)
-    );
-    #[allow(clippy::cast_precision_loss,reason="we must use f64 due to API limitations")]
-    ::metrics::gauge!(METRICS_ID_KEY_GEN_WALLET_BALANCE, METRICS_ATTRID_WALLET_ADDRESS => address.to_string())
-        .set(f64::from(balance) / ETH_TO_WEI as f64);
+    let balance = alloy::primitives::utils::format_ether(balance);
+
+    tracing::info!("wallet balance: {balance} ETH");
+    metrics::wallet::set_wallet_balance(&balance);
 
     contract_sanity_checks(&http_rpc_provider, address, &config)
         .await
@@ -248,6 +241,7 @@ pub async fn start(
         max_gas_per_transaction: config.max_gas_per_transaction,
         rpc_provider: http_rpc_provider.clone(),
         wallet_address: address,
+        contract_address: config.oprf_key_registry_contract,
     });
 
     tracing::info!("spawning key event watcher..");
@@ -264,6 +258,7 @@ pub async fn start(
                 start_signal: started_services.new_service(),
                 transaction_handler,
                 event_stream_config: config.event_stream_config,
+                threshold: config.expected_threshold,
                 cancellation_token,
             },
         )
@@ -349,7 +344,7 @@ async fn start_i_am_alive_task(
         tokio::select! {
            _ = interval.tick() => {
                 if started_services.all_started() {
-                    ::metrics::counter!(METRICS_ID_I_AM_ALIVE).increment(1);
+                    metrics::health::inc_i_am_alive();
                 }
            },
            () = cancellation_token.cancelled() => {

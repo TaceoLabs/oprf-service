@@ -17,7 +17,7 @@
 //! generation protocol.
 
 use core::fmt;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, num::NonZeroU16, sync::Arc};
 
 use alloy::primitives::U256;
 use ark_ec::{AffineRepr as _, CurveGroup as _};
@@ -46,6 +46,18 @@ use crate::secret_manager::{SecretManagerError, SecretManagerService};
 #[cfg(test)]
 mod tests;
 
+/// Error type returned by [`DLogSecretGenService`] methods.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum SecretGenError {
+    #[error(transparent)]
+    SecretManagerError(#[from] SecretManagerError),
+    #[error(transparent)]
+    Internal(#[from] eyre::Report),
+}
+
+// Cannot use type alias Result because CanonicalSerialize/CanonicalDeserialize yield compiler errors in that case
+type SecretGenResult<T> = std::result::Result<T, SecretGenError>;
+
 /// Defines how many contributions we need to reconstruct the received [`DLogShareShamir`].
 ///
 /// We need contributions from everyone during key-gen and only some (along with the lagrange coefficients) during reshare.
@@ -60,6 +72,7 @@ pub(crate) enum Contributions {
 /// Service for managing the distributed key-gen/reshare protocol.
 ///
 /// **Note:** Must only be used in a single-owner context. Do not share across tasks.
+#[derive(Clone)]
 pub(crate) struct DLogSecretGenService {
     secret_manager: SecretManagerService,
     key_gen_material: Arc<CircomGroth16Material>,
@@ -191,18 +204,17 @@ impl DLogSecretGenService {
     pub(crate) async fn delete_oprf_key_material(
         &self,
         oprf_key_id: OprfKeyId,
-    ) -> Result<(), SecretManagerError> {
+    ) -> SecretGenResult<()> {
         self.secret_manager
             .delete_oprf_key_material(oprf_key_id)
-            .await
+            .await?;
+        Ok(())
     }
 
     /// Aborts an in-process keygen.
-    pub(crate) async fn abort_keygen(
-        &self,
-        oprf_key_id: OprfKeyId,
-    ) -> Result<(), SecretManagerError> {
-        self.secret_manager.abort_keygen(oprf_key_id).await
+    pub(crate) async fn abort_keygen(&self, oprf_key_id: OprfKeyId) -> SecretGenResult<()> {
+        self.secret_manager.abort_keygen(oprf_key_id).await?;
+        Ok(())
     }
 
     /// Executes round 1 of the key-gen protocol.
@@ -218,16 +230,15 @@ impl DLogSecretGenService {
         &self,
         oprf_key_id: OprfKeyId,
         pending_epoch: ShareEpoch,
-        threshold: u16,
-    ) -> eyre::Result<Round1Contribution> {
+        threshold: NonZeroU16,
+    ) -> SecretGenResult<Round1Contribution> {
         tracing::trace!("secret gen round1 - creating new intermediates");
-        let degree = usize::from(threshold - 1);
+        let degree = usize::from(threshold.get() - 1);
         let intermediates = KeyGenIntermediateValues::new(degree, &mut rand::thread_rng());
         let intermediates = self
             .secret_manager
             .try_store_keygen_intermediates(oprf_key_id, pending_epoch, intermediates)
-            .await
-            .context("while storing key-gen intermediates")?;
+            .await?;
         Ok(intermediates.build_round1_contribution())
     }
 
@@ -245,16 +256,11 @@ impl DLogSecretGenService {
         oprf_key_id: OprfKeyId,
         pending_epoch: ShareEpoch,
         pks: Vec<EphemeralEncryptionPublicKey>,
-    ) -> eyre::Result<Option<SecretGenCiphertexts>> {
+    ) -> SecretGenResult<SecretGenCiphertexts> {
         let intermediate_values = self
             .secret_manager
             .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
-            .await
-            .context("while fetching intermediate values")?;
-        let Some(intermediate_values) = intermediate_values else {
-            tracing::warn!("no intermediate values stored for round 2 - this key-gen is stuck");
-            return Ok(None);
-        };
+            .await?;
         let key_gen_material = Arc::clone(&self.key_gen_material);
         let contribution = tokio::task::spawn_blocking(move || {
             compute_keygen_proof(&key_gen_material, intermediate_values, &pks)
@@ -262,7 +268,7 @@ impl DLogSecretGenService {
         .await
         .context("while joining compute key-gen")?
         .context("while computing proof for round2")?;
-        Ok(Some(contribution))
+        Ok(contribution)
     }
 
     /// Decrypts received ciphertexts and stores the resulting pending share for this party.
@@ -279,25 +285,19 @@ impl DLogSecretGenService {
         ciphers: Vec<SecretGenCiphertext>,
         sharing_type: Contributions,
         pks: &[EphemeralEncryptionPublicKey],
-    ) -> eyre::Result<Option<()>> {
+    ) -> SecretGenResult<()> {
         tracing::trace!("calling round3 with {}", ciphers.len());
         let intermediate_values = self
             .secret_manager
             .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
-            .await
-            .context("while fetching intermediate values")?;
-        let Some(intermediate_values) = intermediate_values else {
-            tracing::warn!("no intermediate values stored for round 3 - this key-gen is stuck");
-            return Ok(None);
-        };
+            .await?;
         let share = decrypt_key_gen_ciphertexts(ciphers, intermediate_values, sharing_type, pks)
             .context("while computing DLogShare")?;
         // Store the computed share as pending until the finalize event confirms it.
         self.secret_manager
             .store_pending_dlog_share(oprf_key_id, pending_epoch, share)
-            .await
-            .context("while storing pending share")?;
-        Ok(Some(()))
+            .await?;
+        Ok(())
     }
 
     /// Marks the generated secret as finished.
@@ -311,11 +311,11 @@ impl DLogSecretGenService {
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
         public_key: OprfPublicKey,
-    ) -> eyre::Result<()> {
+    ) -> SecretGenResult<()> {
         self.secret_manager
             .confirm_dlog_share(oprf_key_id, epoch, public_key)
-            .await
-            .context("while confirming dlog share")
+            .await?;
+        Ok(())
     }
 
     /// Executes round 1 of the reshare protocol.
@@ -332,18 +332,17 @@ impl DLogSecretGenService {
         &self,
         oprf_key_id: OprfKeyId,
         pending_epoch: ShareEpoch,
-        threshold: u16,
-    ) -> eyre::Result<Round1Contribution> {
+        threshold: NonZeroU16,
+    ) -> SecretGenResult<Round1Contribution> {
         tracing::trace!("creating new intermediates");
         let old_share = self
             .secret_manager
             .get_share_by_epoch(oprf_key_id, pending_epoch.prev())
-            .await
-            .context("while loading previous epoch share for reshare")?;
+            .await?;
         let intermediates = if let Some(old_share) = old_share {
             tracing::trace!("found share - we want to be PRODUCER");
             let mut rng = rand::thread_rng();
-            let degree = usize::from(threshold - 1);
+            let degree = usize::from(threshold.get() - 1);
             KeyGenIntermediateValues::reshare(old_share, degree, &mut rng)
         } else {
             tracing::trace!("did not find share - we want to be CONSUMER");
@@ -354,8 +353,7 @@ impl DLogSecretGenService {
         let intermediates = self
             .secret_manager
             .try_store_keygen_intermediates(oprf_key_id, pending_epoch, intermediates)
-            .await
-            .context("while storing key-gen intermediates")?;
+            .await?;
         Ok(intermediates.build_round1_contribution())
     }
 }
