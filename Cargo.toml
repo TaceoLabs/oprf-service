@@ -70,6 +70,7 @@ serde_json = { version = "1" }
 sqlx = "0.8"
 testcontainers-modules = { version = "0.15" }
 thiserror = { version = "2" }
+tikv-jemallocator = "0.6"
 tokio = { version = "1" }
 tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
 tokio-util = "0.7"

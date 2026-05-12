@@ -6,10 +6,13 @@ FROM rust:1.91-alpine3.21 AS chef
 WORKDIR /app
 RUN apk add --no-cache musl-dev cmake clang clang-dev pkgconfig perl make \
     && cargo install cargo-chef --version 0.1.73 --locked
-# Pin jemalloc's page size to 4 KiB. jemalloc captures the build host's page
-# size at compile time; without this, a binary built on a 16 KiB-page host
-# (Apple Silicon, some arm64 servers) panics at init on a 4 KiB-page host.
-ENV JEMALLOC_SYS_WITH_LG_PAGE=12
+# Pin jemalloc's page size to 16 KiB (2^14). jemalloc captures the build host's
+# page size at compile time and aborts at init when run on a host whose page
+# size exceeds the compiled value. Pinning to 14 keeps the binary compatible
+# with both 4 KiB-page hosts (commodity x86_64 / cloud arm64) and 16 KiB-page
+# hosts (Asahi/Apple-derived kernels, some custom arm64). Cost on 4 KiB hosts
+# is a small RSS overhead. Bump to 16 if 64 KiB-page nodes ever enter scope.
+ENV JEMALLOC_SYS_WITH_LG_PAGE=14
 
 
 FROM chef AS planner
@@ -18,7 +21,6 @@ COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
-ARG GIT_HASH
 COPY --from=planner /app/recipe.json recipe.json
 # Build dependencies - this is the caching Docker layer!
 RUN cargo chef cook --release --recipe-path recipe.json
@@ -29,7 +31,7 @@ RUN cargo build --release --bin taceo-oprf-key-gen
 # Build healthcheck (statically linked against musl so it runs on scratch)
 FROM rust:1.91-alpine3.21 AS healthcheck-builder
 RUN apk add --no-cache musl-dev
-RUN cargo install simple-web-healthcheck
+RUN cargo install simple-web-healthcheck --version 0.3.0 --locked
 
 
 FROM scratch AS runtime

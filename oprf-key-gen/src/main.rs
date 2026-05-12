@@ -4,6 +4,13 @@
 //! It initializes tracing, metrics, and starts the service with configuration
 //! from environment variables using the `TACEO_OPRF_KEY_GEN__` prefix.
 
+#[cfg(not(target_env = "msvc"))]
+use tikv_jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 use std::{net::SocketAddr, process::ExitCode, sync::Arc, time::Duration};
 
 use config::Config;
