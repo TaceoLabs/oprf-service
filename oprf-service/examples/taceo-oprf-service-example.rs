@@ -77,7 +77,8 @@ async fn main() -> eyre::Result<ExitCode> {
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
         .expect("can install");
-    nodes_observability::install_tracing("oprf_service_example=trace, info");
+    let _guard = telemetry_batteries::init()?;
+
     tracing::info!("{}", nodes_common::version_info!());
 
     let config = load_example_config()?;

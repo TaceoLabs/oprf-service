@@ -40,14 +40,12 @@ main() {
 
     if [[ "$RUN_MODE" == "e2e-test" ]]; then
         log "Running dev-client tests"
-        OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$DEPLOYED_ADDRESS \
-            ./target/release/examples/dev-client-example reshare-test
-        OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$DEPLOYED_ADDRESS \
-            ./target/release/examples/dev-client-example stress-test-oprf
-        OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$DEPLOYED_ADDRESS \
-            ./target/release/examples/dev-client-example stress-test-key-gen
-        OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$DEPLOYED_ADDRESS \
-            ./target/release/examples/dev-client-example delete-test
+        export OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$DEPLOYED_ADDRESS
+        export RUST_LOG="taceo=trace,dev_client_example=trace,warn"
+        ./target/release/examples/dev-client-example reshare-test
+        ./target/release/examples/dev-client-example stress-test-oprf
+        ./target/release/examples/dev-client-example stress-test-key-gen
+        ./target/release/examples/dev-client-example delete-test
         log "Dev-client tests completed successfully"
     else
         log "No dev-client tests requested, entering sleep mode. Press Ctrl+C to stop"

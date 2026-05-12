@@ -51,7 +51,6 @@ itertools = "0.14"
 k256 = "0.13"
 metrics = "0.24"
 nodes-common = { package = "taceo-nodes-common", version = "0.5.2", default-features = false }
-nodes-observability = { package = "taceo-nodes-observability", version = "0.1.2", default-features = false }
 num-bigint = "0.4"
 parking_lot = "0.12"
 poseidon2 = { package = "taceo-poseidon2", version = "0.2", default-features = false }
@@ -68,6 +67,7 @@ semver = "1"
 serde = { version = "1" }
 serde_json = { version = "1" }
 sqlx = "0.8"
+telemetry-batteries = { version = "0.2.1", default-features = false }
 testcontainers-modules = { version = "0.15" }
 thiserror = { version = "2" }
 tikv-jemallocator = "0.6"

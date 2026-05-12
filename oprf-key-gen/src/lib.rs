@@ -62,6 +62,7 @@ pub use nodes_common::Environment;
 pub use nodes_common::StartedServices;
 pub use services::event_cursor_store;
 pub use services::secret_manager;
+use tower_http::trace::TraceLayer;
 
 /// The tasks spawned by the key-gen library. Should call [`KeyGenTasks::join`] when shutting down for graceful shutdown.
 pub struct KeyGenTasks {
@@ -280,7 +281,7 @@ pub async fn start(
     ));
 
     Ok((
-        key_gen_router,
+        key_gen_router.layer(TraceLayer::new_for_http()),
         KeyGenTasks {
             key_event_watcher,
             i_am_alive_task,

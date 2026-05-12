@@ -213,7 +213,7 @@ fn producer_contributions<R: Rng + CryptoRng>(
         poly.coeffs().to_vec().iter().map(|x| x.into()).collect(),
     );
     input.insert("nonces", nonces.iter().map(|n| n.into()).collect_vec());
-    tracing::debug!("computing proof for {function_name}");
+    println!("computing proof for {function_name}");
     let (proof, public) = compute_key_gen_proof(input, key_gen_material, rng)?;
 
     let round1 = SolidityRound1Call::new(
@@ -488,9 +488,8 @@ fn check_reshare(
 }
 
 fn main() -> eyre::Result<ExitCode> {
-    nodes_observability::install_tracing("debug");
     let config = TestTranscriptConfig::parse();
-    tracing::info!("starting with config: {config:#?}");
+    println!("starting with config: {config:#?}");
 
     let mut rng = ChaCha20Rng::seed_from_u64(config.seed);
     let key_gen_material = CircomGroth16MaterialBuilder::new()
@@ -529,7 +528,7 @@ fn main() -> eyre::Result<ExitCode> {
     )
     .context("while doing key-gen contributions")?;
 
-    tracing::info!("doing first reshare proofs");
+    println!("doing first reshare proofs");
 
     let alice_reshare_poly = KeyGenPoly::reshare(&mut rng, alice_keygen_share, DEGREE);
     let bob_reshare_poly = KeyGenPoly::reshare(&mut rng, bob_keygen_share, DEGREE);
@@ -553,7 +552,7 @@ fn main() -> eyre::Result<ExitCode> {
     )
     .context("while doing reshare 1 contributions")?;
 
-    tracing::info!("doing second reshare proofs");
+    println!("doing second reshare proofs");
 
     let bob_reshare_poly = KeyGenPoly::reshare(&mut rng, bob_reshare1_share, DEGREE);
     let carol_reshare_poly = KeyGenPoly::reshare(&mut rng, carol_reshare1_share, DEGREE);

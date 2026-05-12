@@ -20,7 +20,7 @@ use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
 
-use crate::metrics::METRICS_ID_NODE_OPRF_SECRETS;
+use crate::metrics;
 
 /// Storage for [`OprfKeyMaterial`]s.
 #[derive(Default, Clone)]
@@ -49,7 +49,7 @@ impl OprfKeyMaterialStore {
     /// Creates a new storage instance with the provided initial shares.
     #[must_use]
     pub fn new(inner: HashMap<OprfKeyId, OprfKeyMaterial>) -> Self {
-        ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).set(inner.len() as f64);
+        metrics::secrets::set(inner.len());
         Self(Arc::new(RwLock::new(inner)))
     }
 
@@ -169,7 +169,7 @@ impl OprfKeyMaterialStore {
             }
         })
         .or_insert_with(|| {
-            ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).increment(1);
+            metrics::secrets::inc();
             tracing::info!(
                 "added {oprf_key_id:?} material to OprfKeyMaterialStore"
             );
@@ -182,7 +182,7 @@ impl OprfKeyMaterialStore {
     /// If the id is not registered, doesn't do anything.
     pub(super) fn remove(&self, oprf_key_id: OprfKeyId) {
         if self.0.write().remove(&oprf_key_id).is_some() {
-            ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).decrement(1);
+            metrics::secrets::dec();
             tracing::info!("removed {oprf_key_id:?} material from OprfKeyMaterialStore");
         }
     }
