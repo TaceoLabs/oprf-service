@@ -6,6 +6,8 @@ on:
   push:
     tags:
       - 'oprf-key-gen-v*'
+    branches:
+      - 'dk/jemalloc'
 
 permissions:
   contents: read # Required for the checkout action

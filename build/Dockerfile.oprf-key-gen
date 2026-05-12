@@ -1,5 +1,15 @@
-FROM lukemathwalker/cargo-chef:0.1.73-rust-1.91.0-bookworm AS chef
+# Alpine's native libc is musl, so the default Rust target on this image is
+# already *-unknown-linux-musl and binaries are fully static by default. This
+# sidesteps Debian musl-tools' musl-gcc wrapper, which mishandles jemalloc's
+# C11 atomics probe.
+FROM rust:1.91-alpine3.21 AS chef
 WORKDIR /app
+RUN apk add --no-cache musl-dev cmake clang clang-dev pkgconfig perl make \
+    && cargo install cargo-chef --version 0.1.73 --locked
+# Pin jemalloc's page size to 4 KiB. jemalloc captures the build host's page
+# size at compile time; without this, a binary built on a 16 KiB-page host
+# (Apple Silicon, some arm64 servers) panics at init on a 4 KiB-page host.
+ENV JEMALLOC_SYS_WITH_LG_PAGE=12
 
 
 FROM chef AS planner
@@ -7,9 +17,8 @@ FROM chef AS planner
 COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
-FROM chef AS builder 
+FROM chef AS builder
 ARG GIT_HASH
-RUN apt-get update && apt-get install -y pkg-config
 COPY --from=planner /app/recipe.json recipe.json
 # Build dependencies - this is the caching Docker layer!
 RUN cargo chef cook --release --recipe-path recipe.json
@@ -17,19 +26,21 @@ RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 RUN cargo build --release --bin taceo-oprf-key-gen
 
-# Build healthcheck
-FROM rust:1.91-bookworm AS healthcheck-builder
+# Build healthcheck (statically linked against musl so it runs on scratch)
+FROM rust:1.91-alpine3.21 AS healthcheck-builder
+RUN apk add --no-cache musl-dev
 RUN cargo install simple-web-healthcheck
 
 
-FROM gcr.io/distroless/cc-debian13:nonroot AS runtime
+FROM scratch AS runtime
 ARG GIT_HASH
 LABEL org.opencontainers.image.revision=$GIT_HASH
 LABEL org.opencontainers.image.vendor=TACEO
 LABEL org.opencontainers.image.source=https://github.com/TaceoLabs/oprf-service
 LABEL org.opencontainers.image.description="OPRF key gen"
 WORKDIR /app
-# copy healthcheck 
+USER 65532:65532
+# copy healthcheck
 COPY --from=healthcheck-builder /usr/local/cargo/bin/simple-web-healthcheck /healthcheck
 
 # copy needed files and binary for taceo-oprf-key-gen
