@@ -1,6 +1,6 @@
 [package]
 name = "taceo-oprf"
-version = "0.14.0"
+version = "0.14.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "Everything you need to use TACEO:OPRF"
@@ -12,7 +12,7 @@ keywords = ["cryptography", "mpc", "oprf"]
 publish = true
 
 [dependencies]
-oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.9.5", optional = true }
+oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.9.6", optional = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5.4", optional = true }
 oprf-dev-client = { package = "taceo-oprf-dev-client", path = "../oprf-dev-client", version = "0.9.3", optional = true }
 oprf-service = { package = "taceo-oprf-service", path = "../oprf-service", version = "0.15.0", optional = true }
