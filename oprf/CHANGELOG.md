@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.14.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.13.0...taceo-oprf-v0.14.0)
+
+### 📚 Documentation
+
+
+- Fix Readme badge ([#591](https://github.com/TaceoLabs/oprf-service/pull/591)) - ([e99d785](https://github.com/TaceoLabs/oprf-service/commit/e99d785277891c5f3cefe0aeead4b2a9c465d9e8))
+- Update Readme with oprf-circom repo - ([bb0ac61](https://github.com/TaceoLabs/oprf-service/commit/bb0ac617afcce24da989a8cd8bfebe4a8d6515e0))
+
+### 🧪 Testing
+
+
+- Add backfill test script ([#587](https://github.com/TaceoLabs/oprf-service/pull/587)) - ([28534f9](https://github.com/TaceoLabs/oprf-service/commit/28534f9571cc62693ed3a2a04887a65c3281290f))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Remove Circom source tree and CI workflow - ([7ee673a](https://github.com/TaceoLabs/oprf-service/commit/7ee673a1542199b2ed30c4bc6494e5fd5d3a2b19))
+- Remove Noir circuits and CI workflow ([#577](https://github.com/TaceoLabs/oprf-service/pull/577)) - ([5c1b255](https://github.com/TaceoLabs/oprf-service/commit/5c1b2558847fadf1e00e522e39ee2b086fec1adf))
+
+
 ## [0.13.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.12.1...taceo-oprf-v0.13.0)
 
 ### 🏗️ Build

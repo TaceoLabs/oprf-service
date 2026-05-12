@@ -1,6 +1,6 @@
 [package]
 name = "taceo-oprf-service"
-version = "0.14.0"
+version = "0.15.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Main service for nodes of TACEO:OPRF"
@@ -74,7 +74,7 @@ axum-test = { workspace = true, features = ["ws"] }
 config = { workspace = true }
 itertools = { workspace = true }
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.9" }
-oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.11", default-features = false, features = [
+oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.12", default-features = false, features = [
   "deploy-anvil",
   "postgres-test-container"
 ] }
