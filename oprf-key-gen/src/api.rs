@@ -7,7 +7,6 @@
 use alloy::primitives::Address;
 use axum::Router;
 use nodes_common::StartedServices;
-use tower_http::trace::TraceLayer;
 
 pub(crate) mod info;
 
@@ -16,16 +15,12 @@ pub(crate) mod info;
 /// This function sets up:
 ///
 /// - General info about the deployment from [`info`].
-/// - An HTTP trace layer via [`TraceLayer`].
+/// - Call to `nodes_common::api::routes_with_services`.
 ///
-/// The returned [`Router`] can be incorporated into another router or be served directly by axum. Implementations don't need to configure anything in their `State`, the service is inlined as [`Extension`](https://docs.rs/axum/latest/axum/struct.Extension.html).
+/// The returned [`Router`] can be incorporated into another router or be served directly by axum.
 pub fn routes(wallet_address: Address, started_services: StartedServices) -> Router {
     let version_str = nodes_common::version_info!();
-    Router::new()
-        .merge(info::routes(wallet_address))
-        .merge(nodes_common::api::routes_with_services(
-            started_services,
-            version_str,
-        ))
-        .layer(TraceLayer::new_for_http())
+    Router::new().merge(info::routes(wallet_address)).merge(
+        nodes_common::api::routes_with_services(started_services, version_str),
+    )
 }
