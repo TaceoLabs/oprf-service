@@ -27,11 +27,8 @@ use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, instrument};
 
-use crate::{
-    metrics::METRICS_ID_NODE_CANNOT_FETCH_KEY_MATERIAL,
-    services::{
-        oprf_key_material_store::OprfKeyMaterialStore, secret_manager::SecretManagerService,
-    },
+use crate::services::{
+    oprf_key_material_store::OprfKeyMaterialStore, secret_manager::SecretManagerService,
 };
 
 /// Represents errors returned when fetching OPRF key material from the [`SecretManagerService`].
@@ -259,14 +256,12 @@ async fn fetch_oprf_key_material_from_secret_manager(
             oprf_key_material_store.insert(oprf_key_id, key_material);
         }
         Err(FetchOprfKeyMaterialError::NotFound) => {
-            tracing::warn!(
+            tracing::error!(
                 "Could not fetch oprf-key-id {oprf_key_id} and epoch {epoch} after {get_oprf_key_material_timeout:?}. Will continue anyways."
             );
-            ::metrics::counter!(METRICS_ID_NODE_CANNOT_FETCH_KEY_MATERIAL).increment(1);
         }
         Err(err) => {
             tracing::error!("Could not fetch key-material: {err:?}");
-            ::metrics::counter!(METRICS_ID_NODE_CANNOT_FETCH_KEY_MATERIAL).increment(1);
         }
     }
 }

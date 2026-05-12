@@ -8,10 +8,10 @@ use parking_lot::Mutex;
 use uuid::Uuid;
 
 use crate::api::errors::Error;
-use crate::metrics::METRICS_ID_NODE_SESSIONS_OPEN;
+use crate::metrics;
 
 /// Keeps track of all currently opened sessions.
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub(crate) struct OpenSessions(Arc<Mutex<HashSet<Uuid>>>);
 
 /// A guard for an open session.
@@ -30,6 +30,11 @@ impl Drop for SessionDropGuard {
 }
 
 impl OpenSessions {
+    pub(crate) fn new() -> Self {
+        metrics::sessions::reset();
+        Self(Arc::default())
+    }
+
     /// Inserts a new session into the service.
     ///
     /// If there is already a session with this id, will return an [`Error::SessionReuse`].
@@ -37,7 +42,7 @@ impl OpenSessions {
     /// On success, returns a [`SessionDropGuard`] that marks the session as reserved.
     pub(crate) fn insert_new_session(&self, session: Uuid) -> Result<SessionDropGuard, Error> {
         if self.0.lock().insert(session) {
-            ::metrics::gauge!(METRICS_ID_NODE_SESSIONS_OPEN).increment(1);
+            metrics::sessions::inc();
             Ok(SessionDropGuard {
                 session,
                 open_sessions: self.clone(),
@@ -52,6 +57,6 @@ impl OpenSessions {
     /// Is private so only the `Drop` implementation can call this.
     fn remove_session(&self, session: Uuid) {
         self.0.lock().remove(&session);
-        ::metrics::gauge!(METRICS_ID_NODE_SESSIONS_OPEN).decrement(1);
+        metrics::sessions::dec();
     }
 }

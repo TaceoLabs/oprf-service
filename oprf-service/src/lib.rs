@@ -50,7 +50,6 @@
 //! If you want to enable HTTP/2.0, you either have to do it by hand or by calling `axum::serve`, which enabled HTTP/2.0 by default. Have a look at [Axum's HTTP2.0 example](https://github.com/tokio-rs/axum/blob/aeff16e91af6fa76efffdee8f3e5f464b458785b/examples/websockets-http2/src/main.rs#L57).
 
 use crate::api::oprf::OprfModuleState;
-use crate::metrics::{METRICS_ID_I_AM_ALIVE, METRICS_ID_NODE_SESSIONS_OPEN};
 use crate::services::key_event_watcher::KeyEventWatcherTaskArgs;
 use crate::services::open_sessions::OpenSessions;
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
@@ -121,8 +120,6 @@ impl OprfServiceBuilder {
         started_services: StartedServices,
         cancellation_token: CancellationToken,
     ) -> eyre::Result<Self> {
-        ::metrics::gauge!(METRICS_ID_NODE_SESSIONS_OPEN).set(0);
-
         tracing::info!("loading address from secret-manager..");
         let address = secret_manager
             .load_address()
@@ -201,7 +198,7 @@ impl OprfServiceBuilder {
                     tokio::select! {
                        _ = interval.tick() => {
                             if started_services.all_started() {
-                                ::metrics::counter!(METRICS_ID_I_AM_ALIVE).increment(1);
+                                metrics::health::inc_i_am_alive();
                             }
                        },
                        () = cancellation_token.cancelled() => {
@@ -215,7 +212,7 @@ impl OprfServiceBuilder {
 
         Ok(Self {
             config,
-            open_sessions: OpenSessions::default(),
+            open_sessions: OpenSessions::new(),
             root,
             api: Router::new(),
             key_event_watcher,

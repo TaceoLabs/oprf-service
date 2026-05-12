@@ -4,138 +4,150 @@
 //! provides a helper [`describe_metrics`] to set metadata for
 //! each metric using the `metrics` crate.
 
-/// Event signaling that the node is alive
-pub const METRICS_ID_I_AM_ALIVE: &str = "taceo.oprf.node.i.am.alive";
-
-/// Observed event for start of `OprfRequest` authentication.
-pub const METRICS_ID_NODE_REQUEST_AUTH_START: &str = "taceo.oprf.node.request_auth.start";
-/// Observed event for successful verification of `OprfRequest` authentication.
-pub const METRICS_ID_NODE_REQUEST_AUTH_VERIFIED: &str = "taceo.oprf.node.request_auth.verified";
-/// Metrics key for counting successful OPRF evaluations
-pub const METRICS_ID_NODE_OPRF_SUCCESS: &str = "taceo.oprf.node.success";
-/// Metrics key for counting currently running sessions.
-pub const METRICS_ID_NODE_SESSIONS_OPEN: &str = "taceo.oprf.node.sessions.open";
-/// Metrics key for deleted sessions.
-pub const METRICS_ID_NODE_SESSIONS_TIMEOUT: &str = "taceo.oprf.node.sessions.timeout";
-/// Metrics key for registered `DLogSecrets`.
-pub const METRICS_ID_NODE_OPRF_SECRETS: &str = "taceo.oprf.node.secrets";
-/// Metrics key for how often we reject clients due to version mismatch.
-pub const METRICS_CLIENT_VERSION_MISMATCH: &str = "taceo.oprf.node.client.invalid_version";
-
-/// Metrics key for the duration of successful `OprfRequestAuth` verification
-pub const METRICS_ID_NODE_REQUEST_VERIFY_DURATION: &str = "taceo.oprf.node.request_verify.duration";
-/// Metrics key for the duration of part one of the OPRF computation
-pub const METRICS_ID_NODE_PART_1_DURATION: &str = "taceo.oprf.node.part_1.duration";
-/// Metrics key for the duration of part two of the OPRF computation
-pub const METRICS_ID_NODE_PART_2_DURATION: &str = "taceo.oprf.node.part_2.duration";
-/// Metrics key for number of requests for part one of the OPRF computation
-pub const METRICS_ID_NODE_PART_1_START: &str = "taceo.oprf.node.part_1.start";
-/// Metrics key for number of finishing handling a request for part one of the OPRF computation
-pub const METRICS_ID_NODE_PART_1_FINISH: &str = "taceo.oprf.node.part_1.finish";
-/// Metrics key for number of requests for part two of the OPRF computation
-pub const METRICS_ID_NODE_PART_2_START: &str = "taceo.oprf.node.part_2.start";
-/// Metrics key for number of finishing handling a request for part two of the OPRF computation
-pub const METRICS_ID_NODE_PART_2_FINISH: &str = "taceo.oprf.node.part_2.finish";
-
-/// Metrics key for times the node could not fetch key-material after finalize event.
-pub const METRICS_ID_NODE_CANNOT_FETCH_KEY_MATERIAL: &str = "taceo.oprf.node.fetch.error";
-
 /// Describe all metrics used by the service.
 ///
 /// This calls the `describe_*` functions from the `metrics` crate to set metadata on the different metrics.
 pub fn describe_metrics() {
-    metrics::describe_counter!(
-        METRICS_ID_I_AM_ALIVE,
-        metrics::Unit::Count,
-        "I am alive metric. Used to measure liveness in datadog"
-    );
-    metrics::describe_counter!(
-        METRICS_ID_NODE_REQUEST_AUTH_START,
-        metrics::Unit::Count,
-        "Number of OPRF request authentication attempts started."
-    );
+    request::describe_metrics();
+    health::describe_metrics();
+    sessions::describe_metrics();
+    secrets::describe_metrics();
+}
 
-    metrics::describe_counter!(
-        METRICS_ID_NODE_REQUEST_AUTH_VERIFIED,
-        metrics::Unit::Count,
-        "Number of OPRF request authentications successfully verified."
-    );
+pub(crate) mod request {
+    use std::time::Duration;
 
-    metrics::describe_counter!(
-        METRICS_ID_NODE_OPRF_SUCCESS,
-        metrics::Unit::Count,
-        "Number of successful OPRF evaluations"
-    );
+    /// Metrics key for counting successful OPRF evaluations
+    const METRICS_ID_NODE_OPRF_SUCCESS: &str = "taceo.oprf.node.request.success";
 
-    metrics::describe_gauge!(
-        METRICS_ID_NODE_SESSIONS_OPEN,
-        metrics::Unit::Count,
-        "Number of open sessions the node has stored"
-    );
+    /// Metrics key for the duration of successful `OprfRequestAuth` verification
+    const METRICS_ID_NODE_REQUEST_VERIFY_DURATION: &str = "taceo.oprf.node.request.verify.duration";
+    /// Metrics key for the duration of part one of the OPRF computation
+    const METRICS_ID_NODE_PART_1_DURATION: &str = "taceo.oprf.node.request.part1.duration";
+    /// Metrics key for the duration of part two of the OPRF computation
+    const METRICS_ID_NODE_PART_2_DURATION: &str = "taceo.oprf.node.request.part2.duration";
 
-    metrics::describe_counter!(
-        METRICS_ID_NODE_SESSIONS_TIMEOUT,
-        metrics::Unit::Count,
-        "Number of sessions that were removed because they exceeded the deadline"
-    );
+    /// Metrics key for how often we reject clients due to version mismatch.
+    const METRICS_CLIENT_VERSION_MISMATCH: &str = "taceo.oprf.node.client.invalid_version";
 
-    metrics::describe_gauge!(
-        METRICS_ID_NODE_OPRF_SECRETS,
-        metrics::Unit::Count,
-        "Number of secrets stored"
-    );
+    pub(super) fn describe_metrics() {
+        metrics::describe_counter!(
+            METRICS_ID_NODE_OPRF_SUCCESS,
+            metrics::Unit::Count,
+            "Number of successful OPRF evaluations"
+        );
 
-    metrics::describe_histogram!(
-        METRICS_ID_NODE_REQUEST_VERIFY_DURATION,
-        metrics::Unit::Milliseconds,
-        "Duration of successful OprfRequestAuth verification"
-    );
+        metrics::describe_histogram!(
+            METRICS_ID_NODE_REQUEST_VERIFY_DURATION,
+            metrics::Unit::Milliseconds,
+            "Duration of successful OprfRequestAuth verification"
+        );
 
-    metrics::describe_histogram!(
-        METRICS_ID_NODE_PART_1_DURATION,
-        metrics::Unit::Milliseconds,
-        "Duration of the OPRF computation part one"
-    );
+        metrics::describe_histogram!(
+            METRICS_ID_NODE_PART_1_DURATION,
+            metrics::Unit::Milliseconds,
+            "Duration of the OPRF computation part one"
+        );
 
-    metrics::describe_histogram!(
-        METRICS_ID_NODE_PART_2_DURATION,
-        metrics::Unit::Milliseconds,
-        "Duration of the OPRF computation part two"
-    );
+        metrics::describe_histogram!(
+            METRICS_ID_NODE_PART_2_DURATION,
+            metrics::Unit::Milliseconds,
+            "Duration of the OPRF computation part two"
+        );
 
-    metrics::describe_counter!(
-        METRICS_ID_NODE_PART_1_START,
-        metrics::Unit::Count,
-        "Number of requests to compute part one of OPRF"
-    );
+        metrics::describe_counter!(
+            METRICS_CLIENT_VERSION_MISMATCH,
+            metrics::Unit::Count,
+            "How often we rejected clients due to version mismatch"
+        );
+    }
 
-    metrics::describe_counter!(
-        METRICS_ID_NODE_PART_1_FINISH,
-        metrics::Unit::Count,
-        "Number of finished computations for part one of OPRF"
-    );
+    pub(crate) fn inc_client_version_mismatch() {
+        metrics::counter!(METRICS_CLIENT_VERSION_MISMATCH).increment(1);
+    }
 
-    metrics::describe_counter!(
-        METRICS_ID_NODE_PART_2_START,
-        metrics::Unit::Count,
-        "Number of requests to compute part two of OPRF"
-    );
+    pub(crate) fn inc_success() {
+        metrics::counter!(METRICS_ID_NODE_OPRF_SUCCESS).increment(1);
+    }
 
-    metrics::describe_counter!(
-        METRICS_ID_NODE_PART_2_FINISH,
-        metrics::Unit::Count,
-        "Number of finished computations for part two of OPRF"
-    );
+    pub(crate) fn record_verify_duration(duration: Duration) {
+        metrics::histogram!(METRICS_ID_NODE_REQUEST_VERIFY_DURATION)
+            .record(duration.as_millis() as f64);
+    }
 
-    metrics::describe_counter!(
-        METRICS_ID_NODE_CANNOT_FETCH_KEY_MATERIAL,
-        metrics::Unit::Count,
-        "Number of times we could not fetch key-material from secret-manager"
-    );
+    pub(crate) fn record_part1_duration(duration: Duration) {
+        metrics::histogram!(METRICS_ID_NODE_PART_1_DURATION).record(duration.as_millis() as f64);
+    }
 
-    metrics::describe_counter!(
-        METRICS_CLIENT_VERSION_MISMATCH,
-        metrics::Unit::Count,
-        "How often we rejected clients due to version mismatch"
-    );
+    pub(crate) fn record_part2_duration(duration: Duration) {
+        metrics::histogram!(METRICS_ID_NODE_PART_2_DURATION).record(duration.as_millis() as f64);
+    }
+}
+
+pub(crate) mod health {
+
+    const METRICS_ID_I_AM_ALIVE: &str = "taceo.oprf.node.i.am.alive";
+
+    pub(super) fn describe_metrics() {
+        metrics::describe_counter!(
+            METRICS_ID_I_AM_ALIVE,
+            metrics::Unit::Count,
+            "I am alive metric. Used to measure liveness in datadog"
+        );
+    }
+
+    pub(crate) fn inc_i_am_alive() {
+        metrics::counter!(METRICS_ID_I_AM_ALIVE).increment(1);
+    }
+}
+
+pub(crate) mod sessions {
+    /// Metrics key for counting currently running sessions.
+    const METRICS_ID_NODE_SESSIONS_OPEN: &str = "taceo.oprf.node.sessions.open";
+
+    pub(super) fn describe_metrics() {
+        metrics::describe_gauge!(
+            METRICS_ID_NODE_SESSIONS_OPEN,
+            metrics::Unit::Count,
+            "Number of open sessions the node has stored"
+        );
+    }
+
+    pub(crate) fn reset() {
+        ::metrics::gauge!(METRICS_ID_NODE_SESSIONS_OPEN).set(0);
+    }
+
+    pub(crate) fn inc() {
+        ::metrics::gauge!(METRICS_ID_NODE_SESSIONS_OPEN).increment(1);
+    }
+
+    pub(crate) fn dec() {
+        ::metrics::gauge!(METRICS_ID_NODE_SESSIONS_OPEN).decrement(1);
+    }
+}
+
+pub(crate) mod secrets {
+
+    /// Metrics key for registered `DLogSecrets`.
+    const METRICS_ID_NODE_OPRF_SECRETS: &str = "taceo.oprf.node.secrets";
+
+    pub(super) fn describe_metrics() {
+        metrics::describe_gauge!(
+            METRICS_ID_NODE_OPRF_SECRETS,
+            metrics::Unit::Count,
+            "Number of secrets stored"
+        );
+    }
+
+    pub(crate) fn set(x: usize) {
+        ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).set(x as f64);
+    }
+
+    pub(crate) fn inc() {
+        ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).increment(1);
+    }
+
+    pub(crate) fn dec() {
+        ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).decrement(1);
+    }
 }
