@@ -50,7 +50,9 @@ fn default_max_wait_shutdown() -> Duration {
     Duration::from_secs(10)
 }
 
-fn load_key_gen_config() -> eyre::Result<OprfKeyGenConfig> {
+// we are not allowed to build an eyre::Report yet because telemetry-batteries expects to install
+// the color-eyre hook
+fn load_key_gen_config() -> Result<OprfKeyGenConfig, config::ConfigError> {
     let cfg = Config::builder().add_source(
         config::Environment::with_prefix("TACEO_OPRF_KEY_GEN")
             .separator("__")
@@ -59,11 +61,7 @@ fn load_key_gen_config() -> eyre::Result<OprfKeyGenConfig> {
             .try_parsing(true),
     );
 
-    let key_gen_config = cfg
-        .build()
-        .context("while building from config")?
-        .try_deserialize()
-        .context("while parsing config")?;
+    let key_gen_config = cfg.build()?.try_deserialize()?;
 
     // Unset all env vars with our prefix to prevent leakage to subprocesses.
     // Safety: this is called before any threads are spawned.
@@ -178,7 +176,7 @@ fn main() -> ExitCode {
         let config = match maybe_config {
             Ok(config) => config,
             Err(err) => {
-                tracing::error!("failed to load config: {err:?}");
+                tracing::error!("failed to load config: {err}");
                 return ExitCode::FAILURE;
             }
         };
