@@ -21,6 +21,7 @@ COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
+ARG GIT_HASH
 COPY --from=planner /app/recipe.json recipe.json
 # Build dependencies - this is the caching Docker layer!
 RUN cargo chef cook --release --recipe-path recipe.json
@@ -51,5 +52,6 @@ COPY ./artifacts/OPRFKeyGenGraph.13.bin /app/OPRFKeyGenGraph.13.bin
 COPY ./artifacts/OPRFKeyGen.25.arks.zkey /app/OPRFKeyGen.25.arks.zkey
 COPY ./artifacts/OPRFKeyGenGraph.25.bin /app/OPRFKeyGenGraph.25.bin
 COPY --from=builder /app/target/release/taceo-oprf-key-gen /app/taceo-oprf-key-gen
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 ENTRYPOINT [ "/app/taceo-oprf-key-gen" ]
