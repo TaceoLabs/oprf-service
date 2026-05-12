@@ -1,6 +1,6 @@
 # OPRF Service
 
-[![CI](https://github.com/TaceoLabs/oprf-service/actions/workflows/rust_test.yml/badge.svg)](https://github.com/TaceoLabs/oprf-service/actions/workflows/rust_test.yml)
+[![CI](https://github.com/TaceoLabs/oprf-service/actions/workflows/ci.yml/badge.svg)](https://github.com/TaceoLabs/oprf-service/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.91%2B-orange.svg)](https://www.rust-lang.org)
 
@@ -101,7 +101,7 @@ Both the OPRF service and key-gen are configured via environment variables using
 * **OPRF service:** `TACEO_OPRF_NODE__*` (e.g., `TACEO_OPRF_NODE__BIND_ADDR`, `TACEO_OPRF_NODE__SERVICE__ENVIRONMENT`)
 * **Key generation:** `TACEO_OPRF_KEY_GEN__*` (e.g., `TACEO_OPRF_KEY_GEN__BIND_ADDR`, `TACEO_OPRF_KEY_GEN__SERVICE__WALLET_PRIVATE_KEY`)
 
-See `run-setup.sh` for a complete example of all required environment variables.
+See `scripts/run-setup.sh` for a complete example of all required environment variables.
 
 ## Architecture
 

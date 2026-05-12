@@ -14,6 +14,8 @@
 //!
 //! # Defaults
 //!
+//! For the backfill defaults, we refer to `nodes_common::web3::event_stream`.
+//!
 //! | Field                                    | Default     |
 //! |------------------------------------------|-------------|
 //! | `max_wait_time_transaction_confirmation` | 300 s       |
@@ -22,12 +24,14 @@
 //! | `max_tries_fetching_receipt`             | 5           |
 //! | `sleep_between_get_receipt`              | 5 s         |
 //! | `i_am_alive_interval`                    | 60 s        |
+//! | `cursor_checkpoint_interval`             | 1 day       |
 
 use std::num::NonZeroU16;
 use std::{path::PathBuf, time::Duration};
 
 use alloy::primitives::Address;
 use nodes_common::web3::HttpRpcProviderConfig;
+use nodes_common::web3::event_stream::EventStreamConfig;
 use nodes_common::{
     Environment,
     web3::{self},
@@ -76,9 +80,12 @@ pub struct OprfKeyGenServiceConfig {
     #[serde(with = "humantime_serde")]
     pub max_wait_time_transaction_confirmation: Duration,
 
-    /// The block number to start listening for events from the `OprfKeyRegistry` contract.
-    /// If not set, will start from the latest block.
-    pub start_block: Option<u64>,
+    /// Additional config for backfill.
+    ///
+    /// See `nodes-common` for the optional values that might be configured.
+    #[serde(default)]
+    #[serde(rename = "backfill")]
+    pub event_stream_config: EventStreamConfig,
 
     /// Maximum amount of gas a single transaction is allowed to consume.
     /// This acts as a safety limit to prevent transactions from exceeding expected execution costs. The default value is set to approximately 2× the average gas used by a round-2 transaction, which is currently the most gas-intensive round.
@@ -113,6 +120,17 @@ pub struct OprfKeyGenServiceConfig {
     #[serde(default = "OprfKeyGenServiceConfig::default_i_am_alive_interval")]
     #[serde(with = "humantime_serde")]
     pub i_am_alive_interval: Duration,
+
+    /// Interval in which we persist a [`ChainCursor`](nodes_common::web3::event_stream::ChainCursor) checkpoint.
+    ///
+    /// The implementation will fetch the current block number, then sleep for this configured period, and then call [`ChainCursorStorage::store_chain_cursor`](crate::event_cursor_store::ChainCursorStorage::store_chain_cursor) with the fetched block number. This should prevent very large backfills in case of idle key-gens.
+    ///
+    /// This should not be smaller than 12 hours. The implementation expect that the block fetched in this interval is for sure already handled. Setting this to a small value (like 5 seconds) might result in loss of events.
+    ///
+    /// Defaults to `1 day`.
+    #[serde(default = "OprfKeyGenServiceConfig::default_cursor_checkpoint_interval")]
+    #[serde(with = "humantime_serde")]
+    pub cursor_checkpoint_interval: Duration,
 }
 
 /// Subset of [`OprfKeyGenServiceConfig`] containing all values that must be
@@ -191,6 +209,11 @@ impl OprfKeyGenServiceConfig {
         Duration::from_mins(1)
     }
 
+    /// Default cursor checkpoint interval (`1 day`).
+    fn default_cursor_checkpoint_interval() -> Duration {
+        Duration::from_hours(24)
+    }
+
     /// Construct with all default values except required fields.
     #[must_use]
     pub fn with_default_values(args: OprfKeyGenServiceConfigMandatoryValues) -> Self {
@@ -217,12 +240,13 @@ impl OprfKeyGenServiceConfig {
             rpc_provider_config,
             max_wait_time_transaction_confirmation:
                 Self::default_max_wait_time_transaction_confirmation(),
-            start_block: None,
             max_gas_per_transaction: Self::default_max_gas_per_transaction(),
             confirmations_for_transaction: Self::default_confirmations_for_transaction(),
             i_am_alive_interval: Self::default_i_am_alive_interval(),
             max_tries_fetching_receipt: Self::default_max_tries_fetching_receipt(),
             sleep_between_get_receipt: Self::default_sleep_between_get_receipt(),
+            event_stream_config: EventStreamConfig::default(),
+            cursor_checkpoint_interval: Self::default_cursor_checkpoint_interval(),
         }
     }
 }

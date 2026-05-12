@@ -14,8 +14,6 @@ use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 
 pub use crate::services::secret_gen::KeyGenIntermediateValues;
 
-pub mod postgres;
-
 /// Dynamic trait object for secret manager service.
 ///
 /// Must be `Send + Sync` to work with async contexts (e.g., Axum).
@@ -94,12 +92,15 @@ pub trait SecretManager {
 
     /// Retrieves the intermediate values needed for key generation (or reshare).
     ///
-    /// Returns `None` if no intermediate values are stored for the provided key/epoch pair.
+    /// # Errors
+    ///
+    /// Returns [`SecretManagerError::MissingIntermediates`]`(oprf_key_id, epoch)` when no
+    /// intermediate values are stored for the provided key/epoch pair.
     async fn fetch_keygen_intermediates(
         &self,
         oprf_key_id: OprfKeyId,
         pending_epoch: ShareEpoch,
-    ) -> Result<Option<KeyGenIntermediateValues>>;
+    ) -> Result<KeyGenIntermediateValues>;
 
     /// Stores a pending share for the given key/epoch pair.
     ///

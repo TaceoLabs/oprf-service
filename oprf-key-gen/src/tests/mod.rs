@@ -1,21 +1,27 @@
 #![allow(clippy::large_futures, reason = "doesnt matter for tests")]
 use std::fmt;
+use std::num::{NonZeroU16, NonZeroUsize};
 use std::time::Duration;
 
 use alloy::{primitives::U160, sol_types::SolEvent};
 use axum_test::TestServer;
+use eyre::Context as _;
 use nodes_common::web3::HttpRpcProviderConfig;
+use nodes_common::web3::event_stream::{ChainCursor, SkipBackfill};
 use nodes_common::{Environment, StartedServices};
-use oprf_test_utils::{DeploySetup, PEER_PRIVATE_KEYS, TestSetup};
+use oprf_test_utils::{
+    DeploySetup, MineStrategy, OPRF_PEER_ADDRESS_0, PEER_PRIVATE_KEYS, TestSetup,
+};
 
-use oprf_test_utils::{OPRF_PEER_ADDRESS_0, TEST_TIMEOUT};
+use oprf_test_utils::TEST_TIMEOUT;
 use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
 use tokio_util::sync::CancellationToken;
 
+use crate::services::event_cursor_store::ChainCursorStorage;
+use crate::tests::keygen_test_secret_manager::TestChainCursorService;
 use crate::{
     KeyGenTasks,
     config::{OprfKeyGenServiceConfig, OprfKeyGenServiceConfigMandatoryValues},
-    secret_manager::SecretManagerService,
     start,
     tests::keygen_test_secret_manager::TestKeyGenSecretManager,
 };
@@ -28,7 +34,68 @@ pub(crate) struct TestKeyGen {
     pub(crate) server: TestServer,
     pub(crate) key_gen_task: KeyGenTasks,
     pub(crate) started_services: StartedServices,
+    pub(crate) cursor_service: TestChainCursorService,
     pub(crate) cancellation_token: CancellationToken,
+}
+
+pub(crate) struct TestKeyGenBuilder<'a> {
+    party_id: usize,
+    test_setup: &'a TestSetup,
+    secret_manager: Option<TestKeyGenSecretManager>,
+    skip_backfill: SkipBackfill,
+    cursor_service: TestChainCursorService,
+    cursor_checkpoint_interval: Option<Duration>,
+}
+
+impl<'a> TestKeyGenBuilder<'a> {
+    pub(crate) fn new(party_id: usize, test_setup: &'a TestSetup) -> Self {
+        Self {
+            party_id,
+            test_setup,
+            secret_manager: None,
+            skip_backfill: SkipBackfill::Yes,
+            cursor_service: TestChainCursorService::default(),
+            cursor_checkpoint_interval: None,
+        }
+    }
+
+    pub(crate) fn secret_manager(mut self, secret_manager: TestKeyGenSecretManager) -> Self {
+        self.secret_manager = Some(secret_manager);
+        self
+    }
+
+    pub(crate) fn skip_backfill(mut self, skip_backfill: SkipBackfill) -> Self {
+        self.skip_backfill = skip_backfill;
+        self
+    }
+
+    pub(crate) fn cursor_service(mut self, cursor_service: TestChainCursorService) -> Self {
+        self.cursor_service = cursor_service;
+        self
+    }
+
+    pub(crate) fn starting_cursor(mut self, cursor: ChainCursor) -> Self {
+        self.cursor_service = TestChainCursorService::with_cursor(cursor);
+        self
+    }
+
+    pub(crate) fn cursor_checkpoint_interval(mut self, interval: Duration) -> Self {
+        self.cursor_checkpoint_interval = Some(interval);
+        self
+    }
+
+    pub(crate) async fn build(self) -> eyre::Result<TestKeyGen> {
+        TestKeyGen::start_inner(
+            self.party_id,
+            self.test_setup,
+            self.skip_backfill,
+            self.secret_manager
+                .unwrap_or_else(|| TestKeyGenSecretManager::new(PEER_PRIVATE_KEYS[self.party_id])),
+            self.cursor_service,
+            self.cursor_checkpoint_interval,
+        )
+        .await
+    }
 }
 
 impl fmt::Debug for TestKeyGen {
@@ -40,7 +107,14 @@ impl fmt::Debug for TestKeyGen {
 }
 
 impl TestKeyGen {
-    pub(crate) async fn start(party_id: usize, test_setup: &TestSetup) -> eyre::Result<Self> {
+    async fn start_inner(
+        party_id: usize,
+        test_setup: &TestSetup,
+        skip_backfill: SkipBackfill,
+        secret_manager: TestKeyGenSecretManager,
+        cursor_service: TestChainCursorService,
+        cursor_checkpoint_interval: Option<Duration>,
+    ) -> eyre::Result<Self> {
         let TestSetup {
             anvil,
             oprf_key_registry,
@@ -52,8 +126,6 @@ impl TestKeyGen {
         assert!(party_id < 5, "can only spawn 5 key-gens");
         let private_key = PEER_PRIVATE_KEYS[party_id];
         let child_token = cancellation_token.child_token();
-        let secret_manager = TestKeyGenSecretManager::new(private_key);
-        let keygen_secret_manager: SecretManagerService = secret_manager.service();
         let (expected_threshold, expected_num_peers) = match test_setup.setup {
             DeploySetup::TwoThree => (2, 3),
             DeploySetup::ThreeFive => (3, 5),
@@ -66,22 +138,28 @@ impl TestKeyGen {
                 wallet_private_key: private_key.into(),
                 zkey_path: setup.key_gen_path(),
                 witness_graph_path: setup.witness_path(),
-                expected_threshold: expected_threshold.try_into().expect("Is non-zero"),
-                expected_num_peers: expected_num_peers.try_into().expect("Is non-zero"),
+                expected_threshold: NonZeroU16::new(expected_threshold).expect("Is non-zero"),
+                expected_num_peers: NonZeroU16::new(expected_num_peers).expect("Is non-zero"),
                 rpc_provider_config: HttpRpcProviderConfig::with_default_values(vec![
                     anvil.endpoint_url(),
                 ]),
                 ws_rpc_url: anvil.ws_endpoint_url(),
             });
 
-        // anvil doesn't work with confirmations
         config.confirmations_for_transaction = 0;
         config.rpc_provider_config.chain_id = Some(31_337);
+        config.event_stream_config.skip_backfill = skip_backfill;
+        config.event_stream_config.confirmations_after_sync_block =
+            NonZeroUsize::new(2).expect("2 is non-zero");
+        if let Some(interval) = cursor_checkpoint_interval {
+            config.cursor_checkpoint_interval = interval;
+        }
 
         let started_services = StartedServices::new();
         let (router, key_gen_task) = start(
             config,
-            keygen_secret_manager,
+            secret_manager.service(),
+            cursor_service.service(),
             started_services.clone(),
             child_token.clone(),
         )
@@ -95,9 +173,35 @@ impl TestKeyGen {
             secret_manager,
             server,
             key_gen_task,
+            cursor_service,
             started_services,
             cancellation_token: child_token,
         })
+    }
+
+    pub(crate) async fn start(party_id: usize, test_setup: &TestSetup) -> eyre::Result<Self> {
+        TestKeyGenBuilder::new(party_id, test_setup).build().await
+    }
+
+    pub(crate) async fn start_three_with_backfill(
+        test_setup: &TestSetup,
+    ) -> eyre::Result<[Self; 3]> {
+        let starting_cursor = ChainCursor::new(0, 1);
+        let (keygen0, keygen1, keygen2) = tokio::join!(
+            TestKeyGenBuilder::new(0, test_setup)
+                .skip_backfill(SkipBackfill::No)
+                .starting_cursor(starting_cursor)
+                .build(),
+            TestKeyGenBuilder::new(1, test_setup)
+                .skip_backfill(SkipBackfill::No)
+                .starting_cursor(starting_cursor)
+                .build(),
+            TestKeyGenBuilder::new(2, test_setup)
+                .skip_backfill(SkipBackfill::No)
+                .starting_cursor(starting_cursor)
+                .build(),
+        );
+        Ok([keygen0?, keygen1?, keygen2?])
     }
 
     pub(crate) async fn start_three(test_setup: &TestSetup) -> eyre::Result<[Self; 3]> {
@@ -118,6 +222,35 @@ impl TestKeyGen {
             Self::start(4, test_setup)
         );
         Ok([keygen0?, keygen1?, keygen2?, keygen3?, keygen4?])
+    }
+
+    pub(crate) async fn shutdown(
+        self,
+    ) -> eyre::Result<(usize, TestKeyGenSecretManager, TestChainCursorService)> {
+        let fut = async move {
+            self.cancellation_token.cancel();
+            self.key_gen_task.join().await?;
+            Ok((self.party_id, self.secret_manager, self.cursor_service))
+        };
+        tokio::time::timeout(TEST_TIMEOUT, fut)
+            .await
+            .context("Cannot shutdown in time")?
+    }
+
+    pub(crate) async fn restart(self, test_setup: &TestSetup) -> eyre::Result<TestKeyGen> {
+        let restart_fut = async {
+            self.cancellation_token.cancel();
+            self.key_gen_task.join().await?;
+            TestKeyGenBuilder::new(self.party_id, test_setup)
+                .skip_backfill(SkipBackfill::No)
+                .secret_manager(self.secret_manager)
+                .cursor_service(self.cursor_service)
+                .build()
+                .await
+        };
+        tokio::time::timeout(TEST_TIMEOUT, restart_fut)
+            .await
+            .context("Cannot restart in time")?
     }
 }
 
@@ -182,6 +315,53 @@ async fn test_keygen_works_two_three() -> eyre::Result<()> {
     setup.init_keygen(oprf_key_id).await?;
     let _oprf_public_key =
         keygen_asserts::all_have_key(&key_gens, oprf_key_id, ShareEpoch::default()).await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
+async fn test_keygen_works_when_init_before_start() -> eyre::Result<()> {
+    let setup =
+        TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
+    let oprf_key_id = OprfKeyId::new(U160::from(42));
+    setup.init_keygen(oprf_key_id).await?;
+    let key_gens = TestKeyGen::start_three_with_backfill(&setup).await?;
+    let _oprf_public_key =
+        keygen_asserts::all_have_key(&key_gens, oprf_key_id, ShareEpoch::default()).await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
+async fn test_keygen_works_when_crashing_in_between() -> eyre::Result<()> {
+    let setup =
+        TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
+    // start only two key-gens so that we don't go over round 1
+    let (keygen0, keygen1) =
+        tokio::join!(TestKeyGen::start(0, &setup), TestKeyGen::start(1, &setup));
+    // init a key-gen and wait for the two KeyGenConfirmations
+    let oprf_key_id = OprfKeyId::new(U160::from(42));
+    let round1_confirmations = setup
+        .expect_event(OprfKeyRegistry::KeyGenConfirmation::SIGNATURE_HASH, 2)
+        .await?;
+    setup.init_keygen(oprf_key_id).await?;
+    round1_confirmations.await?;
+    // cancel the key-gens
+    let keygen0 = keygen0?;
+    let keygen1 = keygen1?;
+
+    let (keygen0_restart, keygen1_restart) =
+        tokio::join!(keygen0.restart(&setup), keygen1.restart(&setup));
+
+    // start the third one
+    let keygen2 = TestKeyGenBuilder::new(2, &setup)
+        .skip_backfill(SkipBackfill::No)
+        .starting_cursor(ChainCursor::new(0, 1))
+        .build()
+        .await;
+
+    let key_gens = [keygen0_restart?, keygen1_restart?, keygen2?];
+    let _oprf_public_key =
+        keygen_asserts::all_have_key(&key_gens, oprf_key_id, ShareEpoch::default()).await?;
+
     Ok(())
 }
 
@@ -284,7 +464,7 @@ async fn test_reshare_emits_stuck_if_two_consumer() -> eyre::Result<()> {
     key_gens[1].secret_manager.clear();
 
     let signal = setup
-        .expect_event(OprfKeyRegistry::NotEnoughProducers::SIGNATURE_HASH)
+        .expect_event(OprfKeyRegistry::NotEnoughProducers::SIGNATURE_HASH, 1)
         .await?;
     setup.init_reshare(oprf_key_id).await?;
     signal.await.expect("Should receive signal");
@@ -376,5 +556,107 @@ async fn key_gen_dies_on_cancellation() -> eyre::Result<()> {
         .await
         .expect("Can shutdown in time")
         .expect("Was a graceful shutdown");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
+async fn test_keygen_works_when_all_three_crash() -> eyre::Result<()> {
+    let setup =
+        TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
+    let (keygen0, keygen1, keygen2) = tokio::join!(
+        TestKeyGen::start(0, &setup),
+        TestKeyGen::start(1, &setup),
+        TestKeyGen::start(2, &setup)
+    );
+    let oprf_key_id = OprfKeyId::new(U160::from(42));
+    let round1_done = setup
+        .expect_event(OprfKeyRegistry::KeyGenConfirmation::SIGNATURE_HASH, 2)
+        .await?;
+    setup.init_keygen(oprf_key_id).await?;
+    round1_done.await?;
+    let (r0, r1, r2) = tokio::join!(
+        keygen0?.restart(&setup),
+        keygen1?.restart(&setup),
+        keygen2?.restart(&setup),
+    );
+    let key_gens = [r0?, r1?, r2?];
+    keygen_asserts::all_have_key(&key_gens, oprf_key_id, ShareEpoch::default()).await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
+async fn test_keygen_replays_deletion_via_backfill() -> eyre::Result<()> {
+    let setup =
+        TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
+    let key_gens = TestKeyGen::start_three(&setup).await?;
+    let oprf_key_id = OprfKeyId::new(U160::from(42));
+    setup.init_keygen(oprf_key_id).await?;
+    keygen_asserts::all_have_key(&key_gens, oprf_key_id, ShareEpoch::default()).await?;
+
+    let [keygen0, _, _] = key_gens;
+    let (party_id, secret_manager, cursor_service) = keygen0.shutdown().await?;
+
+    setup.delete_oprf_key(oprf_key_id).await?;
+
+    let keygen0 = TestKeyGenBuilder::new(party_id, &setup)
+        .skip_backfill(SkipBackfill::No)
+        .secret_manager(secret_manager)
+        .cursor_service(cursor_service)
+        .build()
+        .await?;
+    keygen0
+        .secret_manager
+        .is_key_id_not_stored(oprf_key_id)
+        .await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
+async fn test_reshare_replayed_via_backfill() -> eyre::Result<()> {
+    let setup =
+        TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
+    let key_gens = TestKeyGen::start_three(&setup).await?;
+    let oprf_key_id = OprfKeyId::new(U160::from(42));
+    setup.init_keygen(oprf_key_id).await?;
+    keygen_asserts::all_have_key(&key_gens, oprf_key_id, ShareEpoch::default()).await?;
+
+    let [keygen0, keygen1, keygen2] = key_gens;
+    let (party_id, secret_manager, cursor_service) = keygen0.shutdown().await?;
+
+    let epoch1 = ShareEpoch::default().next();
+    setup.init_reshare(oprf_key_id).await?;
+
+    let keygen0 = TestKeyGenBuilder::new(party_id, &setup)
+        .skip_backfill(SkipBackfill::No)
+        .secret_manager(secret_manager)
+        .cursor_service(cursor_service)
+        .build()
+        .await?;
+
+    keygen_asserts::all_have_key(&[keygen0, keygen1, keygen2], oprf_key_id, epoch1).await?;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_cursor_checkpoint_persists() -> eyre::Result<()> {
+    let setup =
+        TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
+    let key_gen = TestKeyGenBuilder::new(0, &setup)
+        .cursor_checkpoint_interval(Duration::from_millis(100))
+        .build()
+        .await?;
+
+    let cursor_service = key_gen.cursor_service.clone();
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        loop {
+            if cursor_service.load_chain_cursor().await?.block() > 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        eyre::Ok(())
+    })
+    .await
+    .context("while waiting for cursor-service to store checkpoint")??;
     Ok(())
 }

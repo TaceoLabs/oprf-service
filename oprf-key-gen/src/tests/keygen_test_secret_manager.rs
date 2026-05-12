@@ -2,6 +2,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use async_trait::async_trait;
+use nodes_common::web3::event_stream::ChainCursor;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_test_utils::{TEST_TIMEOUT, test_secret_manager::TestSecretManager};
 use oprf_types::{
@@ -11,7 +12,10 @@ use oprf_types::{
 use parking_lot::Mutex;
 use rand::{CryptoRng, Rng};
 
-use crate::secret_manager::{KeyGenIntermediateValues, SecretManager, SecretManagerError};
+use crate::{
+    event_cursor_store::ChainCursorStorage,
+    secret_manager::{KeyGenIntermediateValues, SecretManager, SecretManagerError},
+};
 
 struct TestKeyGenSecretManagerState {
     base: TestSecretManager,
@@ -20,8 +24,37 @@ struct TestKeyGenSecretManagerState {
     deleted_keys: HashMap<OprfKeyId, ShareEpoch>,
 }
 
+#[derive(Clone, Default)]
+pub(crate) struct TestChainCursorService(Arc<Mutex<ChainCursor>>);
+
 #[derive(Clone)]
 pub(crate) struct TestKeyGenSecretManager(Arc<Mutex<TestKeyGenSecretManagerState>>);
+
+impl TestChainCursorService {
+    pub(crate) fn with_cursor(cursor: ChainCursor) -> Self {
+        Self(Arc::new(Mutex::new(cursor)))
+    }
+
+    pub(crate) fn service(&self) -> crate::ChainCursorService {
+        Arc::new(self.clone())
+    }
+}
+
+#[async_trait]
+impl ChainCursorStorage for TestChainCursorService {
+    async fn load_chain_cursor(&self) -> eyre::Result<ChainCursor> {
+        Ok(*self.0.lock())
+    }
+
+    async fn store_chain_cursor(&self, chain_cursor: ChainCursor) -> eyre::Result<()> {
+        let mut stored_cursor = self.0.lock();
+        if chain_cursor.is_before(*stored_cursor) {
+            eyre::bail!("trying to rewind cursor")
+        }
+        *stored_cursor = chain_cursor;
+        Ok(())
+    }
+}
 
 impl TestKeyGenSecretManager {
     pub(crate) fn new(wallet_private_key: &str) -> Self {
@@ -191,13 +224,13 @@ impl SecretManager for TestKeyGenSecretManager {
         &self,
         oprf_key_id: OprfKeyId,
         pending_epoch: ShareEpoch,
-    ) -> Result<Option<KeyGenIntermediateValues>, SecretManagerError> {
+    ) -> Result<KeyGenIntermediateValues, SecretManagerError> {
         let state = self.0.lock();
         state
             .keygen_intermediates
             .get(&(oprf_key_id, pending_epoch))
             .map(|bytes| Self::deserialize_intermediates(bytes))
-            .transpose()
+            .ok_or_else(|| SecretManagerError::MissingIntermediates(oprf_key_id, pending_epoch))?
     }
 
     async fn store_pending_dlog_share(

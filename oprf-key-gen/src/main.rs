@@ -17,9 +17,7 @@ use config::Config;
 use eyre::Context;
 use nodes_common::{StartedServices, postgres::PostgresConfig};
 use serde::Deserialize;
-use taceo_oprf_key_gen::{
-    config::OprfKeyGenServiceConfig, secret_manager::postgres::PostgresSecretManager,
-};
+use taceo_oprf_key_gen::{config::OprfKeyGenServiceConfig, postgres::PostgresDb};
 
 /// The top-level configuration for the OPRF key-gen binary.
 ///
@@ -39,7 +37,7 @@ struct OprfKeyGenConfig {
     #[serde(rename = "service")]
     pub key_gen_config: OprfKeyGenServiceConfig,
 
-    /// The postgres config for the secret-manager
+    /// Postgres config used by the shared [`PostgresDb`] backend (secret manager and chain cursor store).
     #[serde(rename = "postgres")]
     pub postgres_config: PostgresConfig,
 }
@@ -86,13 +84,17 @@ async fn run(config: OprfKeyGenConfig) -> eyre::Result<()> {
     taceo_oprf_key_gen::metrics::describe_metrics();
     tracing::info!("{}", nodes_common::version_info!());
 
-    tracing::info!("starting Postgres secret-manager...");
-    // Load the Postgres secret manager.
-    let secret_manager = Arc::new(
-        PostgresSecretManager::init(&config.postgres_config)
-            .await
-            .context("while starting postgres secret-manager")?,
-    );
+    tracing::info!("connecting to postgres DB...");
+
+    let postgres = PostgresDb::init(&config.postgres_config)
+        .await
+        .context("while starting postgres secret-manager")?;
+
+    // Init postgres secret manager (Postgres backed)
+    let secret_manager = Arc::new(postgres.clone());
+
+    // Init chain event store (Postgres backed)
+    let chain_cursor_store = Arc::new(postgres.clone());
 
     let (cancellation_token, _) =
         nodes_common::spawn_shutdown_task(nodes_common::default_shutdown_signal());
@@ -104,6 +106,7 @@ async fn run(config: OprfKeyGenConfig) -> eyre::Result<()> {
     let (key_gen_router, key_gen_task) = taceo_oprf_key_gen::start(
         config.key_gen_config,
         secret_manager,
+        chain_cursor_store,
         StartedServices::new(),
         cancellation_token.clone(),
     )

@@ -5,7 +5,8 @@ services:
     stop_grace_period: 1s
     ports:
       - "8545:8545"
-    command: anvil
+    entrypoint: []
+    command: anvil ${ANVIL_ARGS:-}
     environment:
       ANVIL_IP_ADDR: 0.0.0.0
 

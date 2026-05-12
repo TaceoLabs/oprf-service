@@ -9,7 +9,7 @@ use alloy::{
     network::EthereumWallet,
     node_bindings::{Anvil, AnvilInstance},
     primitives::{Address, FixedBytes},
-    providers::{DynProvider, Provider as _, ProviderBuilder},
+    providers::{DynProvider, Provider as _, ProviderBuilder, ext::AnvilApi},
     rpc::types::Filter,
     signers::local::PrivateKeySigner,
 };
@@ -68,10 +68,24 @@ pub struct TestSetup {
     pub oprf_key_registry: Address,
     pub cancellation_token: CancellationToken,
     pub setup: DeploySetup,
+    pub mine_strategy: MineStrategy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MineStrategy {
+    Auto,
+    Interval(u64),
 }
 
 impl TestSetup {
     pub async fn new(setup: DeploySetup) -> eyre::Result<TestSetup> {
+        Self::with_mine_strategy(setup, MineStrategy::Auto).await
+    }
+
+    pub async fn with_mine_strategy(
+        setup: DeploySetup,
+        mine_strategy: MineStrategy,
+    ) -> eyre::Result<TestSetup> {
         let anvil = Anvil::new().spawn();
         let private_key = PrivateKeySigner::from_str(TACEO_ADMIN_PRIVATE_KEY)?;
         let wallet = EthereumWallet::from(private_key);
@@ -81,6 +95,7 @@ impl TestSetup {
             .await
             .context("while connecting to RPC")?
             .erased();
+
         let oprf_key_registry = match setup {
             DeploySetup::TwoThree => {
                 crate::deploy_oprf_key_registry_13(provider.clone(), TACEO_ADMIN_ADDRESS).await?
@@ -91,11 +106,19 @@ impl TestSetup {
         };
         crate::register_oprf_nodes(provider.clone(), oprf_key_registry, setup.addresses()).await?;
         let cancellation_token = CancellationToken::new();
+        // default is Auto
+        if let MineStrategy::Interval(secs) = mine_strategy {
+            provider
+                .anvil_set_interval_mining(secs)
+                .await
+                .context("while setting interval mining")?;
+        }
         Ok(TestSetup {
             anvil,
             provider,
             oprf_key_registry,
             cancellation_token,
+            mine_strategy,
             setup,
         })
     }
@@ -136,6 +159,7 @@ impl TestSetup {
     pub async fn expect_event(
         &self,
         signature_hash: FixedBytes<32>,
+        times: usize,
     ) -> eyre::Result<oneshot::Receiver<()>> {
         let filter = Filter::new()
             .address(self.oprf_key_registry)
@@ -145,13 +169,20 @@ impl TestSetup {
         let mut stream = sub.into_stream();
         let (tx, rx) = oneshot::channel();
         tokio::task::spawn(async move {
-            tokio::select! {
-                _ = stream.next() => {
-                    let _ = tx.send(());
+            let observed = tokio::time::timeout(crate::TEST_TIMEOUT, async {
+                let mut count = 0;
+                while stream.next().await.is_some() {
+                    count += 1;
+                    if count >= times {
+                        return true;
+                    }
                 }
-                _ = tokio::time::sleep(crate::TEST_TIMEOUT) => {
+                false
+            })
+            .await;
 
-                }
+            if observed == Ok(true) {
+                let _ = tx.send(());
             }
         });
         Ok(rx)

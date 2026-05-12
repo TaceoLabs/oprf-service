@@ -1,11 +1,9 @@
-use std::{str::FromStr, time::Duration};
+use std::{num::NonZeroU16, str::FromStr, time::Duration};
 
 use crate::{
-    secret_manager::{SecretManager, SecretManagerError, SecretManagerService},
+    secret_manager::{SecretManager, SecretManagerError},
     services::{
-        key_event_watcher::{
-            TransactionError, handle_abort, handle_delete, handle_not_enough_producers,
-        },
+        key_event_watcher::{KeyRegistryEventError, handler::KeyRegistryEventHandler},
         secret_gen::DLogSecretGenService,
         transaction_handler::{TransactionHandler, TransactionHandlerArgs},
     },
@@ -19,11 +17,23 @@ use oprf_test_utils::{DeploySetup, OPRF_PEER_PRIVATE_KEY_0, PEER_ADDRESSES, Test
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     chain::{OprfKeyRegistry, RevertError, Verifier::VerifierErrors},
-    crypto::OprfPublicKey,
 };
 
-const INVALID_PROOF_KEY: usize = 43;
-const WRONG_ROUND_LOAD_PEER_PUBLIC_KEYS: usize = 44;
+use super::events::KeyRegistryEvent;
+
+// Key IDs that trigger special behaviour in TestOprfKeyRegistry:
+//   43 → loadPeerPublicKeysForProducers returns hardcoded EPKs; addRound2Contribution runs the
+//        verifier with all-zero public inputs so any real proof yields ProofInvalid.
+//   44 → loadPeerPublicKeysForProducers reverts with WrongRound, exercising the consumer path.
+const INVALID_PROOF_KEY: u32 = 43;
+const WRONG_ROUND_LOAD_PEER_PUBLIC_KEYS: u32 = 44;
+
+struct HandlerFixture {
+    handler: KeyRegistryEventHandler,
+    secret_manager: TestKeyGenSecretManager,
+    secret_gen: DLogSecretGenService,
+}
+
 fn key_gen_material(deploy_setup: DeploySetup) -> CircomGroth16Material {
     CircomGroth16MaterialBuilder::new()
         .bbf_inv()
@@ -32,19 +42,11 @@ fn key_gen_material(deploy_setup: DeploySetup) -> CircomGroth16Material {
         .expect("Can build key_gen_material")
 }
 
-fn test_secret_manager() -> TestKeyGenSecretManager {
-    TestKeyGenSecretManager::new(OPRF_PEER_PRIVATE_KEY_0)
-}
+fn fixture(setup: &TestSetup) -> HandlerFixture {
+    let secret_manager = TestKeyGenSecretManager::new(OPRF_PEER_PRIVATE_KEY_0);
+    let secret_gen =
+        DLogSecretGenService::init(key_gen_material(setup.setup), secret_manager.service());
 
-fn random_share() -> DLogShareShamir {
-    DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>())
-}
-
-fn random_public_key() -> OprfPublicKey {
-    OprfPublicKey::new(rand::random())
-}
-
-fn test_config(setup: &TestSetup) -> (CircomGroth16Material, TransactionHandler) {
     let rpc_provider =
         HttpRpcProviderBuilder::with_default_values(vec![setup.anvil.endpoint_url()])
             .environment(Environment::Dev)
@@ -63,142 +65,80 @@ fn test_config(setup: &TestSetup) -> (CircomGroth16Material, TransactionHandler)
         max_gas_per_transaction: 10_000_000,
         rpc_provider,
         wallet_address: PEER_ADDRESSES[0],
+        contract_address: setup.oprf_key_registry,
     });
 
-    (key_gen_material(setup.setup), transaction_handler)
+    let contract = OprfKeyRegistry::new(setup.oprf_key_registry, setup.provider.clone());
+    let threshold = NonZeroU16::new(2).expect("2 is non-zero");
+    let handler =
+        KeyRegistryEventHandler::new(contract, secret_gen.clone(), threshold, transaction_handler);
+
+    HandlerFixture {
+        handler,
+        secret_manager,
+        secret_gen,
+    }
+}
+
+fn random_share() -> DLogShareShamir {
+    DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>())
 }
 
 #[tokio::test]
-async fn test_send_invalid_proof() -> eyre::Result<()> {
+async fn test_round2_invalid_proof() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let (key_gen_material, transaction_handler) = test_config(&setup);
-    let secret_manager = test_secret_manager();
-    let secret_manager_service: SecretManagerService = secret_manager.service();
-    let secret_gen = DLogSecretGenService::init(key_gen_material, secret_manager_service);
-    let key_id = U160::from(INVALID_PROOF_KEY);
-    secret_gen
-        .key_gen_round1(key_id.into(), ShareEpoch::default(), 2)
+    let fx = fixture(&setup);
+    let key_id = OprfKeyId::from(U160::from(INVALID_PROOF_KEY));
+    let epoch = ShareEpoch::default();
+
+    // Generate local intermediates (TestOprfKeyRegistry returns hardcoded EPKs for key 43,
+    // so producer_round2 will produce a proof whose public inputs mismatch on-chain → ProofInvalid).
+    fx.secret_gen
+        .key_gen_round1(key_id, epoch, NonZeroU16::new(2).expect("non-zero"))
         .await?;
-    let error = super::handle_round2(
-        OprfKeyId::from(key_id),
-        ShareEpoch::from(0u32),
-        &OprfKeyRegistry::new(setup.oprf_key_registry, setup.provider.clone()),
-        &secret_gen,
-        &transaction_handler,
-    )
-    .await
-    .expect_err("should fail");
+
+    let error = fx
+        .handler
+        .handle(
+            KeyRegistryEvent::Round2 { key_id, epoch },
+            &tracing::Span::none(),
+        )
+        .await
+        .expect_err("should fail with ProofInvalid");
+
     assert!(matches!(
         error,
-        TransactionError::Revert(RevertError::Verifier(VerifierErrors::ProofInvalid(_)))
+        KeyRegistryEventError::Revert(RevertError::Verifier(VerifierErrors::ProofInvalid(_)))
     ));
     Ok(())
 }
 
 #[tokio::test]
-async fn test_delete() -> eyre::Result<()> {
-    let secret_manager = test_secret_manager();
-    let secret_manager_service: SecretManagerService = secret_manager.service();
-    let secret_gen = DLogSecretGenService::init(
-        key_gen_material(DeploySetup::TwoThree),
-        secret_manager_service,
-    );
-
-    let oprf_key_id = OprfKeyId::new(U160::from(42));
-    let confirmed_epoch = ShareEpoch::default();
-    let pending_epoch = confirmed_epoch.next();
-    secret_manager.add_random_key_material_with_id_epoch(
-        oprf_key_id,
-        confirmed_epoch,
-        &mut rand::thread_rng(),
-    );
-    secret_gen
-        .reshare_round1(oprf_key_id, pending_epoch, 2)
-        .await?;
-    secret_manager
-        .store_pending_dlog_share(oprf_key_id, pending_epoch, random_share())
-        .await?;
-
-    assert!(
-        secret_manager
-            .get_share_by_epoch(oprf_key_id, confirmed_epoch)
-            .await?
-            .is_some()
-    );
-    assert!(
-        secret_manager
-            .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
-            .await?
-            .is_some()
-    );
-
-    handle_delete(oprf_key_id, &secret_gen)
-        .await
-        .expect("Works");
-
-    assert!(
-        secret_manager
-            .get_share_by_epoch(oprf_key_id, confirmed_epoch)
-            .await?
-            .is_none()
-    );
-    assert!(
-        secret_manager
-            .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
-            .await?
-            .is_none()
-    );
-
-    let error = secret_manager
-        .confirm_dlog_share(oprf_key_id, pending_epoch, random_public_key())
-        .await
-        .expect_err("delete must clear pending shares");
-    assert!(matches!(
-        error,
-        SecretManagerError::MissingIntermediates(id, epoch)
-            if id == oprf_key_id && epoch == pending_epoch
-    ));
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_round2_in_wrong_round_during_load_public_keys() -> eyre::Result<()> {
+async fn test_round2_consumer_path_when_contract_in_wrong_round() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let (key_gen_material, transaction_handler) = test_config(&setup);
-    let secret_manager = test_secret_manager();
-    let secret_manager_service: SecretManagerService = secret_manager.service();
-    let secret_gen = DLogSecretGenService::init(key_gen_material, secret_manager_service);
+    let fx = fixture(&setup);
     let key_id = OprfKeyId::from(U160::from(WRONG_ROUND_LOAD_PEER_PUBLIC_KEYS));
     let epoch = ShareEpoch::default();
 
-    secret_gen.key_gen_round1(key_id, epoch, 2).await?;
-    assert!(
-        secret_manager
-            .fetch_keygen_intermediates(key_id, epoch)
-            .await?
-            .is_some()
-    );
+    fx.secret_gen
+        .key_gen_round1(key_id, epoch, NonZeroU16::new(2).expect("non-zero"))
+        .await?;
 
-    super::handle_round2(
-        key_id,
-        epoch,
-        &OprfKeyRegistry::new(setup.oprf_key_registry, setup.provider.clone()),
-        &secret_gen,
-        &transaction_handler,
-    )
-    .await
-    .expect("Should still work");
+    // TestOprfKeyRegistry reverts with WrongRound for key 44; handler takes the consumer path → Ok(()).
+    fx.handler
+        .handle(
+            KeyRegistryEvent::Round2 { key_id, epoch },
+            &tracing::Span::none(),
+        )
+        .await
+        .expect("consumer path should succeed");
 
+    // Intermediates survive; no share was confirmed.
+    fx.secret_manager
+        .fetch_keygen_intermediates(key_id, epoch)
+        .await?;
     assert!(
-        secret_manager
-            .fetch_keygen_intermediates(key_id, epoch)
-            .await?
-            .is_some(),
-        "consumer path must keep round-1 intermediates for round 3"
-    );
-    assert!(
-        secret_manager
+        fx.secret_manager
             .get_share_by_epoch(key_id, epoch)
             .await?
             .is_none()
@@ -207,131 +147,103 @@ async fn test_round2_in_wrong_round_during_load_public_keys() -> eyre::Result<()
 }
 
 #[tokio::test]
-async fn test_abort() -> eyre::Result<()> {
-    let secret_manager = test_secret_manager();
-    let secret_manager_service: SecretManagerService = secret_manager.service();
-    let secret_gen = DLogSecretGenService::init(
-        key_gen_material(DeploySetup::TwoThree),
-        secret_manager_service,
-    );
-
-    let oprf_key_id = OprfKeyId::new(U160::from(142));
+async fn test_delete() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let fx = fixture(&setup);
+    let key_id = OprfKeyId::new(U160::from(42u32));
     let confirmed_epoch = ShareEpoch::default();
     let pending_epoch = confirmed_epoch.next();
-    secret_manager.add_random_key_material_with_id_epoch(
-        oprf_key_id,
+
+    fx.secret_manager.add_random_key_material_with_id_epoch(
+        key_id,
         confirmed_epoch,
         &mut rand::thread_rng(),
     );
-    secret_gen
-        .reshare_round1(oprf_key_id, pending_epoch, 2)
+    fx.secret_gen
+        .reshare_round1(key_id, pending_epoch, NonZeroU16::new(2).expect("non-zero"))
         .await?;
-    secret_manager
-        .store_pending_dlog_share(oprf_key_id, pending_epoch, random_share())
+    fx.secret_manager
+        .store_pending_dlog_share(key_id, pending_epoch, random_share())
         .await?;
 
     assert!(
-        secret_manager
-            .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
+        fx.secret_manager
+            .get_share_by_epoch(key_id, confirmed_epoch)
             .await?
             .is_some()
     );
-    assert!(
-        secret_manager
-            .get_share_by_epoch(oprf_key_id, confirmed_epoch)
-            .await?
-            .is_some()
-    );
+    fx.secret_manager
+        .fetch_keygen_intermediates(key_id, pending_epoch)
+        .await?;
 
-    handle_abort(oprf_key_id, &secret_gen).await?;
+    fx.handler
+        .handle(KeyRegistryEvent::Delete { key_id }, &tracing::Span::none())
+        .await
+        .expect("delete should succeed");
 
+    // Confirmed share removed.
     assert!(
-        secret_manager
-            .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
+        fx.secret_manager
+            .get_share_by_epoch(key_id, confirmed_epoch)
             .await?
             .is_none()
     );
-    assert!(
-        secret_manager
-            .get_share_by_epoch(oprf_key_id, confirmed_epoch)
-            .await?
-            .is_some()
-    );
 
-    let error = secret_manager
-        .confirm_dlog_share(oprf_key_id, pending_epoch, random_public_key())
+    // Intermediates cleared.
+    let err = fx
+        .secret_manager
+        .fetch_keygen_intermediates(key_id, pending_epoch)
         .await
-        .expect_err("abort must clear pending shares");
-    assert!(matches!(
-        error,
-        SecretManagerError::MissingIntermediates(id, epoch)
-            if id == oprf_key_id && epoch == pending_epoch
-    ));
+        .expect_err("intermediates must be gone");
+    assert!(
+        matches!(err, SecretManagerError::MissingIntermediates(id, ep) if id == key_id && ep == pending_epoch),
+        "unexpected error: {err}"
+    );
 
     Ok(())
 }
 
 #[tokio::test]
-async fn test_not_enough_producers() -> eyre::Result<()> {
-    let secret_manager = test_secret_manager();
-    let secret_manager_service: SecretManagerService = secret_manager.service();
-    let secret_gen = DLogSecretGenService::init(
-        key_gen_material(DeploySetup::TwoThree),
-        secret_manager_service,
-    );
-
-    let oprf_key_id = OprfKeyId::new(U160::from(242));
+async fn test_abort() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let fx = fixture(&setup);
+    let key_id = OprfKeyId::new(U160::from(142u32));
     let confirmed_epoch = ShareEpoch::default();
     let pending_epoch = confirmed_epoch.next();
-    secret_manager.add_random_key_material_with_id_epoch(
-        oprf_key_id,
+
+    fx.secret_manager.add_random_key_material_with_id_epoch(
+        key_id,
         confirmed_epoch,
         &mut rand::thread_rng(),
     );
-    secret_gen
-        .reshare_round1(oprf_key_id, pending_epoch, 2)
+    fx.secret_gen
+        .reshare_round1(key_id, pending_epoch, NonZeroU16::new(2).expect("non-zero"))
         .await?;
-    secret_manager
-        .store_pending_dlog_share(oprf_key_id, pending_epoch, random_share())
+    fx.secret_manager
+        .store_pending_dlog_share(key_id, pending_epoch, random_share())
         .await?;
 
-    assert!(
-        secret_manager
-            .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
-            .await?
-            .is_some()
-    );
-    assert!(
-        secret_manager
-            .get_share_by_epoch(oprf_key_id, confirmed_epoch)
-            .await?
-            .is_some()
-    );
+    fx.handler
+        .handle(KeyRegistryEvent::Abort { key_id }, &tracing::Span::none())
+        .await?;
 
-    handle_not_enough_producers(oprf_key_id, &secret_gen).await?;
-
-    assert!(
-        secret_manager
-            .fetch_keygen_intermediates(oprf_key_id, pending_epoch)
-            .await?
-            .is_none()
-    );
-    assert!(
-        secret_manager
-            .get_share_by_epoch(oprf_key_id, confirmed_epoch)
-            .await?
-            .is_some()
-    );
-
-    let error = secret_manager
-        .confirm_dlog_share(oprf_key_id, pending_epoch, random_public_key())
+    // In-progress state cleared.
+    let err = fx
+        .secret_manager
+        .fetch_keygen_intermediates(key_id, pending_epoch)
         .await
-        .expect_err("not-enough-producers must clear pending shares");
-    assert!(matches!(
-        error,
-        SecretManagerError::MissingIntermediates(id, epoch)
-            if id == oprf_key_id && epoch == pending_epoch
-    ));
+        .expect_err("intermediates must be gone");
+    assert!(
+        matches!(err, SecretManagerError::MissingIntermediates(id, ep) if id == key_id && ep == pending_epoch),
+        "unexpected error: {err}"
+    );
 
+    // Confirmed share preserved.
+    assert!(
+        fx.secret_manager
+            .get_share_by_epoch(key_id, confirmed_epoch)
+            .await?
+            .is_some()
+    );
     Ok(())
 }
