@@ -7,7 +7,6 @@ use oprf_types::{
     OprfKeyId,
     api::{OprfRequestAuthenticatorError, oprf_error_codes},
 };
-use tracing::instrument;
 use tungstenite::error::ProtocolError;
 use uuid::Uuid;
 
@@ -50,11 +49,9 @@ pub(crate) enum Error {
 
 impl Error {
     /// Transforms the error into a [`CloseFrame`](https://docs.rs/axum/latest/axum/extract/ws/struct.CloseFrame.html) if necessary.
-    #[instrument(level = "debug", skip_all)]
     pub(crate) fn into_close_frame(self) -> Option<CloseFrame> {
         // Prepare the error log line as we need to consume self.
-        // We log both, Display and Debug to not miss any context
-        let maybe_log_line = format!("{self}; {self:?}");
+        let maybe_log_line = format!("{self}");
         let close_frame = match self {
             // for Axum and auth error we short circuit and don't print the log line
             // * handle axum error log in the dedicated method
@@ -69,7 +66,8 @@ impl Error {
             // For all other errors, we print it before returning the CloseFrame.
             Error::ConnectionClosed => {
                 // nothing to do here
-                None
+                tracing::debug!("nothing to do client closed session");
+                return None;
             }
             Error::BlindedQueryIsIdentity => Some(CloseFrame {
                 code: oprf_error_codes::BLINDED_QUERY_IS_IDENTITY,
@@ -119,13 +117,12 @@ impl Error {
                 ),
             }),
         };
-        tracing::debug!("{maybe_log_line}");
+        tracing::warn!(user_error = true, "{maybe_log_line}");
         close_frame
     }
 }
 
 fn handle_axum_error(err: axum::Error) -> Option<CloseFrame> {
-    let maybe_log_line = format!("{err}; {err:?}");
     let inner = err.into_inner();
     if let Some(err) = inner.downcast_ref::<tungstenite::Error>() {
         match err {
@@ -138,7 +135,7 @@ fn handle_axum_error(err: axum::Error) -> Option<CloseFrame> {
                 return None;
             }
             tungstenite::Error::Capacity(_) => {
-                tracing::debug!("{maybe_log_line}");
+                tracing::warn!(user_error=true, %err, "websocket message too large");
                 return Some(CloseFrame {
                     code: close_code::SIZE,
                     reason: to_close_frame_bytes!("size exceeds max frame length"),
@@ -147,8 +144,8 @@ fn handle_axum_error(err: axum::Error) -> Option<CloseFrame> {
             _ => {}
         }
     }
-    // There was an unknown Axum error - log as warning maybe we need to update match block
-    tracing::warn!("{maybe_log_line}");
+    // There was an unknown Axum error
+    tracing::error!(err = %inner, "unknown axum error");
     Some(CloseFrame {
         code: close_code::ERROR,
         reason: to_close_frame_bytes!("unexpected error"),

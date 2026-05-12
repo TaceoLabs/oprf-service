@@ -83,7 +83,7 @@ pub(crate) enum KeyRegistryEventError {
     TransactionFailedError(#[from] TransactionFailedError),
     #[error("Cannot handle event due to secret-manager error: {0}")]
     SecretManagerError(#[source] SecretManagerError),
-    #[error(transparent)]
+    #[error("internal error: {0:?}")]
     Internal(#[from] eyre::Report),
 }
 
@@ -238,7 +238,7 @@ async fn key_gen_event(
     log: Log<LogData>,
     event_handler: &KeyRegistryEventHandler,
     chain_cursor_service: &ChainCursorService,
-) -> Result<()> {
+) -> eyre::Result<()> {
     tracing::trace!("parsing event...");
     let event = KeyRegistryEvent::try_decode_log(&log).context("while decoding chain event")?;
     event.record_span_fields(&tracing::Span::current());
@@ -247,7 +247,7 @@ async fn key_gen_event(
     let result = event_handler.handle(event, &tracing::Span::current()).await;
 
     tracing::trace!("process result...");
-    handle_soft_errors(result)?;
+    handle_soft_errors(result).context("while handling key-gen event")?;
 
     tracing::trace!("store chain cursor...");
     let block_number = log
@@ -259,7 +259,8 @@ async fn key_gen_event(
     let chain_cursor = ChainCursor::new(block_number, index);
     chain_cursor_service
         .store_chain_cursor(chain_cursor)
-        .await?;
+        .await
+        .context("while storing chain cursor")?;
     metrics::chain_events::record_current_block(chain_cursor);
     Ok(())
 }
@@ -280,7 +281,7 @@ async fn key_gen_event(
 ///   as a warning and skipped.
 ///
 /// All other errors are returned as-is and will abort the watcher task.
-fn handle_soft_errors(result: Result<()>) -> Result<()> {
+fn handle_soft_errors(result: Result<()>) -> eyre::Result<()> {
     match result {
         Ok(()) => Ok(()),
         Err(KeyRegistryEventError::Revert(RevertError::OprfKeyRegistry(
@@ -325,6 +326,10 @@ fn handle_soft_errors(result: Result<()>) -> Result<()> {
             );
             Ok(())
         }
-        Err(err) => Err(err),
+        Err(
+            KeyRegistryEventError::SecretManagerError(SecretManagerError::Internal(report))
+            | KeyRegistryEventError::Internal(report),
+        ) => Err(report),
+        Err(err) => Err(eyre::Report::from(err)),
     }
 }

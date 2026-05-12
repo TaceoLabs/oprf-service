@@ -49,6 +49,8 @@
 //!
 //! If you want to enable HTTP/2.0, you either have to do it by hand or by calling `axum::serve`, which enabled HTTP/2.0 by default. Have a look at [Axum's HTTP2.0 example](https://github.com/tokio-rs/axum/blob/aeff16e91af6fa76efffdee8f3e5f464b458785b/examples/websockets-http2/src/main.rs#L57).
 
+use std::fmt;
+
 use crate::api::oprf::OprfModuleState;
 use crate::services::key_event_watcher::KeyEventWatcherTaskArgs;
 use crate::services::open_sessions::OpenSessions;
@@ -56,15 +58,16 @@ use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
 use crate::{config::OprfNodeServiceConfig, services::secret_manager::SecretManagerService};
 use alloy::providers::{Provider as _, ProviderBuilder, WsConnect};
 use axum::Router;
-use eyre::Context as _;
-use http::StatusCode;
+use axum::extract::MatchedPath;
+use eyre::Context;
+use http::{HeaderMap, HeaderName, StatusCode};
 use oprf_types::api::OprfRequestAuthService;
 use oprf_types::chain::OprfKeyRegistry;
 use oprf_types::crypto::PartyId;
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 use tower_http::timeout::TimeoutLayer;
-use tower_http::trace::TraceLayer;
+use tower_http::trace::{MakeSpan, TraceLayer};
 
 pub(crate) mod api;
 pub mod config;
@@ -84,7 +87,7 @@ pub use services::secret_manager;
 /// [`OprfServiceBuilder`] to initialize a `OprfService` with multiple [`OprfRequestAuthService`]s.
 pub struct OprfServiceBuilder {
     config: OprfNodeServiceConfig,
-    root: Router,
+    info_routes: Router,
     api: Router,
     key_event_watcher: tokio::task::JoinHandle<Result<(), eyre::Error>>,
     open_sessions: OpenSessions,
@@ -181,8 +184,9 @@ impl OprfServiceBuilder {
         });
 
         tracing::info!("init oprf-service...");
+
         let version_str = nodes_common::version_info!();
-        let root = Router::new()
+        let info_route = Router::new()
             .merge(nodes_common::api::routes_with_services(
                 started_services.clone(),
                 version_str,
@@ -213,7 +217,7 @@ impl OprfServiceBuilder {
         Ok(Self {
             config,
             open_sessions: OpenSessions::new(),
-            root,
+            info_routes: info_route,
             api: Router::new(),
             key_event_watcher,
             oprf_key_material_store,
@@ -267,15 +271,61 @@ impl OprfServiceBuilder {
     /// - If no oprf modules were added
     pub fn build(self) -> (axum::Router, tokio::task::JoinHandle<eyre::Result<()>>) {
         assert!(self.api.has_routes(), "Needs at least 1 oprf-module");
+        // setup the dedicated HTTP trace layer for the auth modules
+        let auth_modules = self
+            .api
+            .layer(TraceLayer::new_for_http().make_span_with(OprfAuthModulesMakeSpan));
         (
-            self.root
-                .nest("/api", self.api)
+            Router::new()
+                .merge(self.info_routes)
+                .nest("/api", auth_modules)
                 .layer(TimeoutLayer::with_status_code(
                     StatusCode::REQUEST_TIMEOUT,
                     self.config.http_request_timeout,
-                ))
-                .layer(TraceLayer::new_for_http()),
+                )),
             self.key_event_watcher,
+        )
+    }
+}
+
+#[derive(Clone, Copy)]
+struct OprfAuthModulesMakeSpan;
+
+struct FilteredHeaders<'a>(&'a HeaderMap);
+
+const ALLOWED_HEADERS: &[HeaderName] = &[
+    http::header::HOST,
+    http::header::ORIGIN,
+    http::header::USER_AGENT,
+];
+
+impl fmt::Debug for FilteredHeaders<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut map = f.debug_map();
+        for (name, value) in self.0 {
+            if ALLOWED_HEADERS.contains(name) {
+                map.entry(&name, &value);
+            }
+        }
+        map.finish()
+    }
+}
+
+impl<B> MakeSpan<B> for OprfAuthModulesMakeSpan {
+    fn make_span(&mut self, request: &http::Request<B>) -> tracing::Span {
+        let matched_path = request
+            .extensions()
+            .get::<MatchedPath>()
+            .map_or_else(|| request.uri().path(), MatchedPath::as_str);
+        tracing::info_span!(
+            "oprf_request",
+            request_id = tracing::field::Empty,
+            oprf_key_id = tracing::field::Empty,
+            client_version = tracing::field::Empty,
+            method = %request.method(),
+            path = %matched_path,
+            version = ?request.version(),
+            headers = ?FilteredHeaders(request.headers()),
         )
     }
 }

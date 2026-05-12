@@ -246,20 +246,20 @@ async fn init_with_version_query() -> eyre::Result<()> {
 }
 
 #[tokio::test]
-async fn client_version_header_precedence() -> eyre::Result<()> {
+async fn client_version_query_precedence() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let node = TestNode::start(0, &setup).await?;
     let mut ws = node
         .server
-        .get_websocket("/api/test/oprf?version=2.0.0")
+        .get_websocket(&format!("/api/test/oprf?version={TEST_PROTOCOL_VERSION}"))
         .add_header(
             oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
-            TEST_PROTOCOL_VERSION,
+            "2.0.0",
         )
         .await
         .into_websocket()
         .await;
-    // check that the init request works even if query header is wrong
+    // check that the init request works even if HTTP header is wrong
     setup::ws_send(
         &mut ws,
         &setup::request(&mut rand::thread_rng()),

@@ -30,7 +30,11 @@ pub(crate) mod request {
     /// Metrics key for how often we reject clients due to version mismatch.
     const METRICS_CLIENT_VERSION_MISMATCH: &str = "taceo.oprf.node.client.invalid_version";
 
+    /// Metrics key for how often we terminated user connection due to timeout.
+    const METRICS_CLIENT_TIMEOUT: &str = "taceo.oprf.node.request.timeout";
+
     pub(super) fn describe_metrics() {
+        params::describe_metrics();
         metrics::describe_counter!(
             METRICS_ID_NODE_OPRF_SUCCESS,
             metrics::Unit::Count,
@@ -60,6 +64,12 @@ pub(crate) mod request {
             metrics::Unit::Count,
             "How often we rejected clients due to version mismatch"
         );
+
+        metrics::describe_counter!(
+            METRICS_CLIENT_TIMEOUT,
+            metrics::Unit::Count,
+            "How often we terminated user connection due to timeout"
+        );
     }
 
     pub(crate) fn inc_client_version_mismatch() {
@@ -68,6 +78,10 @@ pub(crate) mod request {
 
     pub(crate) fn inc_success() {
         metrics::counter!(METRICS_ID_NODE_OPRF_SUCCESS).increment(1);
+    }
+
+    pub(crate) fn inc_client_timeout() {
+        metrics::counter!(METRICS_CLIENT_TIMEOUT).increment(1);
     }
 
     pub(crate) fn record_verify_duration(duration: Duration) {
@@ -81,6 +95,35 @@ pub(crate) mod request {
 
     pub(crate) fn record_part2_duration(duration: Duration) {
         metrics::histogram!(METRICS_ID_NODE_PART_2_DURATION).record(duration.as_millis() as f64);
+    }
+
+    pub(crate) mod params {
+
+        const METRICS_ID_NODE_CLIENT_VERSION_HEADER: &str =
+            "taceo.oprf.node.request.params.version.header";
+        const METRICS_ID_NODE_CLIENT_VERSION_QUERY: &str =
+            "taceo.oprf.node.request.params.version.query";
+
+        pub(super) fn describe_metrics() {
+            metrics::describe_counter!(
+                METRICS_ID_NODE_CLIENT_VERSION_HEADER,
+                metrics::Unit::Count,
+                "How often clients reported their client version by HTTP header"
+            );
+            metrics::describe_counter!(
+                METRICS_ID_NODE_CLIENT_VERSION_QUERY,
+                metrics::Unit::Count,
+                "How often clients reported their client version by query parameter"
+            );
+        }
+
+        pub(crate) fn inc_client_version_in_header() {
+            metrics::counter!(METRICS_ID_NODE_CLIENT_VERSION_HEADER).increment(1);
+        }
+
+        pub(crate) fn inc_client_version_in_query() {
+            metrics::counter!(METRICS_ID_NODE_CLIENT_VERSION_QUERY).increment(1);
+        }
     }
 }
 

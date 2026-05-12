@@ -47,7 +47,7 @@ enum FetchOprfKeyMaterialError {
     #[error("Cannot find requested material")]
     NotFound,
     /// Internal error from DB.
-    #[error(transparent)]
+    #[error("internal error: {0:?}")]
     Internal(#[from] eyre::Report),
 }
 
@@ -79,7 +79,7 @@ pub(crate) async fn key_event_watcher_task(
     let result = handle_events(key_event_watcher_task_args).await;
     match result.as_ref() {
         Ok(()) => tracing::info!("stopped key event watcher without error"),
-        Err(err) => tracing::warn!("key event watcher encountered an error: {err:?}"),
+        Err(err) => tracing::error!(?err, "key event watcher encountered an error"),
     }
     result
 }
@@ -261,7 +261,7 @@ async fn fetch_oprf_key_material_from_secret_manager(
             );
         }
         Err(err) => {
-            tracing::error!("Could not fetch key-material: {err:?}");
+            tracing::error!(%err, "could not fetch key-material");
         }
     }
 }

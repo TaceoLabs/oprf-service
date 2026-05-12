@@ -34,7 +34,7 @@ impl de::Visitor<'_> for ProtocolVersionHeaderVisitor {
         E: de::Error,
     {
         let version = semver::Version::parse(v).map_err(|err| {
-            tracing::trace!("could not parse header version: {err:?}");
+            tracing::trace!(%err, "could not parse header version");
             de::Error::custom("expected semver version")
         })?;
         Ok(ProtocolVersion(version))
@@ -56,15 +56,14 @@ impl Header for ProtocolVersion {
             .ok_or_else(headers::Error::invalid)?
             .to_str()
             .map_err(|err| {
-                tracing::trace!("could not convert header to string: {err:?}");
-
+                tracing::trace!(%err, "could not convert header to string");
                 headers::Error::invalid()
             })?;
         if values.next().is_some() {
             Err(headers::Error::invalid())
         } else {
             let version = semver::Version::parse(version_req).map_err(|err| {
-                tracing::trace!("could not parse header version: {err:?}");
+                tracing::trace!(%err, "could not parse header version");
                 headers::Error::invalid()
             })?;
             Ok(ProtocolVersion(version))
