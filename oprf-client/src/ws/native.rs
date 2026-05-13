@@ -7,13 +7,12 @@
 use crate::{NodeError, ServiceError};
 use futures::{SinkExt, StreamExt};
 use http::Uri;
-use oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
     Connector, MaybeTlsStream, WebSocketStream,
     tungstenite::{
-        self, ClientRequestBuilder,
+        self,
         protocol::{CloseFrame, frame::coding::CloseCode},
     },
 };
@@ -65,17 +64,17 @@ impl WebSocketSession {
     }
     /// Creates a new session at the provided endpoint.
     pub(crate) async fn new(endpoint: Uri, connector: Connector) -> Result<Self, NodeError> {
-        let version = env!("CARGO_PKG_VERSION");
         let service = endpoint
             .authority()
             .map_or_else(|| "unknown authority".to_string(), ToString::to_string);
         tracing::trace!("> sending request to {service}..");
-        let request = ClientRequestBuilder::new(endpoint)
-            .with_header(OPRF_PROTOCOL_VERSION_HEADER.as_str(), version);
-
-        let (ws, _) =
-            tokio_tungstenite::connect_async_tls_with_config(request, None, false, Some(connector))
-                .await?;
+        let (ws, _) = tokio_tungstenite::connect_async_tls_with_config(
+            super::append_client_version_to_query(&endpoint),
+            None,
+            false,
+            Some(connector),
+        )
+        .await?;
         Ok(Self { service, inner: ws })
     }
 
