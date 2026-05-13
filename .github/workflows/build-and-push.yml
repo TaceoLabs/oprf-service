@@ -234,7 +234,7 @@ jobs:
       - build
     steps:
       - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6.1.0
+        uses: aws-actions/configure-aws-credentials@v6.1.1
         with:
           role-to-assume: ${{ secrets.AWS_ARCHIVE_ROLE }}
           aws-region: eu-central-1
