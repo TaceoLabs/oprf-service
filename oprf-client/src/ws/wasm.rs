@@ -49,18 +49,10 @@ impl WebSocketSession {
         reason = "Want to have async to have equivalent signature with native"
     )]
     pub(crate) async fn new(endpoint: Uri, _connector: Connector) -> Result<Self, NodeError> {
-        let version = env!("CARGO_PKG_VERSION");
-        let has_query = endpoint.query().is_some();
-        let mut endpoint = endpoint.to_string();
-
-        endpoint.push(if has_query { '&' } else { '?' });
-        endpoint.push_str("version=");
-        endpoint.push_str(version);
-
-        let service = endpoint.clone();
+        let service = super::append_client_version_to_query(&endpoint);
         tracing::trace!("> sending request to {service}..");
 
-        let ws = WebSocket::open(&endpoint).map_err(|e| {
+        let ws = WebSocket::open(&service).map_err(|e| {
             NodeError::WsError(Box::new(std::io::Error::other(format!(
                 "failed to open {endpoint}: {e:?}"
             ))))
