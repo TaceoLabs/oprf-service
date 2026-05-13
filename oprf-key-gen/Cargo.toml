@@ -58,7 +58,7 @@ sqlx = { workspace = true, features = [
   "runtime-tokio",
   "tls-rustls-aws-lc-rs",
 ] }
-telemetry-batteries.workspace = true
+telemetry-batteries = { workspace = true, features = ["metrics-statsd"] }
 thiserror.workspace = true
 tokio = { workspace = true, features = [
   "net",
@@ -73,11 +73,11 @@ tower-http = { workspace = true, features = ["set-header", "trace"] }
 tracing.workspace = true
 zeroize = { workspace = true, features = ["derive"] }
 
-[target.'cfg(not(target_env = "msvc"))'.dependencies]
-tikv-jemallocator = { workspace = true }
-
 [dev-dependencies]
 alloy = { workspace = true, features = ["node-bindings"] }
 axum-test = { workspace = true, features = ["ws"] }
 oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.12" }
 parking_lot = { workspace = true }
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = { workspace = true }

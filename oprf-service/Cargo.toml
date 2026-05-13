@@ -79,7 +79,7 @@ oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-util
   "postgres-test-container"
 ] }
 rustls = { workspace = true }
-telemetry-batteries.workspace = true
+telemetry-batteries = { workspace = true, features = ["metrics-statsd"] }
 
 [features]
 default = ["postgres"]
