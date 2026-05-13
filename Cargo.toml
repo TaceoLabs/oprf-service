@@ -54,7 +54,7 @@ nodes-common = { package = "taceo-nodes-common", version = "0.5.2", default-feat
 num-bigint = "0.4"
 parking_lot = "0.12"
 poseidon2 = { package = "taceo-poseidon2", version = "0.2", default-features = false }
-rand = { version = "0.8" }
+rand = { version = "0.9" }
 rand_chacha = { version = "0.3" }
 reqwest = { version = "0.12", default-features = false, features = [
   "json",
