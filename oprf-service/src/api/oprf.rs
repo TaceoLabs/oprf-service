@@ -101,7 +101,6 @@ enum HumanReadable {
 /// ## Session Flow
 ///
 /// See [`partial_oprf`] for the flow of the web-socket connection. If the session finishes successfully, encounters an error, the user closes the connection, or we run into a timeout, the implementation will try to initiate a graceful shutdown of the web-socket connection (closing handshake). We do this on a best-effort basis but are very restrictive on what we expect. We close any session that sends invalid requests/authentication. If sending the `Close` frame fails, we simply ignore the error and destruct everything associated with the session.
-#[instrument(level = "debug", skip_all, name="request", fields(client_version=tracing::field::Empty,request_id=tracing::field::Empty, oprf_key_id=tracing::field::Empty))]
 async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     State(state): State<OprfModuleState<ReqAuth>>,
     websocket_upgrade: WebSocketUpgrade,
@@ -109,15 +108,16 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     query_version: Query<ProtocolVersionQuery>,
 ) -> axum::response::Response {
     let Some(client_version) = parse_client_header(header_version, query_version) else {
+        tracing::warn!(user_error = true, "missing client version");
         return (StatusCode::BAD_REQUEST, "missing client version").into_response();
     };
     let parent_span = tracing::Span::current();
-    parent_span.record("client_version", format!("{client_version}"));
+    parent_span.record("client_version", client_version.to_string());
     if state.version_req.matches(&client_version) {
         websocket_upgrade
             .max_message_size(state.max_message_size)
             .on_failed_upgrade(|err| {
-                tracing::warn!(%err, "could not establish websocket connection");
+                tracing::warn!(user_error=true, %err, "could not establish websocket connection");
             })
             .on_upgrade(move |mut ws| {
                 async move {
@@ -144,7 +144,8 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
                         }
                         Ok(Err(err)) => err.into_close_frame(),
                         Err(_) => {
-                            tracing::debug!("session ran into timeout"); 
+                            tracing::warn!(user_error=true, "session ran into timeout");
+                            metrics::request::inc_client_timeout();
                             Some(CloseFrame {
                                 code: oprf_error_codes::TIMEOUT,
                                 reason: "timeout".into(),
@@ -165,7 +166,7 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
             "invalid version, expected: {} got: {client_version}",
             state.version_req
         );
-        tracing::debug!("{msg}");
+        tracing::warn!(user_error = true, "{msg}");
         metrics::request::inc_client_version_mismatch();
         (StatusCode::BAD_REQUEST, msg).into_response()
     }
@@ -341,17 +342,19 @@ async fn write_response<Msg: Serialize>(
     Ok(())
 }
 
-/// Tries to determine the client version of the request by checking the http header and query parameters. At least one of those must be present. The header takes precedence.
+/// Tries to determine the client version of the request by checking the http header and query parameters. At least one of those must be present. The query takes precedence.
 ///
 /// Returns `None` if none of those are present.
 fn parse_client_header(
     header_version: Option<TypedHeader<ProtocolVersion>>,
     Query(query_version): Query<ProtocolVersionQuery>,
 ) -> Option<semver::Version> {
-    // http header has precedence
-    if let Some(TypedHeader(ProtocolVersion(client_version))) = header_version {
+    // query has precedence
+    if let Some(ProtocolVersion(client_version)) = query_version.version {
+        metrics::request::params::inc_client_version_in_query();
         Some(client_version)
-    } else if let Some(ProtocolVersion(client_version)) = query_version.version {
+    } else if let Some(TypedHeader(ProtocolVersion(client_version))) = header_version {
+        metrics::request::params::inc_client_version_in_header();
         Some(client_version)
     } else {
         None

@@ -51,7 +51,7 @@ mod tests;
 pub(crate) enum SecretGenError {
     #[error(transparent)]
     SecretManagerError(#[from] SecretManagerError),
-    #[error(transparent)]
+    #[error("internal error: {0:?}")]
     Internal(#[from] eyre::Report),
 }
 

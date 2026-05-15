@@ -81,7 +81,7 @@ impl SecretManager for PostgresSecretManager {
         .retry(self.backoff_strategy())
         .sleep(tokio::time::sleep)
         .when(is_retryable_error)
-        .notify(|e, duration| tracing::warn!("Retrying load address: {e:?} after {duration:?}"))
+        .notify(|err, duration| tracing::warn!(%err, "retrying load address after {duration:?}"))
         .await?
         .ok_or_else(|| eyre::eyre!("Cannot get address from DB, maybe key-gen needs to start"))?;
         Address::parse_checksummed(stored_address, None).context("invalid address stored in DB")
@@ -107,7 +107,7 @@ impl SecretManager for PostgresSecretManager {
         .retry(self.backoff_strategy())
         .sleep(tokio::time::sleep)
         .when(is_retryable_error)
-        .notify(|e, duration| tracing::warn!("Retrying load secrets: {e:?} after {duration:?}"))
+        .notify(|err, duration| tracing::warn!(%err, "retrying load secrets after {duration:?}"))
         .await
         .context("while fetching all OPRF keys")?;
         tracing::trace!("loaded {} rows. parsing..", rows.len());
@@ -144,10 +144,8 @@ impl SecretManager for PostgresSecretManager {
         .retry(self.backoff_strategy())
         .sleep(tokio::time::sleep)
         .when(is_retryable_error)
-        .notify(|e, duration| {
-            tracing::warn!(
-                "Retrying get_oprf_key_material for {oprf_key_id}: {e:?} after {duration:?}"
-            );
+        .notify(|err, duration| {
+            tracing::warn!(%err, "retrying get_oprf_key_material for {oprf_key_id} after {duration:?}");
         })
         .await
         .context("while fetching previous share")?;

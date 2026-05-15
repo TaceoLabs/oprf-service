@@ -41,7 +41,7 @@ pub enum SecretManagerError {
     #[error("Refusing to overwrite newer share")]
     RefusingToRollbackEpoch,
     /// Implementation specific error.
-    #[error(transparent)]
+    #[error("internal error: {0:?}")]
     Internal(#[from] eyre::Report),
 }
 

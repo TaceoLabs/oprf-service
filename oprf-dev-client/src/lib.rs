@@ -153,7 +153,7 @@ pub async fn send_init_requests<OprfRequestAuth: Clone + Serialize + Send + 'sta
                 finish_requests.insert(id, finish_request);
                 durations.push(duration);
             }
-            Err(err) => tracing::error!("got an error during init: {err:?}"),
+            Err(err) => tracing::error!(?err, "got an error during init"),
         }
     }
 
@@ -206,7 +206,7 @@ pub async fn send_finish_requests(
                 responses.insert(id, res);
                 durations.push(duration);
             }
-            Err(err) => tracing::error!("Got an error during finish: {err:?}"),
+            Err(err) => tracing::error!(?err, "Got an error during finish"),
         }
     }
 

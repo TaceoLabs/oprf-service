@@ -176,7 +176,7 @@ fn main() -> ExitCode {
         let config = match maybe_config {
             Ok(config) => config,
             Err(err) => {
-                tracing::error!("failed to load config: {err}");
+                tracing::error!(%err, "failed to load config");
                 return ExitCode::FAILURE;
             }
         };
@@ -187,7 +187,7 @@ fn main() -> ExitCode {
                 ExitCode::SUCCESS
             }
             Err(err) => {
-                tracing::error!("key-gen did shutdown: {err:?}");
+                tracing::error!(?err, "key-gen did shutdown");
                 tracing::error!("good night anyways");
                 ExitCode::FAILURE
             }

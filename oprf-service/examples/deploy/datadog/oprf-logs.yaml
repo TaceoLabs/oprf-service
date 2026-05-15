@@ -1,0 +1,42 @@
+logs:
+  - type: file
+    path: /var/log/oprf-logs/*/key-gen0.log
+    service: taceo-oprf-key-gen-0
+    source: oprf-key-gen
+    tags:
+      - peer:0
+
+  - type: file
+    path: /var/log/oprf-logs/*/key-gen1.log
+    service: taceo-oprf-key-gen-1
+    source: oprf-key-gen
+    tags:
+      - peer:1
+
+  - type: file
+    path: /var/log/oprf-logs/*/key-gen2.log
+    service: taceo-oprf-key-gen-2
+    source: oprf-key-gen
+    tags:
+      - peer:2
+
+  - type: file
+    path: /var/log/oprf-logs/*/node0.log
+    service: taceo-oprf-service-0
+    source: oprf-service
+    tags:
+      - peer:0
+
+  - type: file
+    path: /var/log/oprf-logs/*/node1.log
+    service: taceo-oprf-service-1
+    source: oprf-service
+    tags:
+      - peer:1
+
+  - type: file
+    path: /var/log/oprf-logs/*/node2.log
+    service: taceo-oprf-service-2
+    source: oprf-service
+    tags:
+      - peer:2

@@ -62,7 +62,6 @@ pub use nodes_common::Environment;
 pub use nodes_common::StartedServices;
 pub use services::event_cursor_store;
 pub use services::secret_manager;
-use tower_http::trace::TraceLayer;
 
 /// The tasks spawned by the key-gen library. Should call [`KeyGenTasks::join`] when shutting down for graceful shutdown.
 pub struct KeyGenTasks {
@@ -281,7 +280,7 @@ pub async fn start(
     ));
 
     Ok((
-        key_gen_router.layer(TraceLayer::new_for_http()),
+        key_gen_router,
         KeyGenTasks {
             key_event_watcher,
             i_am_alive_task,
@@ -307,7 +306,7 @@ async fn start_cursor_checkpoint_task(
             Ok(checkpoint) => Some(ChainCursor::new(checkpoint, 0)),
             Err(err) => {
                 tracing::warn!(%err, "cannot fetch checkpoint for cursor");
-                tracing::warn!("tying again in {checkpoint_interval:?}");
+                tracing::warn!("trying again in {checkpoint_interval:?}");
                 None
             }
         };
@@ -325,7 +324,7 @@ async fn start_cursor_checkpoint_task(
                     tracing::info!("successfully called store_chain_cursor");
                 }
                 Err(err) => {
-                    tracing::warn!(%err, "cannot persist checkpoint to DB");
+                    tracing::warn!(?err, "cannot persist checkpoint to DB");
                     tracing::warn!("tying again in {checkpoint_interval:?}");
                 }
             }

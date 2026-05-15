@@ -35,6 +35,14 @@ generate-contract-kats:
 run-setup:
     @bash scripts/run-setup.sh sleep
 
+[group('local-setup')]
+run-setup-dd:
+    @DATADOG_ENABLE=1 bash scripts/run-setup.sh sleep
+
+[group('local-setup')]
+backfill-monkey-test-dd:
+    @DATADOG_ENABLE=1 bash scripts/run-backfill-monkey-test.sh
+
 [group('ci')]
 check-pr: lint all-tests
 

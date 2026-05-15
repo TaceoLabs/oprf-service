@@ -1,9 +1,4 @@
-use std::{
-    net::SocketAddr,
-    process::ExitCode,
-    sync::{Arc, atomic::Ordering},
-    time::Duration,
-};
+use std::{net::SocketAddr, process::ExitCode, sync::Arc, time::Duration};
 
 use config::{Config, Environment};
 use eyre::Context;
@@ -111,7 +106,7 @@ async fn main() -> eyre::Result<ExitCode> {
         }
         Err(err) => {
             // we don't want to double print the error therefore we just return FAILURE
-            tracing::error!("{err:?}");
+            tracing::error!(?err, "oprf-service exited with error");
             Ok(ExitCode::FAILURE)
         }
     }
@@ -123,8 +118,7 @@ pub async fn start_service(
     secret_manager: SecretManagerService,
     shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> eyre::Result<()> {
-    let (cancellation_token, is_graceful_shutdown) =
-        nodes_common::spawn_shutdown_task(shutdown_signal);
+    let (cancellation_token, _) = nodes_common::spawn_shutdown_task(shutdown_signal);
 
     tracing::info!("init oprf service..");
     let (oprf_service_router, key_event_watcher) = OprfServiceBuilder::init(
@@ -154,7 +148,7 @@ pub async fn start_service(
             .await;
         tracing::info!("axum server shutdown");
         if let Err(err) = axum_result {
-            tracing::error!("got error from axum: {err:?}");
+            tracing::error!(%err, "got error from axum");
         }
         // we cancel the token in case axum encountered an error to shutdown the service
         axum_cancel_token.cancel();
@@ -168,16 +162,17 @@ pub async fn start_service(
         config.max_wait_time_shutdown
     );
     match tokio::time::timeout(config.max_wait_time_shutdown, async move {
-        tokio::join!(server, key_event_watcher)
+        key_event_watcher.await??;
+        server.await?;
+        eyre::Ok(())
     })
     .await
     {
-        Ok(_) => tracing::info!("successfully finished shutdown in time"),
-        Err(_) => tracing::warn!("could not finish shutdown in time"),
-    }
-    if is_graceful_shutdown.load(Ordering::Relaxed) {
-        Ok(())
-    } else {
-        eyre::bail!("Unexpected shutdown - check error logs")
+        Ok(Ok(())) => {
+            tracing::info!("successfully finished shutdown in time");
+            Ok(())
+        }
+        Ok(Err(err)) => Err(err),
+        Err(_) => eyre::bail!("could not finish shutdown in time"),
     }
 }

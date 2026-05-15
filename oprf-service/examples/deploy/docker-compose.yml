@@ -19,3 +19,24 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
+
+  datadog:
+    image: gcr.io/datadoghq/agent:7
+    container_name: datadog-agent
+    profiles: ["datadog"]
+    ports:
+      - "8125:8125/udp"
+      - "8126:8126/tcp"
+    environment:
+      DD_API_KEY: ${DD_API_KEY:?DD_API_KEY required when DATADOG_ENABLE=1}
+      DD_SITE: datadoghq.eu
+      DD_HOSTNAME: oprf-dev-local
+      DD_TAGS: "env:dev"
+      DD_DOGSTATSD_NON_LOCAL_TRAFFIC: "true"
+      DD_APM_ENABLED: "true"
+      DD_APM_NON_LOCAL_TRAFFIC: "true"
+      DD_LOGS_ENABLED: "true"
+      DD_PROCESS_AGENT_ENABLED: "false"
+    volumes:
+      - ./datadog/oprf-logs.yaml:/etc/datadog-agent/conf.d/oprf.d/conf.yaml:ro
+      - ../../../logs:/var/log/oprf-logs:ro

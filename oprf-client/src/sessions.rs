@@ -198,7 +198,8 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + 'static>(
             Err((service, err)) => {
                 // we very much expect certain services to return an error therefore we do not log at warn/error level.
                 tracing::debug!(
-                    "Got error response from {:?}: {err:?}",
+                    %err,
+                    "got error response from {:?}",
                     service
                         .authority()
                         .map_or_else(|| "unknown service".to_owned(), ToString::to_string)

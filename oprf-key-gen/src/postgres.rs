@@ -57,7 +57,7 @@ enum PostgresDbError {
     RefusingToRollbackEpoch,
     #[error(transparent)]
     DbError(#[from] sqlx::Error),
-    #[error(transparent)]
+    #[error("internal error: {0:?}")]
     Internal(#[from] eyre::Report),
 }
 
@@ -102,8 +102,8 @@ impl PostgresDb {
         f.retry(self.backoff_strategy())
             .sleep(tokio::time::sleep)
             .when(is_retryable_error)
-            .notify(|e, duration| {
-                tracing::warn!("Retrying {op_name} in db: {e} after {duration:?}");
+            .notify(|err, duration| {
+                tracing::warn!(%err, "Retrying {op_name} in db after {duration:?}");
             })
             .await
     }

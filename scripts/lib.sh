@@ -132,7 +132,12 @@ terminate_pid_gracefully() {
 compose_up_anvil_postgres() {
     log "Starting local dependencies"
     mkdir -p "$LOG_DIR"
-    docker compose -f "$COMPOSE_FILE" up -d anvil postgres >/dev/null
+    if [[ -n "${DATADOG_ENABLE:-}" ]]; then
+        [[ -n "${DD_API_KEY:-}" ]] || fail "DATADOG_ENABLE=1 requires DD_API_KEY to be exported"
+        docker compose -f "$COMPOSE_FILE" --profile datadog up -d anvil postgres datadog >/dev/null
+    else
+        docker compose -f "$COMPOSE_FILE" up -d anvil postgres >/dev/null
+    fi
     docker logs -f anvil >"$LOG_DIR/anvil.log" 2>&1 &
     ANVIL_LOG_PID=$!
     wait_for_anvil
@@ -297,8 +302,20 @@ start_keygen_node() {
     local i=$1
     local port=$((20000 + i))
     local schema="${schemas[$i]}"
+    local dd_env=()
     mkdir -p "$LOG_DIR"
 
+    if [[ -n "${DATADOG_ENABLE:-}" ]]; then
+        dd_env=(
+            TELEMETRY_PRESET=datadog
+            "TELEMETRY_SERVICE_NAME=taceo-oprf-key-gen-${i}"
+            TELEMETRY_METRICS_BACKEND=statsd
+            TELEMETRY_LOG_FORMAT=datadog_json
+            TELEMETRY_EYRE_MODE=json
+        )
+    fi
+
+    env \
     RUST_LOG="taceo=trace,warn" \
     TACEO_OPRF_KEY_GEN__BIND_ADDR="0.0.0.0:${port}" \
     TACEO_OPRF_KEY_GEN__SERVICE__WALLET_PRIVATE_KEY="${node_private_keys[$i]}" \
@@ -317,6 +334,7 @@ start_keygen_node() {
     TACEO_OPRF_KEY_GEN__SERVICE__BACKFILL__CHUNK_SIZE=2 \
     TACEO_OPRF_KEY_GEN__POSTGRES__CONNECTION_STRING="$POSTGRES_URL" \
     TACEO_OPRF_KEY_GEN__POSTGRES__SCHEMA="$schema" \
+    "${dd_env[@]+"${dd_env[@]}"}" \
     ./target/release/taceo-oprf-key-gen >>"$LOG_DIR/key-gen${i}.log" 2>&1 &
     keygen_pids[$i]="$!"
     log "started key-gen${i} with PID ${keygen_pids[$i]}"
@@ -353,7 +371,19 @@ start_oprf_service_nodes() {
     for i in $(peer_indices); do
         local port=$((10000 + i))
         local wallet="${participant_addresses[$i]}"
+        local dd_env=()
 
+        if [[ -n "${DATADOG_ENABLE:-}" ]]; then
+            dd_env=(
+                TELEMETRY_PRESET=datadog
+                "TELEMETRY_SERVICE_NAME=taceo-oprf-service-${i}"
+                TELEMETRY_METRICS_BACKEND=statsd
+                TELEMETRY_LOG_FORMAT=datadog_json
+                TELEMETRY_EYRE_MODE=json
+            )
+        fi
+
+        env \
         RUST_LOG="taceo=trace,warn" \
         TACEO_OPRF_NODE__POSTGRES__CONNECTION_STRING="$POSTGRES_URL" \
         TACEO_OPRF_NODE__POSTGRES__SCHEMA="${schemas[$i]}" \
@@ -364,6 +394,7 @@ start_oprf_service_nodes() {
         TACEO_OPRF_NODE__RPC__CHAIN_ID=31337 \
         TACEO_OPRF_NODE__SERVICE__VERSION_REQ=">=0.0.0" \
         TACEO_OPRF_NODE__BIND_ADDR="0.0.0.0:${port}" \
+        "${dd_env[@]+"${dd_env[@]}"}" \
         ./target/release/examples/taceo-oprf-service-example >"$LOG_DIR/node${i}.log" 2>&1 &
         nodes_pids[$i]="$!"
         log "started node${i} with PID ${nodes_pids[$i]} (wallet $wallet)"
