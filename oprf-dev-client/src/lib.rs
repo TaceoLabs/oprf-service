@@ -127,9 +127,10 @@ pub async fn send_init_requests<OprfRequestAuth: Clone + Serialize + Send + 'sta
             let nodes = oprf_client::to_oprf_uri_many(nodes, module)
                 .context("while producing OPRF uris")?;
             let init_start = Instant::now();
-            let sessions = oprf_client::init_sessions(&nodes, threshold, req, connector)
-                .await
-                .map_err(|_| eyre::eyre!("Error during init-sessions for session-id: {id}"))?;
+            let sessions =
+                oprf_client::init_sessions(req.request_id, &nodes, threshold, req, connector)
+                    .await
+                    .map_err(|_| eyre::eyre!("Error during init-sessions for session-id: {id}"))?;
             let init_duration = init_start.elapsed();
             eyre::Ok((id, sessions, init_duration))
         });

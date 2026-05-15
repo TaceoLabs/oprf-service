@@ -451,7 +451,7 @@ where
     };
 
     tracing::debug!("initializing sessions at {} services", services.len());
-    let sessions = sessions::init_sessions(services, threshold, oprf_req, connector)
+    let sessions = sessions::init_sessions(request_id, services, threshold, oprf_req, connector)
         .await
         .map_err(|errors| aggregate_error(threshold, errors))?;
 

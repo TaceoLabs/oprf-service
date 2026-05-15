@@ -19,6 +19,7 @@ use oprf_types::{
 };
 use serde::Serialize;
 use tracing::instrument;
+use uuid::Uuid;
 
 use crate::Connector;
 
@@ -99,10 +100,11 @@ impl OprfSessions {
 #[instrument(level = "trace", skip(req, connector))]
 async fn init_session<Auth: Serialize>(
     service: Uri,
+    request_id: Uuid,
     req: OprfRequest<Auth>,
     connector: Connector,
 ) -> Result<(WebSocketSession, OprfResponse), NodeError> {
-    let mut session = WebSocketSession::new(service, connector).await?;
+    let mut session = WebSocketSession::new(service, request_id, connector).await?;
     session.send(req).await?;
     let response = session.read::<OprfResponse>().await?;
     Ok((session, response))
@@ -151,6 +153,7 @@ pub async fn finish_sessions(
 /// Returns a [`OprfSessions`] ready to be finalized with [`finish_sessions`].
 #[instrument(level = "debug", skip_all)]
 pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + 'static>(
+    request_id: Uuid,
     oprf_services: &[Uri],
     threshold: usize,
     req: OprfRequest<OprfRequestAuth>,
@@ -163,7 +166,7 @@ pub async fn init_sessions<OprfRequestAuth: Clone + Serialize + 'static>(
             let req = req.clone();
             let service = service.to_owned();
             async move {
-                init_session(service.clone(), req, connector)
+                init_session(service.clone(), request_id, req, connector)
                     .await
                     .map_err(|err| (service, err))
             }
@@ -245,6 +248,7 @@ mod tests {
         api::{OprfPublicKeyWithEpoch, OprfResponse},
         crypto::{OprfPublicKey, PartyId},
     };
+    use uuid::Uuid;
 
     use crate::{OprfSessions, ws::WebSocketSession};
 
@@ -314,15 +318,21 @@ mod tests {
     async fn test_reject_duplicate_party_id() {
         let (_test_server, should_address) = mock_server(panic_on_message);
 
-        let websocket_session0 =
-            WebSocketSession::new(should_address.clone(), tokio_tungstenite::Connector::Plain)
-                .await
-                .expect("Can open websocket-session");
+        let websocket_session0 = WebSocketSession::new(
+            should_address.clone(),
+            Uuid::new_v4(),
+            tokio_tungstenite::Connector::Plain,
+        )
+        .await
+        .expect("Can open websocket-session");
 
-        let websocket_session1 =
-            WebSocketSession::new(should_address.clone(), tokio_tungstenite::Connector::Plain)
-                .await
-                .expect("Can open websocket-session");
+        let websocket_session1 = WebSocketSession::new(
+            should_address.clone(),
+            Uuid::new_v4(),
+            tokio_tungstenite::Connector::Plain,
+        )
+        .await
+        .expect("Can open websocket-session");
 
         let mut oprf_sessions = OprfSessions::with_capacity(ShareEpoch::default(), 2);
 

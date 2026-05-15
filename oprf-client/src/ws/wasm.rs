@@ -18,6 +18,7 @@ use futures::{SinkExt, StreamExt};
 use gloo_net::websocket::{Message, WebSocketError, futures::WebSocket};
 use http::Uri;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 const CLOSE_CODE_NORMAL: u16 = 1000;
 
@@ -48,18 +49,17 @@ impl WebSocketSession {
         clippy::unused_async,
         reason = "Want to have async to have equivalent signature with native"
     )]
-    pub(crate) async fn new(endpoint: Uri, _connector: Connector) -> Result<Self, NodeError> {
-        let version = env!("CARGO_PKG_VERSION");
-        let has_query = endpoint.query().is_some();
-        let mut endpoint = endpoint.to_string();
-
-        endpoint.push(if has_query { '&' } else { '?' });
-        endpoint.push_str("version=");
-        endpoint.push_str(version);
-
-        let service = endpoint.clone();
+    pub(crate) async fn new(
+        endpoint: Uri,
+        request_id: Uuid,
+        _connector: Connector,
+    ) -> Result<Self, NodeError> {
+        let service = endpoint
+            .authority()
+            .map_or_else(|| "unknown authority".to_string(), ToString::to_string);
         tracing::trace!("> sending request to {service}..");
 
+        let endpoint = super::append_client_version_to_query(&endpoint, request_id);
         let ws = WebSocket::open(&endpoint).map_err(|e| {
             NodeError::WsError(Box::new(std::io::Error::other(format!(
                 "failed to open {endpoint}: {e:?}"
