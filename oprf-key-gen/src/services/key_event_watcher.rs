@@ -30,7 +30,6 @@ use std::{
 
 use crate::{
     event_cursor_store::ChainCursorService,
-    metrics,
     secret_manager::SecretManagerError,
     services::{
         key_event_watcher::{events::KeyRegistryEvent, handler::KeyRegistryEventHandler},
@@ -261,7 +260,6 @@ async fn key_gen_event(
         .store_chain_cursor(chain_cursor)
         .await
         .context("while storing chain cursor")?;
-    metrics::chain_events::record_current_block(chain_cursor);
     Ok(())
 }
 

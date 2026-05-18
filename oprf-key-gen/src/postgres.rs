@@ -12,32 +12,26 @@
 //! The schema is managed by the embedded migrations in `./migrations`, applied automatically
 //! during [`PostgresDb::init`].
 
-use std::num::NonZeroUsize;
-use std::time::Duration;
+use std::{num::NonZeroUsize, time::Duration};
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use async_trait::async_trait;
-use nodes_common::web3::event_stream::ChainCursor;
+use backon::{BackoffBuilder, ConstantBackoff, ConstantBuilder, Retryable};
+use eyre::Context;
+use nodes_common::{
+    postgres::{CreateSchema, PostgresConfig},
+    web3::event_stream::ChainCursor,
+};
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_types::crypto::OprfPublicKey;
-use sqlx::Acquire;
-use sqlx::PgExecutor;
-use sqlx::Row as _;
+use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
+use sqlx::{Acquire, PgExecutor, PgPool, Row as _};
 use tracing::instrument;
 
-use crate::secret_manager;
-use crate::secret_manager::KeyGenIntermediateValues;
-use crate::secret_manager::SecretManager;
-use crate::secret_manager::SecretManagerError;
-use crate::services::event_cursor_store::ChainCursorStorage;
-use backon::BackoffBuilder;
-use backon::ConstantBackoff;
-use backon::ConstantBuilder;
-use backon::Retryable;
-use eyre::Context;
-use nodes_common::postgres::{CreateSchema, PostgresConfig};
-use oprf_types::{OprfKeyId, ShareEpoch};
-use sqlx::PgPool;
+use crate::{
+    metrics,
+    secret_manager::{self, KeyGenIntermediateValues, SecretManager, SecretManagerError},
+    services::event_cursor_store::ChainCursorStorage,
+};
 
 type Result<T> = std::result::Result<T, PostgresDbError>;
 
@@ -140,7 +134,7 @@ impl ChainCursorStorage for PostgresDb {
     #[instrument(level = "debug", skip_all, fields(chain_cursor=%chain_cursor))]
     #[allow(
         clippy::cast_possible_wrap,
-        reason = "We want to wrap the value because sqlx can only store i64, but we have u64"
+        reason = "We serialize the u64 as i64 because of sqlx limitations."
     )]
     async fn store_chain_cursor(&self, chain_cursor: ChainCursor) -> eyre::Result<()> {
         tracing::trace!("trying to store chain cursor...");
@@ -164,6 +158,8 @@ impl ChainCursorStorage for PostgresDb {
             .await?;
         if rows_affected == 0 {
             tracing::info!("did not update chain-event cursor - refusing to rollback");
+        } else {
+            metrics::chain_events::record_current_block(chain_cursor);
         }
         Ok(())
     }

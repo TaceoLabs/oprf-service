@@ -305,8 +305,7 @@ async fn start_cursor_checkpoint_task(
         let checkpoint = match rpc_provider.get_block_number().await {
             Ok(checkpoint) => Some(ChainCursor::new(checkpoint, 0)),
             Err(err) => {
-                tracing::warn!(%err, "cannot fetch checkpoint for cursor");
-                tracing::warn!("trying again in {checkpoint_interval:?}");
+                tracing::warn!(%err, "cannot fetch checkpoint for cursor - trying again in {checkpoint_interval:?}");
                 None
             }
         };
@@ -324,8 +323,10 @@ async fn start_cursor_checkpoint_task(
                     tracing::info!("successfully called store_chain_cursor");
                 }
                 Err(err) => {
-                    tracing::warn!(?err, "cannot persist checkpoint to DB");
-                    tracing::warn!("tying again in {checkpoint_interval:?}");
+                    tracing::warn!(
+                        ?err,
+                        "cannot persist checkpoint to DB - trying again in {checkpoint_interval:?}"
+                    );
                 }
             }
         }
