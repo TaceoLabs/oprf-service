@@ -60,14 +60,14 @@ impl PostgresDb {
     ///
     /// # Errors
     /// Returns an error if creating the database pool fails, or if running the migrations fails.
-    #[instrument(level = "debug", skip_all)]
+    #[instrument(level = "info", skip_all)]
     pub async fn init(db_config: &PostgresConfig) -> eyre::Result<Self> {
-        tracing::debug!("init PgPool with schema: {}", db_config.schema);
+        tracing::info!("init PgPool with schema: {}", db_config.schema);
         let pool = nodes_common::postgres::pg_pool_with_schema(db_config, CreateSchema::Yes)
             .await
             .context("while creating pool")?;
         // We create the pool eagerly, so running migrations here should not hit pool-acquire retries.
-        tracing::debug!("potentially running migrations..");
+        tracing::trace!("potentially running migrations..");
         sqlx::migrate!("./migrations")
             .run(&pool)
             .await
@@ -106,7 +106,7 @@ impl PostgresDb {
 #[async_trait]
 impl ChainCursorStorage for PostgresDb {
     /// Loads the `ChainEventCursor` for backfill.
-    #[instrument(level = "debug", skip_all)]
+    #[instrument(level = "info", skip_all)]
     #[allow(
         clippy::cast_sign_loss,
         reason = "We serialize the u64 as i64 due sqlx limitations. We deserialize it then to u64 which is ok"
@@ -131,7 +131,7 @@ impl ChainCursorStorage for PostgresDb {
             .await?)
     }
 
-    #[instrument(level = "debug", skip_all, fields(chain_cursor=%chain_cursor))]
+    #[instrument(level = "info", skip_all, fields(chain_cursor=%chain_cursor))]
     #[allow(
         clippy::cast_possible_wrap,
         reason = "We serialize the u64 as i64 because of sqlx limitations."
@@ -208,11 +208,11 @@ impl SecretManager for PostgresDb {
         };
         self.with_retry("store-wallet-address", store_address)
             .await?;
-        tracing::trace!("successfully stored address");
+        tracing::debug!("successfully stored address");
         Ok(())
     }
 
-    #[instrument(level = "debug", skip(self))]
+    #[instrument(level = "info", skip(self))]
     async fn get_share_by_epoch(
         &self,
         oprf_key_id: OprfKeyId,
@@ -223,7 +223,7 @@ impl SecretManager for PostgresDb {
         Ok(self.with_retry("get-share-by-epoch", get_share).await?)
     }
 
-    #[instrument(level = "debug", skip(self))]
+    #[instrument(level = "info", skip(self))]
     async fn delete_oprf_key_material(&self, oprf_key_id: OprfKeyId) -> secret_manager::Result<()> {
         tracing::trace!("trying to delete key-material..");
 
@@ -251,7 +251,7 @@ impl SecretManager for PostgresDb {
             .await?)
     }
 
-    #[instrument(level = "debug", skip_all, fields(oprf_key_id=%oprf_key_id))]
+    #[instrument(level = "info", skip_all, fields(oprf_key_id=%oprf_key_id))]
     async fn try_store_keygen_intermediates(
         &self,
         oprf_key_id: OprfKeyId,
@@ -283,7 +283,7 @@ impl SecretManager for PostgresDb {
             .await?)
     }
 
-    #[instrument(level = "debug", skip_all, fields(oprf_key_id=%oprf_key_id))]
+    #[instrument(level = "info", skip_all, fields(oprf_key_id=%oprf_key_id))]
     async fn fetch_keygen_intermediates(
         &self,
         oprf_key_id: OprfKeyId,
@@ -315,18 +315,18 @@ impl SecretManager for PostgresDb {
             .ok_or_else(|| PostgresDbError::MissingIntermediates(oprf_key_id, pending_epoch))?)
     }
 
-    #[instrument(level = "debug", skip(self))]
+    #[instrument(level = "info", skip(self))]
     async fn abort_keygen(&self, oprf_key_id: OprfKeyId) -> secret_manager::Result<()> {
         tracing::trace!("trying to abort key-gen...");
 
         let abort_keygen = || Self::delete_intermediates_inner(oprf_key_id, &self.pool);
         let rows_deleted = self.with_retry("abort-keygen", abort_keygen).await?;
 
-        tracing::trace!("aborted {rows_deleted} key-gens from postgres");
+        tracing::debug!("aborted {rows_deleted} key-gens from postgres");
         Ok(())
     }
 
-    #[instrument(level = "debug", skip_all, fields(oprf_key_id=%oprf_key_id))]
+    #[instrument(level = "info", skip_all, fields(oprf_key_id=%oprf_key_id))]
     async fn store_pending_dlog_share(
         &self,
         oprf_key_id: OprfKeyId,
@@ -356,7 +356,7 @@ impl SecretManager for PostgresDb {
             .await?;
 
         if rows_affected == 1 {
-            tracing::trace!("successfully stored pending dlog share");
+            tracing::debug!("successfully stored pending dlog share");
             Ok(())
         } else {
             tracing::warn!("cannot store pending share because no matching intermediates exist");
@@ -367,7 +367,7 @@ impl SecretManager for PostgresDb {
         }
     }
 
-    #[instrument(level = "debug", skip_all, fields(oprf_key_id=%oprf_key_id, epoch=%epoch))]
+    #[instrument(level = "info", skip_all, fields(oprf_key_id=%oprf_key_id, epoch=%epoch))]
     async fn confirm_dlog_share(
         &self,
         oprf_key_id: OprfKeyId,
@@ -392,7 +392,7 @@ impl SecretManager for PostgresDb {
                 .await?
                 .is_some()
             {
-                tracing::debug!("already have this share stored - delete intermediates");
+                tracing::warn!("already have this share stored - delete intermediates");
                 Self::delete_intermediates_inner(oprf_key_id, &mut *conn).await?;
                 tx.commit().await?;
                 return Ok(());

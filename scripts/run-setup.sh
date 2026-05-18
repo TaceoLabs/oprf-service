@@ -16,7 +16,9 @@ run_deploy() {
     deploy_key_registry
 
     cargo clean --workspace
-    cargo build --workspace --release --examples --bins
+    cargo build --release --example taceo-oprf-service-example
+    cargo build --release --example dev-client-example
+    build_keygen_binary
 
     log "starting keygen"
     # need to start key-gen before nodes because they run DB migrations

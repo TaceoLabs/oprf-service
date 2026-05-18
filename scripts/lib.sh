@@ -16,6 +16,14 @@ COMPOSE_FILE="${COMPOSE_FILE:-./oprf-service/examples/deploy/docker-compose.yml}
 LOG_TAG="${LOG_TAG:-[oprf]}"
 LOG_DIR="${LOG_DIR:-logs}"
 
+if [[ -n "${DEBUG_KEYGEN:-}" ]]; then
+    KEYGEN_CARGO_BUILD_ARGS=()
+    KEYGEN_BUILD_TARGET_DIR="debug"
+else
+    KEYGEN_CARGO_BUILD_ARGS=(--release)
+    KEYGEN_BUILD_TARGET_DIR="release"
+fi
+
 node_private_keys=(
     "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356"
     "0xdbda1821b80551c9d65939329250298aa3472ba22feea921c0cf5d620ea67b97"
@@ -335,7 +343,7 @@ start_keygen_node() {
     TACEO_OPRF_KEY_GEN__POSTGRES__CONNECTION_STRING="$POSTGRES_URL" \
     TACEO_OPRF_KEY_GEN__POSTGRES__SCHEMA="$schema" \
     "${dd_env[@]+"${dd_env[@]}"}" \
-    ./target/release/taceo-oprf-key-gen >>"$LOG_DIR/key-gen${i}.log" 2>&1 &
+    ./target/${KEYGEN_BUILD_TARGET_DIR}/taceo-oprf-key-gen >>"$LOG_DIR/key-gen${i}.log" 2>&1 &
     keygen_pids[$i]="$!"
     log "started key-gen${i} with PID ${keygen_pids[$i]}"
 }
@@ -411,7 +419,7 @@ docker_psql() {
 
 build_keygen_binary() {
     log "Building taceo-oprf-key-gen"
-    cargo build --release --bin taceo-oprf-key-gen >"$LOG_DIR/build-keygen.log" 2>&1
+    cargo build "${KEYGEN_CARGO_BUILD_ARGS[@]+"${KEYGEN_CARGO_BUILD_ARGS[@]}"}" --bin taceo-oprf-key-gen >"$LOG_DIR/build-keygen.log" 2>&1
 }
 
 prepare_keygen_db() {
