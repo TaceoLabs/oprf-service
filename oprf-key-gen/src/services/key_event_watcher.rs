@@ -160,15 +160,14 @@ pub(crate) async fn key_event_watcher_task(args: KeyEventWatcherTaskConfig) -> e
         cancellation_token,
     } = args;
 
-    tracing::info!("loading chain-cursor");
     let chain_cursor = chain_cursor_service
         .load_chain_cursor()
         .await
         .context("while loading chain cursor")?;
+    tracing::info!("loaded chain cursor at: {chain_cursor}");
 
     let contract = OprfKeyRegistry::new(contract_address, http_rpc_provider.inner());
 
-    tracing::info!("chain cursor at: {chain_cursor}");
     let event_signatures = vec![
         OprfKeyRegistry::SecretGenRound1::SIGNATURE_HASH,
         OprfKeyRegistry::SecretGenRound2::SIGNATURE_HASH,
