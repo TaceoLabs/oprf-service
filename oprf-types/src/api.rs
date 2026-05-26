@@ -109,6 +109,8 @@ pub enum OprfErrorKind {
     UnsortedContributingParties,
     /// Contributing parties contained a duplicate coefficient. Corresponds to [`oprf_error_codes::DUPLICATE_COEFFICIENT`].
     DuplicateCoefficient,
+    /// The requested OPRF key id is deleted. Corresponds to [`oprf_error_codes::DELETED_OPRF_KEY_ID`].
+    DeletedOprfKeyId,
     /// Authentication failed. Close code was in the 4500–4999 range defined by the [`OprfRequestAuthenticator`].
     Auth,
     /// Away code as specified in RFC 6455 (1001)
@@ -162,6 +164,7 @@ impl fmt::Display for OprfErrorKind {
             Self::Size => f.write_str("message too large"),
             Self::Internal => f.write_str("internal error"),
             Self::Again => f.write_str("try again later"),
+            Self::DeletedOprfKeyId => f.write_str("deleted OPRF key id"),
             Self::Unknown => f.write_str("unknown error"),
         }
     }
@@ -181,6 +184,7 @@ impl From<u16> for OprfErrorKind {
             oprf_error_codes::MISSING_MY_COEFFICIENT => Self::MissingMyCoefficient,
             oprf_error_codes::UNSORTED_CONTRIBUTING_PARTIES => Self::UnsortedContributingParties,
             oprf_error_codes::DUPLICATE_COEFFICIENT => Self::DuplicateCoefficient,
+            oprf_error_codes::DELETED_OPRF_KEY_ID => Self::DeletedOprfKeyId,
             4500..=4999 => Self::Auth,
             1001 => Self::Away,
             1002 => Self::Protocol,
