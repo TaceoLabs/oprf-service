@@ -48,6 +48,8 @@ pub mod api;
 #[cfg(feature = "chain")]
 pub mod chain;
 pub mod crypto;
+#[cfg(feature = "service")]
+pub mod service;
 
 /// Represents an epoch for the `DLog` secret-share.
 #[derive(
