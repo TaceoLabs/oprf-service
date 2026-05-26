@@ -6380,6 +6380,7 @@ dependencies = [
  "http",
  "ruint",
  "serde",
+ "sqlx",
  "taceo-ark-babyjubjub",
  "taceo-ark-serde-compat",
  "taceo-circom-types",

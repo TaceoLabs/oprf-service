@@ -18,19 +18,19 @@ ark-ff = { workspace = true }
 ark-serde-compat = { workspace = true }
 ark-serialize = { workspace = true, features = ["derive"] }
 async-trait = { workspace = true }
-circom-types = { workspace = true, features = [
-  "bn254",
-  "groth16",
-  "proof"
-], optional = true }
+circom-types = { workspace = true, features = ["bn254", "groth16", "proof"], optional = true }
 eyre = { workspace = true }
 groth16-sol = { workspace = true, optional = true }
 http = { workspace = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5" }
 ruint = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+sqlx = { workspace = true, features = [
+  "postgres",
+], optional = true }
 uuid = { workspace = true, features = ["serde", "v4"] }
 
 [features]
 default = ["chain"]
-chain = ["dep:alloy", "dep:groth16-sol", "dep:circom-types"]
+chain = ["dep:alloy", "dep:circom-types", "dep:groth16-sol"]
+service = ["dep:alloy", "dep:sqlx"]
