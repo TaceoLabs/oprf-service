@@ -23,7 +23,7 @@ use nodes_common::{
     web3::event_stream::ChainCursor,
 };
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
+use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey, service::NodeInformation};
 use sqlx::{Acquire, PgExecutor, PgPool, Row as _};
 use tracing::instrument;
 
@@ -190,25 +190,31 @@ impl From<PostgresDbError> for SecretManagerError {
 #[async_trait]
 impl SecretManager for PostgresDb {
     #[instrument(level = "info", skip(self))]
-    async fn store_wallet_address(&self, address: String) -> secret_manager::Result<()> {
-        tracing::trace!("storing wallet address...");
+    async fn store_node_information(
+        &self,
+        node_information: NodeInformation,
+    ) -> secret_manager::Result<()> {
+        tracing::trace!("storing node information...");
         let store_address = || async {
             sqlx::query(
                 "
-                INSERT INTO evm_address (id, address)
-                VALUES (TRUE, $1)
+                INSERT INTO node_information (id, evm_address, party_id)
+                VALUES (TRUE, $1, $2)
                 ON CONFLICT (id)
-                DO UPDATE SET address = EXCLUDED.address
+                DO UPDATE SET
+                    evm_address = EXCLUDED.evm_address,
+                    party_id = EXCLUDED.party_id
             ",
             )
-            .bind(&address)
+            .bind(node_information.address().to_string())
+            .bind(i32::from(node_information.party_id().into_inner()))
             .execute(&self.pool)
             .await?;
             Ok(())
         };
-        self.with_retry("store-wallet-address", store_address)
+        self.with_retry("store-node-information", store_address)
             .await?;
-        tracing::debug!("successfully stored address");
+        tracing::debug!("successfully stored node-information");
         Ok(())
     }
 

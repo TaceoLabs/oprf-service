@@ -8,6 +8,7 @@ use oprf_test_utils::{TEST_TIMEOUT, test_secret_manager::TestSecretManager};
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     crypto::{OprfKeyMaterial, OprfPublicKey},
+    service::NodeInformation,
 };
 use parking_lot::Mutex;
 use rand::{CryptoRng, Rng};
@@ -165,8 +166,11 @@ impl TestKeyGenSecretManager {
 
 #[async_trait]
 impl SecretManager for TestKeyGenSecretManager {
-    async fn store_wallet_address(&self, address: String) -> Result<(), SecretManagerError> {
-        self.0.lock().base.store_wallet_address(address);
+    async fn store_node_information(
+        &self,
+        node_information: NodeInformation,
+    ) -> Result<(), SecretManagerError> {
+        self.0.lock().base.store_node_information(node_information);
         Ok(())
     }
 
