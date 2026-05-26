@@ -45,7 +45,7 @@ use alloy::{
 use eyre::Context as _;
 use groth16_material::circom::CircomGroth16MaterialBuilder;
 use nodes_common::web3::{self, event_stream::ChainCursor};
-use oprf_types::{chain::OprfKeyRegistry, crypto::PartyId};
+use oprf_types::{chain::OprfKeyRegistry, crypto::PartyId, service::NodeInformation};
 use secrecy::ExposeSecret;
 use tokio_util::sync::CancellationToken;
 
@@ -91,7 +91,7 @@ async fn contract_sanity_checks(
     rpc_provider: &web3::HttpRpcProvider,
     key_gen_wallet_address: Address,
     config: &OprfKeyGenServiceConfig,
-) -> eyre::Result<()> {
+) -> eyre::Result<PartyId> {
     tracing::info!(
         "loading party id and checking if numPeers and threshold match. Expect {}/{}",
         config.expected_threshold,
@@ -125,8 +125,7 @@ async fn contract_sanity_checks(
         "Expected num_peers {} but contract reported {num_peers_contract}",
         config.expected_num_peers
     );
-    tracing::info!("we are party id: {party_id}. Threshold/NumPeers also match");
-    Ok(())
+    Ok(party_id)
 }
 
 /// Starts the OPRF key generation service and spawns all required background tasks.
@@ -188,10 +187,6 @@ pub async fn start(
     let private_key = PrivateKeySigner::from_str(config.wallet_private_key.expose_secret())
         .context("while loading wallet private key")?;
     let address = private_key.address();
-    secret_manager
-        .store_wallet_address(address.to_string())
-        .await
-        .context("while storing wallet address in secret manager")?;
     tracing::info!("my wallet address: {address}");
     let wallet = EthereumWallet::from(private_key);
 
@@ -219,9 +214,16 @@ pub async fn start(
     tracing::info!("wallet balance: {balance} ETH");
     metrics::wallet::set_wallet_balance(&balance);
 
-    contract_sanity_checks(&http_rpc_provider, address, &config)
+    let party_id = contract_sanity_checks(&http_rpc_provider, address, &config)
         .await
         .context("while doing sanity checks")?;
+
+    tracing::info!("we are party id: {party_id}. Threshold/NumPeers also match");
+
+    secret_manager
+        .store_node_information(NodeInformation::new(party_id, address))
+        .await
+        .context("while storing node information in secret manager")?;
 
     let key_gen_material = tokio::task::spawn_blocking(move || {
         CircomGroth16MaterialBuilder::new()

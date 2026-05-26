@@ -14,7 +14,9 @@ use groth16_material::circom::{CircomGroth16Material, CircomGroth16MaterialBuild
 use nodes_common::postgres::{PostgresConfig, SanitizedSchema};
 use nodes_common::web3::event_stream::ChainCursor;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_test_utils::{TEST_ETH_ADDRESS, TEST_ETH_PRIVATE_KEY};
+use oprf_test_utils::TEST_ETH_PRIVATE_KEY;
+use oprf_types::crypto::PartyId;
+use oprf_types::service::NodeInformation;
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 use secrecy::SecretString;
 use sqlx::Row;
@@ -44,24 +46,26 @@ pub(crate) async fn postgres_secret_manager_with_schema(
 }
 
 #[tokio::test]
-async fn load_wallet_private_key_returns_correct_key() -> eyre::Result<()> {
+async fn load_node_information_success() -> eyre::Result<()> {
     let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
 
     let key = PrivateKeySigner::from_str(TEST_ETH_PRIVATE_KEY)?;
     let address = key.address();
+    let should_party_id = PartyId(42);
+    let should_node_information = NodeInformation::new(should_party_id, address);
     secret_manager
-        .store_wallet_address(address.to_string())
+        .store_node_information(should_node_information)
         .await?;
 
     // check that the address is stored in the DB
     let mut pg_connection =
         oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
-    let stored_address: String =
-        sqlx::query_scalar("SELECT address FROM evm_address WHERE id = TRUE")
+    let is_node_information: NodeInformation =
+        sqlx::query_as("SELECT evm_address,party_id  FROM node_information WHERE id = TRUE")
             .fetch_one(&mut pg_connection)
             .await?;
 
-    assert_eq!(stored_address, TEST_ETH_ADDRESS);
+    assert_eq!(is_node_information, should_node_information);
     Ok(())
 }
 
