@@ -202,8 +202,10 @@ pub async fn start(
             .build()
             .context("while init blockchain connection")?;
 
+    // We set retries to 0 so that on ws-connection errors we restart immediately and start backfill
+    let ws_connect = WsConnect::new(config.ws_rpc_url.clone()).with_max_retries(0);
     let ws_rpc_provider = ProviderBuilder::new()
-        .connect_ws(WsConnect::new(config.ws_rpc_url.clone()))
+        .connect_ws(ws_connect)
         .await
         .context("while connecting ws provider")?
         .erased();
