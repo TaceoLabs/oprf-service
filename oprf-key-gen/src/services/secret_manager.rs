@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
+use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey, service::NodeInformation};
 
 pub use crate::services::secret_gen::KeyGenIntermediateValues;
 
@@ -50,8 +50,8 @@ pub enum SecretManagerError {
 /// Handles persistence of `OprfKeyMaterial`.
 #[async_trait]
 pub trait SecretManager {
-    /// Stores the node wallet address in the secret manager.
-    async fn store_wallet_address(&self, address: String) -> Result<()>;
+    /// Stores the [`NodeInformation`] for the node in the secret manager.
+    async fn store_node_information(&self, node_information: NodeInformation) -> Result<()>;
 
     /// Returns the share of a given [`OprfKeyId`] and a given [`ShareEpoch`].
     ///
