@@ -198,16 +198,18 @@ impl SecretManager for PostgresDb {
         let store_address = || async {
             sqlx::query(
                 "
-                INSERT INTO node_information (id, evm_address, party_id)
-                VALUES (TRUE, $1, $2)
+                INSERT INTO node_information (id, eth_address, party_id, threshold)
+                VALUES (TRUE, $1, $2, $3)
                 ON CONFLICT (id)
                 DO UPDATE SET
-                    evm_address = EXCLUDED.evm_address,
-                    party_id = EXCLUDED.party_id
+                    eth_address = EXCLUDED.eth_address,
+                    party_id = EXCLUDED.party_id,
+                    threshold = EXCLUDED.threshold
             ",
             )
             .bind(node_information.address().to_string())
             .bind(i32::from(node_information.party_id().into_inner()))
+            .bind(i32::from(node_information.threshold().get()))
             .execute(&self.pool)
             .await?;
             Ok(())

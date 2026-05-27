@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, num::NonZeroU16, sync::Arc, time::Duration};
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use async_trait::async_trait;
@@ -58,11 +58,12 @@ impl ChainCursorStorage for TestChainCursorService {
 }
 
 impl TestKeyGenSecretManager {
-    pub(crate) fn new(party_id: usize) -> Self {
+    pub(crate) fn new(party_id: usize, threshold: NonZeroU16) -> Self {
         Self(Arc::new(Mutex::new(TestKeyGenSecretManagerState {
             base: TestSecretManager::new(
                 PEER_PRIVATE_KEYS[party_id],
                 PartyId(u16::try_from(party_id).expect("party id must be u16")),
+                threshold,
             ),
             keygen_intermediates: HashMap::new(),
             pending_shares: HashMap::new(),

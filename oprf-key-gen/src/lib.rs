@@ -91,7 +91,7 @@ async fn contract_sanity_checks(
     rpc_provider: &web3::HttpRpcProvider,
     key_gen_wallet_address: Address,
     config: &OprfKeyGenServiceConfig,
-) -> eyre::Result<PartyId> {
+) -> eyre::Result<NodeInformation> {
     tracing::info!(
         "loading party id and checking if numPeers and threshold match. Expect {}/{}",
         config.expected_threshold,
@@ -125,7 +125,12 @@ async fn contract_sanity_checks(
         "Expected num_peers {} but contract reported {num_peers_contract}",
         config.expected_num_peers
     );
-    Ok(party_id)
+    tracing::info!("we are party id: {party_id}. Threshold/NumPeers also match",);
+    Ok(NodeInformation::new(
+        party_id,
+        key_gen_wallet_address,
+        config.expected_threshold,
+    ))
 }
 
 /// Starts the OPRF key generation service and spawns all required background tasks.
@@ -214,14 +219,12 @@ pub async fn start(
     tracing::info!("wallet balance: {balance} ETH");
     metrics::wallet::set_wallet_balance(&balance);
 
-    let party_id = contract_sanity_checks(&http_rpc_provider, address, &config)
+    let node_information = contract_sanity_checks(&http_rpc_provider, address, &config)
         .await
         .context("while doing sanity checks")?;
 
-    tracing::info!("we are party id: {party_id}. Threshold/NumPeers also match");
-
     secret_manager
-        .store_node_information(NodeInformation::new(party_id, address))
+        .store_node_information(node_information)
         .await
         .context("while storing node information in secret manager")?;
 

@@ -52,7 +52,8 @@ async fn load_node_information_success() -> eyre::Result<()> {
     let key = PrivateKeySigner::from_str(TEST_ETH_PRIVATE_KEY)?;
     let address = key.address();
     let should_party_id = PartyId(42);
-    let should_node_information = NodeInformation::new(should_party_id, address);
+    let should_threshold = NonZeroU16::new(2).expect("2 is non-zero");
+    let should_node_information = NodeInformation::new(should_party_id, address, should_threshold);
     secret_manager
         .store_node_information(should_node_information)
         .await?;
@@ -60,10 +61,11 @@ async fn load_node_information_success() -> eyre::Result<()> {
     // check that the address is stored in the DB
     let mut pg_connection =
         oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
-    let is_node_information: NodeInformation =
-        sqlx::query_as("SELECT evm_address,party_id  FROM node_information WHERE id = TRUE")
-            .fetch_one(&mut pg_connection)
-            .await?;
+    let is_node_information: NodeInformation = sqlx::query_as(
+        "SELECT eth_address,party_id,threshold FROM node_information WHERE id = TRUE",
+    )
+    .fetch_one(&mut pg_connection)
+    .await?;
 
     assert_eq!(is_node_information, should_node_information);
     Ok(())

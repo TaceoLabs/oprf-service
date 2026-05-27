@@ -89,8 +89,9 @@ impl<'a> TestKeyGenBuilder<'a> {
             self.party_id,
             self.test_setup,
             self.skip_backfill,
-            self.secret_manager
-                .unwrap_or_else(|| TestKeyGenSecretManager::new(self.party_id)),
+            self.secret_manager.unwrap_or_else(|| {
+                TestKeyGenSecretManager::new(self.party_id, self.test_setup.setup.threshold())
+            }),
             self.cursor_service,
             self.cursor_checkpoint_interval,
         )
