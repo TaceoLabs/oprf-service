@@ -136,7 +136,7 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
                     .await
                     {
                         Ok(Ok(session_id)) => {
-                            tracing::debug!("successfully created nullifier for {session_id}");
+                            tracing::trace!("successfully created nullifier for {session_id}");
                             metrics::request::inc_success();
                             Some(CloseFrame {
                                 code: close_code::NORMAL,

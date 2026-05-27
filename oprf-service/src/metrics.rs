@@ -20,6 +20,9 @@ pub(crate) mod request {
     /// Metrics key for counting successful OPRF evaluations
     const METRICS_ID_NODE_OPRF_SUCCESS: &str = "taceo.oprf.node.request.success";
 
+    /// Metrics key for counting closed OPRF requests
+    const METRICS_ID_NODE_OPRF_CONNECTION_CLOSED: &str = "taceo.oprf.node.request.closed";
+
     /// Metrics key for the duration of successful `OprfRequestAuth` verification
     const METRICS_ID_NODE_REQUEST_VERIFY_DURATION: &str = "taceo.oprf.node.request.verify.duration";
     /// Metrics key for the duration of part one of the OPRF computation
@@ -39,6 +42,12 @@ pub(crate) mod request {
             METRICS_ID_NODE_OPRF_SUCCESS,
             metrics::Unit::Count,
             "Number of successful OPRF evaluations"
+        );
+
+        metrics::describe_counter!(
+            METRICS_ID_NODE_OPRF_CONNECTION_CLOSED,
+            metrics::Unit::Count,
+            "Number of closed OPRF sessions by the client"
         );
 
         metrics::describe_histogram!(
@@ -78,6 +87,11 @@ pub(crate) mod request {
 
     pub(crate) fn inc_success() {
         metrics::counter!(METRICS_ID_NODE_OPRF_SUCCESS).increment(1);
+    }
+
+    pub(crate) fn inc_closed() {
+        tracing::trace!("nothing to do client closed session");
+        metrics::counter!(METRICS_ID_NODE_OPRF_CONNECTION_CLOSED).increment(1);
     }
 
     pub(crate) fn inc_client_timeout() {

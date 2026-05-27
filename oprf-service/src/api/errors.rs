@@ -7,7 +7,7 @@ use oprf_types::api::{OprfRequestAuthenticatorError, oprf_error_codes};
 use tungstenite::error::ProtocolError;
 use uuid::Uuid;
 
-use crate::secret_manager::SecretManagerError;
+use crate::{metrics, secret_manager::SecretManagerError};
 
 macro_rules! to_close_frame_bytes {
     ($s: expr) => {
@@ -64,12 +64,12 @@ impl Error {
                 });
             }
             Error::SecretManager(ref secret_manager_error) => {
-                Some(handle_secret_manager_error(secret_manager_error))
+                return Some(handle_secret_manager_error(secret_manager_error));
             }
             // For all other errors, we print it before returning the CloseFrame.
             Error::ConnectionClosed => {
                 // nothing to do here
-                tracing::debug!("nothing to do client closed session");
+                metrics::request::inc_closed();
                 return None;
             }
             Error::BlindedQueryIsIdentity => Some(CloseFrame {
@@ -152,11 +152,11 @@ fn handle_axum_error(err: axum::Error) -> Option<CloseFrame> {
     if let Some(err) = inner.downcast_ref::<tungstenite::Error>() {
         match err {
             tungstenite::Error::Protocol(ProtocolError::ResetWithoutClosingHandshake) => {
-                tracing::debug!("nothing to do client closed session");
+                metrics::request::inc_closed();
                 return None;
             }
             tungstenite::Error::Io(io_err) if io_err.kind() == ErrorKind::ConnectionReset => {
-                tracing::debug!("nothing to do client closed session");
+                metrics::request::inc_closed();
                 return None;
             }
             tungstenite::Error::Capacity(_) => {
