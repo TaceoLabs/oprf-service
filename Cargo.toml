@@ -23,7 +23,7 @@ publish = false
 [workspace.dependencies]
 alloy = { version = "2", default-features = false }
 ark-babyjubjub = { package = "taceo-ark-babyjubjub", version = "^0.5.3" }
-ark-bn254 = { version = "0.5" }
+ark-bn254 = { version = "0.6" }
 ark-ec = "0.5"
 ark-ff = "0.5"
 ark-groth16 = "0.5"
