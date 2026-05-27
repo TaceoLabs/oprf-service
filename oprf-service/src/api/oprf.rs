@@ -25,6 +25,7 @@ use oprf_types::{
 use semver::VersionReq;
 use serde::Deserialize;
 use serde::Serialize;
+use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
@@ -32,7 +33,7 @@ use tracing::{Instrument, instrument};
 
 pub(crate) struct OprfModuleState<ReqAuth> {
     pub(crate) party_id: PartyId,
-    pub(crate) threshold: usize,
+    pub(crate) threshold: NonZeroUsize,
     pub(crate) oprf_material_store: OprfKeyMaterialStore,
     pub(crate) open_sessions: OpenSessions,
     pub(crate) req_auth_service: OprfRequestAuthService<ReqAuth>,
@@ -185,7 +186,7 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
 async fn partial_oprf<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     socket: &mut WebSocket,
     party_id: PartyId,
-    threshold: usize,
+    threshold: NonZeroUsize,
     open_sessions: OpenSessions,
     oprf_material_store: OprfKeyMaterialStore,
     req_auth_service: OprfRequestAuthService<ReqAuth>,
@@ -251,7 +252,7 @@ async fn init_session<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     tracing::trace!("initiating session with key id {oprf_key_id:?}...");
     let (session, commitments) = oprf_material_store
         .partial_commit(init_request.blinded_query, oprf_key_id)
-        .ok_or_else(|| Error::UnknownOprfKeyId(oprf_key_id))?;
+        .await?;
 
     let response = OprfResponse {
         commitments,
@@ -267,15 +268,15 @@ async fn challenge(
     challenge: DLogCommitmentsShamir,
     request_id: Uuid,
     party_id: PartyId,
-    threshold: usize,
+    threshold: NonZeroUsize,
     session: OprfSession,
 ) -> Result<DLogProofShareShamir, Error> {
     let start_part_two = Instant::now();
     let coeffs = challenge.get_contributing_parties();
     let num_coeffs = coeffs.len();
-    if num_coeffs != threshold {
+    if num_coeffs != threshold.get() {
         return Err(Error::ThresholdContributingPartiesMissmatch {
-            threshold,
+            threshold: threshold.get(),
             num_coeffs,
         });
     }

@@ -6,11 +6,10 @@
 //! Current `SecretManager` implementations:
 //! - Postgres
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
-use alloy::primitives::Address;
 use async_trait::async_trait;
-use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfKeyMaterial};
+use oprf_types::{OprfKeyId, crypto::OprfKeyMaterial, service::NodeInformation};
 
 #[cfg(feature = "postgres")]
 pub mod postgres;
@@ -20,21 +19,34 @@ pub mod postgres;
 /// Must be `Send + Sync` to work with async contexts (e.g., Axum).
 pub type SecretManagerService = Arc<dyn SecretManager + Send + Sync>;
 
+/// All errors that might occur when interacting with the [`SecretManagerService`].
+///
+/// Internal errors that are implementation dependent (e.g. Postgres DB errors) shall be wrapped with `eyre::Report::from`.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum SecretManagerError {
+    /// Unknown [`OprfKeyId`]
+    #[error("unknown OPRF key-id: {0}")]
+    UnknownOprfKeyId(OprfKeyId),
+    /// Deleted [`OprfKeyId`]
+    #[error("requested deleted OPRF key-id: {0}")]
+    DeletedOprfKeyId(OprfKeyId),
+    /// Implementation specific error.
+    #[error("internal error: {0:?}")]
+    Internal(#[from] eyre::Report),
+}
+
 /// Trait that implementations of secret managers must provide.
 ///
 /// Handles persistence of `OprfKeyMaterial`.
 #[async_trait]
 pub trait SecretManager {
-    /// Loads the EVM `Address` of this node.
-    async fn load_address(&self) -> eyre::Result<Address>;
+    /// Loads the [`NodeInformation`] for this node.
+    async fn load_node_information(&self) -> eyre::Result<NodeInformation>;
 
-    /// Loads the `DLog` secrets and their associated [`OprfKeyId`]s.
-    async fn load_secrets(&self) -> eyre::Result<HashMap<OprfKeyId, OprfKeyMaterial>>;
-
-    /// Returns the [`OprfKeyMaterial`] for the given [`OprfKeyId`] and [`ShareEpoch`] if it exists.
+    /// Returns the [`OprfKeyMaterial`] for the given [`OprfKeyId`] if it exists.
     async fn get_oprf_key_material(
         &self,
         oprf_key_id: OprfKeyId,
-        epoch: ShareEpoch,
-    ) -> eyre::Result<Option<OprfKeyMaterial>>;
+    ) -> Result<OprfKeyMaterial, SecretManagerError>;
 }

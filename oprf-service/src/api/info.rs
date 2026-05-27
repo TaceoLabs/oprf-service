@@ -6,6 +6,7 @@
 //! - `/oprf_pub/{id}` – returns the [`oprf_types::crypto::OprfPublicKey`] associated with the [`OprfKeyId`] if the OPRF node has the information stored.
 //!
 //! The endpoints include a `Cache-Control: no-cache` header to prevent caching of responses.
+use crate::secret_manager::SecretManagerError;
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
 use alloy::primitives::Address;
 use axum::{
@@ -49,12 +50,20 @@ async fn oprf_key_available(
     State(info_state): State<InfoState>,
     Path(id): Path<OprfKeyId>,
 ) -> impl IntoResponse {
-    if let Some(public_material) = info_state
+    match info_state
         .oprf_material_store
         .oprf_public_key_with_epoch(id)
+        .await
     {
-        (StatusCode::OK, Json(public_material)).into_response()
-    } else {
-        StatusCode::NOT_FOUND.into_response()
+        Ok(public_material) => (StatusCode::OK, Json(public_material)).into_response(),
+        Err(err) => match err.as_ref() {
+            SecretManagerError::UnknownOprfKeyId(_) | SecretManagerError::DeletedOprfKeyId(_) => {
+                StatusCode::NOT_FOUND.into_response()
+            }
+            SecretManagerError::Internal(report) => {
+                tracing::error!(err=?report, "internal error");
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
+        },
     }
 }

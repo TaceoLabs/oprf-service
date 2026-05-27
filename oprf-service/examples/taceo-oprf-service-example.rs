@@ -2,10 +2,7 @@ use std::{net::SocketAddr, process::ExitCode, sync::Arc, time::Duration};
 
 use config::{Config, Environment};
 use eyre::Context;
-use nodes_common::{
-    postgres::PostgresConfig,
-    web3::{self},
-};
+use nodes_common::postgres::PostgresConfig;
 use serde::Deserialize;
 use taceo_oprf_service::{
     OprfServiceBuilder, StartedServices,
@@ -30,10 +27,6 @@ pub struct ExampleOprfNodeConfig {
     #[serde(default = "default_max_wait_shutdown")]
     #[serde(with = "humantime_serde")]
     pub max_wait_time_shutdown: Duration,
-
-    /// The blockchain RPC config
-    #[serde(rename = "rpc")]
-    pub rpc_provider_config: web3::HttpRpcProviderConfig,
 
     /// The OPRF service config
     #[serde(rename = "service")]
@@ -86,15 +79,8 @@ async fn main() -> eyre::Result<ExitCode> {
             .context("while starting postgres secret-manager")?,
     );
 
-    tracing::info!("connect to chain RPC...");
-    let rpc_provider =
-        nodes_common::web3::HttpRpcProviderBuilder::with_config(&config.rpc_provider_config)
-            .environment(config.node_config.environment)
-            .build()
-            .context("while init blockchain connection")?;
     let result = start_service(
         config,
-        rpc_provider,
         secret_manager,
         nodes_common::default_shutdown_signal(),
     )
@@ -114,17 +100,15 @@ async fn main() -> eyre::Result<ExitCode> {
 
 pub async fn start_service(
     config: ExampleOprfNodeConfig,
-    rpc_provider: web3::HttpRpcProvider,
     secret_manager: SecretManagerService,
     shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> eyre::Result<()> {
     let (cancellation_token, _) = nodes_common::spawn_shutdown_task(shutdown_signal);
 
     tracing::info!("init oprf service..");
-    let (oprf_service_router, key_event_watcher) = OprfServiceBuilder::init(
+    let oprf_service_router = OprfServiceBuilder::init(
         config.node_config,
         secret_manager,
-        rpc_provider,
         StartedServices::default(),
         cancellation_token.clone(),
     )
@@ -161,18 +145,12 @@ pub async fn start_service(
         "waiting for shutdown of services (max wait time {:?})..",
         config.max_wait_time_shutdown
     );
-    match tokio::time::timeout(config.max_wait_time_shutdown, async move {
-        key_event_watcher.await??;
-        server.await?;
-        eyre::Ok(())
-    })
-    .await
-    {
+    match tokio::time::timeout(config.max_wait_time_shutdown, server).await {
         Ok(Ok(())) => {
             tracing::info!("successfully finished shutdown in time");
             Ok(())
         }
-        Ok(Err(err)) => Err(err),
+        Ok(Err(err)) => Err(eyre::Report::from(err)),
         Err(_) => eyre::bail!("could not finish shutdown in time"),
     }
 }

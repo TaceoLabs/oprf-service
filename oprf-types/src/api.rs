@@ -81,6 +81,8 @@ pub mod oprf_error_codes {
     pub const UNSORTED_CONTRIBUTING_PARTIES: u16 = 4008;
     /// Found a duplicate coefficient
     pub const DUPLICATE_COEFFICIENT: u16 = 4009;
+    /// Requested deleted OPRF-key ID
+    pub const DELETED_OPRF_KEY_ID: u16 = 4010;
 }
 
 /// A typed classification of an OPRF WebSocket close code.

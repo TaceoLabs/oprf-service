@@ -1,10 +1,14 @@
-use crate::secret_manager::{SecretManager, postgres::PostgresSecretManager};
+use crate::secret_manager::{SecretManager, SecretManagerError, postgres::PostgresSecretManager};
 use alloy::primitives::U160;
 use ark_serialize::CanonicalSerialize;
 use nodes_common::postgres::{PostgresConfig, SanitizedSchema};
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_test_utils::OPRF_PEER_ADDRESS_0;
-use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
+use oprf_types::{
+    OprfKeyId, ShareEpoch,
+    crypto::{OprfPublicKey, PartyId},
+    service::NodeInformation,
+};
 use secrecy::SecretString;
 use sqlx::PgConnection;
 
@@ -70,32 +74,29 @@ async fn delete_row(oprf_key_id: OprfKeyId, connection: &mut PgConnection) -> ey
     Ok(())
 }
 
-async fn insert_address(address: &str, connection: &mut PgConnection) -> eyre::Result<()> {
+async fn insert_node_information(
+    evm_address: &str,
+    party_id: i32,
+    connection: &mut PgConnection,
+) -> eyre::Result<()> {
     sqlx::query(
         "
-            INSERT INTO evm_address (id, address)
-            VALUES (TRUE, $1)
+            INSERT INTO node_information (id, evm_address, party_id)
+            VALUES (TRUE, $1, $2)
         ",
     )
-    .bind(address)
+    .bind(evm_address)
+    .bind(party_id)
     .execute(connection)
     .await?;
     Ok(())
 }
 
 #[tokio::test]
-async fn test_load_all_secret_empty() -> eyre::Result<()> {
-    let (secret_manager, _, _) = postgres_secret_manager().await?;
-    let key_material_store = secret_manager.load_secrets().await?;
-    assert!(key_material_store.is_empty());
-    Ok(())
-}
-
-#[tokio::test]
-async fn load_address_empty() -> eyre::Result<()> {
+async fn load_node_information_empty() -> eyre::Result<()> {
     let (secret_manager, _, _) = postgres_secret_manager().await?;
     let report = secret_manager
-        .load_address()
+        .load_node_information()
         .await
         .expect_err("should be an error");
     assert_eq!(
@@ -106,75 +107,44 @@ async fn load_address_empty() -> eyre::Result<()> {
 }
 
 #[tokio::test]
-async fn load_address_corrupt() -> eyre::Result<()> {
+async fn load_node_information_corrupt() -> eyre::Result<()> {
     let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
 
     let mut conn =
         oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
-    insert_address("SomethingThatIsNotAnAddress", &mut conn).await?;
+    insert_node_information("SomethingThatIsNotAnAddress", 0, &mut conn).await?;
 
     let report = secret_manager
-        .load_address()
+        .load_node_information()
         .await
         .expect_err("should be an error");
-    assert_eq!(report.to_string(), "invalid address stored in DB");
+    assert!(report.to_string().contains("invalid address stored in DB"));
     Ok(())
 }
 
 #[tokio::test]
-async fn load_address_success() -> eyre::Result<()> {
+async fn load_node_information_success() -> eyre::Result<()> {
     let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
 
     let should_address = OPRF_PEER_ADDRESS_0;
+    let should_party_id = PartyId(42);
     let mut conn =
         oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
-    insert_address(&should_address.to_string(), &mut conn).await?;
+    insert_node_information(
+        &should_address.to_string(),
+        i32::from(should_party_id.into_inner()),
+        &mut conn,
+    )
+    .await?;
 
-    let is_address = secret_manager.load_address().await.expect("Should work");
-    assert_eq!(is_address, should_address);
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_load_all_secret_three_shares() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
-    let mut conn =
-        oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
-
-    let oprf_key_id0 = OprfKeyId::new(U160::from(42));
-    let oprf_key_id1 = OprfKeyId::new(U160::from(128));
-    let oprf_key_id2 = OprfKeyId::new(U160::from(6891));
-    let public_key0 = OprfPublicKey::new(rand::random());
-    let public_key1 = OprfPublicKey::new(rand::random());
-    let public_key2 = OprfPublicKey::new(rand::random());
-    let epoch0 = ShareEpoch::new(42);
-    let epoch1 = ShareEpoch::new(32819);
-    let epoch2 = ShareEpoch::new(3242);
-    let share0 = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
-    let share1 = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
-    let share2 = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
-
-    insert_row(oprf_key_id0, share0, epoch0, public_key0, &mut conn).await?;
-    insert_row(oprf_key_id1, share1.clone(), epoch1, public_key1, &mut conn).await?;
-    insert_row(oprf_key_id2, share2.clone(), epoch2, public_key2, &mut conn).await?;
-
-    let key_material_store = secret_manager.load_secrets().await?;
-    assert_eq!(key_material_store.len(), 3);
-    let is_key_material0 = key_material_store
-        .get(&oprf_key_id0)
-        .expect("Should be some");
-    assert_eq!(is_key_material0.public_key_with_epoch().epoch, epoch0);
-    assert_eq!(is_key_material0.public_key_with_epoch().key, public_key0);
-    let is_key_material1 = key_material_store
-        .get(&oprf_key_id1)
-        .expect("Should be some");
-    assert_eq!(is_key_material1.public_key_with_epoch().epoch, epoch1);
-    assert_eq!(is_key_material1.public_key_with_epoch().key, public_key1);
-    let is_key_material2 = key_material_store
-        .get(&oprf_key_id2)
-        .expect("Should be some");
-    assert_eq!(is_key_material2.public_key_with_epoch().epoch, epoch2);
-    assert_eq!(is_key_material2.public_key_with_epoch().key, public_key2);
+    let is_node_information = secret_manager
+        .load_node_information()
+        .await
+        .expect("Should work");
+    assert_eq!(
+        is_node_information,
+        NodeInformation::new(should_party_id, should_address)
+    );
     Ok(())
 }
 
@@ -197,10 +167,7 @@ async fn test_get_oprf_key_material() -> eyre::Result<()> {
     insert_row(oprf_key_id0, share0.clone(), epoch0, public_key0, &mut conn).await?;
     insert_row(oprf_key_id1, share1.clone(), epoch1, public_key1, &mut conn).await?;
 
-    let key_material0 = secret_manager
-        .get_oprf_key_material(oprf_key_id0, epoch0)
-        .await?
-        .expect("Is there");
+    let key_material0 = secret_manager.get_oprf_key_material(oprf_key_id0).await?;
     assert_eq!(
         ark_babyjubjub::Fr::from(key_material0.share()),
         ark_babyjubjub::Fr::from(share0)
@@ -208,26 +175,15 @@ async fn test_get_oprf_key_material() -> eyre::Result<()> {
     assert!(key_material0.is_epoch(epoch0));
     assert_eq!(key_material0.public_key(), public_key0);
 
-    // should be NotInDb
+    // unknown key id should return UnknownOprfKeyId
     assert!(matches!(
         secret_manager
-            .get_oprf_key_material(oprf_key_id0, epoch1)
+            .get_oprf_key_material(oprf_key_id_unknown)
             .await,
-        Ok(None)
+        Err(SecretManagerError::UnknownOprfKeyId(_))
     ));
 
-    // should be NotInDb
-    assert!(matches!(
-        secret_manager
-            .get_oprf_key_material(oprf_key_id_unknown, epoch1)
-            .await,
-        Ok(None)
-    ));
-
-    let key_material1 = secret_manager
-        .get_oprf_key_material(oprf_key_id1, epoch1)
-        .await?
-        .expect("Is there");
+    let key_material1 = secret_manager.get_oprf_key_material(oprf_key_id1).await?;
     assert_eq!(
         ark_babyjubjub::Fr::from(key_material1.share()),
         ark_babyjubjub::Fr::from(share1)
@@ -235,58 +191,6 @@ async fn test_get_oprf_key_material() -> eyre::Result<()> {
     assert!(key_material1.is_epoch(epoch1));
     assert_eq!(key_material1.public_key(), public_key1);
 
-    // should be None
-    assert!(matches!(
-        secret_manager
-            .get_oprf_key_material(oprf_key_id1, epoch1.prev())
-            .await,
-        Ok(None)
-    ));
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_load_all_secret_with_deleted() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
-    let oprf_key_id0 = OprfKeyId::new(U160::from(42));
-    let oprf_key_id1 = OprfKeyId::new(U160::from(128));
-    let oprf_key_id2 = OprfKeyId::new(U160::from(6891));
-    let public_key0 = OprfPublicKey::new(rand::random());
-    let public_key1 = OprfPublicKey::new(rand::random());
-    let public_key2 = OprfPublicKey::new(rand::random());
-    let epoch0 = ShareEpoch::new(42);
-    let epoch1 = ShareEpoch::new(32819);
-    let epoch2 = ShareEpoch::new(3242);
-    let share0 = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
-    let share1 = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
-    let share2 = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
-
-    let mut conn =
-        oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
-    insert_row(oprf_key_id0, share0.clone(), epoch0, public_key0, &mut conn).await?;
-    insert_row(oprf_key_id1, share1.clone(), epoch1, public_key1, &mut conn).await?;
-    insert_row(oprf_key_id2, share2.clone(), epoch2, public_key2, &mut conn).await?;
-
-    delete_row(oprf_key_id1, &mut conn).await?;
-
-    let key_material_store = secret_manager.load_secrets().await?;
-    assert_eq!(key_material_store.len(), 2);
-    let is_material0 = key_material_store.get(&oprf_key_id0).expect("Must be Some");
-    assert!(!key_material_store.contains_key(&oprf_key_id1));
-    let is_material2 = key_material_store.get(&oprf_key_id2).expect("Must be Some");
-    assert_eq!(is_material0.public_key_with_epoch().key, public_key0);
-    assert_eq!(is_material0.public_key_with_epoch().epoch, epoch0);
-    assert_eq!(
-        ark_babyjubjub::Fr::from(is_material0.share()),
-        ark_babyjubjub::Fr::from(share0)
-    );
-    assert_eq!(is_material2.public_key_with_epoch().key, public_key2);
-    assert_eq!(is_material2.public_key_with_epoch().epoch, epoch2);
-    assert_eq!(
-        ark_babyjubjub::Fr::from(is_material2.share()),
-        ark_babyjubjub::Fr::from(share2)
-    );
     Ok(())
 }
 
@@ -304,12 +208,14 @@ async fn test_get_deleted_secret() -> eyre::Result<()> {
 
     delete_row(oprf_key_id, &mut conn).await?;
 
-    // this should be an error
-    assert!(matches!(
-        secret_manager
-            .get_oprf_key_material(oprf_key_id, epoch)
-            .await,
-        Ok(None)
-    ));
+    let err = secret_manager
+        .get_oprf_key_material(oprf_key_id)
+        .await
+        .expect_err("should fail with deleted");
+    // deleted key should return DeletedOprfKeyId
+    assert!(
+        matches!(err, SecretManagerError::DeletedOprfKeyId(is_key_id) if is_key_id == oprf_key_id),
+        "should be Err(DeletedOprfKeyId({oprf_key_id})) but is {err}"
+    );
     Ok(())
 }
