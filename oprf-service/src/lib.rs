@@ -23,15 +23,12 @@
 //! This crate provides the core functionality of a node for TACEO:OPRF.
 //!
 //! When implementing a concrete instantiation of TACEO:OPRF, projects use this composable library to build their flavor of the distributed OPRF protocol. The main entry point for implementations is the [`OprfServiceBuilder`].
-//! It performs the necessary initialization of the OPRF node, including connecting to the Ethereum network, loading cryptographic secrets, and spawning background tasks to monitor key events.
+//! It loads node information (party ID, address) from the secret manager and initializes a cache-backed key material store.
 //! With the [`OprfServiceBuilder::module`] method, implementations can add multiple OPRF modules, each with its own authentication mechanism.
-//! Finally, the [`OprfServiceBuilder::build`] method returns an `axum::Router` that should be incorporated into a larger `axum` server that provides project-based functionality for authentication and a `JoinHandle` for the key event watcher task.
+//! Finally, the [`OprfServiceBuilder::build`] method returns an `axum::Router` that should be incorporated into a larger `axum` server that provides project-based functionality for authentication.
 //!
 //! If internal services of the OPRF service encounter an error, the provided `CancellationToken` will be cancelled, allowing the hosting application to handle the shutdown process gracefully.
 //! Additionally, the `CancellationToken` can be cancelled externally to signal the OPRF service to stop its operations.
-//!
-//! To ensure a graceful shutdown, the hosting application should await the `JoinHandle` returned by the `OprfServiceBuilder::build` method after cancelling the `CancellationToken`.
-//! This ensures that all background tasks are properly terminated before the application exits.
 //!
 //! For OPRF modules, implementations must provide their project-specific authentication. For that, this library exposes the [`oprf_types::api::OprfRequestAuthenticator`] trait. A call to `[OprfServiceBuilder::module]` expects an [`OprfRequestAuthService`], which is a dyn object of `OprfRequestAuthenticator`.
 //!
@@ -50,19 +47,17 @@
 //! If you want to enable HTTP/2.0, you either have to do it by hand or by calling `axum::serve`, which enabled HTTP/2.0 by default. Have a look at [Axum's HTTP2.0 example](https://github.com/tokio-rs/axum/blob/aeff16e91af6fa76efffdee8f3e5f464b458785b/examples/websockets-http2/src/main.rs#L57).
 
 use std::fmt;
+use std::num::NonZeroUsize;
 
 use crate::api::oprf::OprfModuleState;
-use crate::services::key_event_watcher::KeyEventWatcherTaskArgs;
 use crate::services::open_sessions::OpenSessions;
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
 use crate::{config::OprfNodeServiceConfig, services::secret_manager::SecretManagerService};
-use alloy::providers::{Provider as _, ProviderBuilder, WsConnect};
 use axum::Router;
 use axum::extract::MatchedPath;
 use eyre::Context;
 use http::{HeaderMap, HeaderName, StatusCode};
 use oprf_types::api::OprfRequestAuthService;
-use oprf_types::chain::OprfKeyRegistry;
 use oprf_types::crypto::PartyId;
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
@@ -79,7 +74,6 @@ mod tests;
 
 pub use nodes_common::Environment;
 pub use nodes_common::StartedServices;
-pub use nodes_common::web3;
 pub use semver::VersionReq;
 pub use services::oprf_key_material_store;
 pub use services::secret_manager;
@@ -89,99 +83,43 @@ pub struct OprfServiceBuilder {
     config: OprfNodeServiceConfig,
     info_routes: Router,
     api: Router,
-    key_event_watcher: tokio::task::JoinHandle<Result<(), eyre::Error>>,
     open_sessions: OpenSessions,
     oprf_key_material_store: OprfKeyMaterialStore,
     party_id: PartyId,
-    threshold: usize,
+    threshold: NonZeroUsize,
 }
 
 impl OprfServiceBuilder {
     /// Initializes the OPRF node service.
     ///
-    /// Connects to the configured blockchain RPC endpoint, loads the node
-    /// identity and cryptographic material, and starts the background tasks
-    /// required for the service to operate.
-    ///
     /// During initialization the service:
-    /// - Connects to the Ethereum RPC provider.
-    /// - Loads the node address from the secret manager.
-    /// - Fetches the party ID and threshold from the `OprfKeyRegistry` contract.
-    /// - Loads the OPRF key material from the secret manager.
-    /// - Starts a refresh task that periodically reloads key material.
-    /// - Spawns the `key_event_watcher` task which listens for registry events
-    ///   and updates the local key material store.
+    /// - Loads node information (party ID, address) from the secret manager.
+    /// - Initializes the cache-backed OPRF key material store.
     /// - Initializes the Axum router exposing the node API.
     ///
     /// # Errors
-    /// Returns an error if the RPC connection fails, if loading secrets fails,
-    /// or if reading required data from the contract fails.
+    /// Returns an error if loading node information from the secret manager fails.
     pub async fn init(
         config: OprfNodeServiceConfig,
         secret_manager: SecretManagerService,
-        http_rpc_provider: web3::HttpRpcProvider,
         started_services: StartedServices,
         cancellation_token: CancellationToken,
     ) -> eyre::Result<Self> {
-        tracing::info!("loading address from secret-manager..");
-        let address = secret_manager
-            .load_address()
+        tracing::info!("loading node-information from secret-manager..");
+        let node_information = secret_manager
+            .load_node_information()
             .await
-            .context("while loading address")?;
+            .context("while loading node information")?;
 
-        tracing::info!("connecting with ws provider..");
-        let ws_rpc_provider = ProviderBuilder::new()
-            .connect_ws(WsConnect::new(config.ws_rpc_url.clone()))
-            .await
-            .context("while connecting ws provider")?
-            .erased();
-
-        tracing::info!("loading party id with address {address}..");
-        let contract =
-            OprfKeyRegistry::new(config.oprf_key_registry_contract, http_rpc_provider.inner());
-        let party_id = PartyId(
-            contract
-                .getPartyIdForParticipant(address)
-                .call()
-                .await
-                .context("while loading party id")?
-                .try_into()?,
-        );
-        tracing::info!("we are party id: {party_id}");
-
-        let threshold = usize::from(
-            contract
-                .threshold()
-                .call()
-                .await
-                .context("while loading threshold")?,
-        );
+        tracing::info!("node information: {node_information:#?}");
 
         tracing::info!("init OPRF material-store..");
         let oprf_key_material_store = OprfKeyMaterialStore::new(
-            secret_manager
-                .load_secrets()
-                .await
-                .context("while loading secrets from secret-manager")?,
+            secret_manager,
+            config.store_max_capacity,
+            config.store_ttl,
+            config.store_tti,
         );
-
-        tracing::info!("spawning key event watcher..");
-        let key_event_watcher = tokio::spawn({
-            let http_rpc_provider = http_rpc_provider.clone();
-            let contract_address = config.oprf_key_registry_contract;
-            let cancellation_token = cancellation_token.clone();
-            services::key_event_watcher::key_event_watcher_task(KeyEventWatcherTaskArgs {
-                http_rpc_provider,
-                ws_rpc_provider,
-                contract_address,
-                secret_manager,
-                oprf_key_material_store: oprf_key_material_store.clone(),
-                get_oprf_key_material_timeout: config.get_oprf_key_material_timeout,
-                start_block: config.start_block,
-                started: started_services.new_service(),
-                cancellation_token,
-            })
-        });
 
         tracing::info!("init oprf-service...");
 
@@ -191,7 +129,10 @@ impl OprfServiceBuilder {
                 started_services.clone(),
                 version_str,
             ))
-            .merge(api::info::routes(oprf_key_material_store.clone(), address));
+            .merge(api::info::routes(
+                oprf_key_material_store.clone(),
+                node_information.address(),
+            ));
 
         tokio::task::spawn({
             let cancellation_token = cancellation_token.clone();
@@ -215,14 +156,13 @@ impl OprfServiceBuilder {
         });
 
         Ok(Self {
-            config,
             open_sessions: OpenSessions::new(),
             info_routes: info_route,
             api: Router::new(),
-            key_event_watcher,
             oprf_key_material_store,
-            party_id,
-            threshold,
+            party_id: node_information.party_id(),
+            threshold: config.threshold,
+            config,
         })
     }
 
@@ -260,31 +200,23 @@ impl OprfServiceBuilder {
 
     /// Build the `axum` [`Router`] with all added oprf modules.
     ///
-    /// # Returns
-    ///
-    /// Returns a tuple containing:
-    /// - An Axum `Router` instance with the configured REST API routes.
-    /// - A `JoinHandle` for the key event watcher task.
-    ///
     /// # Panics
     ///
     /// - If no oprf modules were added
-    pub fn build(self) -> (axum::Router, tokio::task::JoinHandle<eyre::Result<()>>) {
+    pub fn build(self) -> axum::Router {
         assert!(self.api.has_routes(), "Needs at least 1 oprf-module");
         // setup the dedicated HTTP trace layer for the auth modules
         let auth_modules = self
             .api
             .layer(TraceLayer::new_for_http().make_span_with(OprfAuthModulesMakeSpan));
-        (
-            Router::new()
-                .merge(self.info_routes)
-                .nest("/api", auth_modules)
-                .layer(TimeoutLayer::with_status_code(
-                    StatusCode::REQUEST_TIMEOUT,
-                    self.config.http_request_timeout,
-                )),
-            self.key_event_watcher,
-        )
+
+        Router::new()
+            .merge(self.info_routes)
+            .nest("/api", auth_modules)
+            .layer(TimeoutLayer::with_status_code(
+                StatusCode::REQUEST_TIMEOUT,
+                self.config.http_request_timeout,
+            ))
     }
 }
 

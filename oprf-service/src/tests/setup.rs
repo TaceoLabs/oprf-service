@@ -1,12 +1,10 @@
 use core::fmt;
 use std::{sync::Arc, time::Duration};
 
-use alloy::primitives::Address;
 use ark_ff::UniformRand as _;
 use async_trait::async_trait;
 use axum_test::{TestServer, TestWebSocket};
 use http::StatusCode;
-use nodes_common::web3::HttpRpcProviderBuilder;
 use nodes_common::{Environment, StartedServices};
 use oprf_core::ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir};
 use oprf_core::oprf::BlindingFactor;
@@ -14,7 +12,8 @@ use oprf_test_utils::{
     PEER_PRIVATE_KEYS, TEST_TIMEOUT, TestSetup, test_secret_manager::TestSecretManager,
 };
 use oprf_types::api::OprfRequestAuthenticatorError;
-use oprf_types::crypto::OprfKeyMaterial;
+use oprf_types::crypto::{OprfKeyMaterial, PartyId};
+use oprf_types::service::NodeInformation;
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     api::{OprfPublicKeyWithEpoch, OprfRequest, OprfRequestAuthenticator, OprfResponse},
@@ -23,7 +22,6 @@ use oprf_types::{
 use parking_lot::Mutex;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use tokio_util::sync::CancellationToken;
 use tungstenite::protocol::CloseFrame;
 use uuid::Uuid;
 
@@ -39,9 +37,10 @@ pub const INVALID_AUTH_MSG: &str = "invalid auth";
 pub struct NodeTestSecretManager(Arc<Mutex<TestSecretManager>>);
 
 impl NodeTestSecretManager {
-    pub fn new(wallet_private_key: &str) -> Self {
+    pub fn new(party_id: usize) -> Self {
         Self(Arc::new(Mutex::new(TestSecretManager::new(
-            wallet_private_key,
+            PEER_PRIVATE_KEYS[party_id],
+            PartyId(u16::try_from(party_id).expect("party id must be u16")),
         ))))
     }
 
@@ -73,26 +72,32 @@ impl NodeTestSecretManager {
     pub fn get_key_material(&self, oprf_key_id: OprfKeyId) -> Option<OprfKeyMaterial> {
         self.0.lock().get_key_material(oprf_key_id)
     }
+
+    pub fn soft_delete_key_material(&self, oprf_key_id: OprfKeyId) {
+        self.0.lock().soft_delete_key_material(oprf_key_id);
+    }
 }
 
 #[async_trait::async_trait]
 impl SecretManager for NodeTestSecretManager {
-    async fn load_address(&self) -> eyre::Result<Address> {
-        Ok(self.0.lock().load_address())
-    }
-
-    async fn load_secrets(
-        &self,
-    ) -> eyre::Result<std::collections::HashMap<OprfKeyId, OprfKeyMaterial>> {
-        Ok(self.0.lock().clone_key_materials())
+    async fn load_node_information(&self) -> eyre::Result<NodeInformation> {
+        Ok(self.0.lock().load_node_information())
     }
 
     async fn get_oprf_key_material(
         &self,
         oprf_key_id: OprfKeyId,
-        epoch: ShareEpoch,
-    ) -> eyre::Result<Option<OprfKeyMaterial>> {
-        Ok(self.0.lock().get_oprf_key_material(oprf_key_id, epoch))
+    ) -> Result<OprfKeyMaterial, crate::secret_manager::SecretManagerError> {
+        use oprf_test_utils::test_secret_manager::KeyMaterialResult;
+        match self.0.lock().get_key_material_result(oprf_key_id) {
+            KeyMaterialResult::Found(m) => Ok(m),
+            KeyMaterialResult::Deleted => Err(
+                crate::secret_manager::SecretManagerError::DeletedOprfKeyId(oprf_key_id),
+            ),
+            KeyMaterialResult::Unknown => Err(
+                crate::secret_manager::SecretManagerError::UnknownOprfKeyId(oprf_key_id),
+            ),
+        }
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -131,8 +136,6 @@ pub struct TestNode {
     pub secret_manager: NodeTestSecretManager,
     pub server: Arc<TestServer>,
     pub started_services: StartedServices,
-    pub key_event_watcher_task: tokio::task::JoinHandle<eyre::Result<()>>,
-    pub cancellation_token: CancellationToken,
 }
 
 impl fmt::Debug for TestNode {
@@ -162,9 +165,7 @@ impl TestNode {
         secret_manager: NodeTestSecretManager,
     ) -> eyre::Result<Self> {
         let TestSetup {
-            anvil,
             provider: _,
-            oprf_key_registry,
             cancellation_token,
             ..
         } = setup;
@@ -172,25 +173,17 @@ impl TestNode {
 
         let mut config = OprfNodeServiceConfig::with_default_values(
             Environment::Dev,
-            *oprf_key_registry,
-            anvil.ws_endpoint_url(),
+            setup.setup.threshold(),
             "1.0.0".parse().expect("Valid VersionReq"),
         );
         config.session_lifetime = Duration::from_secs(10);
 
         let child_token = cancellation_token.child_token();
 
-        let rpc_provider = HttpRpcProviderBuilder::with_default_values(vec![anvil.endpoint_url()])
-            .environment(Environment::Dev)
-            .chain_id(31_337)
-            .build()
-            .expect("can build RPC providers");
-
         let started_services = StartedServices::new();
-        let (service, key_event_watcher_task) = OprfServiceBuilder::init(
+        let service = OprfServiceBuilder::init(
             config,
             secret_manager.service(),
-            rpc_provider,
             started_services.clone(),
             child_token.clone(),
         )
@@ -203,8 +196,6 @@ impl TestNode {
             .expect("Can build test-server");
         Ok(TestNode {
             secret_manager,
-            cancellation_token: child_token,
-            key_event_watcher_task,
             started_services,
             server: Arc::new(server),
             party_id,
@@ -220,7 +211,7 @@ impl TestNode {
         setup: &TestSetup,
         oprf_key_id: u32,
     ) -> eyre::Result<Self> {
-        let secret_manager = NodeTestSecretManager::new(PEER_PRIVATE_KEYS[party_id]);
+        let secret_manager = NodeTestSecretManager::new(party_id);
         let key_id = OprfKeyId::from(oprf_key_id);
         secret_manager.add_random_key_material_with_id(key_id, &mut rand::thread_rng());
         Self::start_with_secret_manager(party_id, setup, secret_manager).await

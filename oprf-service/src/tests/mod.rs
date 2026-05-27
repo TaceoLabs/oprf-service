@@ -5,9 +5,7 @@ use std::time::Duration;
 use axum::extract::ws::close_code;
 use http::StatusCode;
 use oprf_core::ddlog_equality::shamir::DLogProofShareShamir;
-use oprf_test_utils::{
-    DeploySetup, OPRF_PEER_ADDRESS_0, OPRF_PEER_PRIVATE_KEY_0, TEST_TIMEOUT, TestSetup,
-};
+use oprf_test_utils::{DeploySetup, OPRF_PEER_ADDRESS_0, TestSetup};
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     api::{OprfResponse, oprf_error_codes},
@@ -31,12 +29,8 @@ struct BadRequest {
 #[tokio::test]
 async fn test_can_fetch_new_key() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start_with_secret_manager(
-        0,
-        &setup,
-        NodeTestSecretManager::new(OPRF_PEER_PRIVATE_KEY_0),
-    )
-    .await?;
+    let node =
+        TestNode::start_with_secret_manager(0, &setup, NodeTestSecretManager::new(0)).await?;
     let new_oprf_key_id = OprfKeyId::from(setup::OPRF_KEY_ID);
     node.doesnt_have_key(new_oprf_key_id).await?;
     let epoch = ShareEpoch::new(42);
@@ -50,19 +44,9 @@ async fn test_can_fetch_new_key() -> eyre::Result<()> {
         .get_key_material(new_oprf_key_id)
         .expect("Just inserted")
         .public_key();
-    setup.finalize_keygen(new_oprf_key_id, epoch).await?;
     node.has_key(new_oprf_key_id, epoch, should_key).await?;
     node.happy_path(WireFormat::Json).await;
     node.happy_path(WireFormat::Cbor).await;
-    Ok(())
-}
-
-#[tokio::test]
-async fn shutdown_if_cancellation_token_cancelled() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
-    node.cancellation_token.cancel();
-    tokio::time::timeout(TEST_TIMEOUT, node.key_event_watcher_task).await???;
     Ok(())
 }
 
@@ -132,17 +116,6 @@ async fn test_oprf_pub_not_know() -> eyre::Result<()> {
     let node = TestNode::start(0, &setup).await?;
     let result = node.server.get("/oprf_pub/1234").await;
     result.assert_status_not_found();
-    Ok(())
-}
-
-#[tokio::test]
-async fn not_a_participant() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    // for this setup we only have three nodes so party 4 is not registered
-    let error = TestNode::start(4, &setup)
-        .await
-        .expect_err("Should be an error");
-    assert_eq!(error.to_string(), "while loading party id");
     Ok(())
 }
 
@@ -453,20 +426,20 @@ async fn auth_failed_inner(format: WireFormat) -> eyre::Result<()> {
     Ok(())
 }
 
-/// Tests that after we observe an delete event by the key-event-watcher, we remove the share and can't serve it any longer
+/// Tests that after a key is soft-deleted from the secret manager, the node returns the deleted-key error.
 async fn delete_oprf_key_inner(format: WireFormat) -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let node = TestNode::start(0, &setup).await?;
 
     let key_id = OprfKeyId::from(setup::OPRF_KEY_ID);
-    //delete the key
-    setup.delete_oprf_key(key_id).await?;
+    // soft-delete the key from the secret manager
+    node.secret_manager.soft_delete_key_material(key_id);
 
     // check that we can't query the key any longer
     node.doesnt_have_key(key_id).await?;
     let should_close_frame = CloseFrame {
-        code: oprf_error_codes::UNKNOWN_OPRF_KEY_ID.into(),
-        reason: "unknown OPRF key id".into(),
+        code: oprf_error_codes::DELETED_OPRF_KEY_ID.into(),
+        reason: "OPRF key already deleted".into(),
     };
 
     node.init_expect_error(

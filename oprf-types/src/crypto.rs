@@ -245,6 +245,16 @@ pub struct OprfKeyMaterial {
     epoch: ShareEpoch,
 }
 
+impl fmt::Debug for OprfKeyMaterial {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OprfKeyMaterial")
+            .field("share", &"[redacted]")
+            .field("oprf_public_key", &self.oprf_public_key)
+            .field("epoch", &self.epoch)
+            .finish()
+    }
+}
+
 impl OprfKeyMaterial {
     /// Creates a new [`OprfKeyMaterial`] from the provided [`DLogShareShamir`], [`OprfPublicKey`], and [`ShareEpoch`].
     #[must_use]

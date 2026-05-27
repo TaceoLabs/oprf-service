@@ -1,4 +1,4 @@
-use std::{path::PathBuf, str::FromStr as _};
+use std::{num::NonZeroUsize, path::PathBuf, str::FromStr as _};
 
 use crate::{
     PEER_ADDRESSES, PEER_PRIVATE_KEYS, TACEO_ADMIN_ADDRESS, deploy_anvil::TACEO_ADMIN_PRIVATE_KEY,
@@ -59,6 +59,13 @@ impl DeploySetup {
             DeploySetup::ThreeFive => 5,
         };
         PEER_PRIVATE_KEYS.iter().take(take).cloned().collect_vec()
+    }
+
+    pub fn threshold(&self) -> NonZeroUsize {
+        match self {
+            DeploySetup::TwoThree => NonZeroUsize::new(2).expect("2 is non-zero"),
+            DeploySetup::ThreeFive => NonZeroUsize::new(3).expect("3 is non-zero"),
+        }
     }
 }
 

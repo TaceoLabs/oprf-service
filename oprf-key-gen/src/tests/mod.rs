@@ -90,7 +90,7 @@ impl<'a> TestKeyGenBuilder<'a> {
             self.test_setup,
             self.skip_backfill,
             self.secret_manager
-                .unwrap_or_else(|| TestKeyGenSecretManager::new(PEER_PRIVATE_KEYS[self.party_id])),
+                .unwrap_or_else(|| TestKeyGenSecretManager::new(self.party_id)),
             self.cursor_service,
             self.cursor_checkpoint_interval,
         )

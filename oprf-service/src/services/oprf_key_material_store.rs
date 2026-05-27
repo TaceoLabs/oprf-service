@@ -1,9 +1,10 @@
-//! This module provides [`OprfKeyMaterialStore`], which securely holds each `OPRF DLog` shares (per epoch).
-//! Access is synchronized via a `RwLock` and wrapped in an `Arc` for thread-safe shared ownership.
+//! This module provides [`OprfKeyMaterialStore`], which securely holds `OPRF DLog` shares.
 //!
-//! Use the store to retrieve or add shares and public keys safely.
+//! Shares are loaded on demand from the secret manager and cached using a `moka` async cache
+//! with configurable capacity, TTL, and TTI eviction policies.
 //! Each OPRF key material is represented by [`OprfKeyMaterial`].
 
+use moka::future::Cache;
 use oprf_core::{
     ddlog_equality::shamir::{
         DLogCommitmentsShamir, DLogProofShareShamir, DLogSessionShamir,
@@ -16,15 +17,20 @@ use oprf_types::{
     api::OprfPublicKeyWithEpoch,
     crypto::{OprfKeyMaterial, PartyId},
 };
-use parking_lot::RwLock;
-use std::{collections::HashMap, sync::Arc};
+use std::{sync::Arc, time::Duration};
 use uuid::Uuid;
 
-use crate::metrics;
+use crate::{
+    metrics,
+    secret_manager::{SecretManagerError, SecretManagerService},
+};
 
 /// Storage for [`OprfKeyMaterial`]s.
-#[derive(Default, Clone)]
-pub struct OprfKeyMaterialStore(Arc<RwLock<HashMap<OprfKeyId, OprfKeyMaterial>>>);
+#[derive(Clone)]
+pub struct OprfKeyMaterialStore {
+    store: Cache<OprfKeyId, OprfKeyMaterial>,
+    secret_manager: SecretManagerService,
+}
 
 /// The session obtained after calling `partial_commit`. Doesn't implement `Debug/Clone` to not accidentally leak private data and prevent reusing the same session.
 pub(crate) struct OprfSession {
@@ -48,33 +54,28 @@ impl OprfSession {
 impl OprfKeyMaterialStore {
     /// Creates a new storage instance with the provided initial shares.
     #[must_use]
-    pub fn new(inner: HashMap<OprfKeyId, OprfKeyMaterial>) -> Self {
-        metrics::secrets::set(inner.len());
-        Self(Arc::new(RwLock::new(inner)))
-    }
+    pub fn new(
+        secret_manager: SecretManagerService,
+        max_capacity: u64,
+        time_to_live: Duration,
+        time_to_idle: Duration,
+    ) -> Self {
+        metrics::secrets::set(0);
 
-    /// Returns the amount of stored [`OprfKeyMaterial`]s.
-    ///
-    /// _Note_ that this acquires a lock internally and returns the length at that point in time.
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.0.read().len()
-    }
+        let store = Cache::builder()
+            .max_capacity(max_capacity)
+            .time_to_live(time_to_live)
+            .time_to_idle(time_to_idle)
+            .eviction_listener(move |k, _, cause| {
+                tracing::debug!("removing OprfKeyId {k} because: {cause:?}");
+                metrics::secrets::dec();
+            })
+            .build();
 
-    /// Returns `true` iff the store has no [`OprfKeyMaterial`] stored.
-    ///
-    /// _Note_ that this acquires a lock internally and returns the result from that point in time.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.0.read().is_empty()
-    }
-
-    /// Returns the `true` iff the store contains key-material associated with the [`OprfKeyId`].
-    ///
-    /// _Note_ that this acquires a lock internally and returns the result from that point in time.
-    #[must_use]
-    pub fn contains(&self, oprf_key_id: OprfKeyId) -> bool {
-        self.0.read().contains_key(&oprf_key_id)
+        Self {
+            store,
+            secret_manager,
+        }
     }
 
     /// Computes `C = B * x_share` and commitments to a random value `k_share`, where `x_share` is identified by [`OprfKeyId`].
@@ -84,15 +85,13 @@ impl OprfKeyMaterialStore {
     /// # Errors
     ///
     /// Returns an error if the OPRF key is unknown.
-    pub(crate) fn partial_commit(
+    pub(crate) async fn partial_commit(
         &self,
         point_b: ark_babyjubjub::EdwardsAffine,
         oprf_key_id: OprfKeyId,
-    ) -> Option<(OprfSession, PartialDLogCommitmentsShamir)> {
+    ) -> Result<(OprfSession, PartialDLogCommitmentsShamir), Arc<SecretManagerError>> {
         tracing::trace!("computing partial commitment");
-        // we still need to check here, because even if we call contains, we might have removed this share in the meantime
-        let key_material = self.get(oprf_key_id)?;
-
+        let key_material = self.try_get(oprf_key_id).await?;
         let (dlog_session, commitment) = DLogSessionShamir::partial_commitments(
             point_b,
             key_material.share(),
@@ -104,7 +103,7 @@ impl OprfKeyMaterialStore {
             dlog_session,
             key_material,
         };
-        Some((session, commitment))
+        Ok((session, commitment))
     }
 
     /// Finalizes a proof share for a [`DLogCommitmentsShamir`] and an [`OprfSession`].
@@ -136,115 +135,26 @@ impl OprfKeyMaterialStore {
         )
     }
 
-    /// Retrieves the [`OprfKeyMaterial`] for the given [`OprfKeyId`].
-    ///
-    /// Returns `None` if the OPRF key or share epoch is not found.
-    fn get(&self, oprf_key_id: OprfKeyId) -> Option<OprfKeyMaterial> {
-        self.0.read().get(&oprf_key_id).cloned()
-    }
-
-    /// Returns the [`OprfPublicKeyWithEpoch`], if registered.
-    pub(crate) fn oprf_public_key_with_epoch(
+    /// Returns the [`OprfPublicKeyWithEpoch`], fetching from the secret manager on cache miss.
+    pub(crate) async fn oprf_public_key_with_epoch(
         &self,
         oprf_key_id: OprfKeyId,
-    ) -> Option<OprfPublicKeyWithEpoch> {
-        Some(self.0.read().get(&oprf_key_id)?.public_key_with_epoch())
+    ) -> Result<OprfPublicKeyWithEpoch, Arc<SecretManagerError>> {
+        Ok(self.try_get(oprf_key_id).await?.public_key_with_epoch())
     }
 
-    /// Adds OPRF key-material and overwrites any existing entry.
-    pub(super) fn insert(&self, oprf_key_id: OprfKeyId, key_material: OprfKeyMaterial) {
-        let mut store = self.0.write();
-        store
-        .entry(oprf_key_id)
-        .and_modify(|stored| {
-            if stored.epoch() >= key_material.epoch() {
-                tracing::info!(
-                    "refusing to roll back share for {oprf_key_id} to epoch {} when already at {}",
-                    key_material.epoch(),
-                    stored.epoch()
-                );
-            } else {
-                tracing::info!("overwriting material for {oprf_key_id}");
-                *stored = key_material.clone();
-            }
-        })
-        .or_insert_with(|| {
-            metrics::secrets::inc();
-            tracing::info!(
-                "added {oprf_key_id:?} material to OprfKeyMaterialStore"
-            );
-            key_material
-        });
-    }
-
-    /// Removes the OPRF key entry associated with the provided [`OprfKeyId`].
-    ///
-    /// If the id is not registered, doesn't do anything.
-    pub(super) fn remove(&self, oprf_key_id: OprfKeyId) {
-        if self.0.write().remove(&oprf_key_id).is_some() {
-            metrics::secrets::dec();
-            tracing::info!("removed {oprf_key_id:?} material from OprfKeyMaterialStore");
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::HashMap;
-
-    use alloy::primitives::U160;
-    use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-    use oprf_types::{
-        OprfKeyId, ShareEpoch,
-        crypto::{OprfKeyMaterial, OprfPublicKey},
-    };
-
-    use crate::oprf_key_material_store::OprfKeyMaterialStore;
-
-    #[test]
-    fn test_oprf_key_material_insert() {
-        let oprf_key_material_store = OprfKeyMaterialStore::new(HashMap::new());
-        let oprf_key_id = OprfKeyId::from(U160::from(42));
-        let public_key = OprfPublicKey::new(rand::random());
-        let epoch0 = ShareEpoch::default();
-        let epoch42 = ShareEpoch::new(42);
-        let should_epoch_0_share = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
-        let should_epoch_1_share = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
-        let share_not_used = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
-
-        let should_material0 = OprfKeyMaterial::new(should_epoch_0_share, public_key, epoch0);
-        oprf_key_material_store.insert(oprf_key_id, should_material0.clone());
-        check_key_material(&oprf_key_material_store, oprf_key_id, &should_material0);
-
-        let should_material1 = OprfKeyMaterial::new(should_epoch_1_share, public_key, epoch42);
-        oprf_key_material_store.insert(oprf_key_id, should_material1.clone());
-        check_key_material(&oprf_key_material_store, oprf_key_id, &should_material1);
-
-        let material_to_refuse =
-            OprfKeyMaterial::new(share_not_used.clone(), public_key, epoch42.prev());
-        oprf_key_material_store.insert(oprf_key_id, material_to_refuse);
-        // Check that still older material
-        check_key_material(&oprf_key_material_store, oprf_key_id, &should_material1);
-
-        let material_to_refuse = OprfKeyMaterial::new(share_not_used, public_key, epoch42);
-        oprf_key_material_store.insert(oprf_key_id, material_to_refuse.clone());
-        // Check that still older material
-        check_key_material(&oprf_key_material_store, oprf_key_id, &should_material1);
-    }
-
-    fn check_key_material(
-        store: &OprfKeyMaterialStore,
+    async fn try_get(
+        &self,
         oprf_key_id: OprfKeyId,
-        should_material: &OprfKeyMaterial,
-    ) {
-        let is_material = store.get(oprf_key_id).expect("Must be there");
-        assert_eq!(
-            is_material.public_key_with_epoch(),
-            should_material.public_key_with_epoch()
-        );
-        assert_eq!(
-            ark_babyjubjub::Fr::from(is_material.share()),
-            ark_babyjubjub::Fr::from(should_material.share()),
-        );
+    ) -> Result<OprfKeyMaterial, Arc<SecretManagerError>> {
+        let key_material = self
+            .store
+            .entry(oprf_key_id)
+            .or_try_insert_with(self.secret_manager.get_oprf_key_material(oprf_key_id))
+            .await?;
+        if key_material.is_fresh() {
+            metrics::secrets::inc();
+        }
+        Ok(key_material.into_value())
     }
 }
