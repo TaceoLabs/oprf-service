@@ -43,7 +43,7 @@ fn key_gen_material(deploy_setup: DeploySetup) -> CircomGroth16Material {
 }
 
 fn fixture(setup: &TestSetup) -> HandlerFixture {
-    let secret_manager = TestKeyGenSecretManager::new(OPRF_PEER_PRIVATE_KEY_0);
+    let secret_manager = TestKeyGenSecretManager::new(0);
     let secret_gen =
         DLogSecretGenService::init(key_gen_material(setup.setup), secret_manager.service());
 

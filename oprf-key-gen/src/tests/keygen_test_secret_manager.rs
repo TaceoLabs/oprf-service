@@ -4,10 +4,10 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use async_trait::async_trait;
 use nodes_common::web3::event_stream::ChainCursor;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_test_utils::{TEST_TIMEOUT, test_secret_manager::TestSecretManager};
+use oprf_test_utils::{PEER_PRIVATE_KEYS, TEST_TIMEOUT, test_secret_manager::TestSecretManager};
 use oprf_types::{
     OprfKeyId, ShareEpoch,
-    crypto::{OprfKeyMaterial, OprfPublicKey},
+    crypto::{OprfKeyMaterial, OprfPublicKey, PartyId},
     service::NodeInformation,
 };
 use parking_lot::Mutex;
@@ -58,9 +58,12 @@ impl ChainCursorStorage for TestChainCursorService {
 }
 
 impl TestKeyGenSecretManager {
-    pub(crate) fn new(wallet_private_key: &str) -> Self {
+    pub(crate) fn new(party_id: usize) -> Self {
         Self(Arc::new(Mutex::new(TestKeyGenSecretManagerState {
-            base: TestSecretManager::new(wallet_private_key),
+            base: TestSecretManager::new(
+                PEER_PRIVATE_KEYS[party_id],
+                PartyId(u16::try_from(party_id).expect("party id must be u16")),
+            ),
             keygen_intermediates: HashMap::new(),
             pending_shares: HashMap::new(),
             deleted_keys: HashMap::new(),

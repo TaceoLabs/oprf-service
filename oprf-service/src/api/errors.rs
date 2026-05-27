@@ -1,14 +1,13 @@
 //! This module defines the [`Error`] the websocket connection may encounter during a OPRF request. It further provides a method to transform the encountered errors into a close frame if necessary.
 
-use std::io::ErrorKind;
+use std::{io::ErrorKind, sync::Arc};
 
 use axum::extract::ws::{CloseFrame, Utf8Bytes, close_code};
-use oprf_types::{
-    OprfKeyId,
-    api::{OprfRequestAuthenticatorError, oprf_error_codes},
-};
+use oprf_types::api::{OprfRequestAuthenticatorError, oprf_error_codes};
 use tungstenite::error::ProtocolError;
 use uuid::Uuid;
+
+use crate::secret_manager::SecretManagerError;
 
 macro_rules! to_close_frame_bytes {
     ($s: expr) => {
@@ -21,8 +20,6 @@ macro_rules! to_close_frame_bytes {
 pub(crate) enum Error {
     #[error("Session {0} already exists")]
     SessionReuse(Uuid),
-    #[error("OprfKeyId {0} does not exist")]
-    UnknownOprfKeyId(OprfKeyId),
     #[error("Connection closed by client")]
     ConnectionClosed,
     #[error(transparent)]
@@ -45,6 +42,8 @@ pub(crate) enum Error {
     ContributionsNotSorted,
     #[error("contributing parties contains duplicate coefficients")]
     DuplicateCoefficients,
+    #[error(transparent)]
+    SecretManager(#[from] Arc<SecretManagerError>),
 }
 
 impl Error {
@@ -55,6 +54,7 @@ impl Error {
         let close_frame = match self {
             // for Axum and auth error we short circuit and don't print the log line
             // * handle axum error log in the dedicated method
+            // * handle secret-manager error log in the dedicated method
             // * handle auth error log in downstream crate
             Error::Axum(axum_error) => return handle_axum_error(axum_error),
             Error::Auth(err) => {
@@ -62,6 +62,9 @@ impl Error {
                     code: err.code(),
                     reason: Utf8Bytes::from(err.message()),
                 });
+            }
+            Error::SecretManager(ref secret_manager_error) => {
+                Some(handle_secret_manager_error(secret_manager_error))
             }
             // For all other errors, we print it before returning the CloseFrame.
             Error::ConnectionClosed => {
@@ -72,10 +75,6 @@ impl Error {
             Error::BlindedQueryIsIdentity => Some(CloseFrame {
                 code: oprf_error_codes::BLINDED_QUERY_IS_IDENTITY,
                 reason: to_close_frame_bytes!("blinded query must not be identity"),
-            }),
-            Error::UnknownOprfKeyId(_) => Some(CloseFrame {
-                code: oprf_error_codes::UNKNOWN_OPRF_KEY_ID,
-                reason: to_close_frame_bytes!("unknown OPRF key id"),
             }),
             Error::SessionReuse(_) => Some(CloseFrame {
                 code: oprf_error_codes::SESSION_REUSE,
@@ -119,6 +118,32 @@ impl Error {
         };
         tracing::warn!(user_error = true, "{maybe_log_line}");
         close_frame
+    }
+}
+
+fn handle_secret_manager_error(err: &SecretManagerError) -> CloseFrame {
+    match err {
+        SecretManagerError::UnknownOprfKeyId(oprf_key_id) => {
+            tracing::warn!(user_error=true, %err, "unknown OPRF key {oprf_key_id}");
+            CloseFrame {
+                code: oprf_error_codes::UNKNOWN_OPRF_KEY_ID,
+                reason: to_close_frame_bytes!("unknown OPRF key id"),
+            }
+        }
+        SecretManagerError::DeletedOprfKeyId(oprf_key_id) => {
+            tracing::warn!(user_error=true, %err, "requested deleted OPRF key {oprf_key_id}");
+            CloseFrame {
+                code: oprf_error_codes::DELETED_OPRF_KEY_ID,
+                reason: to_close_frame_bytes!("OPRF key already deleted"),
+            }
+        }
+        SecretManagerError::Internal(report) => {
+            tracing::error!(err=?report,"internal error");
+            CloseFrame {
+                code: close_code::ERROR,
+                reason: to_close_frame_bytes!("unexpected error"),
+            }
+        }
     }
 }
 

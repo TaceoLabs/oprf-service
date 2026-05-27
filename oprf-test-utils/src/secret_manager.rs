@@ -13,7 +13,6 @@ pub mod postgres {
 
     pub const TEST_ETH_PRIVATE_KEY: &str =
         "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba";
-    pub const TEST_ETH_ADDRESS: &str = "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc";
 
     struct SharedPg {
         _container: ContainerAsync<Postgres>,

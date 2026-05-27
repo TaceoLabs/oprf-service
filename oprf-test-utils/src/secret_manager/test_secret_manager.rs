@@ -1,26 +1,43 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+};
 
-use alloy::{hex, primitives::Address, signers::local::PrivateKeySigner};
+use alloy::{hex, signers::local::PrivateKeySigner};
 use ark_ff::UniformRand;
 use itertools::Itertools;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::{
     OprfKeyId, ShareEpoch,
-    crypto::{OprfKeyMaterial, OprfPublicKey},
+    crypto::{OprfKeyMaterial, OprfPublicKey, PartyId},
+    service::NodeInformation,
 };
 use rand::{CryptoRng, Rng};
 
+/// Tri-state result for `TestSecretManager::get_key_material_result`.
+pub enum KeyMaterialResult {
+    Found(OprfKeyMaterial),
+    Deleted,
+    Unknown,
+}
+
 pub struct TestSecretManager {
     wallet_private_key: PrivateKeySigner,
+    node_information: NodeInformation,
     store: HashMap<OprfKeyId, OprfKeyMaterial>,
+    deleted_keys: HashSet<OprfKeyId>,
 }
 
 impl TestSecretManager {
-    pub fn new(wallet_private_key: &str) -> Self {
+    pub fn new(wallet_private_key: &str, party_id: PartyId) -> Self {
+        let wallet_private_key =
+            PrivateKeySigner::from_str(wallet_private_key).expect("valid private key");
+        let address = wallet_private_key.address();
         Self {
-            wallet_private_key: PrivateKeySigner::from_str(wallet_private_key)
-                .expect("valid private key"),
+            wallet_private_key,
+            node_information: NodeInformation::new(party_id, address),
             store: HashMap::new(),
+            deleted_keys: HashSet::new(),
         }
     }
 
@@ -42,10 +59,6 @@ impl TestSecretManager {
 
     pub fn put(&mut self, map: HashMap<OprfKeyId, OprfKeyMaterial>) {
         self.store.extend(map);
-    }
-
-    pub fn clone_key_materials(&self) -> HashMap<OprfKeyId, OprfKeyMaterial> {
-        self.store.clone()
     }
 
     pub fn insert_key_material(
@@ -144,26 +157,26 @@ impl TestSecretManager {
         }
     }
 
-    pub fn load_address(&self) -> Address {
-        self.wallet_private_key.address()
+    pub fn load_node_information(&self) -> NodeInformation {
+        self.node_information
     }
 
-    pub fn store_wallet_address(&self, address: String) {
-        assert_eq!(self.wallet_private_key.address().to_string(), address);
+    pub fn store_node_information(&self, node_information: NodeInformation) {
+        assert_eq!(self.node_information, node_information);
     }
 
-    pub fn get_oprf_key_material(
-        &self,
-        oprf_key_id: OprfKeyId,
-        epoch: ShareEpoch,
-    ) -> Option<OprfKeyMaterial> {
-        let key_material = self.store.get(&oprf_key_id).cloned();
-        if let Some(key_material) = key_material
-            && key_material.is_epoch(epoch)
-        {
-            Some(key_material)
+    pub fn get_key_material_result(&self, oprf_key_id: OprfKeyId) -> KeyMaterialResult {
+        if self.deleted_keys.contains(&oprf_key_id) {
+            KeyMaterialResult::Deleted
+        } else if let Some(m) = self.store.get(&oprf_key_id).cloned() {
+            KeyMaterialResult::Found(m)
         } else {
-            None
+            KeyMaterialResult::Unknown
         }
+    }
+
+    pub fn soft_delete_key_material(&mut self, oprf_key_id: OprfKeyId) {
+        self.store.remove(&oprf_key_id);
+        self.deleted_keys.insert(oprf_key_id);
     }
 }
