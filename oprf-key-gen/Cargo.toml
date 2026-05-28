@@ -1,6 +1,6 @@
 [package]
 name = "taceo-oprf-key-gen"
-version = "0.11.0"
+version = "0.12.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "TACEO:OPRF Distributed Key Generation Protocol."
@@ -44,8 +44,8 @@ nodes-common = { workspace = true, features = [
   "serde",
   "web3",
 ] }
-oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.13", features = ["service"] }
+oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.14", features = ["service"] }
 rand.workspace = true
 reqwest = { workspace = true, features = ["json"] }
 rustls = { workspace = true }
@@ -76,7 +76,7 @@ zeroize = { workspace = true, features = ["derive"] }
 [dev-dependencies]
 alloy = { workspace = true, features = ["node-bindings"] }
 axum-test = { workspace = true, features = ["ws"] }
-oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.12" }
+oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.13" }
 parking_lot = { workspace = true }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]

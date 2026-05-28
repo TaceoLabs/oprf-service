@@ -2,6 +2,43 @@
 
 ## [Unreleased]
 
+## [0.12.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.11.0...taceo-oprf-key-gen-v0.12.0)
+
+### ⛰️ Features
+
+
+- *(key-gen)* [**breaking**] Store party id in secret-manager - ([993185b](https://github.com/TaceoLabs/oprf-service/commit/993185bba529f56472014f053bd1f8fd81ecb3ae))
+
+### 🐛 Bug Fixes
+
+
+- *(key-gen)* Restart key-gen on ws-connect errors ([#609](https://github.com/TaceoLabs/oprf-service/pull/609)) - ([36c63da](https://github.com/TaceoLabs/oprf-service/commit/36c63dac3f48d6f83b114fb41f93344583fbc5fa))
+
+### 🚜 Refactor
+
+
+- *(node)* [**breaking**] Remove key-event-watcher and on-chain completly - ([c065386](https://github.com/TaceoLabs/oprf-service/commit/c0653869d669906cf8f8e233ccd55c70c3be58f1))
+- *(service)* [**breaking**] Cleanup imports and re-exports - ([58f7eff](https://github.com/TaceoLabs/oprf-service/commit/58f7effdd3f13459aebb53297366782b8c09098a))
+- Swapped client version predecence + unify error logs in repo - ([47c9a06](https://github.com/TaceoLabs/oprf-service/commit/47c9a062bc063e577ea28f8253601b062537ae4d))
+
+### 🏗️ Build
+
+
+- *(key-gen)* Set max tracing level to info for key-gen release builds ([#603](https://github.com/TaceoLabs/oprf-service/pull/603)) - ([78173db](https://github.com/TaceoLabs/oprf-service/commit/78173db24565ba705f381c455bdce945dea82ed3))
+
+### 🧪 Testing
+
+
+- Add local dd setup - ([0979703](https://github.com/TaceoLabs/oprf-service/commit/0979703af3174d5b010fc795077cc6c0e90bef30))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(key-gen)* Set tracing release level to debug - ([e210512](https://github.com/TaceoLabs/oprf-service/commit/e210512634880979d70a11577fd8350511338db4))
+- *(key-gen)* Removed unused TraceLayer::new_for_http - ([dae9588](https://github.com/TaceoLabs/oprf-service/commit/dae958881f408aba90b73fa040e81240fdf3d672))
+- Remarks bugbot - ([ef2f4df](https://github.com/TaceoLabs/oprf-service/commit/ef2f4df172817f40e3855bcaa289fb8d0055b7f0))
+
+
 ## [0.11.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-key-gen-v0.10.0...taceo-oprf-key-gen-v0.11.0)
 
 ### ⛰️ Features

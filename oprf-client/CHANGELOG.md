@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.9.5...taceo-oprf-client-v0.10.0)
+
+### ⛰️ Features
+
+
+- *(client)* Add request id as query parameter - ([d24c435](https://github.com/TaceoLabs/oprf-service/commit/d24c435e7623f96f4d61e7cf05defdd0404a6c41))
+
+### 🚜 Refactor
+
+
+- *(client)* Use query param over header for client version reporting - ([37b70c6](https://github.com/TaceoLabs/oprf-service/commit/37b70c6742b66948076d32d453af33936f739074))
+- *(service)* [**breaking**] Cleanup imports and re-exports - ([58f7eff](https://github.com/TaceoLabs/oprf-service/commit/58f7effdd3f13459aebb53297366782b8c09098a))
+- Swapped client version predecence + unify error logs in repo - ([47c9a06](https://github.com/TaceoLabs/oprf-service/commit/47c9a062bc063e577ea28f8253601b062537ae4d))
+
+### 🏗️ Build
+
+
+- *(deps)* Downgrade gloo-net to 0.6 again because of world dep - ([a1bcaf9](https://github.com/TaceoLabs/oprf-service/commit/a1bcaf97b5024a047fcc9b9f7562dbaf1f3f3dbb))
+
+
 ## [0.9.5](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.9.4...taceo-oprf-client-v0.9.5)
 
 ### 📚 Documentation
