@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-core-v0.5.4...taceo-oprf-core-v0.6.0)
+
+### 🚜 Refactor
+
+
+- *(service)* [**breaking**] Cleanup imports and re-exports - ([58f7eff](https://github.com/TaceoLabs/oprf-service/commit/58f7effdd3f13459aebb53297366782b8c09098a))
+
+
 ## [0.5.4](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-core-v0.5.3...taceo-oprf-core-v0.5.4)
 
 ### 📚 Documentation

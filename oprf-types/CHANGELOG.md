@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.14.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.13.1...taceo-oprf-types-v0.14.0)
+
+### ⛰️ Features
+
+
+- *(types)* Added node information to types - ([49cf68f](https://github.com/TaceoLabs/oprf-service/commit/49cf68f1ddcd0c2c1a36f43d7425dc0553c01634))
+
+### 🚜 Refactor
+
+
+- *(node)* [**breaking**] Remove key-event-watcher and on-chain completly - ([c065386](https://github.com/TaceoLabs/oprf-service/commit/c0653869d669906cf8f8e233ccd55c70c3be58f1))
+- *(service)* [**breaking**] Cleanup imports and re-exports - ([58f7eff](https://github.com/TaceoLabs/oprf-service/commit/58f7effdd3f13459aebb53297366782b8c09098a))
+
+
 ## [0.13.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.13.0...taceo-oprf-types-v0.13.1)
 
 ### 🏗️ Build

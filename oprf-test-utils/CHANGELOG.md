@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.13.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.12.0...taceo-oprf-test-utils-v0.13.0)
+
+### 🚜 Refactor
+
+
+- *(node)* [**breaking**] Remove key-event-watcher and on-chain completly - ([c065386](https://github.com/TaceoLabs/oprf-service/commit/c0653869d669906cf8f8e233ccd55c70c3be58f1))
+- *(service)* [**breaking**] Cleanup imports and re-exports - ([58f7eff](https://github.com/TaceoLabs/oprf-service/commit/58f7effdd3f13459aebb53297366782b8c09098a))
+
+
 ## [0.12.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.11.0...taceo-oprf-test-utils-v0.12.0)
 
 ### 🚜 Refactor

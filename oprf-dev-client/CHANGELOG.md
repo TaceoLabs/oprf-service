@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.10.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.9.3...taceo-oprf-dev-client-v0.10.0)
+
+### ⛰️ Features
+
+
+- *(client)* Add request id as query parameter - ([d24c435](https://github.com/TaceoLabs/oprf-service/commit/d24c435e7623f96f4d61e7cf05defdd0404a6c41))
+
+### 🚜 Refactor
+
+
+- *(service)* [**breaking**] Cleanup imports and re-exports - ([58f7eff](https://github.com/TaceoLabs/oprf-service/commit/58f7effdd3f13459aebb53297366782b8c09098a))
+- Swapped client version predecence + unify error logs in repo - ([47c9a06](https://github.com/TaceoLabs/oprf-service/commit/47c9a062bc063e577ea28f8253601b062537ae4d))
+
+
 ## [0.9.3](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.9.2...taceo-oprf-dev-client-v0.9.3)
 
 ### 🚜 Refactor

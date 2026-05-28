@@ -40,8 +40,8 @@ nodes-common = { workspace = true, features = [
   "serde",
   "web3"
 ] }
-oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.13", features = ["service"] }
+oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.14", features = ["service"] }
 parking_lot = { workspace = true }
 rand.workspace = true
 secrecy = { workspace = true, features = ["serde"] }
@@ -74,8 +74,8 @@ ark-ff = { workspace = true }
 axum-test = { workspace = true, features = ["ws"] }
 config = { workspace = true }
 itertools = { workspace = true }
-oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.9" }
-oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.12", default-features = false, features = [
+oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.10" }
+oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.13", default-features = false, features = [
   "deploy-anvil",
   "postgres-test-container"
 ] }
