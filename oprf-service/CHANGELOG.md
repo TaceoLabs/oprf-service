@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+## [0.16.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.15.0...taceo-oprf-service-v0.16.0)
+
+### 🚜 Refactor
+
+
+- *(node)* [**breaking**] Remove key-event-watcher and on-chain completly - ([c065386](https://github.com/TaceoLabs/oprf-service/commit/c0653869d669906cf8f8e233ccd55c70c3be58f1))
+- *(service)* [**breaking**] Cleanup imports and re-exports - ([58f7eff](https://github.com/TaceoLabs/oprf-service/commit/58f7effdd3f13459aebb53297366782b8c09098a))
+- Swapped client version predecence + unify error logs in repo - ([47c9a06](https://github.com/TaceoLabs/oprf-service/commit/47c9a062bc063e577ea28f8253601b062537ae4d))
+
+### 🧪 Testing
+
+
+- Add local dd setup - ([0979703](https://github.com/TaceoLabs/oprf-service/commit/0979703af3174d5b010fc795077cc6c0e90bef30))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(node)* Add new metric and set success message to trace - ([0165f93](https://github.com/TaceoLabs/oprf-service/commit/0165f93626747e81e94f8fa8d3afe0041036ad60))
+- Set publish true again for umbrella + service ([#617](https://github.com/TaceoLabs/oprf-service/pull/617)) - ([587ef12](https://github.com/TaceoLabs/oprf-service/commit/587ef128404ef60e9b871643e0b85cc136595e33))
+- Publish false to fix release - ([51f4cbb](https://github.com/TaceoLabs/oprf-service/commit/51f4cbb689ff13537c3d24b1074ee651f3f524f5))
+- Remarks bugbot - ([ef2f4df](https://github.com/TaceoLabs/oprf-service/commit/ef2f4df172817f40e3855bcaa289fb8d0055b7f0))
+
+
 ## [0.15.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.14.0...taceo-oprf-service-v0.15.0)
 
 ### 🚜 Refactor
