@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.15.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.14.0...taceo-oprf-v0.15.0)
+
+### 🚜 Refactor
+
+
+- *(service)* [**breaking**] Cleanup imports and re-exports - ([58f7eff](https://github.com/TaceoLabs/oprf-service/commit/58f7effdd3f13459aebb53297366782b8c09098a))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Set publish true again for umbrella + service ([#617](https://github.com/TaceoLabs/oprf-service/pull/617)) - ([587ef12](https://github.com/TaceoLabs/oprf-service/commit/587ef128404ef60e9b871643e0b85cc136595e33))
+- Publish false to fix release - ([51f4cbb](https://github.com/TaceoLabs/oprf-service/commit/51f4cbb689ff13537c3d24b1074ee651f3f524f5))
+
+
 ## [0.14.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.13.0...taceo-oprf-v0.14.0)
 
 ### 📚 Documentation
