@@ -7,7 +7,7 @@ use oprf_types::api::{OprfRequestAuthenticatorError, oprf_error_codes};
 use tungstenite::error::ProtocolError;
 use uuid::Uuid;
 
-use crate::{metrics, secret_manager::SecretManagerError};
+use crate::secret_manager::SecretManagerError;
 
 macro_rules! to_close_frame_bytes {
     ($s: expr) => {
@@ -35,7 +35,7 @@ pub(crate) enum Error {
     #[error("blinded query must not be identity")]
     BlindedQueryIsIdentity,
     #[error("expected {threshold} contributing parties but got {num_coeffs}")]
-    ThresholdContributingPartiesMissmatch { threshold: usize, num_coeffs: usize },
+    ThresholdContributingPartiesMissmatch { threshold: u16, num_coeffs: usize },
     #[error("contributing parties does not contain my coefficient")]
     MissingMyCoefficient,
     #[error("contributing parties are not sorted")]
@@ -69,7 +69,7 @@ impl Error {
             // For all other errors, we print it before returning the CloseFrame.
             Error::ConnectionClosed => {
                 // nothing to do here
-                metrics::request::inc_closed();
+                tracing::trace!("nothing to do client closed session");
                 return None;
             }
             Error::BlindedQueryIsIdentity => Some(CloseFrame {
@@ -152,11 +152,11 @@ fn handle_axum_error(err: axum::Error) -> Option<CloseFrame> {
     if let Some(err) = inner.downcast_ref::<tungstenite::Error>() {
         match err {
             tungstenite::Error::Protocol(ProtocolError::ResetWithoutClosingHandshake) => {
-                metrics::request::inc_closed();
+                tracing::trace!("nothing to do client closed session");
                 return None;
             }
             tungstenite::Error::Io(io_err) if io_err.kind() == ErrorKind::ConnectionReset => {
-                metrics::request::inc_closed();
+                tracing::trace!("nothing to do client closed session");
                 return None;
             }
             tungstenite::Error::Capacity(_) => {

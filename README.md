@@ -85,7 +85,7 @@ OPRF key shares are stored in a PostgreSQL database.
 The Postgres secret manager automatically runs migrations on startup to create the required tables:
 
 * `oprf_shares` – Stores OPRF key shares per epoch
-* `evm_address` – Stores EVM address mappings
+* `node_information` – Stores node information (ETH address, party ID, threshold)
 
 **Security considerations:**
 

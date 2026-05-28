@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    num::NonZeroU16,
     str::FromStr,
 };
 
@@ -29,13 +30,13 @@ pub struct TestSecretManager {
 }
 
 impl TestSecretManager {
-    pub fn new(wallet_private_key: &str, party_id: PartyId) -> Self {
+    pub fn new(wallet_private_key: &str, party_id: PartyId, threshold: NonZeroU16) -> Self {
         let wallet_private_key =
             PrivateKeySigner::from_str(wallet_private_key).expect("valid private key");
         let address = wallet_private_key.address();
         Self {
             wallet_private_key,
-            node_information: NodeInformation::new(party_id, address),
+            node_information: NodeInformation::new(party_id, address, threshold),
             store: HashMap::new(),
             deleted_keys: HashSet::new(),
         }

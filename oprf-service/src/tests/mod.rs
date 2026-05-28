@@ -29,8 +29,12 @@ struct BadRequest {
 #[tokio::test]
 async fn test_can_fetch_new_key() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node =
-        TestNode::start_with_secret_manager(0, &setup, NodeTestSecretManager::new(0)).await?;
+    let node = TestNode::start_with_secret_manager(
+        0,
+        &setup,
+        NodeTestSecretManager::new(0, setup.setup.threshold()),
+    )
+    .await?;
     let new_oprf_key_id = OprfKeyId::from(setup::OPRF_KEY_ID);
     node.doesnt_have_key(new_oprf_key_id).await?;
     let epoch = ShareEpoch::new(42);

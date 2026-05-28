@@ -1,39 +1,42 @@
-use crate::api::errors::Error;
-use crate::api::version_header::{ProtocolVersion, ProtocolVersionQuery};
-use crate::metrics;
-use crate::oprf_key_material_store::OprfSession;
-use crate::services::open_sessions::OpenSessions;
-use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
-use axum::extract::{Query, State};
-use axum::response::IntoResponse;
+use std::num::NonZeroU16;
+use std::time::{Duration, Instant};
+
 use axum::{
     Router,
     extract::{
-        WebSocketUpgrade,
+        Query, State, WebSocketUpgrade,
         ws::{self, CloseFrame, WebSocket, close_code},
     },
+    response::IntoResponse,
     routing::any,
 };
 use axum_extra::TypedHeader;
 use http::StatusCode;
 use oprf_core::ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir};
-use oprf_types::api::OprfRequestAuthService;
 use oprf_types::{
-    api::{OprfRequest, OprfResponse, oprf_error_codes},
+    api::{OprfRequest, OprfRequestAuthService, OprfResponse, oprf_error_codes},
     crypto::PartyId,
 };
 use semver::VersionReq;
-use serde::Deserialize;
-use serde::Serialize;
-use std::num::NonZeroUsize;
-use std::time::{Duration, Instant};
+use serde::{Deserialize, Serialize};
+use tracing::{Instrument, instrument};
 use uuid::Uuid;
 
-use tracing::{Instrument, instrument};
+use crate::{
+    api::{
+        errors::Error,
+        version_header::{ProtocolVersion, ProtocolVersionQuery},
+    },
+    metrics,
+    services::{
+        open_sessions::OpenSessions,
+        oprf_key_material_store::{OprfKeyMaterialStore, OprfSession},
+    },
+};
 
 pub(crate) struct OprfModuleState<ReqAuth> {
     pub(crate) party_id: PartyId,
-    pub(crate) threshold: NonZeroUsize,
+    pub(crate) threshold: NonZeroU16,
     pub(crate) oprf_material_store: OprfKeyMaterialStore,
     pub(crate) open_sessions: OpenSessions,
     pub(crate) req_auth_service: OprfRequestAuthService<ReqAuth>,
@@ -186,11 +189,12 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
 async fn partial_oprf<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     socket: &mut WebSocket,
     party_id: PartyId,
-    threshold: NonZeroUsize,
+    threshold: NonZeroU16,
     open_sessions: OpenSessions,
     oprf_material_store: OprfKeyMaterialStore,
     req_auth_service: OprfRequestAuthService<ReqAuth>,
 ) -> Result<Uuid, Error> {
+    metrics::request::inc_oprf_request();
     tracing::trace!("new oprf session - reading request...");
     let (init_request, human_readable) = read_request::<OprfRequest<ReqAuth>>(socket).await?;
 
@@ -268,13 +272,13 @@ async fn challenge(
     challenge: DLogCommitmentsShamir,
     request_id: Uuid,
     party_id: PartyId,
-    threshold: NonZeroUsize,
+    threshold: NonZeroU16,
     session: OprfSession,
 ) -> Result<DLogProofShareShamir, Error> {
     let start_part_two = Instant::now();
     let coeffs = challenge.get_contributing_parties();
     let num_coeffs = coeffs.len();
-    if num_coeffs != threshold.get() {
+    if num_coeffs != usize::from(threshold.get()) {
         return Err(Error::ThresholdContributingPartiesMissmatch {
             threshold: threshold.get(),
             num_coeffs,

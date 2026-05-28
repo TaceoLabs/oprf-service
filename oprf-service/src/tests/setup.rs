@@ -1,4 +1,5 @@
 use core::fmt;
+use std::num::NonZeroU16;
 use std::{sync::Arc, time::Duration};
 
 use ark_ff::UniformRand as _;
@@ -37,10 +38,11 @@ pub const INVALID_AUTH_MSG: &str = "invalid auth";
 pub struct NodeTestSecretManager(Arc<Mutex<TestSecretManager>>);
 
 impl NodeTestSecretManager {
-    pub fn new(party_id: usize) -> Self {
+    pub fn new(party_id: usize, threshold: NonZeroU16) -> Self {
         Self(Arc::new(Mutex::new(TestSecretManager::new(
             PEER_PRIVATE_KEYS[party_id],
             PartyId(u16::try_from(party_id).expect("party id must be u16")),
+            threshold,
         ))))
     }
 
@@ -173,7 +175,6 @@ impl TestNode {
 
         let mut config = OprfNodeServiceConfig::with_default_values(
             Environment::Dev,
-            setup.setup.threshold(),
             "1.0.0".parse().expect("Valid VersionReq"),
         );
         config.session_lifetime = Duration::from_secs(10);
@@ -211,7 +212,7 @@ impl TestNode {
         setup: &TestSetup,
         oprf_key_id: u32,
     ) -> eyre::Result<Self> {
-        let secret_manager = NodeTestSecretManager::new(party_id);
+        let secret_manager = NodeTestSecretManager::new(party_id, setup.setup.threshold());
         let key_id = OprfKeyId::from(oprf_key_id);
         secret_manager.add_random_key_material_with_id(key_id, &mut rand::thread_rng());
         Self::start_with_secret_manager(party_id, setup, secret_manager).await

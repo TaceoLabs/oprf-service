@@ -47,7 +47,7 @@
 //! If you want to enable HTTP/2.0, you either have to do it by hand or by calling `axum::serve`, which enabled HTTP/2.0 by default. Have a look at [Axum's HTTP2.0 example](https://github.com/tokio-rs/axum/blob/aeff16e91af6fa76efffdee8f3e5f464b458785b/examples/websockets-http2/src/main.rs#L57).
 
 use std::fmt;
-use std::num::NonZeroUsize;
+use std::num::NonZeroU16;
 
 use crate::api::oprf::OprfModuleState;
 use crate::services::open_sessions::OpenSessions;
@@ -72,10 +72,8 @@ pub(crate) mod services;
 #[cfg(test)]
 mod tests;
 
-pub use nodes_common::Environment;
-pub use nodes_common::StartedServices;
+pub use nodes_common::{Environment, StartedServices, web3};
 pub use semver::VersionReq;
-pub use services::oprf_key_material_store;
 pub use services::secret_manager;
 
 /// [`OprfServiceBuilder`] to initialize a `OprfService` with multiple [`OprfRequestAuthService`]s.
@@ -86,7 +84,7 @@ pub struct OprfServiceBuilder {
     open_sessions: OpenSessions,
     oprf_key_material_store: OprfKeyMaterialStore,
     party_id: PartyId,
-    threshold: NonZeroUsize,
+    threshold: NonZeroU16,
 }
 
 impl OprfServiceBuilder {
@@ -161,7 +159,7 @@ impl OprfServiceBuilder {
             api: Router::new(),
             oprf_key_material_store,
             party_id: node_information.party_id(),
-            threshold: config.threshold,
+            threshold: node_information.threshold(),
             config,
         })
     }

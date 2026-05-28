@@ -4,7 +4,7 @@
 //! arguments required to run a TACEO:OPRF node.
 //!
 //! The struct supports:
-//! - Required fields: `environment`, `threshold`, and `version_req`.
+//! - Required fields: `environment` and `version_req`.
 //! - Optional fields with sensible defaults (see below).
 //! - Serde deserialization (with [`humantime_serde`] for durations).
 //!
@@ -15,11 +15,11 @@
 //! | `ws_max_message_size`            | 1024 bytes |
 //! | `session_lifetime`               | 30 s       |
 //! | `i_am_alive_interval`            | 60 s       |
-//! | `store_max_capacity`             | 1000       |
+//! | `store_max_capacity`             | 10_000     |
 //! | `store_ttl`                      | 1 day      |
 //! | `store_tti`                      | 1 h        |
 
-use std::{num::NonZeroUsize, time::Duration};
+use std::time::Duration;
 
 use nodes_common::Environment;
 use semver::VersionReq;
@@ -34,9 +34,6 @@ use serde::{
 pub struct OprfNodeServiceConfig {
     /// The environment of the OPRF-node.
     pub environment: Environment,
-
-    /// The MPC threshold.
-    pub threshold: NonZeroUsize,
 
     /// Accepted `SemVer` versions of clients.
     #[serde(deserialize_with = "deserialize_version_req")]
@@ -75,6 +72,7 @@ pub struct OprfNodeServiceConfig {
     /// Max capacity for the key-material store.
     #[serde(default = "OprfNodeServiceConfig::default_store_max_capacity")]
     pub store_max_capacity: u64,
+
     /// Time-to-live for shares.
     ///
     /// Exceeding this limit will evict share.
@@ -119,9 +117,9 @@ impl OprfNodeServiceConfig {
         Duration::from_mins(1)
     }
 
-    /// Default max capacity for share cache (`1000`).
+    /// Default max capacity for share cache (`10_000`).
     fn default_store_max_capacity() -> u64 {
-        1000
+        10_000
     }
 
     /// Default TTL for share cache (`1 day`).
@@ -136,14 +134,9 @@ impl OprfNodeServiceConfig {
 
     /// Construct with all default values except required fields.
     #[must_use]
-    pub fn with_default_values(
-        environment: Environment,
-        threshold: NonZeroUsize,
-        version_req: VersionReq,
-    ) -> Self {
+    pub fn with_default_values(environment: Environment, version_req: VersionReq) -> Self {
         Self {
             environment,
-            threshold,
             version_req,
             ws_max_message_size: Self::default_ws_max_message_size(),
             session_lifetime: Self::default_session_lifetime(),

@@ -1,3 +1,5 @@
+use std::num::NonZeroU16;
+
 use crate::secret_manager::{SecretManager, SecretManagerError, postgres::PostgresSecretManager};
 use alloy::primitives::U160;
 use ark_serialize::CanonicalSerialize;
@@ -75,18 +77,20 @@ async fn delete_row(oprf_key_id: OprfKeyId, connection: &mut PgConnection) -> ey
 }
 
 async fn insert_node_information(
-    evm_address: &str,
+    eth_address: &str,
     party_id: i32,
+    threshold: u16,
     connection: &mut PgConnection,
 ) -> eyre::Result<()> {
     sqlx::query(
         "
-            INSERT INTO node_information (id, evm_address, party_id)
-            VALUES (TRUE, $1, $2)
+            INSERT INTO node_information (id, eth_address, party_id, threshold)
+            VALUES (TRUE, $1, $2, $3)
         ",
     )
-    .bind(evm_address)
+    .bind(eth_address)
     .bind(party_id)
+    .bind(i32::from(threshold))
     .execute(connection)
     .await?;
     Ok(())
@@ -101,7 +105,7 @@ async fn load_node_information_empty() -> eyre::Result<()> {
         .expect_err("should be an error");
     assert_eq!(
         report.to_string(),
-        "Cannot get address from DB, maybe key-gen needs to start"
+        "Cannot get node information from DB, maybe key-gen needs to start"
     );
     Ok(())
 }
@@ -112,7 +116,7 @@ async fn load_node_information_corrupt() -> eyre::Result<()> {
 
     let mut conn =
         oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
-    insert_node_information("SomethingThatIsNotAnAddress", 0, &mut conn).await?;
+    insert_node_information("SomethingThatIsNotAnAddress", 0, 2, &mut conn).await?;
 
     let report = secret_manager
         .load_node_information()
@@ -128,11 +132,13 @@ async fn load_node_information_success() -> eyre::Result<()> {
 
     let should_address = OPRF_PEER_ADDRESS_0;
     let should_party_id = PartyId(42);
+    let should_threshold = 2;
     let mut conn =
         oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
     insert_node_information(
         &should_address.to_string(),
         i32::from(should_party_id.into_inner()),
+        should_threshold,
         &mut conn,
     )
     .await?;
@@ -143,7 +149,11 @@ async fn load_node_information_success() -> eyre::Result<()> {
         .expect("Should work");
     assert_eq!(
         is_node_information,
-        NodeInformation::new(should_party_id, should_address)
+        NodeInformation::new(
+            should_party_id,
+            should_address,
+            NonZeroU16::try_from(should_threshold).expect("is non-zero")
+        )
     );
     Ok(())
 }

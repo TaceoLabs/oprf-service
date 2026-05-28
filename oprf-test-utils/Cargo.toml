@@ -40,7 +40,7 @@ groth16-sol = { workspace = true, optional = true }
 itertools.workspace = true
 nodes-common = { workspace = true, features = ["postgres"], optional = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.5" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.13" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", features = ["service"], version = "0.13" }
 parking_lot = { workspace = true }
 rand.workspace = true
 rand_chacha.workspace = true

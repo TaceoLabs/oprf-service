@@ -70,15 +70,19 @@ impl SecretManager for PostgresSecretManager {
     #[instrument(level = "debug", skip_all)]
     async fn load_node_information(&self) -> eyre::Result<NodeInformation> {
         let node_information: NodeInformation = (|| {
-            sqlx::query_as("SELECT evm_address,party_id  FROM node_information WHERE id = TRUE")
-                .fetch_optional(&self.pool)
+            sqlx::query_as(
+                "SELECT eth_address,party_id,threshold FROM node_information WHERE id = TRUE",
+            )
+            .fetch_optional(&self.pool)
         })
         .retry(self.backoff_strategy())
         .sleep(tokio::time::sleep)
         .when(is_retryable_error)
         .notify(|err, duration| tracing::warn!(%err, "retrying load address after {duration:?}"))
         .await?
-        .ok_or_else(|| eyre::eyre!("Cannot get address from DB, maybe key-gen needs to start"))?;
+        .ok_or_else(|| {
+            eyre::eyre!("Cannot get node information from DB, maybe key-gen needs to start")
+        })?;
         Ok(node_information)
     }
 
