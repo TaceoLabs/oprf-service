@@ -203,8 +203,11 @@ pub(crate) async fn key_event_watcher_task(args: KeyEventWatcherTaskConfig) -> e
     loop {
         tokio::select! {
             log = event_stream.next() => {
-                let log = log.ok_or_else(||eyre::eyre!("logs subscribe stream was closed"))?.context("while fetching event from event_stream")?;
-
+                let Some(log) = log else {
+                    tracing::info!("event-stream closed - initiate shutdown");
+                    return Ok(());
+                };
+                let log = log.context("while fetching event from event_stream")?;
                 key_gen_event(log, &event_handler, &chain_cursor_service).await?;
             }
             () = cancellation_token.cancelled() => {
