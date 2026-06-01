@@ -9,7 +9,7 @@ homepage.workspace = true
 repository.workspace = true
 license.workspace = true
 keywords = ["oprf", "tests"]
-publish = true
+publish = false
 
 [[bin]]
 name = "generate-test-transcript"
