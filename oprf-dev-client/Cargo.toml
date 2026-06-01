@@ -9,7 +9,7 @@ homepage.workspace = true
 repository.workspace = true
 license.workspace = true
 keywords = ["client", "development", "mpc", "oprf"]
-publish = false
+publish = true
 
 [dependencies]
 alloy = { workspace = true, features = [
