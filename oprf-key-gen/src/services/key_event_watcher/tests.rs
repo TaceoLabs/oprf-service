@@ -47,15 +47,15 @@ fn fixture(setup: &TestSetup) -> HandlerFixture {
     let secret_gen =
         DLogSecretGenService::init(key_gen_material(setup.setup), secret_manager.service());
 
-    let rpc_provider =
-        HttpRpcProviderBuilder::with_default_values(vec![setup.anvil.endpoint_url()])
-            .environment(Environment::Dev)
-            .chain_id(31_337)
-            .wallet(EthereumWallet::new(
-                PrivateKeySigner::from_str(OPRF_PEER_PRIVATE_KEY_0).expect("works"),
-            ))
-            .build()
-            .expect("can build RPC providers");
+    let rpc_provider = HttpRpcProviderBuilder::with_default_values([setup.anvil.endpoint_url()])
+        .expect("Can build provider")
+        .environment(Environment::Dev)
+        .chain_id(31_337)
+        .wallet(EthereumWallet::new(
+            PrivateKeySigner::from_str(OPRF_PEER_PRIVATE_KEY_0).expect("works"),
+        ))
+        .build()
+        .expect("can build RPC providers");
 
     let transaction_handler = TransactionHandler::new(TransactionHandlerArgs {
         max_wait_time_watch_transaction: Duration::from_secs(10),

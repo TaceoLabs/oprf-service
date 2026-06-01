@@ -141,9 +141,10 @@ impl TestKeyGen {
                 witness_graph_path: setup.witness_path(),
                 expected_threshold: NonZeroU16::new(expected_threshold).expect("Is non-zero"),
                 expected_num_peers: NonZeroU16::new(expected_num_peers).expect("Is non-zero"),
-                rpc_provider_config: HttpRpcProviderConfig::with_default_values(vec![
-                    anvil.endpoint_url(),
-                ]),
+                rpc_provider_config: HttpRpcProviderConfig::with_default_values([
+                    anvil.endpoint_url()
+                ])
+                .expect("Can build provider"),
                 ws_rpc_url: anvil.ws_endpoint_url(),
             });
 
