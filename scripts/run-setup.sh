@@ -7,6 +7,7 @@ cd "$REPO_ROOT"
 
 LOG_TAG="[setup]"
 LOG_DIR="${LOG_DIR:-logs/setup}"
+SKIP_BACKFILL="yes"
 
 source "$SCRIPT_DIR/lib.sh"
 
