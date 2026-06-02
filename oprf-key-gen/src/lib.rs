@@ -40,7 +40,9 @@ use alloy::{
     network::EthereumWallet,
     primitives::Address,
     providers::{DynProvider, Provider as _, ProviderBuilder, WsConnect},
+    pubsub::{ConnectionHandle, PubSubConnect},
     signers::local::PrivateKeySigner,
+    transports::{TransportErrorKind, TransportResult},
 };
 use eyre::Context as _;
 use groth16_material::circom::CircomGroth16MaterialBuilder;
@@ -84,6 +86,42 @@ impl KeyGenTasks {
         self.i_am_alive_task.await?;
         self.cursor_checkpoint_task.await?;
         Ok(())
+    }
+}
+
+// Wraps WsConnect but refuses all reconnect attempts.
+//
+// When the WS connection drops, alloy's pubsub service calls `try_reconnect()` before
+// propagating the error. Returning a NonRetryable error here causes the service to shut
+// down immediately, which closes the subscription broadcast channel. The key-event-watcher
+// then sees `RecvError::Closed`, its event stream yields `None`, and the task returns
+// `Ok(())`. The cancellation-token drop-guard fires, the whole process exits cleanly, and
+// the supervisor (k8s) restarts it. On restart, `EventStreamBuilder` backfills missed events
+// from the persisted `ChainCursor`.
+//
+// Why not `WsConnect::with_max_retries(0)`?
+// alloy-pubsub v2 always makes ONE reconnect attempt before checking the counter, so
+// `max_retries = 0` still silently reconnects on transient errors and keeps the subscription
+// alive — missing the gap events entirely.
+struct NoReconnect(WsConnect);
+
+impl PubSubConnect for NoReconnect {
+    fn is_local(&self) -> bool {
+        self.0.is_local()
+    }
+
+    fn connect(
+        &self,
+    ) -> impl core::future::Future<Output = TransportResult<ConnectionHandle>> + Send {
+        self.0.connect()
+    }
+
+    fn try_reconnect(
+        &self,
+    ) -> impl core::future::Future<Output = TransportResult<ConnectionHandle>> + Send {
+        core::future::ready(Err(TransportErrorKind::non_retryable_str(
+            "WS connection lost - refusing to reconnect so the service restarts and backfills",
+        )))
     }
 }
 
@@ -202,10 +240,11 @@ pub async fn start(
             .build()
             .context("while init blockchain connection")?;
 
-    // We set retries to 0 so that on ws-connection errors we restart immediately and start backfill
-    let ws_connect = WsConnect::new(config.ws_rpc_url.clone()).with_max_retries(0);
+    // NoReconnect refuses reconnects so that on WS connection errors the pubsub service shuts
+    // down, the event stream ends, and the supervisor can restart the process to backfill
+    // missed events from the persisted ChainCursor. See `NoReconnect` for the full rationale.
     let ws_rpc_provider = ProviderBuilder::new()
-        .connect_ws(ws_connect)
+        .connect_pubsub_with(NoReconnect(WsConnect::new(config.ws_rpc_url.clone())))
         .await
         .context("while connecting ws provider")?
         .erased();
