@@ -27,7 +27,11 @@ ark-bn254 = { version = "0.5" }
 ark-ec = "0.5"
 ark-ff = "0.5"
 ark-groth16 = "0.5"
-ark-serde-compat = { package = "taceo-ark-serde-compat", version = "0.5", default-features = false }
+ark-serde-compat = {
+  package = "taceo-ark-serde-compat",
+  version = "0.5",
+  default-features = false
+}
 ark-serialize = "0.5"
 async-trait = "0.1"
 axum = "0.8"
@@ -36,14 +40,26 @@ axum-test = "18"
 backon = { version = "1.6", default-features = false }
 blake3 = "1"
 ciborium = "0.2"
-circom-types = { package = "taceo-circom-types", version = "0.2.2", default-features = false }
+circom-types = {
+  package = "taceo-circom-types",
+  version = "0.2.2",
+  default-features = false
+}
 clap = "4"
 config = { version = "0.15", default-features = false }
 criterion = "0.8"
 eyre = { version = "0.6" }
 futures = "0.3"
-groth16-material = { package = "taceo-groth16-material", version = "0.3", default-features = false }
-groth16-sol = { package = "taceo-groth16-sol", version = "0.3", default-features = false }
+groth16-material = {
+  package = "taceo-groth16-material",
+  version = "0.3",
+  default-features = false
+}
+groth16-sol = {
+  package = "taceo-groth16-sol",
+  version = "0.3",
+  default-features = false
+}
 http = "1"
 humantime = "2"
 humantime-serde = "1.1.1"
@@ -51,16 +67,28 @@ itertools = "0.14"
 k256 = "0.13"
 metrics = "0.24"
 moka = { version = "0.12", features = ["future"] }
-nodes-common = { package = "taceo-nodes-common", version = "0.7", default-features = false }
+nodes-common = {
+  package = "taceo-nodes-common",
+  version = "0.7.1",
+  default-features = false
+}
 num-bigint = "0.4"
 parking_lot = "0.12"
-poseidon2 = { package = "taceo-poseidon2", version = "0.2", default-features = false }
+poseidon2 = {
+  package = "taceo-poseidon2",
+  version = "0.2",
+  default-features = false
+}
 rand = { version = "0.8" }
 rand_chacha = { version = "0.3" }
-reqwest = { version = "0.12", default-features = false, features = [
-  "json",
-  "rustls-tls",
-] }
+reqwest = {
+  version = "0.12",
+  default-features = false,
+  features = [
+    "json",
+    "rustls-tls",
+  ]
+}
 ruint = { version = "1", features = ["serde"] }
 rustls = "0.23"
 secrecy = "0.10"
