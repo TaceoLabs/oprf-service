@@ -6177,9 +6177,9 @@ dependencies = [
 
 [[package]]
 name = "taceo-nodes-common"
-version = "0.7.1"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f12f985493849cff13ca33db08f95429565387da7892ab70bcb8571a9d3a66f5"
+checksum = "3dea5505990bca89790cece6b15dc7b317963d9725a722186a8756cd568b50b5"
 dependencies = [
  "alloy",
  "axum",
