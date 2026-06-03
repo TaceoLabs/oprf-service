@@ -244,7 +244,9 @@ pub async fn start(
     // down, the event stream ends, and the supervisor can restart the process to backfill
     // missed events from the persisted ChainCursor. See `NoReconnect` for the full rationale.
     let ws_rpc_provider = ProviderBuilder::new()
-        .connect_pubsub_with(NoReconnect(WsConnect::new(config.ws_rpc_url.clone())))
+        .connect_pubsub_with(NoReconnect(WsConnect::new(
+            config.ws_rpc_url.expose_secret(),
+        )))
         .await
         .context("while connecting ws provider")?
         .erased();

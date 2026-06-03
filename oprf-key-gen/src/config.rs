@@ -36,7 +36,6 @@ use nodes_common::{
     Environment,
     web3::{self},
 };
-use reqwest::Url;
 use secrecy::SecretString;
 use serde::Deserialize;
 
@@ -70,7 +69,7 @@ pub struct OprfKeyGenServiceConfig {
     pub rpc_provider_config: web3::HttpRpcProviderConfig,
 
     /// The websocket RPC url used for `eth_subscribe`.
-    pub ws_rpc_url: Url,
+    pub ws_rpc_url: SecretString,
 
     /// Max time we wait for a submitted transaction receipt to reach the required
     /// number of confirmations before treating it as failed.
@@ -175,7 +174,7 @@ pub struct OprfKeyGenServiceConfigMandatoryValues {
     pub rpc_provider_config: HttpRpcProviderConfig,
 
     /// The websocket RPC url used for `eth_subscribe`.
-    pub ws_rpc_url: Url,
+    pub ws_rpc_url: SecretString,
 }
 
 impl OprfKeyGenServiceConfig {
