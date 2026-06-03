@@ -145,7 +145,7 @@ impl TestKeyGen {
                     anvil.endpoint_url()
                 ])
                 .expect("Can build provider"),
-                ws_rpc_url: anvil.ws_endpoint_url(),
+                ws_rpc_url: anvil.ws_endpoint().into(),
             });
 
         config.confirmations_for_transaction = 0;
