@@ -47,7 +47,7 @@ jobs:
           echo "IMAGE_NAME=${image_name,,}" >> "$GITHUB_ENV"
 
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.2
         with:
           lfs: true
 
