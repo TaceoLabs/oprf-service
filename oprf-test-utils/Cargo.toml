@@ -30,6 +30,7 @@ ark-babyjubjub = { workspace = true }
 ark-bn254 = { workspace = true, optional = true }
 ark-ec.workspace = true
 ark-ff.workspace = true
+ark-serialize = { workspace = true }
 askama = { version = "0.16", optional = true }
 async-trait.workspace = true
 clap = { workspace = true, features = ["derive", "env"], optional = true }
@@ -40,7 +41,9 @@ groth16-sol = { workspace = true, optional = true }
 itertools.workspace = true
 nodes-common = { workspace = true, features = ["postgres"], optional = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", features = ["service"], version = "0.14" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.14", features = [
+  "service"
+] }
 parking_lot = { workspace = true }
 rand.workspace = true
 rand_chacha.workspace = true

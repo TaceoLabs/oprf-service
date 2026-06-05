@@ -105,14 +105,21 @@ pub async fn start_service(
 ) -> eyre::Result<()> {
     let (cancellation_token, _) = nodes_common::spawn_shutdown_task(shutdown_signal);
 
+    tracing::info!("loading node-information from secret-manager..");
+    let node_information = secret_manager
+        .load_node_information()
+        .await
+        .context("while loading node information")?;
+    tracing::info!("node information: {node_information:#?}");
+
     tracing::info!("init oprf service..");
     let oprf_service_router = OprfServiceBuilder::init(
         config.node_config,
         secret_manager,
         StartedServices::default(),
+        node_information,
         cancellation_token.clone(),
-    )
-    .await?
+    )?
     .module("/example", Arc::new(ExampleOprfRequestAuthenticator))
     .build();
 

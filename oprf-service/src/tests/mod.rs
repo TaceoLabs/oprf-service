@@ -14,9 +14,11 @@ use serde::{Deserialize, Serialize};
 use tungstenite::protocol::{CloseFrame, frame::coding::CloseCode};
 use uuid::Uuid;
 
+use crate::secret_manager::SecretManager as _;
+
 use self::setup::{
-    INVALID_AUTH_CODE, INVALID_AUTH_MSG, NodeTestSecretManager, TEST_PROTOCOL_VERSION, TestNode,
-    WireFormat, wait_until_started,
+    INVALID_AUTH_CODE, INVALID_AUTH_MSG, TEST_PROTOCOL_VERSION, TestNode, WireFormat,
+    wait_until_started,
 };
 
 mod setup;
@@ -29,23 +31,16 @@ struct BadRequest {
 #[tokio::test]
 async fn test_can_fetch_new_key() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start_with_secret_manager(
-        0,
-        &setup,
-        NodeTestSecretManager::new(0, setup.setup.threshold()),
-    )
-    .await?;
-    let new_oprf_key_id = OprfKeyId::from(setup::OPRF_KEY_ID);
+    let node = TestNode::start(0, &setup).await?;
+    let new_oprf_key_id = OprfKeyId::new(rand::random());
     node.doesnt_have_key(new_oprf_key_id).await?;
-    let epoch = ShareEpoch::new(42);
-    node.secret_manager.add_random_key_material_with_id_epoch(
-        new_oprf_key_id,
-        epoch,
-        &mut rand::thread_rng(),
-    );
+    let epoch = ShareEpoch::new(rand::random());
+    node.add_random_key_material_with_id_epoch(new_oprf_key_id, epoch, &mut rand::thread_rng())
+        .await?;
     let should_key = node
         .secret_manager
-        .get_key_material(new_oprf_key_id)
+        .get_oprf_key_material(new_oprf_key_id)
+        .await
         .expect("Just inserted")
         .public_key();
     node.has_key(new_oprf_key_id, epoch, should_key).await?;
@@ -102,7 +97,8 @@ async fn test_oprf_pub() -> eyre::Result<()> {
     let node = TestNode::start(0, &setup).await?;
     let should_public_key_with_epoch = node
         .secret_manager
-        .get_key_material(OprfKeyId::from(setup::OPRF_KEY_ID))
+        .get_oprf_key_material(OprfKeyId::from(setup::OPRF_KEY_ID))
+        .await
         .expect("Is there")
         .public_key_with_epoch();
     let result = node
@@ -437,7 +433,7 @@ async fn delete_oprf_key_inner(format: WireFormat) -> eyre::Result<()> {
 
     let key_id = OprfKeyId::from(setup::OPRF_KEY_ID);
     // soft-delete the key from the secret manager
-    node.secret_manager.soft_delete_key_material(key_id);
+    node.delete_key_material(key_id).await?;
 
     // check that we can't query the key any longer
     node.doesnt_have_key(key_id).await?;

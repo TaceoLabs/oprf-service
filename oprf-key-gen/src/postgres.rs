@@ -451,6 +451,7 @@ impl PostgresDb {
         .map(from_db_ark_serialize_uncompressed)
         .transpose()
     }
+
     async fn soft_delete_shares_inner(
         oprf_key_id: OprfKeyId,
         conn: impl PgExecutor<'_>,
