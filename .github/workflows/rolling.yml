@@ -23,7 +23,7 @@ jobs:
     # Unfortunately, hashFiles only works in if on steps, so we reepeat it.
     # if: hashFiles('Cargo.lock') != ''
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
         with:
           submodules: true
       - uses: foundry-rs/foundry-toolchain@v1
@@ -45,7 +45,7 @@ jobs:
     name: Nightly lints
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
