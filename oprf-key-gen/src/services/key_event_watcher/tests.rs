@@ -5,7 +5,7 @@ use nodes_common::postgres::PostgresConfig;
 use secrecy::SecretString;
 
 use crate::{
-    postgres::PostgresDb,
+    postgres::{PostgresDb, to_db_ark_serialize_uncompressed},
     secret_manager::{SecretManager, SecretManagerError},
     services::{
         key_event_watcher::{KeyRegistryEventError, handler::KeyRegistryEventHandler},
@@ -124,15 +124,6 @@ impl HandlerFixture {
 
 fn random_share() -> DLogShareShamir {
     DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>())
-}
-
-#[inline]
-fn to_db_ark_serialize_uncompressed<T: ark_serialize::CanonicalSerialize>(
-    t: &T,
-) -> zeroize::Zeroizing<Vec<u8>> {
-    let mut bytes = Vec::with_capacity(t.uncompressed_size());
-    t.serialize_uncompressed(&mut bytes).expect("Can serialize");
-    zeroize::Zeroizing::from(bytes)
 }
 
 #[tokio::test]

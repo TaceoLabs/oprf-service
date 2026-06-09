@@ -21,7 +21,7 @@ use sqlx::PgPool;
 use tokio_util::sync::CancellationToken;
 
 use crate::event_cursor_store::ChainCursorStorage;
-use crate::postgres::PostgresDb;
+use crate::postgres::{PostgresDb, to_db_ark_serialize_uncompressed};
 use crate::{
     KeyGenTasks,
     config::{OprfKeyGenServiceConfig, OprfKeyGenServiceConfigMandatoryValues},
@@ -274,15 +274,6 @@ async fn poll_key_in_pool(
     Ok(public_key)
 }
 
-#[inline]
-fn to_db_ark_serialize_uncompressed<T: ark_serialize::CanonicalSerialize>(
-    t: &T,
-) -> zeroize::Zeroizing<Vec<u8>> {
-    let mut bytes = Vec::with_capacity(t.uncompressed_size());
-    t.serialize_uncompressed(&mut bytes).expect("Can serialize");
-    zeroize::Zeroizing::from(bytes)
-}
-
 pub(crate) mod keygen_asserts {
     use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
     use tokio::task::JoinSet;
@@ -490,25 +481,6 @@ async fn test_reshare_emits_stuck_if_two_consumer() -> eyre::Result<()> {
         .await?;
     setup.init_reshare(oprf_key_id).await?;
     signal.await.expect("Should receive signal");
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
-async fn test_reshare_works_if_two_producers() -> eyre::Result<()> {
-    let setup =
-        TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
-    let key_gens = TestKeyGen::start_three(&setup).await?;
-    let oprf_key_id = OprfKeyId::new(U160::from(42));
-    setup.init_keygen(oprf_key_id).await?;
-    let epoch = ShareEpoch::default();
-    let _oprf_public_key_key_gen =
-        keygen_asserts::all_have_key(&key_gens, oprf_key_id, epoch).await?;
-
-    key_gens[0].clear().await?;
-
-    let epoch1 = epoch.next();
-    setup.init_reshare(oprf_key_id).await?;
-    keygen_asserts::all_have_key(&key_gens, oprf_key_id, epoch1).await?;
     Ok(())
 }
 

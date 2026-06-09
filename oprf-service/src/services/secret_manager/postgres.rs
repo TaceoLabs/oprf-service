@@ -155,7 +155,9 @@ fn is_retryable_error(e: &sqlx::Error) -> bool {
 }
 
 #[inline]
-fn from_db_ark_deserialize_uncompressed<T: CanonicalDeserialize>(b: impl AsRef<[u8]>) -> T {
+pub(crate) fn from_db_ark_deserialize_uncompressed<T: CanonicalDeserialize>(
+    b: impl AsRef<[u8]>,
+) -> T {
     T::deserialize_uncompressed_unchecked(b.as_ref()).expect("DB is sane")
 }
 

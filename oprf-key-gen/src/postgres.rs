@@ -44,7 +44,7 @@ pub struct PostgresDb {
 }
 
 #[derive(Debug, thiserror::Error)]
-enum PostgresDbError {
+pub(crate) enum PostgresDbError {
     #[error("Intermediates NOT stored for {0}/{1} - stuck")]
     MissingIntermediates(OprfKeyId, ShareEpoch),
     #[error("Refusing to overwrite newer share")]
@@ -542,14 +542,16 @@ impl PostgresDb {
 }
 
 #[inline]
-fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: &T) -> zeroize::Zeroizing<Vec<u8>> {
+pub(crate) fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(
+    t: &T,
+) -> zeroize::Zeroizing<Vec<u8>> {
     let mut bytes = Vec::with_capacity(t.uncompressed_size());
     t.serialize_uncompressed(&mut bytes).expect("Can serialize");
     zeroize::Zeroizing::from(bytes)
 }
 
 #[inline]
-fn from_db_ark_serialize_uncompressed<T: CanonicalDeserialize>(b: Vec<u8>) -> Result<T> {
+pub(crate) fn from_db_ark_serialize_uncompressed<T: CanonicalDeserialize>(b: Vec<u8>) -> Result<T> {
     T::deserialize_uncompressed(zeroize::Zeroizing::from(b).as_slice()).map_err(|e| {
         PostgresDbError::from(eyre::eyre!("Cannot deserialize bytes: DB not sane: {e}"))
     })

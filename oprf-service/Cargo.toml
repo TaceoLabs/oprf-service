@@ -21,7 +21,6 @@ alloy = { workspace = true, features = [
   "sol-types"
 ] }
 ark-babyjubjub = { workspace = true }
-ark-ff = { workspace = true }
 ark-serialize.workspace = true
 async-trait = { workspace = true }
 axum = { workspace = true, features = ["ws"] }
