@@ -30,9 +30,7 @@ ark-babyjubjub = { workspace = true }
 ark-bn254 = { workspace = true, optional = true }
 ark-ec.workspace = true
 ark-ff.workspace = true
-ark-serialize = { workspace = true }
 askama = { version = "0.16", optional = true }
-async-trait.workspace = true
 clap = { workspace = true, features = ["derive", "env"], optional = true }
 eyre.workspace = true
 futures = { workspace = true }
@@ -44,10 +42,8 @@ oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.14", features = [
   "service"
 ] }
-parking_lot = { workspace = true }
 rand.workspace = true
 rand_chacha.workspace = true
-reqwest = { workspace = true }
 serde_json = { workspace = true, optional = true }
 sqlx = { workspace = true, features = [
   "postgres",
@@ -63,7 +59,6 @@ tokio = { workspace = true, features = [
   "tokio-macros",
 ] }
 tokio-util = { workspace = true, optional = true }
-tracing.workspace = true
 
 [features]
 default = ["deploy-anvil", "postgres-test-container"]
