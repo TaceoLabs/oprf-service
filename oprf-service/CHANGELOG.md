@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.16.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.16.1...taceo-oprf-service-v0.16.2)
+
+### ⛰️ Features
+
+
+- *(node)* Add CORS layer for health and info routes - ([26e258e](https://github.com/TaceoLabs/oprf-service/commit/26e258e410d4ce9c3f4f1452aa16306bf541b510))
+
+
 ## [0.16.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.16.0...taceo-oprf-service-v0.16.1)
 
 ### ⚙️ Miscellaneous Tasks
