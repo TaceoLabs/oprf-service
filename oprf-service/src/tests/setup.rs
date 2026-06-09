@@ -341,10 +341,10 @@ impl TestNode {
 }
 
 #[inline]
-fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: &T) -> zeroize::Zeroizing<Vec<u8>> {
+fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: &T) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(t.uncompressed_size());
     t.serialize_uncompressed(&mut bytes).expect("Can serialize");
-    zeroize::Zeroizing::from(bytes)
+    bytes
 }
 
 pub async fn wait_until_started(started_services: &StartedServices) -> eyre::Result<()> {
