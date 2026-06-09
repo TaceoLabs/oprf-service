@@ -44,7 +44,11 @@ backfill-monkey-test-dd:
     @DATADOG_ENABLE=1 bash scripts/run-backfill-monkey-test.sh
 
 [group('ci')]
-check-pr: lint all-tests
+check-pr: lint cargo-deny all-tests
+
+[group('ci')]
+cargo-deny:
+    cargo deny check
 
 [group('ci')]
 lint:
