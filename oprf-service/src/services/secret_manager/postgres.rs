@@ -15,9 +15,9 @@ use oprf_types::{
     crypto::{OprfKeyMaterial, OprfPublicKey},
     service::NodeInformation,
 };
-use secrecy::zeroize::ZeroizeOnDrop;
 use sqlx::PgPool;
 use tracing::instrument;
+use zeroize::ZeroizeOnDrop;
 
 use crate::secret_manager::{SecretManager, SecretManagerError};
 
