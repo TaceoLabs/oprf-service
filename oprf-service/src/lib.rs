@@ -56,11 +56,12 @@ use crate::{config::OprfNodeServiceConfig, services::secret_manager::SecretManag
 use axum::Router;
 use axum::extract::MatchedPath;
 use eyre::Context;
-use http::{HeaderMap, HeaderName, StatusCode};
+use http::{HeaderMap, HeaderName, Method, StatusCode};
 use oprf_types::api::OprfRequestAuthService;
 use oprf_types::crypto::PartyId;
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::{MakeSpan, TraceLayer};
 
@@ -77,6 +78,16 @@ pub use semver::VersionReq;
 pub use services::secret_manager;
 
 /// [`OprfServiceBuilder`] to initialize a `OprfService` with multiple [`OprfRequestAuthService`]s.
+///
+/// Beyond the OPRF modules added via [`OprfServiceBuilder::module`], the builder always exposes a
+/// set of read-only info routes at the root (not under `/api`):
+/// - `GET /health`
+/// - `GET /version`
+/// - `GET /wallet`
+/// - `GET /oprf_pub/{id}`
+///
+/// CORS for those info routes is **opt-in**: call [`OprfServiceBuilder::cors_for_info`] before
+/// [`OprfServiceBuilder::build`] to allow cross-origin `GET` requests from any origin.
 pub struct OprfServiceBuilder {
     config: OprfNodeServiceConfig,
     info_routes: Router,
@@ -162,6 +173,21 @@ impl OprfServiceBuilder {
             threshold: node_information.threshold(),
             config,
         })
+    }
+
+    /// Adds a CORS layer for the `info` routes.
+    ///
+    /// This CORS layer uses the default values from [`CorsLayer`](https://docs.rs/tower-http/latest/tower_http/cors/struct.CorsLayer.html) and
+    /// explicitly sets allow-methods to `GET` and a wild-card for allowed origins.
+    ///
+    /// The layer is applied only to the info routes (served at the root, not under `/api`).
+    #[must_use]
+    pub fn cors_for_info(mut self) -> Self {
+        let cors = CorsLayer::new()
+            .allow_methods([Method::GET])
+            .allow_origin(AllowOrigin::any());
+        self.info_routes = self.info_routes.layer(cors);
+        self
     }
 
     /// Add a new `OprfRequestAuthService` module with the given `path`.
