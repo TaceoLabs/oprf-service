@@ -60,15 +60,12 @@ impl OprfKeyMaterialStore {
         time_to_live: Duration,
         time_to_idle: Duration,
     ) -> Self {
-        metrics::secrets::set(0);
-
         let store = Cache::builder()
             .max_capacity(max_capacity)
             .time_to_live(time_to_live)
             .time_to_idle(time_to_idle)
             .eviction_listener(move |k, _, cause| {
-                tracing::debug!("removing OprfKeyId {k} because: {cause:?}");
-                metrics::secrets::dec();
+                tracing::trace!("removing OprfKeyId {k} because: {cause:?}");
             })
             .build();
 
@@ -153,7 +150,11 @@ impl OprfKeyMaterialStore {
             .or_try_insert_with(self.secret_manager.get_oprf_key_material(oprf_key_id))
             .await?;
         if key_material.is_fresh() {
-            metrics::secrets::inc();
+            self.store.run_pending_tasks().await;
+            metrics::secrets::set(self.store.entry_count());
+            metrics::secrets::miss();
+        } else {
+            metrics::secrets::hit();
         }
         Ok(key_material.into_value())
     }
