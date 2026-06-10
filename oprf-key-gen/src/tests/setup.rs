@@ -222,7 +222,7 @@ impl TestKeyGen {
                 .bind(oprf_key_id.to_le_bytes())
                 .fetch_one(&pool)
                 .await
-                .unwrap_or(1);
+                .expect("can query count");
                 if count == 0 {
                     break;
                 }
