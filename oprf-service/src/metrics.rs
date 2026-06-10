@@ -184,8 +184,12 @@ pub(crate) mod sessions {
 
 pub(crate) mod secrets {
 
-    /// Metrics key for registered `DLogSecrets`.
+    /// Metrics key for stored `DLogSecrets` in cache.
     const METRICS_ID_NODE_OPRF_SECRETS: &str = "taceo.oprf.node.secrets";
+    /// Number of misses in the `DLogSecrets` cache.
+    const METRICS_ID_NODE_OPRF_SECRETS_MISSES: &str = "taceo.oprf.node.secrets.misses";
+    /// Number of hits in the `DLogSecrets` cache.
+    const METRICS_ID_NODE_OPRF_SECRETS_HITS: &str = "taceo.oprf.node.secrets.hits";
 
     pub(super) fn describe_metrics() {
         metrics::describe_gauge!(
@@ -193,17 +197,29 @@ pub(crate) mod secrets {
             metrics::Unit::Count,
             "Number of secrets stored"
         );
+
+        metrics::describe_counter!(
+            METRICS_ID_NODE_OPRF_SECRETS_MISSES,
+            metrics::Unit::Count,
+            "Number of misses in the oprf-secrets cache."
+        );
+
+        metrics::describe_counter!(
+            METRICS_ID_NODE_OPRF_SECRETS_HITS,
+            metrics::Unit::Count,
+            "Number of hits in the oprf-secrets cache."
+        );
     }
 
-    pub(crate) fn set(x: usize) {
+    pub(crate) fn set(x: u64) {
         ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).set(x as f64);
     }
 
-    pub(crate) fn inc() {
-        ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).increment(1);
+    pub(crate) fn hit() {
+        metrics::counter!(METRICS_ID_NODE_OPRF_SECRETS_HITS).increment(1);
     }
 
-    pub(crate) fn dec() {
-        ::metrics::gauge!(METRICS_ID_NODE_OPRF_SECRETS).decrement(1);
+    pub(crate) fn miss() {
+        metrics::counter!(METRICS_ID_NODE_OPRF_SECRETS_MISSES).increment(1);
     }
 }
