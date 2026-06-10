@@ -11,6 +11,9 @@ license.workspace = true
 keywords = ["cryptography", "mpc", "oprf"]
 publish = true
 
+[package.metadata.cargo-machete]
+ignored = ["humantime-serde"]
+
 [dependencies]
 alloy = { workspace = true, features = [
   "contract",
@@ -28,9 +31,7 @@ axum-extra = { workspace = true, features = ["typed-header"] }
 backon = { workspace = true, features = ["std", "tokio-sleep"] }
 ciborium = { workspace = true }
 eyre.workspace = true
-futures = { workspace = true }
 http = { workspace = true }
-humantime.workspace = true
 humantime-serde = { workspace = true }
 metrics = { workspace = true }
 moka.workspace = true
@@ -41,7 +42,9 @@ nodes-common = { workspace = true, features = [
   "web3"
 ] }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.14", features = ["service"] }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.14", features = [
+  "service"
+] }
 parking_lot = { workspace = true }
 rand.workspace = true
 secrecy = { workspace = true, features = ["serde"] }

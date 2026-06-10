@@ -1,13 +1,17 @@
-use std::{num::NonZeroU16, str::FromStr, time::Duration};
+use std::{num::NonZeroU16, str::FromStr, sync::Arc, time::Duration};
+
+use ark_ff::UniformRand as _;
+use nodes_common::postgres::PostgresConfig;
+use secrecy::SecretString;
 
 use crate::{
+    postgres::{PostgresDb, to_db_ark_serialize_uncompressed},
     secret_manager::{SecretManager, SecretManagerError},
     services::{
         key_event_watcher::{KeyRegistryEventError, handler::KeyRegistryEventHandler},
         secret_gen::DLogSecretGenService,
         transaction_handler::{TransactionHandler, TransactionHandlerArgs},
     },
-    tests::keygen_test_secret_manager::TestKeyGenSecretManager,
 };
 use alloy::{network::EthereumWallet, primitives::U160, signers::local::PrivateKeySigner};
 use groth16_material::circom::{CircomGroth16Material, CircomGroth16MaterialBuilder};
@@ -17,7 +21,10 @@ use oprf_test_utils::{DeploySetup, OPRF_PEER_PRIVATE_KEY_0, PEER_ADDRESSES, Test
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     chain::{OprfKeyRegistry, RevertError, Verifier::VerifierErrors},
+    crypto::OprfPublicKey,
 };
+use rand::{CryptoRng, Rng};
+use sqlx::PgPool;
 
 use super::events::KeyRegistryEvent;
 
@@ -30,8 +37,9 @@ const WRONG_ROUND_LOAD_PEER_PUBLIC_KEYS: u32 = 44;
 
 struct HandlerFixture {
     handler: KeyRegistryEventHandler,
-    secret_manager: TestKeyGenSecretManager,
+    secret_manager: Arc<PostgresDb>,
     secret_gen: DLogSecretGenService,
+    pool: PgPool,
 }
 
 fn key_gen_material(deploy_setup: DeploySetup) -> CircomGroth16Material {
@@ -42,10 +50,23 @@ fn key_gen_material(deploy_setup: DeploySetup) -> CircomGroth16Material {
         .expect("Can build key_gen_material")
 }
 
-fn fixture(setup: &TestSetup) -> HandlerFixture {
-    let secret_manager = TestKeyGenSecretManager::new(0, setup.setup.threshold());
-    let secret_gen =
-        DLogSecretGenService::init(key_gen_material(setup.setup), secret_manager.service());
+async fn fixture(setup: &TestSetup) -> eyre::Result<HandlerFixture> {
+    let connection_string = oprf_test_utils::shared_postgres_testcontainer().await?;
+    let schema = oprf_test_utils::next_test_schema();
+    let postgres_config = PostgresConfig::with_default_values(
+        SecretString::from(connection_string.to_owned()),
+        schema,
+    );
+    let pool = nodes_common::postgres::pg_pool_with_schema(
+        &postgres_config,
+        nodes_common::postgres::CreateSchema::Yes,
+    )
+    .await?;
+    let postgres_db = PostgresDb::init(&postgres_config).await?;
+    let secret_manager = Arc::new(postgres_db);
+
+    let sm_service: crate::secret_manager::SecretManagerService = secret_manager.clone();
+    let secret_gen = DLogSecretGenService::init(key_gen_material(setup.setup), sm_service);
 
     let rpc_provider = HttpRpcProviderBuilder::with_default_values([setup.anvil.endpoint_url()])
         .expect("Can build provider")
@@ -73,10 +94,31 @@ fn fixture(setup: &TestSetup) -> HandlerFixture {
     let handler =
         KeyRegistryEventHandler::new(contract, secret_gen.clone(), threshold, transaction_handler);
 
-    HandlerFixture {
+    Ok(HandlerFixture {
         handler,
         secret_manager,
         secret_gen,
+        pool,
+    })
+}
+
+impl HandlerFixture {
+    async fn add_random_key_material_with_id_epoch<R: Rng + CryptoRng>(
+        &self,
+        key_id: OprfKeyId,
+        epoch: ShareEpoch,
+        rng: &mut R,
+    ) -> eyre::Result<()> {
+        let share = DLogShareShamir::from(ark_babyjubjub::Fr::rand(rng));
+        let public_key = OprfPublicKey::new(rng.r#gen());
+        sqlx::query("INSERT INTO shares (id, share, epoch, public_key) VALUES ($1, $2, $3, $4)")
+            .bind(key_id.to_le_bytes())
+            .bind(to_db_ark_serialize_uncompressed(&share).as_slice())
+            .bind(i64::from(epoch))
+            .bind(to_db_ark_serialize_uncompressed(&public_key).as_slice())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 }
 
@@ -87,7 +129,7 @@ fn random_share() -> DLogShareShamir {
 #[tokio::test]
 async fn test_round2_invalid_proof() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let fx = fixture(&setup);
+    let fx = fixture(&setup).await?;
     let key_id = OprfKeyId::from(U160::from(INVALID_PROOF_KEY));
     let epoch = ShareEpoch::default();
 
@@ -116,7 +158,7 @@ async fn test_round2_invalid_proof() -> eyre::Result<()> {
 #[tokio::test]
 async fn test_round2_consumer_path_when_contract_in_wrong_round() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let fx = fixture(&setup);
+    let fx = fixture(&setup).await?;
     let key_id = OprfKeyId::from(U160::from(WRONG_ROUND_LOAD_PEER_PUBLIC_KEYS));
     let epoch = ShareEpoch::default();
 
@@ -149,16 +191,13 @@ async fn test_round2_consumer_path_when_contract_in_wrong_round() -> eyre::Resul
 #[tokio::test]
 async fn test_delete() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let fx = fixture(&setup);
+    let fx = fixture(&setup).await?;
     let key_id = OprfKeyId::new(U160::from(42u32));
     let confirmed_epoch = ShareEpoch::default();
     let pending_epoch = confirmed_epoch.next();
 
-    fx.secret_manager.add_random_key_material_with_id_epoch(
-        key_id,
-        confirmed_epoch,
-        &mut rand::thread_rng(),
-    );
+    fx.add_random_key_material_with_id_epoch(key_id, confirmed_epoch, &mut rand::thread_rng())
+        .await?;
     fx.secret_gen
         .reshare_round1(key_id, pending_epoch, NonZeroU16::new(2).expect("non-zero"))
         .await?;
@@ -206,16 +245,13 @@ async fn test_delete() -> eyre::Result<()> {
 #[tokio::test]
 async fn test_abort() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let fx = fixture(&setup);
+    let fx = fixture(&setup).await?;
     let key_id = OprfKeyId::new(U160::from(142u32));
     let confirmed_epoch = ShareEpoch::default();
     let pending_epoch = confirmed_epoch.next();
 
-    fx.secret_manager.add_random_key_material_with_id_epoch(
-        key_id,
-        confirmed_epoch,
-        &mut rand::thread_rng(),
-    );
+    fx.add_random_key_material_with_id_epoch(key_id, confirmed_epoch, &mut rand::thread_rng())
+        .await?;
     fx.secret_gen
         .reshare_round1(key_id, pending_epoch, NonZeroU16::new(2).expect("non-zero"))
         .await?;

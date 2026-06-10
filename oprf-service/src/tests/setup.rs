@@ -1,32 +1,38 @@
 use core::fmt;
-use std::num::NonZeroU16;
+use std::num::NonZeroU32;
 use std::{sync::Arc, time::Duration};
 
 use ark_ff::UniformRand as _;
+use ark_serialize::CanonicalSerialize;
 use async_trait::async_trait;
 use axum_test::{TestServer, TestWebSocket};
+use eyre::Context as _;
 use http::StatusCode;
+use nodes_common::postgres::{CreateSchema, PostgresConfig};
 use nodes_common::{Environment, StartedServices};
-use oprf_core::ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir};
-use oprf_core::oprf::BlindingFactor;
-use oprf_test_utils::{
-    PEER_PRIVATE_KEYS, TEST_TIMEOUT, TestSetup, test_secret_manager::TestSecretManager,
+use oprf_core::ddlog_equality::shamir::{
+    DLogCommitmentsShamir, DLogProofShareShamir, DLogShareShamir,
 };
+use oprf_core::oprf::BlindingFactor;
+use oprf_test_utils::OPRF_PEER_ADDRESS_0;
+use oprf_test_utils::{TEST_TIMEOUT, TestSetup};
 use oprf_types::api::OprfRequestAuthenticatorError;
-use oprf_types::crypto::{OprfKeyMaterial, PartyId};
+use oprf_types::crypto::PartyId;
 use oprf_types::service::NodeInformation;
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     api::{OprfPublicKeyWithEpoch, OprfRequest, OprfRequestAuthenticator, OprfResponse},
     crypto::OprfPublicKey,
 };
-use parking_lot::Mutex;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use sqlx::PgPool;
+use sqlx::migrate::Migrator;
 use tungstenite::protocol::CloseFrame;
 use uuid::Uuid;
 
 use crate::secret_manager::SecretManager;
+use crate::secret_manager::postgres::PostgresSecretManager;
 use crate::{OprfServiceBuilder, config::OprfNodeServiceConfig};
 
 pub const OPRF_KEY_ID: u32 = 42;
@@ -34,74 +40,8 @@ pub const TEST_PROTOCOL_VERSION: &str = "1.3.101";
 pub const INVALID_AUTH_CODE: u16 = 4500;
 pub const INVALID_AUTH_MSG: &str = "invalid auth";
 
-#[derive(Clone)]
-pub struct NodeTestSecretManager(Arc<Mutex<TestSecretManager>>);
+pub const MIGRATOR: Migrator = sqlx::migrate!("../oprf-key-gen/migrations");
 
-impl NodeTestSecretManager {
-    pub fn new(party_id: usize, threshold: NonZeroU16) -> Self {
-        Self(Arc::new(Mutex::new(TestSecretManager::new(
-            PEER_PRIVATE_KEYS[party_id],
-            PartyId(u16::try_from(party_id).expect("party id must be u16")),
-            threshold,
-        ))))
-    }
-
-    pub fn service(&self) -> crate::secret_manager::SecretManagerService {
-        Arc::new(self.clone())
-    }
-
-    pub fn add_random_key_material_with_id<R: Rng + CryptoRng>(
-        &self,
-        oprf_key_id: OprfKeyId,
-        rng: &mut R,
-    ) {
-        self.0
-            .lock()
-            .add_random_key_material_with_id(oprf_key_id, rng);
-    }
-
-    pub fn add_random_key_material_with_id_epoch<R: Rng + CryptoRng>(
-        &self,
-        oprf_key_id: OprfKeyId,
-        epoch: ShareEpoch,
-        rng: &mut R,
-    ) {
-        self.0
-            .lock()
-            .add_random_key_material_with_id_epoch(oprf_key_id, epoch, rng);
-    }
-
-    pub fn get_key_material(&self, oprf_key_id: OprfKeyId) -> Option<OprfKeyMaterial> {
-        self.0.lock().get_key_material(oprf_key_id)
-    }
-
-    pub fn soft_delete_key_material(&self, oprf_key_id: OprfKeyId) {
-        self.0.lock().soft_delete_key_material(oprf_key_id);
-    }
-}
-
-#[async_trait::async_trait]
-impl SecretManager for NodeTestSecretManager {
-    async fn load_node_information(&self) -> eyre::Result<NodeInformation> {
-        Ok(self.0.lock().load_node_information())
-    }
-
-    async fn get_oprf_key_material(
-        &self,
-        oprf_key_id: OprfKeyId,
-    ) -> Result<OprfKeyMaterial, crate::secret_manager::SecretManagerError> {
-        use oprf_test_utils::test_secret_manager::KeyMaterialResult;
-        match self.0.lock().get_key_material_result(oprf_key_id) {
-            KeyMaterialResult::Found(m) => Ok(m),
-            KeyMaterialResult::Deleted => Err(
-                crate::secret_manager::SecretManagerError::DeletedOprfKeyId(oprf_key_id),
-            ),
-            KeyMaterialResult::Unknown => Err(
-                crate::secret_manager::SecretManagerError::UnknownOprfKeyId(oprf_key_id),
-            ),
-        }
-    }
-}
 #[derive(Clone, Copy, Debug)]
 pub enum WireFormat {
     Json,
@@ -135,9 +75,10 @@ impl OprfRequestAuthenticator for ConfigurableTestAuthenticator {
 
 pub struct TestNode {
     pub party_id: usize,
-    pub secret_manager: NodeTestSecretManager,
+    pub secret_manager: Arc<PostgresSecretManager>,
     pub server: Arc<TestServer>,
     pub started_services: StartedServices,
+    pub pool: PgPool,
 }
 
 impl fmt::Debug for TestNode {
@@ -161,10 +102,11 @@ impl TestNode {
             .await
     }
 
-    pub async fn start_with_secret_manager(
+    pub fn start_with_secret_manager(
         party_id: usize,
         setup: &TestSetup,
-        secret_manager: NodeTestSecretManager,
+        pool: PgPool,
+        secret_manager: PostgresSecretManager,
     ) -> eyre::Result<Self> {
         let TestSetup {
             provider: _,
@@ -182,13 +124,18 @@ impl TestNode {
         let child_token = cancellation_token.child_token();
 
         let started_services = StartedServices::new();
+        let secret_manager = Arc::new(secret_manager);
         let service = OprfServiceBuilder::init(
             config,
-            secret_manager.service(),
+            secret_manager.clone(),
             started_services.clone(),
+            NodeInformation::new(
+                PartyId(u16::try_from(party_id).expect("party id must be u16")),
+                OPRF_PEER_ADDRESS_0,
+                setup.setup.threshold(),
+            ),
             child_token.clone(),
-        )
-        .await?
+        )?
         .module("/test", Arc::new(ConfigurableTestAuthenticator))
         .build();
         let server = TestServer::builder()
@@ -200,6 +147,7 @@ impl TestNode {
             started_services,
             server: Arc::new(server),
             party_id,
+            pool,
         })
     }
 
@@ -212,10 +160,23 @@ impl TestNode {
         setup: &TestSetup,
         oprf_key_id: u32,
     ) -> eyre::Result<Self> {
-        let secret_manager = NodeTestSecretManager::new(party_id, setup.setup.threshold());
+        let connection_string = oprf_test_utils::shared_postgres_testcontainer().await?;
+        let schema = oprf_test_utils::next_test_schema();
+        let mut postgres_config =
+            PostgresConfig::with_default_values(connection_string.into(), schema);
+        // set low max_connections because many parallel tests connect to the same testcontainer
+        postgres_config.max_connections = NonZeroU32::new(1).expect("1 is non-zero");
+        let secret_manager = PostgresSecretManager::init(&postgres_config).await?;
+        // need to create the schema and run migrations here, normally key-gen would do it.
+        let pool = nodes_common::postgres::pg_pool_with_schema(&postgres_config, CreateSchema::Yes)
+            .await?;
+        MIGRATOR.run(&pool).await?;
+        let test_node = Self::start_with_secret_manager(party_id, setup, pool, secret_manager)?;
         let key_id = OprfKeyId::from(oprf_key_id);
-        secret_manager.add_random_key_material_with_id(key_id, &mut rand::thread_rng());
-        Self::start_with_secret_manager(party_id, setup, secret_manager).await
+        test_node
+            .add_random_key_material_with_id(key_id, &mut rand::thread_rng())
+            .await?;
+        Ok(test_node)
     }
 
     pub async fn happy_path(&self, format: WireFormat) {
@@ -282,7 +243,8 @@ impl TestNode {
         );
         let should_oprf_public_key = self
             .secret_manager
-            .get_key_material(OprfKeyId::from(OPRF_KEY_ID))
+            .get_oprf_key_material(OprfKeyId::from(OPRF_KEY_ID))
+            .await
             .expect("Is there")
             .public_key_with_epoch();
         assert_eq!(resp.oprf_pub_key_with_epoch, should_oprf_public_key);
@@ -322,6 +284,67 @@ impl TestNode {
         let is_message = websocket.receive_message().await;
         assert_close_frame(is_message, should_close_frame);
     }
+
+    pub async fn add_random_key_material_with_id_epoch<R: Rng + CryptoRng>(
+        &self,
+        key_id: OprfKeyId,
+        epoch: ShareEpoch,
+        rng: &mut R,
+    ) -> eyre::Result<()> {
+        let share = DLogShareShamir::from(ark_babyjubjub::Fr::rand(rng));
+        let public_key = OprfPublicKey::new(rng.r#gen());
+        sqlx::query(
+            "
+                INSERT INTO shares (id, share, epoch, public_key)
+                VALUES ($1, $2, $3, $4)
+            ",
+        )
+        .bind(key_id.to_le_bytes())
+        .bind(to_db_ark_serialize_uncompressed(&share).as_slice())
+        // Postgres lacks u32; cast to i64 to satisfy SQLx type mapping
+        .bind(i64::from(epoch))
+        .bind(to_db_ark_serialize_uncompressed(&public_key).as_slice())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn add_random_key_material_with_id<R: Rng + CryptoRng>(
+        &self,
+        key_id: OprfKeyId,
+        rng: &mut R,
+    ) -> eyre::Result<()> {
+        self.add_random_key_material_with_id_epoch(key_id, ShareEpoch::default(), rng)
+            .await
+    }
+
+    pub async fn delete_key_material(&self, key_id: OprfKeyId) -> eyre::Result<()> {
+        let success = sqlx::query(
+            "
+                UPDATE shares
+                SET
+                    share = NULL,
+                    deleted = true
+                WHERE id = $1
+            ",
+        )
+        .bind(key_id.to_le_bytes())
+        .execute(&self.pool)
+        .await
+        .context("while deleting key material in DB")?;
+        if success.rows_affected() == 1 {
+            Ok(())
+        } else {
+            Err(eyre::eyre!("No row found to delete for key_id {key_id:?}"))
+        }
+    }
+}
+
+#[inline]
+fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: &T) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(t.uncompressed_size());
+    t.serialize_uncompressed(&mut bytes).expect("Can serialize");
+    bytes
 }
 
 pub async fn wait_until_started(started_services: &StartedServices) -> eyre::Result<()> {

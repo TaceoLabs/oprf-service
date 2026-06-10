@@ -21,5 +21,3 @@ pub use secret_manager::postgres::*;
 pub const TEST_TIMEOUT: Duration = Duration::from_secs(120);
 #[cfg(not(feature = "ci"))]
 pub const TEST_TIMEOUT: Duration = Duration::from_secs(20);
-
-pub use secret_manager::test_secret_manager;

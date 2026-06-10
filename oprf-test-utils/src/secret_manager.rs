@@ -1,5 +1,3 @@
-pub mod test_secret_manager;
-
 #[cfg(feature = "postgres-test-container")]
 pub mod postgres {
     use std::sync::atomic::{AtomicU64, Ordering};

@@ -55,10 +55,10 @@ use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
 use crate::{config::OprfNodeServiceConfig, services::secret_manager::SecretManagerService};
 use axum::Router;
 use axum::extract::MatchedPath;
-use eyre::Context;
 use http::{HeaderMap, HeaderName, Method, StatusCode};
 use oprf_types::api::OprfRequestAuthService;
 use oprf_types::crypto::PartyId;
+use oprf_types::service::NodeInformation;
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -108,20 +108,13 @@ impl OprfServiceBuilder {
     ///
     /// # Errors
     /// Returns an error if loading node information from the secret manager fails.
-    pub async fn init(
+    pub fn init(
         config: OprfNodeServiceConfig,
         secret_manager: SecretManagerService,
         started_services: StartedServices,
+        node_information: NodeInformation,
         cancellation_token: CancellationToken,
     ) -> eyre::Result<Self> {
-        tracing::info!("loading node-information from secret-manager..");
-        let node_information = secret_manager
-            .load_node_information()
-            .await
-            .context("while loading node information")?;
-
-        tracing::info!("node information: {node_information:#?}");
-
         tracing::info!("init OPRF material-store..");
         let oprf_key_material_store = OprfKeyMaterialStore::new(
             secret_manager,
@@ -144,7 +137,6 @@ impl OprfServiceBuilder {
             ));
 
         tokio::task::spawn({
-            let cancellation_token = cancellation_token.clone();
             let mut interval = tokio::time::interval(config.i_am_alive_interval);
             async move {
                 tracing::info!("starting i am alive task");
