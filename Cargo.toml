@@ -71,7 +71,7 @@ sqlx = "0.8"
 telemetry-batteries = { version = "0.2.1", default-features = false }
 testcontainers-modules = { version = "0.15" }
 thiserror = { version = "2" }
-tikv-jemallocator = "0.6"
+tikv-jemallocator = "0.7"
 tokio = { version = "1" }
 tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
 tokio-util = "0.7"
