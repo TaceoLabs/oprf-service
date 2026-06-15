@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [0.17.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.16.2...taceo-oprf-service-v0.17.0)
+
+### 🚜 Refactor
+
+
+- *(node)* Update metrics for OPRF key cache ([#636](https://github.com/TaceoLabs/oprf-service/pull/636)) - ([49c3b9b](https://github.com/TaceoLabs/oprf-service/commit/49c3b9bdd4112c34abd1a1bb4d3e3568ddc57ba1))
+- [**breaking**] Remove test secret manager from integration tests and use postgres testcontainer ([#633](https://github.com/TaceoLabs/oprf-service/pull/633)) - ([3b027da](https://github.com/TaceoLabs/oprf-service/commit/3b027dabd2226b26bbe2916018f50e1791dd889b))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(node)* Session timeout put to trace ([#638](https://github.com/TaceoLabs/oprf-service/pull/638)) - ([26c3c15](https://github.com/TaceoLabs/oprf-service/commit/26c3c157f2dabb69f8f42d948297ca5c2eb17c05))
+- *(taceo-oprf-test-utils)* Release v0.14.0 ([#646](https://github.com/TaceoLabs/oprf-service/pull/646)) - ([857b8c6](https://github.com/TaceoLabs/oprf-service/commit/857b8c6eb1d989a72d82d41526ba691030a65bd6))
+- Set service publish to true again ([#647](https://github.com/TaceoLabs/oprf-service/pull/647)) - ([63b28b4](https://github.com/TaceoLabs/oprf-service/commit/63b28b44d301c9cb80687f24fdb78f4f79e22a6a))
+- Prepare test-utils release ([#645](https://github.com/TaceoLabs/oprf-service/pull/645)) - ([f9e6ece](https://github.com/TaceoLabs/oprf-service/commit/f9e6ece5df0207b248e97ee8c7c873f6d3259948))
+
+
 ## [0.16.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.16.1...taceo-oprf-service-v0.16.2)
 
 ### ⛰️ Features
