@@ -77,7 +77,7 @@ zeroize = { workspace = true, features = ["derive"] }
 [dev-dependencies]
 alloy = { workspace = true, features = ["node-bindings"] }
 axum-test = { workspace = true, features = ["ws"] }
-oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.13" }
+oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.14" }
 parking_lot = { workspace = true }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]

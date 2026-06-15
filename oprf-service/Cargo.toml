@@ -78,7 +78,7 @@ axum-test = { workspace = true, features = ["ws"] }
 config = { workspace = true }
 itertools = { workspace = true }
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.10" }
-oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.13", default-features = false, features = [
+oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.14", default-features = false, features = [
   "deploy-anvil",
   "postgres-test-container"
 ] }
