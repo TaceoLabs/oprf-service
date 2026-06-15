@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.14.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.13.0...taceo-oprf-test-utils-v0.14.0)
+
+### 🚜 Refactor
+
+
+- [**breaking**] Remove test secret manager from integration tests and use postgres testcontainer ([#633](https://github.com/TaceoLabs/oprf-service/pull/633)) - ([3b027da](https://github.com/TaceoLabs/oprf-service/commit/3b027dabd2226b26bbe2916018f50e1791dd889b))
+
+### 🏗️ Build
+
+
+- *(nodes,deps)* Bump nodes-common ([#619](https://github.com/TaceoLabs/oprf-service/pull/619)) - ([739835c](https://github.com/TaceoLabs/oprf-service/commit/739835cfbeba5c0db0146079fd1a66da155b6749))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Prepare test-utils release ([#645](https://github.com/TaceoLabs/oprf-service/pull/645)) - ([f9e6ece](https://github.com/TaceoLabs/oprf-service/commit/f9e6ece5df0207b248e97ee8c7c873f6d3259948))
+
+
 ## [0.13.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-test-utils-v0.12.0...taceo-oprf-test-utils-v0.13.0)
 
 ### 🚜 Refactor
