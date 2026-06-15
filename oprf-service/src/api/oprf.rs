@@ -148,7 +148,7 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
                         }
                         Ok(Err(err)) => err.into_close_frame(),
                         Err(_) => {
-                            tracing::warn!(user_error=true, "session ran into timeout");
+                            tracing::trace!("session ran into timeout");
                             metrics::request::inc_client_timeout();
                             Some(CloseFrame {
                                 code: oprf_error_codes::TIMEOUT,
