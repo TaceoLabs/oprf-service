@@ -105,16 +105,13 @@ impl OprfServiceBuilder {
     /// - Loads node information (party ID, address) from the secret manager.
     /// - Initializes the cache-backed OPRF key material store.
     /// - Initializes the Axum router exposing the node API.
-    ///
-    /// # Errors
-    /// Returns an error if loading node information from the secret manager fails.
     pub fn init(
         config: OprfNodeServiceConfig,
         secret_manager: SecretManagerService,
         started_services: StartedServices,
         node_information: NodeInformation,
         cancellation_token: CancellationToken,
-    ) -> eyre::Result<Self> {
+    ) -> Self {
         tracing::info!("init OPRF material-store..");
         let oprf_key_material_store = OprfKeyMaterialStore::new(
             secret_manager,
@@ -156,7 +153,7 @@ impl OprfServiceBuilder {
             }
         });
 
-        Ok(Self {
+        Self {
             open_sessions: OpenSessions::new(),
             info_routes: info_route,
             api: Router::new(),
@@ -164,7 +161,7 @@ impl OprfServiceBuilder {
             party_id: node_information.party_id(),
             threshold: node_information.threshold(),
             config,
-        })
+        }
     }
 
     /// Adds a CORS layer for the `info` routes.
