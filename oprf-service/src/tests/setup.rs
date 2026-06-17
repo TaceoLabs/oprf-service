@@ -107,7 +107,7 @@ impl TestNode {
         setup: &TestSetup,
         pool: PgPool,
         secret_manager: PostgresSecretManager,
-    ) -> eyre::Result<Self> {
+    ) -> Self {
         let TestSetup {
             provider: _,
             cancellation_token,
@@ -135,20 +135,20 @@ impl TestNode {
                 setup.setup.threshold(),
             ),
             child_token.clone(),
-        )?
+        )
         .module("/test", Arc::new(ConfigurableTestAuthenticator))
         .build();
         let server = TestServer::builder()
             .http_transport()
             .build(service)
             .expect("Can build test-server");
-        Ok(TestNode {
+        TestNode {
             secret_manager,
             started_services,
             server: Arc::new(server),
             party_id,
             pool,
-        })
+        }
     }
 
     pub async fn start(party_id: usize, setup: &TestSetup) -> eyre::Result<Self> {
@@ -171,7 +171,7 @@ impl TestNode {
         let pool = nodes_common::postgres::pg_pool_with_schema(&postgres_config, CreateSchema::Yes)
             .await?;
         MIGRATOR.run(&pool).await?;
-        let test_node = Self::start_with_secret_manager(party_id, setup, pool, secret_manager)?;
+        let test_node = Self::start_with_secret_manager(party_id, setup, pool, secret_manager);
         let key_id = OprfKeyId::from(oprf_key_id);
         test_node
             .add_random_key_material_with_id(key_id, &mut rand::thread_rng())

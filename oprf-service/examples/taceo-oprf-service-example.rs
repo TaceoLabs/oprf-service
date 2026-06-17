@@ -119,7 +119,7 @@ pub async fn start_service(
         StartedServices::default(),
         node_information,
         cancellation_token.clone(),
-    )?
+    )
     .module("/example", Arc::new(ExampleOprfRequestAuthenticator))
     .build();
 
