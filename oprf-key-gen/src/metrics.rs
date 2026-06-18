@@ -8,26 +8,8 @@
 ///
 /// This calls the `describe_*` functions from the `metrics` crate to set metadata on the different metrics.
 pub fn describe_metrics() {
-    health::describe_metrics();
     wallet::describe_metrics();
     chain_events::describe_metrics();
-}
-
-pub(crate) mod health {
-
-    const METRICS_ID_I_AM_ALIVE: &str = "taceo.oprf.key_gen.i.am.alive";
-
-    pub(super) fn describe_metrics() {
-        metrics::describe_counter!(
-            METRICS_ID_I_AM_ALIVE,
-            metrics::Unit::Count,
-            "I am alive metric. Used to measure liveness in datadog"
-        );
-    }
-
-    pub(crate) fn inc_i_am_alive() {
-        metrics::counter!(METRICS_ID_I_AM_ALIVE).increment(1);
-    }
 }
 
 pub(crate) mod wallet {

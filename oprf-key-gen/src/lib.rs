@@ -68,7 +68,6 @@ pub use services::secret_manager;
 /// The tasks spawned by the key-gen library. Should call [`KeyGenTasks::join`] when shutting down for graceful shutdown.
 pub struct KeyGenTasks {
     key_event_watcher: tokio::task::JoinHandle<eyre::Result<()>>,
-    i_am_alive_task: tokio::task::JoinHandle<()>,
     cursor_checkpoint_task: tokio::task::JoinHandle<()>,
 
     // keep the providers alive as long as the tasks are
@@ -83,7 +82,6 @@ impl KeyGenTasks {
     /// Returns the error from the inner tasks or an error if the task panicked.
     pub async fn join(self) -> eyre::Result<()> {
         self.key_event_watcher.await??;
-        self.i_am_alive_task.await?;
         self.cursor_checkpoint_task.await?;
         Ok(())
     }
@@ -314,12 +312,6 @@ pub async fn start(
 
     let key_gen_router = api::routes(address, started_services.clone());
 
-    let i_am_alive_task = tokio::task::spawn(start_i_am_alive_task(
-        started_services,
-        config.i_am_alive_interval,
-        cancellation_token.clone(),
-    ));
-
     let cursor_checkpoint_task = tokio::task::spawn(start_cursor_checkpoint_task(
         config.cursor_checkpoint_interval,
         http_rpc_provider.clone(),
@@ -331,7 +323,6 @@ pub async fn start(
         key_gen_router,
         KeyGenTasks {
             key_event_watcher,
-            i_am_alive_task,
             cursor_checkpoint_task,
             _http_rpc_provider: http_rpc_provider,
             _ws_rpc_provider: ws_rpc_provider,
@@ -380,26 +371,4 @@ async fn start_cursor_checkpoint_task(
         }
     }
     tracing::info!("shutting down cursor checkpoint task");
-}
-
-async fn start_i_am_alive_task(
-    started_services: StartedServices,
-    i_am_alive_interval: Duration,
-    cancellation_token: CancellationToken,
-) {
-    let mut interval = tokio::time::interval(i_am_alive_interval);
-    tracing::info!("starting i am alive task");
-    loop {
-        tokio::select! {
-           _ = interval.tick() => {
-                if started_services.all_started() {
-                    metrics::health::inc_i_am_alive();
-                }
-           },
-           () = cancellation_token.cancelled() => {
-               break;
-           }
-        }
-    }
-    tracing::info!("shutting down i am alive task");
 }
