@@ -108,11 +108,6 @@ impl TestNode {
         pool: PgPool,
         secret_manager: PostgresSecretManager,
     ) -> Self {
-        let TestSetup {
-            provider: _,
-            cancellation_token,
-            ..
-        } = setup;
         assert!(party_id < 5, "can only spawn 5 nodes");
 
         let mut config = OprfNodeServiceConfig::with_default_values(
@@ -120,8 +115,6 @@ impl TestNode {
             "1.0.0".parse().expect("Valid VersionReq"),
         );
         config.session_lifetime = Duration::from_secs(10);
-
-        let child_token = cancellation_token.child_token();
 
         let started_services = StartedServices::new();
         let secret_manager = Arc::new(secret_manager);
@@ -134,7 +127,6 @@ impl TestNode {
                 OPRF_PEER_ADDRESS_0.to_string(),
                 setup.setup.threshold(),
             ),
-            child_token.clone(),
         )
         .module("/test", Arc::new(ConfigurableTestAuthenticator))
         .build();

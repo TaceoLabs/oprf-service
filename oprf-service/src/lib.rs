@@ -60,7 +60,6 @@ use oprf_types::api::OprfRequestAuthService;
 use oprf_types::crypto::PartyId;
 use oprf_types::service::NodeInformation;
 use serde::Deserialize;
-use tokio_util::sync::CancellationToken;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::{MakeSpan, TraceLayer};
@@ -110,7 +109,6 @@ impl OprfServiceBuilder {
         secret_manager: SecretManagerService,
         started_services: StartedServices,
         node_information: &NodeInformation,
-        cancellation_token: CancellationToken,
     ) -> Self {
         tracing::info!("init OPRF material-store..");
         let oprf_key_material_store = OprfKeyMaterialStore::new(
@@ -125,33 +123,13 @@ impl OprfServiceBuilder {
         let version_str = nodes_common::version_info!();
         let info_route = Router::new()
             .merge(nodes_common::api::routes_with_services(
-                started_services.clone(),
+                started_services,
                 version_str,
             ))
             .merge(api::info::routes(
                 oprf_key_material_store.clone(),
                 node_information.address().to_owned(),
             ));
-
-        tokio::task::spawn({
-            let mut interval = tokio::time::interval(config.i_am_alive_interval);
-            async move {
-                tracing::info!("starting i am alive task");
-                loop {
-                    tokio::select! {
-                       _ = interval.tick() => {
-                            if started_services.all_started() {
-                                metrics::health::inc_i_am_alive();
-                            }
-                       },
-                       () = cancellation_token.cancelled() => {
-                           break;
-                       }
-                    }
-                }
-                tracing::info!("shutting down i am alive task");
-            }
-        });
 
         Self {
             open_sessions: OpenSessions::new(),

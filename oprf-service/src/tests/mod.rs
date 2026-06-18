@@ -10,6 +10,7 @@ use oprf_types::{
     OprfKeyId, ShareEpoch,
     api::{OprfResponse, oprf_error_codes},
 };
+use ruint::aliases::U160;
 use serde::{Deserialize, Serialize};
 use tungstenite::protocol::{CloseFrame, frame::coding::CloseCode};
 use uuid::Uuid;
@@ -32,7 +33,7 @@ struct BadRequest {
 async fn test_can_fetch_new_key() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let node = TestNode::start(0, &setup).await?;
-    let new_oprf_key_id = OprfKeyId::new(rand::random());
+    let new_oprf_key_id = OprfKeyId::new(U160::random());
     node.doesnt_have_key(new_oprf_key_id).await?;
     let epoch = ShareEpoch::new(rand::random());
     node.add_random_key_material_with_id_epoch(new_oprf_key_id, epoch, &mut rand::thread_rng())
