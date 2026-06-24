@@ -47,7 +47,7 @@ groth16-sol = { package = "taceo-groth16-sol", version = "0.3", default-features
 http = "1"
 humantime = "2"
 humantime-serde = "1.1.1"
-itertools = "0.14"
+itertools = "0.15"
 k256 = "0.13"
 metrics = "0.24"
 moka = { version = "0.12", features = ["future"] }
