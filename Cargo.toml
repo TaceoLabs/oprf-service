@@ -75,7 +75,7 @@ tikv-jemallocator = "0.7"
 tokio = { version = "1" }
 tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
 tokio-util = "0.7"
-tower-http = "0.6"
+tower-http = "0.7"
 tracing = { version = "0.1" }
 tungstenite = { version = "0.28" }
 uuid = { version = "1" }
