@@ -33,11 +33,6 @@ postgres = ["oprf-service?/postgres"]
 # oprf-types
 chain = ["oprf-types?/chain"]
 
-# `full` restores the historical defaults for all sub-crates:
-#   oprf-core defaults: server
-#   oprf-service defaults: postgres
-#   oprf-types defaults: chain
-# `additive` and `types-service` are intentionally excluded — they were never default.
 full = [
   "client", "core", "dev-client", "service", "types",
   "postgres", "chain",
