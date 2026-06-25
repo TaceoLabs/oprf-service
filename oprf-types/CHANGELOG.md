@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.15.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.14.0...taceo-oprf-types-v0.15.0)
+
+### 🚜 Refactor
+
+
+- *(types)* [**breaking**] Drop alloy and use address as String - ([e17f822](https://github.com/TaceoLabs/oprf-service/commit/e17f8227835176fabb3e37b00174d3ba85d44bad))
+
+### 🏗️ Build
+
+
+- *(deps)* Add transitve deps for umbrella - ([92b4e4f](https://github.com/TaceoLabs/oprf-service/commit/92b4e4fe00ed25b08d34c8c855d42b7fcacf8ec4))
+
+
 ## [0.14.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.13.1...taceo-oprf-types-v0.14.0)
 
 ### ⛰️ Features

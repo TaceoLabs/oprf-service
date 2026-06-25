@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.17.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.16.0...taceo-oprf-v0.17.0)
+
+### 🏗️ Build
+
+
+- *(deps)* Add transitve deps for umbrella - ([92b4e4f](https://github.com/TaceoLabs/oprf-service/commit/92b4e4fe00ed25b08d34c8c855d42b7fcacf8ec4))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Removed some comments - ([52104ad](https://github.com/TaceoLabs/oprf-service/commit/52104ad5a656463ec8bba046aae5eb45baad51f2))
+
+
 ## [0.16.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.15.2...taceo-oprf-v0.16.0)
 
 ### ⚙️ Miscellaneous Tasks

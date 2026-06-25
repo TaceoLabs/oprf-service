@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.18.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.17.0...taceo-oprf-service-v0.18.0)
+
+### 🚜 Refactor
+
+
+- *(node)* [**breaking**] Remove i_am_alive task - ([c5b0de7](https://github.com/TaceoLabs/oprf-service/commit/c5b0de7a2c307c012a5dc6efdedbef6cde8feebe))
+- *(node)* [**breaking**] Drop unused deps and use string for address - ([348a13e](https://github.com/TaceoLabs/oprf-service/commit/348a13eb9cb1463159fe0ba617ace1b1dbbc0150))
+- *(node)* [**breaking**] Builder for oprf-service not fallible anymore ([#650](https://github.com/TaceoLabs/oprf-service/pull/650)) - ([878d3c7](https://github.com/TaceoLabs/oprf-service/commit/878d3c7afcf1a53357eee1d79f2cd3f00b1e795c))
+
+### 🏗️ Build
+
+
+- *(deps)* Add transitve deps for umbrella - ([92b4e4f](https://github.com/TaceoLabs/oprf-service/commit/92b4e4fe00ed25b08d34c8c855d42b7fcacf8ec4))
+
+### 🧪 Testing
+
+
+- Removed dead test - ([64c555c](https://github.com/TaceoLabs/oprf-service/commit/64c555c886f307fa876934428e20941446005fac))
+
+
 ## [0.17.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.16.2...taceo-oprf-service-v0.17.0)
 
 ### 🚜 Refactor
