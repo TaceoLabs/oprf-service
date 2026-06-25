@@ -43,7 +43,20 @@
 //! taceo-oprf = { version = "0.7.1", features = ["client", "core"] }
 //! ```
 //!
-//! The default feature `full` enables all modules.
+//! The default feature `full` enables all modules with their transitive deps.
+//!
+//! ### Transitive sub-crate features
+//!
+//! The umbrella forwards each sub-crate feature as its own flag so consumers
+//! can opt in or out without importing the individual crates. All of these use
+//! the weak-dependency syntax (`dep?/feature`) and therefore do **not** activate
+//! the parent crate on their own — the corresponding crate-selection feature
+//! (`core`, `service`, `types`) must also be enabled.
+//!
+//! | Umbrella feature | Forwarded to            | Notes                               |
+//! |------------------|-------------------------|-------------------------------------|
+//! | `postgres`       | `oprf-service/postgres` | On by default via `full`            |
+//! | `chain`          | `oprf-types/chain`      | On by default via `full`            |
 
 #[cfg(feature = "client")]
 /// Re-export of the `taceo-oprf-client` crate.

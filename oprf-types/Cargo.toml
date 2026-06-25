@@ -31,6 +31,6 @@ sqlx = { workspace = true, features = [
 uuid = { workspace = true, features = ["serde", "v4"] }
 
 [features]
-default = ["chain"]
+default = []
 chain = ["dep:alloy", "dep:circom-types", "dep:groth16-sol"]
-service = ["dep:alloy", "dep:sqlx"]
+service = ["dep:sqlx"]

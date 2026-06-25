@@ -15,14 +15,6 @@ publish = true
 ignored = ["humantime-serde"]
 
 [dependencies]
-alloy = { workspace = true, features = [
-  "contract",
-  "provider-http",
-  "provider-ws",
-  "reqwest-rustls-tls",
-  "rpc-types-eth",
-  "sol-types"
-] }
 ark-babyjubjub = { workspace = true }
 ark-serialize.workspace = true
 async-trait = { workspace = true }
@@ -38,8 +30,7 @@ moka.workspace = true
 nodes-common = { workspace = true, features = [
   "api",
   "postgres",
-  "serde",
-  "web3"
+  "serde"
 ] }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.14", features = [
@@ -82,6 +73,7 @@ oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-util
   "deploy-anvil",
   "postgres-test-container"
 ] }
+ruint.workspace = true
 rustls = { workspace = true }
 telemetry-batteries = { workspace = true, features = ["metrics-statsd"] }
 
