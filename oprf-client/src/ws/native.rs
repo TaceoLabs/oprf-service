@@ -36,17 +36,17 @@ pub(crate) struct WebSocketSession {
 
 impl WebSocketSession {
     /// Tries to close the websocket on a best effort basis by sending a close-frame to the server and initiating tear down.
-    async fn best_effort_close(&mut self, code: CloseCode, reason: impl Into<String>) {
+    async fn best_effort_close(&mut self, code: CloseCode) {
         if let Err(err) = self
             .inner
             .close(Some(CloseFrame {
                 code,
-                reason: reason.into().into(),
+                reason: "".into(),
             }))
             .await
         {
             tracing::trace!(
-                "Received an error when trying to best effort close {}: {err:?}",
+                "Received an error when trying to best effort close {}: {err}",
                 self.service
             );
         }
@@ -58,8 +58,7 @@ impl WebSocketSession {
         String: From<T>,
     {
         let reason = String::from(reason);
-        self.best_effort_close(CloseCode::Unsupported, reason.clone())
-            .await;
+        self.best_effort_close(CloseCode::Unsupported).await;
 
         NodeError::UnexpectedMessage { reason }
     }
@@ -90,8 +89,7 @@ impl WebSocketSession {
         let mut buf = Vec::new();
         ciborium::into_writer(&msg, &mut buf).expect("Can serialize msg");
         if let Err(err) = self.inner.send(tungstenite::Message::binary(buf)).await {
-            self.best_effort_close(CloseCode::Error, "error during ws send")
-                .await;
+            self.best_effort_close(CloseCode::Error).await;
             Err(NodeError::WsError(Box::new(err)))
         } else {
             Ok(())
@@ -105,11 +103,12 @@ impl WebSocketSession {
         let msg = match self.inner.next().await {
             Some(Ok(msg)) => msg,
             Some(Err(err)) => {
-                self.best_effort_close(CloseCode::Error, err.to_string())
-                    .await;
+                self.best_effort_close(CloseCode::Error).await;
                 return Err(err.into());
             }
             None => {
+                tracing::trace!("Cannot receive frame - closed without sending close-frame");
+                self.best_effort_close(CloseCode::Error).await;
                 return Err(NodeError::WsError(Box::new(tungstenite::Error::Io(
                     std::io::Error::other("server closed connection without sending close-frame"),
                 ))));
@@ -128,12 +127,14 @@ impl WebSocketSession {
                 if let Some(frame) = frame
                     && frame.code != CloseCode::Normal
                 {
+                    self.best_effort_close(CloseCode::Normal).await;
                     Err(NodeError::ServiceError(ServiceError {
                         error_code: u16::from(frame.code),
                         msg: (!frame.reason.is_empty()).then(|| frame.reason.to_string()),
                         kind: oprf_types::api::OprfErrorKind::from(u16::from(frame.code)),
                     }))
                 } else {
+                    self.best_effort_close(CloseCode::Error).await;
                     Err(NodeError::WsError(Box::new(tungstenite::Error::Io(
                         std::io::Error::other(
                             "Server closed websocket without finishing protocol - EOF",
@@ -150,6 +151,6 @@ impl WebSocketSession {
 
     /// Gracefully closes the web-socket by sending a `Close` frame with `CloseCode::Normal`.
     pub(crate) async fn graceful_close(mut self) {
-        self.best_effort_close(CloseCode::Normal, "success").await;
+        self.best_effort_close(CloseCode::Normal).await;
     }
 }
