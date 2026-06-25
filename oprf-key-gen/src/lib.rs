@@ -166,7 +166,7 @@ async fn contract_sanity_checks(
     tracing::info!("we are party id: {party_id}. Threshold/NumPeers also match",);
     Ok(NodeInformation::new(
         party_id,
-        key_gen_wallet_address,
+        key_gen_wallet_address.to_string(),
         config.expected_threshold,
     ))
 }

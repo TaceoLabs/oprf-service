@@ -207,7 +207,7 @@ impl SecretManager for PostgresDb {
                     threshold = EXCLUDED.threshold
             ",
             )
-            .bind(node_information.address().to_string())
+            .bind(node_information.address())
             .bind(i32::from(node_information.party_id().into_inner()))
             .bind(i32::from(node_information.threshold().get()))
             .execute(&self.pool)

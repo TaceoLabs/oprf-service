@@ -53,9 +53,10 @@ async fn load_node_information_success() -> eyre::Result<()> {
     let address = key.address();
     let should_party_id = PartyId(42);
     let should_threshold = NonZeroU16::new(2).expect("2 is non-zero");
-    let should_node_information = NodeInformation::new(should_party_id, address, should_threshold);
+    let should_node_information =
+        NodeInformation::new(should_party_id, address.to_string(), should_threshold);
     secret_manager
-        .store_node_information(should_node_information)
+        .store_node_information(should_node_information.clone())
         .await?;
 
     // check that the address is stored in the DB
