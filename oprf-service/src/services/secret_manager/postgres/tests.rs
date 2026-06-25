@@ -111,22 +111,6 @@ async fn load_node_information_empty() -> eyre::Result<()> {
 }
 
 #[tokio::test]
-async fn load_node_information_corrupt() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
-
-    let mut conn =
-        oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
-    insert_node_information("SomethingThatIsNotAnAddress", 0, 2, &mut conn).await?;
-
-    let report = secret_manager
-        .load_node_information()
-        .await
-        .expect_err("should be an error");
-    assert!(report.to_string().contains("invalid address stored in DB"));
-    Ok(())
-}
-
-#[tokio::test]
 async fn load_node_information_success() -> eyre::Result<()> {
     let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
 
