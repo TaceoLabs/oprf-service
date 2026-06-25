@@ -158,9 +158,19 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
                     };
                     if let Some(close_frame) = close_frame {
                         tracing::trace!("sending close frame");
-                        // In their example, axum just sends the frame and ignores the error afterwards and also don't wait for the peers close frame. Therefore we do the same,
-                        #[allow(clippy::let_underscore_must_use, reason="we don't care about this error as we close the connection anyways and only send close frame on best effort")]
-                        let _ = ws.send(ws::Message::Close(Some(close_frame))).await;
+                        if ws.send(ws::Message::Close(Some(close_frame))).await.is_ok() {
+                            // We expect the very next message to be a close frame - we keep the ws connection open so that an honest client can tear down its connection gracefully
+                            match tokio::time::timeout(state.max_connection_lifetime, ws.recv())
+                                .await
+                            {
+                                Ok(Some(Ok(ws::Message::Close(_))) | None) => tracing::trace!("successfully tore down web-socket connection"),
+                                Ok(Some(Ok(frame))) => {
+                                    tracing::debug!("got unexpected frame from client: {frame:?}");
+                                }
+                                Ok(Some(Err(err))) => tracing::trace!("web-socket connection error while waiting for close frame in teardown: {err}"),
+                                Err(_) => tracing::debug!("client did not send close frame in time"),
+                            }
+                        }
                     }
                 }
                 .instrument(parent_span)
