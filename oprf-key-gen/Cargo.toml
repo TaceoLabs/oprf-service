@@ -46,7 +46,7 @@ nodes-common = { workspace = true, features = [
   "web3",
 ] }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.14", features = [
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.15", features = [
   "service"
 ] }
 rand.workspace = true
