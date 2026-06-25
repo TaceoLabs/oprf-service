@@ -1,16 +1,15 @@
 //! Types for communication between key-gen and nodes.
 use std::num::NonZeroU16;
 
-use alloy::primitives::Address;
 use sqlx::{Row, postgres::PgRow};
 
 use crate::crypto::PartyId;
 
 /// All information necessary for an OPRF node provided by the key-gen instance.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NodeInformation {
     party_id: PartyId,
-    address: Address,
+    address: String,
     threshold: NonZeroU16,
 }
 
@@ -23,12 +22,6 @@ impl<'r> sqlx::FromRow<'r, PgRow> for NodeInformation {
             return Err(sqlx::Error::ColumnDecode {
                 index: "party_id".to_owned(),
                 source: "party_id does not fit into u16".into(),
-            });
-        };
-        let Ok(address) = Address::parse_checksummed(address, None) else {
-            return Err(sqlx::Error::ColumnDecode {
-                index: "eth_address".to_owned(),
-                source: "invalid address stored in DB".into(),
             });
         };
         let Ok(threshold_u16) = u16::try_from(threshold) else {
@@ -54,7 +47,7 @@ impl<'r> sqlx::FromRow<'r, PgRow> for NodeInformation {
 impl NodeInformation {
     /// Creates a new instance.
     #[must_use]
-    pub fn new(party_id: PartyId, address: Address, threshold: NonZeroU16) -> Self {
+    pub fn new(party_id: PartyId, address: String, threshold: NonZeroU16) -> Self {
         Self {
             party_id,
             address,
@@ -68,10 +61,10 @@ impl NodeInformation {
         self.party_id
     }
 
-    /// The EVM address of the node operator.
+    /// The EVM address of the node operator as `String`.
     #[must_use]
-    pub fn address(&self) -> Address {
-        self.address
+    pub fn address(&self) -> &str {
+        &self.address
     }
 
     /// The threshold for the OPRF MPC instance.
