@@ -8,7 +8,6 @@
 //! The endpoints include a `Cache-Control: no-cache` header to prevent caching of responses.
 use crate::secret_manager::SecretManagerError;
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
-use alloy::primitives::Address;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -20,12 +19,12 @@ use oprf_types::OprfKeyId;
 
 #[derive(Clone)]
 struct InfoState {
-    wallet_address: Address,
+    wallet_address: String,
     oprf_material_store: OprfKeyMaterialStore,
 }
 
 /// Create a router containing the info endpoints.
-pub(crate) fn routes(oprf_material_store: OprfKeyMaterialStore, wallet_address: Address) -> Router {
+pub(crate) fn routes(oprf_material_store: OprfKeyMaterialStore, wallet_address: String) -> Router {
     Router::new()
         .route("/wallet", get(wallet))
         .route("/oprf_pub/{id}", get(oprf_key_available))
@@ -39,7 +38,7 @@ pub(crate) fn routes(oprf_material_store: OprfKeyMaterialStore, wallet_address: 
 ///
 /// Returns `200 OK` with a string response.
 async fn wallet(State(info_state): State<InfoState>) -> impl IntoResponse {
-    (StatusCode::OK, info_state.wallet_address.to_string())
+    (StatusCode::OK, info_state.wallet_address)
 }
 
 /// Checks whether a OPRF public-key associated with the [`OprfKeyId`] is registered at the service. If yes, returns the [`oprf_types::api::OprfPublicKeyWithEpoch`] containing the latest epoch currently stored at the service.

@@ -1,7 +1,6 @@
 use std::num::NonZeroU16;
 
 use crate::secret_manager::{SecretManager, SecretManagerError, postgres::PostgresSecretManager};
-use alloy::primitives::U160;
 use ark_serialize::CanonicalSerialize;
 use nodes_common::postgres::{PostgresConfig, SanitizedSchema};
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
@@ -11,6 +10,7 @@ use oprf_types::{
     crypto::{OprfPublicKey, PartyId},
     service::NodeInformation,
 };
+use ruint::aliases::U160;
 use secrecy::SecretString;
 use sqlx::PgConnection;
 
@@ -151,7 +151,7 @@ async fn load_node_information_success() -> eyre::Result<()> {
         is_node_information,
         NodeInformation::new(
             should_party_id,
-            should_address,
+            should_address.to_string(),
             NonZeroU16::try_from(should_threshold).expect("is non-zero")
         )
     );

@@ -129,9 +129,9 @@ impl TestNode {
             config,
             secret_manager.clone(),
             started_services.clone(),
-            NodeInformation::new(
+            &NodeInformation::new(
                 PartyId(u16::try_from(party_id).expect("party id must be u16")),
-                OPRF_PEER_ADDRESS_0,
+                OPRF_PEER_ADDRESS_0.to_string(),
                 setup.setup.threshold(),
             ),
             child_token.clone(),

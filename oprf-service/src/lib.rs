@@ -73,7 +73,7 @@ pub(crate) mod services;
 #[cfg(test)]
 mod tests;
 
-pub use nodes_common::{Environment, StartedServices, web3};
+pub use nodes_common::{Environment, StartedServices};
 pub use semver::VersionReq;
 pub use services::secret_manager;
 
@@ -109,7 +109,7 @@ impl OprfServiceBuilder {
         config: OprfNodeServiceConfig,
         secret_manager: SecretManagerService,
         started_services: StartedServices,
-        node_information: NodeInformation,
+        node_information: &NodeInformation,
         cancellation_token: CancellationToken,
     ) -> Self {
         tracing::info!("init OPRF material-store..");
@@ -130,7 +130,7 @@ impl OprfServiceBuilder {
             ))
             .merge(api::info::routes(
                 oprf_key_material_store.clone(),
-                node_information.address(),
+                node_information.address().to_owned(),
             ));
 
         tokio::task::spawn({
