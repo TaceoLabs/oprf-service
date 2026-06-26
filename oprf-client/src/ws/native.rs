@@ -2,7 +2,7 @@
 //!
 //! This module exposes functionality for handling a single web-socket connection with tungstenite. The sessions are very thin and handle errors very conservatively. If the implementation encounters anything that is unexpected, the session will be immediately terminated.
 //!
-//! What is more, we implement the closing handshake at a best-effort basis. This means we try to send `Close` frames if we close the connection, but if there are problems with sending the `Close` frame we simply ignore the errors.
+//! The client does not send close frames. The server drives the teardown: after the protocol completes (or on error/timeout) the server sends a close frame and drains the socket until the client drops.
 
 use crate::{NodeError, ServiceError};
 use futures::{SinkExt, StreamExt};
@@ -11,10 +11,7 @@ use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
     Connector, MaybeTlsStream, WebSocketStream,
-    tungstenite::{
-        self,
-        protocol::{CloseFrame, frame::coding::CloseCode},
-    },
+    tungstenite::{self, protocol::frame::coding::CloseCode},
 };
 use uuid::Uuid;
 
@@ -27,41 +24,12 @@ impl From<tungstenite::Error> for NodeError {
 type WebSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 /// The opened session. Thin wrapper around tungstenite web-socket stream.
-///
-/// When [`WebSocketSession::send`] or [`WebSocketSession::read`] returns an error, the implementation will try to send a `Close` frame. You don't need to do that at callsite.
 pub(crate) struct WebSocketSession {
     pub(crate) service: String,
     inner: WebSocket,
 }
 
 impl WebSocketSession {
-    /// Tries to close the websocket on a best effort basis by sending a close-frame to the server and initiating tear down.
-    async fn best_effort_close(&mut self, code: CloseCode) {
-        if let Err(err) = self
-            .inner
-            .close(Some(CloseFrame {
-                code,
-                reason: "".into(),
-            }))
-            .await
-        {
-            tracing::trace!(
-                "Received an error when trying to best effort close {}: {err}",
-                self.service
-            );
-        }
-    }
-
-    /// Calls [`Self::best_effort_close`] and returns an [`NodeError::UnexpectedMessage`] with the provided reason.
-    async fn protocol_error<T>(&mut self, reason: T) -> NodeError
-    where
-        String: From<T>,
-    {
-        let reason = String::from(reason);
-        self.best_effort_close(CloseCode::Unsupported).await;
-
-        NodeError::UnexpectedMessage { reason }
-    }
     /// Creates a new session at the provided endpoint.
     pub(crate) async fn new(
         endpoint: Uri,
@@ -83,13 +51,10 @@ impl WebSocketSession {
     }
 
     /// Attempts to send the provided message to the web-socket.
-    ///
-    /// On error tries to send a `Close` frame.
     pub(crate) async fn send<Msg: Serialize>(&mut self, msg: Msg) -> Result<(), NodeError> {
         let mut buf = Vec::new();
         ciborium::into_writer(&msg, &mut buf).expect("Can serialize msg");
         if let Err(err) = self.inner.send(tungstenite::Message::binary(buf)).await {
-            self.best_effort_close(CloseCode::Error).await;
             Err(NodeError::WsError(Box::new(err)))
         } else {
             Ok(())
@@ -97,20 +62,18 @@ impl WebSocketSession {
     }
 
     /// Attempts to read the provided message from the web-socket.
-    ///
-    /// On error tries to send a `Close` frame.
     pub(crate) async fn read<Msg: for<'de> Deserialize<'de>>(&mut self) -> Result<Msg, NodeError> {
         let msg = match self.inner.next().await {
             Some(Ok(msg)) => msg,
             Some(Err(err)) => {
-                self.best_effort_close(CloseCode::Error).await;
                 return Err(err.into());
             }
             None => {
-                tracing::trace!("Cannot receive frame - closed without sending close-frame");
-                self.best_effort_close(CloseCode::Error).await;
+                tracing::trace!(
+                    "Server closed connection during protocol while waiting for another message"
+                );
                 return Err(NodeError::WsError(Box::new(tungstenite::Error::Io(
-                    std::io::Error::other("server closed connection without sending close-frame"),
+                    std::io::Error::other("unexpected connection close by server"),
                 ))));
             }
         };
@@ -118,23 +81,21 @@ impl WebSocketSession {
         match msg {
             tungstenite::Message::Binary(bytes) => match ciborium::from_reader(bytes.as_ref()) {
                 Ok(msg) => Ok(msg),
-                Err(_) => Err(self
-                    .protocol_error("could not parse message from server")
-                    .await),
+                Err(_) => Err(NodeError::UnexpectedMessage {
+                    reason: "could not parse message from server",
+                }),
             },
-
             tungstenite::Message::Close(frame) => {
+                tracing::trace!("server send close frame - tearing down connection");
                 if let Some(frame) = frame
                     && frame.code != CloseCode::Normal
                 {
-                    self.best_effort_close(CloseCode::Normal).await;
                     Err(NodeError::ServiceError(ServiceError {
                         error_code: u16::from(frame.code),
                         msg: (!frame.reason.is_empty()).then(|| frame.reason.to_string()),
                         kind: oprf_types::api::OprfErrorKind::from(u16::from(frame.code)),
                     }))
                 } else {
-                    self.best_effort_close(CloseCode::Error).await;
                     Err(NodeError::WsError(Box::new(tungstenite::Error::Io(
                         std::io::Error::other(
                             "Server closed websocket without finishing protocol - EOF",
@@ -142,15 +103,12 @@ impl WebSocketSession {
                     ))))
                 }
             }
-
-            tungstenite::Message::Text(_) => Err(self.protocol_error("text frame received").await),
-
-            _ => Err(self.protocol_error("non-binary frame received").await),
+            tungstenite::Message::Text(_) => Err(NodeError::UnexpectedMessage {
+                reason: "text frame received",
+            }),
+            _ => Err(NodeError::UnexpectedMessage {
+                reason: "non-binary frame received",
+            }),
         }
-    }
-
-    /// Gracefully closes the web-socket by sending a `Close` frame with `CloseCode::Normal`.
-    pub(crate) async fn graceful_close(mut self) {
-        self.best_effort_close(CloseCode::Normal).await;
     }
 }

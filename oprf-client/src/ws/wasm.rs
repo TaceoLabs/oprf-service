@@ -10,8 +10,9 @@
 //! - **Protocol version**: The browser WebSocket API does not support custom HTTP
 //!   headers during the upgrade handshake. The protocol version is sent as a
 //!   query parameter (`?version=<version>`) instead.
-//! - **Close frames**: The browser manages the WebSocket close handshake. Unlike
-//!   the native implementation, we do not explicitly send close frames on errors.
+//! - **Close frames**: Like the native client, this implementation does not send
+//!   close frames on errors. The server drives teardown; the browser manages the
+//!   underlying TCP close.
 
 use crate::{Connector, NodeError, ServiceError};
 use futures::{SinkExt, StreamExt};
@@ -32,19 +33,9 @@ pub(crate) struct WebSocketSession {
 }
 
 impl WebSocketSession {
-    /// Tries to close the sink on a best effort basis.
-    async fn silent_close(&mut self) {
-        if let Err(err) = self.write.close().await {
-            tracing::trace!(
-                "Received an error when trying to best effort close {}: {err:?}",
-                self.service
-            );
-        }
-    }
-
     /// Creates a new session at the provided endpoint.
     ///
-    /// Expects a valid `ws://` or `wss://` URI  
+    /// Expects a valid `ws://` or `wss://` URI
     #[allow(
         clippy::unused_async,
         reason = "Want to have async to have equivalent signature with native"
@@ -75,13 +66,10 @@ impl WebSocketSession {
     }
 
     /// Attempts to send the provided message to the web-socket.
-    ///
-    /// On error tries to close the sink.
     pub(crate) async fn send<Msg: Serialize>(&mut self, msg: Msg) -> Result<(), NodeError> {
         let mut buf = Vec::new();
         ciborium::into_writer(&msg, &mut buf).expect("Can serialize msg");
         if let Err(e) = self.write.send(Message::Bytes(buf)).await {
-            self.silent_close().await;
             Err(NodeError::WsError(Box::new(std::io::Error::other(
                 format!("send failed: {e:?}"),
             ))))
@@ -97,21 +85,16 @@ impl WebSocketSession {
                 if let Ok(msg) = ciborium::from_reader::<Msg, _>(bytes.as_slice()) {
                     Ok(msg)
                 } else {
-                    self.silent_close().await;
                     Err(NodeError::UnexpectedMessage {
-                        reason: "could not parse message from server".to_owned(),
+                        reason: "could not parse message from server",
                     })
                 }
             }
-            Some(Ok(Message::Text(_))) => {
-                self.silent_close().await;
-                Err(NodeError::UnexpectedMessage {
-                    reason: "text frame received".to_owned(),
-                })
-            }
+            Some(Ok(Message::Text(_))) => Err(NodeError::UnexpectedMessage {
+                reason: "text frame received",
+            }),
             Some(Err(WebSocketError::ConnectionClose(event))) => {
                 tracing::trace!("did get close frame: code={}", event.code);
-                self.silent_close().await;
                 if event.code == CLOSE_CODE_NORMAL {
                     Err(NodeError::WsError(Box::new(std::io::Error::other(
                         "Server closed websocket without finishing protocol - EOF",
@@ -124,22 +107,12 @@ impl WebSocketSession {
                     }))
                 }
             }
-            Some(Err(e)) => {
-                self.silent_close().await;
-                Err(NodeError::WsError(Box::new(std::io::Error::other(
-                    format!("read failed: {e:?}"),
-                ))))
-            }
+            Some(Err(e)) => Err(NodeError::WsError(Box::new(std::io::Error::other(
+                format!("read failed: {e:?}"),
+            )))),
             None => Err(NodeError::WsError(Box::new(std::io::Error::other(
                 "server closed connection without sending close-frame",
             )))),
         }
-    }
-
-    /// Gracefully closes the web-socket.
-    pub(crate) async fn graceful_close(mut self) {
-        // Close the sink, which triggers the browser's WebSocket close handshake.
-        // We ignore the result as this is best effort close anyways.
-        let _result = self.write.close().await;
     }
 }

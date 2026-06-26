@@ -112,7 +112,7 @@ async fn init_session<Auth: Serialize>(
 
 /// Write the `req` request to the provided [`WebSocketSession`].
 ///
-/// On success, returns the parsed [`DLogProofShareShamir`] and gracefully closes the web-socket.
+/// On success, returns the parsed [`DLogProofShareShamir`].
 #[instrument(level = "trace", skip_all)]
 async fn finish_session(
     mut session: WebSocketSession,
@@ -120,7 +120,6 @@ async fn finish_session(
 ) -> Result<DLogProofShareShamir, NodeError> {
     session.send(req).await?;
     let resp = session.read().await?;
-    session.graceful_close().await;
     Ok(resp)
 }
 

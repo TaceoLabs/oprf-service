@@ -161,7 +161,7 @@ pub enum NodeError {
     #[error("Server sent unexpected message: {reason}")]
     UnexpectedMessage {
         /// Reason for closing websocket from our side
-        reason: String,
+        reason: &'static str,
     },
     /// The servers could not agree on a [`ShareEpoch`].
     ///
@@ -257,7 +257,7 @@ pub enum Error {
     #[error("Received an unexpected message from threshold many nodes: {reason}")]
     UnexpectedMessage {
         /// A human-readable explanation why the client rejected the message
-        reason: String,
+        reason: &'static str,
     },
     /// One of the OPRF nodes returned an error during finalize (2nd round of the protocol).
     #[error("One of the nodes failed during finalize: {0}")]
@@ -306,9 +306,7 @@ fn aggregate_error(threshold: usize, errors: Vec<NodeError>) -> Error {
                 let count = unexpected_message.entry(reason).or_insert(0);
                 *count += 1;
                 if *count >= threshold {
-                    return Error::UnexpectedMessage {
-                        reason: reason.to_owned(),
-                    };
+                    return Error::UnexpectedMessage { reason };
                 }
             }
             NodeError::EpochMismatch(epoch) => {
@@ -605,15 +603,9 @@ mod tests {
     #[test]
     fn test_threshold_unexpected_message() {
         let errors = vec![
-            NodeError::UnexpectedMessage {
-                reason: "oops1".into(),
-            },
-            NodeError::UnexpectedMessage {
-                reason: "oops1".into(),
-            },
-            NodeError::UnexpectedMessage {
-                reason: "oops2".into(),
-            },
+            NodeError::UnexpectedMessage { reason: "oops1" },
+            NodeError::UnexpectedMessage { reason: "oops1" },
+            NodeError::UnexpectedMessage { reason: "oops2" },
         ];
 
         if let Error::UnexpectedMessage { reason } = aggregate_error(2, errors) {
@@ -637,9 +629,7 @@ mod tests {
                 kind: OprfErrorKind::Unknown,
             }),
             NodeError::WsError(ws2),
-            NodeError::UnexpectedMessage {
-                reason: "oops".into(),
-            },
+            NodeError::UnexpectedMessage { reason: "oops" },
             NodeError::WsError(ws3),
         ];
 
@@ -667,9 +657,7 @@ mod tests {
                 msg: Some("B".into()),
                 kind: OprfErrorKind::Unknown,
             }),
-            NodeError::UnexpectedMessage {
-                reason: "oops".into(),
-            },
+            NodeError::UnexpectedMessage { reason: "oops" },
             NodeError::WsError(Box::new(std::io::Error::other("ws"))),
             NodeError::Unknown(Box::new(std::io::Error::other("unknown"))),
         ];
