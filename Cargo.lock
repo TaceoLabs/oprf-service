@@ -3453,7 +3453,6 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
- "webpki-roots 1.0.8",
 ]
 
 [[package]]
@@ -5000,21 +4999,16 @@ dependencies = [
  "http-body",
  "http-body-util",
  "hyper",
- "hyper-rustls",
  "hyper-util",
  "js-sys",
  "log",
  "percent-encoding",
  "pin-project-lite",
- "quinn",
- "rustls",
- "rustls-pki-types",
  "serde",
  "serde_json",
  "serde_urlencoded",
  "sync_wrapper",
  "tokio",
- "tokio-rustls",
  "tower",
  "tower-http 0.6.11",
  "tower-service",
@@ -5022,7 +5016,6 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "webpki-roots 1.0.8",
 ]
 
 [[package]]
@@ -6282,7 +6275,7 @@ dependencies = [
  "humantime",
  "rand 0.8.6",
  "rand_chacha 0.3.1",
- "reqwest 0.12.28",
+ "reqwest 0.13.2",
  "rustls",
  "secrecy",
  "serde",
