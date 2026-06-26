@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.18.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.18.0...taceo-oprf-service-v0.18.1)
+
+### 🐛 Bug Fixes
+
+
+- *(service)* Wait for close frame after sending one - ([5b74637](https://github.com/TaceoLabs/oprf-service/commit/5b74637309aa6d9490d1abd84a97801329c37516))
+
+
 ## [0.18.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.17.0...taceo-oprf-service-v0.18.0)
 
 ### 🚜 Refactor

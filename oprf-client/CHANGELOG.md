@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.10.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.10.1...taceo-oprf-client-v0.10.2)
+
+### 🐛 Bug Fixes
+
+
+- *(client)* Send close frame everytime server sends error - ([92f8869](https://github.com/TaceoLabs/oprf-service/commit/92f88699c7ce7a9f75e7e16c0704775e2bc9773c))
+
+
 ## [0.10.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.10.0...taceo-oprf-client-v0.10.1)
 
 ### ⚙️ Miscellaneous Tasks
