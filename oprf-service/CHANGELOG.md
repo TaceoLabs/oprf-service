@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.18.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.18.1...taceo-oprf-service-v0.18.2)
+
+### 🚜 Refactor
+
+
+- *(node)* Graceful shutdown fix for web-sockets - ([a5692a8](https://github.com/TaceoLabs/oprf-service/commit/a5692a87784f07a7d561f3d90fa85a53dfdec9eb))
+
+
 ## [0.18.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.18.0...taceo-oprf-service-v0.18.1)
 
 ### 🐛 Bug Fixes

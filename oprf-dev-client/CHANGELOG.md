@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.10.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.10.1...taceo-oprf-dev-client-v0.10.2)
+
+### 🏗️ Build
+
+
+- *(deps)* Add reqwest-rustls-tls alloy feature in oprf-dev-client - ([b6ed5a8](https://github.com/TaceoLabs/oprf-service/commit/b6ed5a8d23ba3f3e0d0f5beb5011a07dd98e4766))
+
+
 ## [0.10.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.10.0...taceo-oprf-dev-client-v0.10.1)
 
 ### ⚙️ Miscellaneous Tasks
