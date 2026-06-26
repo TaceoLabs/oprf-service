@@ -182,6 +182,7 @@ impl OprfServiceBuilder {
                 version_req: self.config.version_req.clone(),
                 max_message_size: self.config.ws_max_message_size,
                 max_connection_lifetime: self.config.session_lifetime,
+                websocket_shutdown_timeout: self.config.websocket_shutdown_timeout,
                 open_sessions: self.open_sessions.clone(),
             }),
         );

@@ -43,6 +43,7 @@ pub(crate) struct OprfModuleState<ReqAuth> {
     pub(crate) version_req: VersionReq,
     pub(crate) max_message_size: usize,
     pub(crate) max_connection_lifetime: Duration,
+    pub(crate) websocket_shutdown_timeout: Duration,
 }
 
 impl<ReqAuth> Clone for OprfModuleState<ReqAuth> {
@@ -56,6 +57,7 @@ impl<ReqAuth> Clone for OprfModuleState<ReqAuth> {
             version_req: self.version_req.clone(),
             max_message_size: self.max_message_size,
             max_connection_lifetime: self.max_connection_lifetime,
+            websocket_shutdown_timeout: self.websocket_shutdown_timeout,
         }
     }
 }
@@ -123,57 +125,8 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
             .on_failed_upgrade(|err| {
                 tracing::warn!(user_error=true, %err, "could not establish websocket connection");
             })
-            .on_upgrade(move |mut ws| {
-                async move {
-                    let close_frame = match tokio::time::timeout(
-                        state.max_connection_lifetime,
-                        partial_oprf::<ReqAuth>(
-                            &mut ws,
-                            state.party_id,
-                            state.threshold,
-                            state.open_sessions,
-                            state.oprf_material_store,
-                            state.req_auth_service,
-                        ),
-                    )
-                    .await
-                    {
-                        Ok(Ok(session_id)) => {
-                            tracing::trace!("successfully created nullifier for {session_id}");
-                            metrics::request::inc_success();
-                            Some(CloseFrame {
-                                code: close_code::NORMAL,
-                                reason: "success".into(),
-                            })
-                        }
-                        Ok(Err(err)) => err.into_close_frame(),
-                        Err(_) => {
-                            tracing::trace!("session ran into timeout");
-                            metrics::request::inc_client_timeout();
-                            Some(CloseFrame {
-                                code: oprf_error_codes::TIMEOUT,
-                                reason: "timeout".into(),
-                            })
-                        }
-                    };
-                    if let Some(close_frame) = close_frame {
-                        tracing::trace!("sending close frame");
-                        if ws.send(ws::Message::Close(Some(close_frame))).await.is_ok() {
-                            // We expect the very next message to be a close frame - we keep the ws connection open so that an honest client can tear down its connection gracefully
-                            match tokio::time::timeout(state.max_connection_lifetime, ws.recv())
-                                .await
-                            {
-                                Ok(Some(Ok(ws::Message::Close(_))) | None) => tracing::trace!("successfully tore down web-socket connection"),
-                                Ok(Some(Ok(frame))) => {
-                                    tracing::debug!("got unexpected frame from client: {frame:?}");
-                                }
-                                Ok(Some(Err(err))) => tracing::trace!("web-socket connection error while waiting for close frame in teardown: {err}"),
-                                Err(_) => tracing::debug!("client did not send close frame in time"),
-                            }
-                        }
-                    }
-                }
-                .instrument(parent_span)
+            .on_upgrade(move |ws| {
+                async move { partial_oprf(ws, state).await }.instrument(parent_span)
             })
     } else {
         let msg = format!(
@@ -186,6 +139,83 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     }
 }
 
+async fn partial_oprf<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
+    mut socket: WebSocket,
+    state: OprfModuleState<ReqAuth>,
+) {
+    let close_frame = match tokio::time::timeout(
+        state.max_connection_lifetime,
+        partial_oprf_inner::<ReqAuth>(
+            &mut socket,
+            state.party_id,
+            state.threshold,
+            state.open_sessions,
+            state.oprf_material_store,
+            state.req_auth_service,
+        ),
+    )
+    .await
+    {
+        Ok(Ok(session_id)) => {
+            tracing::trace!("successfully created nullifier for {session_id}");
+            metrics::request::inc_success();
+            Some(CloseFrame {
+                code: close_code::NORMAL,
+                reason: "success".into(),
+            })
+        }
+        Ok(Err(err)) => err.into_close_frame(),
+        Err(_) => {
+            tracing::trace!("session ran into timeout");
+            metrics::request::inc_client_timeout();
+            Some(CloseFrame {
+                code: oprf_error_codes::TIMEOUT,
+                reason: "timeout".into(),
+            })
+        }
+    };
+
+    if tokio::time::timeout(
+        state.websocket_shutdown_timeout,
+        teardown_websocket(socket, close_frame),
+    )
+    .await
+    .is_err()
+    {
+        tracing::trace!("timeout during web-socket teardown");
+    }
+}
+
+#[instrument(level = "info", skip_all)]
+async fn teardown_websocket(mut ws: WebSocket, close_frame: Option<CloseFrame>) {
+    tracing::trace!("initiating teardown websocket");
+
+    if let Some(close_frame) = close_frame {
+        tracing::trace!("sending close frame: {close_frame:?}");
+        if let Err(err) = ws.send(ws::Message::Close(Some(close_frame))).await {
+            tracing::trace!(?err, "received error during sending close frame");
+            return;
+        }
+    }
+
+    while let Some(msg) = ws.recv().await {
+        match msg {
+            Ok(ws::Message::Close(close)) => {
+                tracing::trace!("client send close frame: {close:?}");
+            }
+            Ok(message) => {
+                tracing::debug!("unexpected frame by client during teardown drain: {message:?}");
+            }
+            Err(_) => {
+                tracing::trace!("client went away - web-socket connection closed");
+                return;
+            }
+        }
+    }
+
+    tracing::trace!("successfully tore down web-socket connection");
+}
+
 /// The whole life-cycle of a single user session.
 ///
 /// 1) Read the [`OprfRequest`] of the user. Accepts `Text` and `Binary` frames and deserializes the request with `json` or `cbor` respectively.
@@ -196,7 +226,8 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
 /// 6) Finalizes the proof share for the session and sends it back to the user (same serialization as the initial request of the user).
 ///
 /// Clients may and will close the connection at any point because they only need `threshold` amount of sessions, therefore it is very much expected that sane clients send a `Close` frame at any point (or simply drop the connection). This method handles this gracefully at any point.
-async fn partial_oprf<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
+#[instrument(level = "info", skip_all, name = "partial_oprf")]
+async fn partial_oprf_inner<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     socket: &mut WebSocket,
     party_id: PartyId,
     threshold: NonZeroU16,
@@ -244,7 +275,7 @@ async fn partial_oprf<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     Ok(request_id)
 }
 
-#[instrument(level = "debug", skip_all)]
+#[instrument(level = "info", skip_all)]
 async fn init_session<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     init_request: OprfRequest<ReqAuth>,
     party_id: PartyId,
@@ -277,7 +308,7 @@ async fn init_session<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     Ok((session, response))
 }
 
-#[instrument(level = "debug", skip_all)]
+#[instrument(level = "info", skip_all)]
 async fn challenge(
     challenge: DLogCommitmentsShamir,
     request_id: Uuid,
@@ -317,7 +348,7 @@ async fn challenge(
 ///
 /// # Errors
 /// Returns the corresponding error if either the peer closes the connection (gracefully with a `Close` frame or not) or if the `Msg` cannot be serialized with the corresponding format.
-#[instrument(level = "debug", skip_all)]
+#[instrument(level = "info", skip_all)]
 async fn read_request<Msg: for<'de> Deserialize<'de>>(
     socket: &mut WebSocket,
 ) -> Result<(Msg, HumanReadable), Error> {
@@ -335,7 +366,7 @@ async fn read_request<Msg: for<'de> Deserialize<'de>>(
 }
 
 /// Attempts to write a `Msg` to the web-socket. Depending on `human_readable` either sends a `Text` (`json`) frame or `Binary` (`cbor`) frame.
-#[instrument(level = "debug", skip_all)]
+#[instrument(level = "info", skip_all)]
 async fn write_response<Msg: Serialize>(
     response: Msg,
     human_readable: HumanReadable,

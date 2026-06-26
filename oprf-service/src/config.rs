@@ -53,6 +53,15 @@ pub struct OprfNodeServiceConfig {
     #[serde(with = "humantime_serde")]
     pub session_lifetime: Duration,
 
+    /// Max time to wait for a graceful shutdown of the web-socket connection.
+    ///
+    /// This duration defines how long the web-socket connection stays alive until after one of the parties initiated a shutdown.
+    ///
+    /// Defaults to `10 s`.
+    #[serde(default = "OprfNodeServiceConfig::default_websocket_shutdown_timeout")]
+    #[serde(with = "humantime_serde")]
+    pub websocket_shutdown_timeout: Duration,
+
     /// Max time for HTTP requests.
     ///
     /// In contrast to `session_lifetime`, this timeout addresses HTTP requests, e.g. `health`, `info` routes but also the web-socket upgrade requests.
@@ -107,6 +116,11 @@ impl OprfNodeServiceConfig {
         Duration::from_secs(30)
     }
 
+    /// Default websocket shutdown timeout (`10 s`).
+    fn default_websocket_shutdown_timeout() -> Duration {
+        Duration::from_secs(10)
+    }
+
     /// Default http request timeout (`20 s`).
     fn default_http_request_timeout() -> Duration {
         Duration::from_secs(20)
@@ -139,6 +153,7 @@ impl OprfNodeServiceConfig {
             environment,
             version_req,
             ws_max_message_size: Self::default_ws_max_message_size(),
+            websocket_shutdown_timeout: Self::default_websocket_shutdown_timeout(),
             session_lifetime: Self::default_session_lifetime(),
             http_request_timeout: Self::default_http_request_timeout(),
             i_am_alive_interval: Self::default_i_am_alive_interval(),
