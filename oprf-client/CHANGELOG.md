@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.10.3](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.10.2...taceo-oprf-client-v0.10.3)
+
+### 🚜 Refactor
+
+
+- *(client)* Native impl for graceful shutdown web-socket - ([2ac385a](https://github.com/TaceoLabs/oprf-service/commit/2ac385afb0d3f75fd7c02e5ac08d03032f93476e))
+
+
 ## [0.10.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.10.1...taceo-oprf-client-v0.10.2)
 
 ### 🐛 Bug Fixes
