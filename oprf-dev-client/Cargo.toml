@@ -16,7 +16,8 @@ alloy = { workspace = true, features = [
   "contract",
   "provider-http",
   "provider-ws",
-  "signer-local"
+  "reqwest-rustls-tls",
+  "signer-local",
 ] }
 ark-babyjubjub.workspace = true
 ark-ff.workspace = true
