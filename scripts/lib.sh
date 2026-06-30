@@ -16,12 +16,12 @@ COMPOSE_FILE="${COMPOSE_FILE:-./oprf-service/examples/deploy/docker-compose.yml}
 LOG_TAG="${LOG_TAG:-[oprf]}"
 LOG_DIR="${LOG_DIR:-logs}"
 
-if [[ -n "${DEBUG_KEYGEN:-}" ]]; then
-    KEYGEN_CARGO_BUILD_ARGS=()
-    KEYGEN_BUILD_TARGET_DIR="debug"
+if [[ -n "${RELEASE:-}" ]]; then
+    CARGO_BUILD_ARGS=(--release)
+    BUILD_TARGET_DIR="release"
 else
-    KEYGEN_CARGO_BUILD_ARGS=(--release)
-    KEYGEN_BUILD_TARGET_DIR="release"
+    CARGO_BUILD_ARGS=()
+    BUILD_TARGET_DIR="debug"
 fi
 
 node_private_keys=(
@@ -343,7 +343,7 @@ start_keygen_node() {
     TACEO_OPRF_KEY_GEN__POSTGRES__CONNECTION_STRING="$POSTGRES_URL" \
     TACEO_OPRF_KEY_GEN__POSTGRES__SCHEMA="$schema" \
     "${dd_env[@]+"${dd_env[@]}"}" \
-    ./target/${KEYGEN_BUILD_TARGET_DIR}/taceo-oprf-key-gen >>"$LOG_DIR/key-gen${i}.log" 2>&1 &
+    ./target/${BUILD_TARGET_DIR}/taceo-oprf-key-gen >>"$LOG_DIR/key-gen${i}.log" 2>&1 &
     keygen_pids[$i]="$!"
     log "started key-gen${i} with PID ${keygen_pids[$i]}"
 }
@@ -401,7 +401,7 @@ start_oprf_service_nodes() {
         TACEO_OPRF_NODE__SERVICE__STORE_TTI=0s \
         TACEO_OPRF_NODE__BIND_ADDR="0.0.0.0:${port}" \
         "${dd_env[@]+"${dd_env[@]}"}" \
-        ./target/release/examples/taceo-oprf-service-example >"$LOG_DIR/node${i}.log" 2>&1 &
+        ./target/${BUILD_TARGET_DIR}/examples/taceo-oprf-service-example >"$LOG_DIR/node${i}.log" 2>&1 &
         nodes_pids[$i]="$!"
         log "started node${i} with PID ${nodes_pids[$i]} (wallet $wallet)"
     done
@@ -417,7 +417,16 @@ docker_psql() {
 
 build_keygen_binary() {
     log "Building taceo-oprf-key-gen"
-    cargo build "${KEYGEN_CARGO_BUILD_ARGS[@]+"${KEYGEN_CARGO_BUILD_ARGS[@]}"}" --bin taceo-oprf-key-gen >"$LOG_DIR/build-keygen.log" 2>&1
+    cargo build "${CARGO_BUILD_ARGS[@]+"${CARGO_BUILD_ARGS[@]}"}" --bin taceo-oprf-key-gen >"$LOG_DIR/build-keygen.log" 2>&1
+}
+
+build_setup_binaries() {
+    log "Building OPRF binaries (${BUILD_TARGET_DIR})"
+    cargo build "${CARGO_BUILD_ARGS[@]+"${CARGO_BUILD_ARGS[@]}"}" \
+        -p taceo-oprf-key-gen --bin taceo-oprf-key-gen \
+        -p taceo-oprf-service --example taceo-oprf-service-example \
+        -p taceo-oprf-dev-client --example dev-client-example \
+        >"$LOG_DIR/build.log" 2>&1
 }
 
 prepare_keygen_db() {

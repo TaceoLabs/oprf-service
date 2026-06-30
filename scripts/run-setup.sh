@@ -16,10 +16,7 @@ RUN_MODE="${1:-sleep}"
 run_deploy() {
     deploy_key_registry
 
-    cargo clean --workspace
-    cargo build --release --example taceo-oprf-service-example
-    cargo build --release --example dev-client-example
-    build_keygen_binary
+    build_setup_binaries
 
     log "starting keygen"
     # need to start key-gen before nodes because they run DB migrations
@@ -44,11 +41,11 @@ main() {
     if [[ "$RUN_MODE" == "e2e-test" ]]; then
         log "Running dev-client tests"
         export OPRF_DEV_CLIENT_OPRF_KEY_REGISTRY_CONTRACT=$DEPLOYED_ADDRESS
-        export RUST_LOG="taceo=trace,dev_client_example=trace,warn"
-        ./target/release/examples/dev-client-example reshare-test
-        ./target/release/examples/dev-client-example stress-test-oprf
-        ./target/release/examples/dev-client-example stress-test-key-gen
-        ./target/release/examples/dev-client-example delete-test
+        export RUST_LOG="taceo=info,dev_client_example=info,warn"
+        ./target/${BUILD_TARGET_DIR}/examples/dev-client-example reshare-test
+        ./target/${BUILD_TARGET_DIR}/examples/dev-client-example stress-test-oprf
+        ./target/${BUILD_TARGET_DIR}/examples/dev-client-example stress-test-key-gen
+        ./target/${BUILD_TARGET_DIR}/examples/dev-client-example delete-test
         log "Dev-client tests completed successfully"
     else
         log "No dev-client tests requested, entering sleep mode. Press Ctrl+C to stop"
