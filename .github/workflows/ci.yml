@@ -83,6 +83,8 @@ jobs:
       - uses: foundry-rs/foundry-toolchain@v1
       - run: cd contracts && forge install && forge build
       - name: E2E test
+        env:
+          PROFILE: release
         run: bash scripts/run-setup.sh e2e-test
 
   backfill-monkey-test:
@@ -103,6 +105,8 @@ jobs:
         run: cargo install sqlx-cli --locked --no-default-features --features postgres
       - run: cd contracts && forge install && forge build
       - name: Backfill Monkey Test
+        env:
+          PROFILE: release
         run: bash scripts/run-backfill-monkey-test.sh
 
   # Aggregator job — make this the single required check in branch protection.
