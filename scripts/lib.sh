@@ -16,13 +16,12 @@ COMPOSE_FILE="${COMPOSE_FILE:-./oprf-service/examples/deploy/docker-compose.yml}
 LOG_TAG="${LOG_TAG:-[oprf]}"
 LOG_DIR="${LOG_DIR:-logs}"
 
-if [[ -n "${RELEASE:-}" ]]; then
-    CARGO_BUILD_ARGS=(--release)
-    BUILD_TARGET_DIR="release"
-else
-    CARGO_BUILD_ARGS=()
-    BUILD_TARGET_DIR="debug"
-fi
+PROFILE="${PROFILE:-dev}"
+case "$PROFILE" in
+    dev)     CARGO_BUILD_ARGS=();                    BUILD_TARGET_DIR="debug" ;;
+    release) CARGO_BUILD_ARGS=(--release);           BUILD_TARGET_DIR="release" ;;
+    *)       CARGO_BUILD_ARGS=(--profile "$PROFILE"); BUILD_TARGET_DIR="$PROFILE" ;;
+esac
 
 node_private_keys=(
     "0x4bbbf85ce3377467afe5d46f804f221813b2bb87f24d81f60f1fcdbf7cbf4356"
