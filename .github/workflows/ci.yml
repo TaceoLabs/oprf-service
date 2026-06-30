@@ -84,7 +84,7 @@ jobs:
       - run: cd contracts && forge install && forge build
       - name: E2E test
         env:
-          PROFILE: ci-dev
+          PROFILE: release
         run: bash scripts/run-setup.sh e2e-test
 
   backfill-monkey-test:
@@ -106,7 +106,7 @@ jobs:
       - run: cd contracts && forge install && forge build
       - name: Backfill Monkey Test
         env:
-          PROFILE: ci-dev
+          PROFILE: release
         run: bash scripts/run-backfill-monkey-test.sh
 
   # Aggregator job — make this the single required check in branch protection.
