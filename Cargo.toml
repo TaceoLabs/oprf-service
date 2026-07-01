@@ -68,7 +68,7 @@ semver = "1"
 serde = { version = "1" }
 serde_json = { version = "1" }
 sqlx = "0.8"
-telemetry-batteries = { version = "0.2.1", default-features = false }
+telemetry-batteries = { version = "0.3.2", default-features = false }
 testcontainers-modules = { version = "0.15" }
 thiserror = { version = "2" }
 tikv-jemallocator = "0.7"
