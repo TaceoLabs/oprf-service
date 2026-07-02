@@ -201,8 +201,6 @@ async fn contract_sanity_checks(
 /// - `key_event_watcher` – subscribes to the `OprfKeyRegistry` contract events and
 ///   drives the key generation / resharing protocol. Backfills missed events from the
 ///   last persisted chain cursor.
-/// - `i_am_alive` – periodically emits a metric once all services have started,
-///   used as a basic liveness indicator.
 ///
 /// # Returns
 /// Returns:
