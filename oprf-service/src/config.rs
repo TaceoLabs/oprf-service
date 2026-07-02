@@ -14,7 +14,6 @@
 //! |----------------------------------|------------|
 //! | `ws_max_message_size`            | 1024 bytes |
 //! | `session_lifetime`               | 30 s       |
-//! | `i_am_alive_interval`            | 60 s       |
 //! | `store_max_capacity`             | 10_000     |
 //! | `store_ttl`                      | 1 day      |
 //! | `store_tti`                      | 1 h        |
@@ -71,13 +70,6 @@ pub struct OprfNodeServiceConfig {
     #[serde(with = "humantime_serde")]
     pub http_request_timeout: Duration,
 
-    /// Interval in which we emit "I am alive" metric.
-    ///
-    /// Defaults to `60 s`.
-    #[serde(default = "OprfNodeServiceConfig::default_i_am_alive_interval")]
-    #[serde(with = "humantime_serde")]
-    pub i_am_alive_interval: Duration,
-
     /// Max capacity for the key-material store.
     #[serde(default = "OprfNodeServiceConfig::default_store_max_capacity")]
     pub store_max_capacity: u64,
@@ -126,11 +118,6 @@ impl OprfNodeServiceConfig {
         Duration::from_secs(20)
     }
 
-    /// Default I-am-alive interval (`60 s`).
-    fn default_i_am_alive_interval() -> Duration {
-        Duration::from_mins(1)
-    }
-
     /// Default max capacity for share cache (`10_000`).
     fn default_store_max_capacity() -> u64 {
         10_000
@@ -156,7 +143,6 @@ impl OprfNodeServiceConfig {
             websocket_shutdown_timeout: Self::default_websocket_shutdown_timeout(),
             session_lifetime: Self::default_session_lifetime(),
             http_request_timeout: Self::default_http_request_timeout(),
-            i_am_alive_interval: Self::default_i_am_alive_interval(),
             store_max_capacity: Self::default_store_max_capacity(),
             store_ttl: Self::default_store_ttl(),
             store_tti: Self::default_store_tti(),
