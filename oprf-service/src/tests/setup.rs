@@ -127,6 +127,7 @@ impl TestNode {
                 OPRF_PEER_ADDRESS_0.to_string(),
                 setup.setup.threshold(),
             ),
+            nodes_common::version_info!(),
         )
         .module("/test", Arc::new(ConfigurableTestAuthenticator))
         .build();
