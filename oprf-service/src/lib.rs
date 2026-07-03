@@ -109,6 +109,7 @@ impl OprfServiceBuilder {
         secret_manager: SecretManagerService,
         started_services: StartedServices,
         node_information: &NodeInformation,
+        version_str: String,
     ) -> Self {
         tracing::info!("init OPRF material-store..");
         let oprf_key_material_store = OprfKeyMaterialStore::new(
@@ -120,7 +121,6 @@ impl OprfServiceBuilder {
 
         tracing::info!("init oprf-service...");
 
-        let version_str = nodes_common::version_info!();
         let info_route = Router::new()
             .merge(nodes_common::api::routes_with_services(
                 started_services,

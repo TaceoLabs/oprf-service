@@ -118,6 +118,7 @@ pub async fn start_service(
         secret_manager,
         StartedServices::default(),
         &node_information,
+        nodes_common::version_info!(),
     )
     .module("/example", Arc::new(ExampleOprfRequestAuthenticator))
     .build();
