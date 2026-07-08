@@ -3,12 +3,14 @@ use std::{net::SocketAddr, process::ExitCode, sync::Arc, time::Duration};
 use config::{Config, Environment};
 use eyre::Context;
 use nodes_common::postgres::PostgresConfig;
+use oprf_client::Connector;
 use serde::Deserialize;
 use taceo_oprf_service::{
     OprfServiceBuilder, StartedServices,
     config::OprfNodeServiceConfig,
     secret_manager::{SecretManagerService, postgres::PostgresSecretManager},
 };
+use url::Url;
 
 use crate::simple_authenticator::ExampleOprfRequestAuthenticator;
 
@@ -35,6 +37,9 @@ pub struct ExampleOprfNodeConfig {
     /// The postgres config for the secret-manager
     #[serde(rename = "postgres")]
     pub postgres_config: PostgresConfig,
+
+    /// The http base urls of the other OPRF nodes to delegate requests to.
+    pub node_urls: Vec<Url>,
 }
 
 fn default_bind_addr() -> SocketAddr {
@@ -51,6 +56,7 @@ pub fn load_example_config() -> eyre::Result<ExampleOprfNodeConfig> {
             .separator("__")
             .list_separator(",")
             .with_list_parse_key("rpc.http_urls")
+            .with_list_parse_key("node_urls")
             .try_parsing(true),
     );
 
@@ -120,7 +126,12 @@ pub async fn start_service(
         &node_information,
         nodes_common::version_info!(),
     )
-    .module("/example", Arc::new(ExampleOprfRequestAuthenticator))
+    .module_with_delegate(
+        "/example",
+        Arc::new(ExampleOprfRequestAuthenticator),
+        oprf_client::to_oprf_uri_many(config.node_urls, "example")?,
+        Connector::Plain,
+    )
     .build();
 
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;

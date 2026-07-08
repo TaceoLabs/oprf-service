@@ -8,7 +8,7 @@ use oprf_core::ddlog_equality::shamir::DLogProofShareShamir;
 use oprf_test_utils::{DeploySetup, OPRF_PEER_ADDRESS_0, TestSetup};
 use oprf_types::{
     OprfKeyId, ShareEpoch,
-    api::{OprfResponse, oprf_error_codes},
+    api::{DelegateOprfResponse, OprfResponse, oprf_error_codes},
 };
 use ruint::aliases::U160;
 use serde::{Deserialize, Serialize};
@@ -17,10 +17,7 @@ use uuid::Uuid;
 
 use crate::secret_manager::SecretManager as _;
 
-use self::setup::{
-    INVALID_AUTH_CODE, INVALID_AUTH_MSG, TEST_PROTOCOL_VERSION, TestNode, WireFormat,
-    wait_until_started,
-};
+use self::setup::{INVALID_AUTH_CODE, INVALID_AUTH_MSG, TestNode, WireFormat, wait_until_started};
 
 mod setup;
 
@@ -129,11 +126,14 @@ async fn wrong_client_version_header() -> eyre::Result<()> {
         .get_websocket("/api/test/oprf")
         .add_header(
             oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
-            "2.0.0",
+            "0.0.0",
         )
         .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
-    response.assert_text("invalid version, expected: ^1.0.0 got: 2.0.0");
+    response.assert_text(format!(
+        "invalid version, expected: ^{} got: 0.0.0",
+        oprf_client::VERSION
+    ));
     Ok(())
 }
 
@@ -143,10 +143,13 @@ async fn wrong_client_version_query() -> eyre::Result<()> {
     let node = TestNode::start(0, &setup).await?;
     let response = node
         .server
-        .get_websocket("/api/test/oprf?version=2.0.0")
+        .get_websocket("/api/test/oprf?version=0.0.0")
         .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
-    response.assert_text("invalid version, expected: ^1.0.0 got: 2.0.0");
+    response.assert_text(format!(
+        "invalid version, expected: ^{} got: 0.0.0",
+        oprf_client::VERSION
+    ));
     Ok(())
 }
 
@@ -176,7 +179,7 @@ async fn corrupt_client_version_query() -> eyre::Result<()> {
         .get_websocket("/api/test/oprf?version=abc")
         .add_header(
             oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
-            TEST_PROTOCOL_VERSION,
+            oprf_client::VERSION,
         )
         .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
@@ -203,7 +206,7 @@ async fn init_with_version_query() -> eyre::Result<()> {
     let node = TestNode::start(0, &setup).await?;
     let mut ws = node
         .server
-        .get_websocket(&format!("/api/test/oprf?version={TEST_PROTOCOL_VERSION}"))
+        .get_websocket(&format!("/api/test/oprf?version={}", oprf_client::VERSION))
         .await
         .into_websocket()
         .await;
@@ -225,10 +228,10 @@ async fn client_version_query_precedence() -> eyre::Result<()> {
     let node = TestNode::start(0, &setup).await?;
     let mut ws = node
         .server
-        .get_websocket(&format!("/api/test/oprf?version={TEST_PROTOCOL_VERSION}"))
+        .get_websocket(&format!("/api/test/oprf?version={}", oprf_client::VERSION))
         .add_header(
             oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
-            "2.0.0",
+            "0.0.0",
         )
         .await
         .into_websocket()
@@ -264,7 +267,7 @@ async fn session_timeout_no_message() -> eyre::Result<()> {
         .get_websocket("/api/test/oprf")
         .add_header(
             oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
-            "1.0.0",
+            oprf_client::VERSION,
         )
         .await
         .into_websocket()
@@ -293,7 +296,7 @@ async fn message_too_large_inner(format: WireFormat) -> eyre::Result<()> {
         .get_websocket("/api/test/oprf")
         .add_header(
             oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
-            setup::TEST_PROTOCOL_VERSION,
+            oprf_client::VERSION,
         )
         .await
         .into_websocket()
@@ -504,7 +507,7 @@ async fn init_bad_request_inner(format: WireFormat) -> eyre::Result<()> {
         .get_websocket("/api/test/oprf")
         .add_header(
             oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
-            "1.3.101",
+            oprf_client::VERSION,
         )
         .await
         .into_websocket()
@@ -718,4 +721,132 @@ async fn switch_encoding_failed_json_cbor() -> eyre::Result<()> {
 #[tokio::test]
 async fn switch_encoding_failed_cbor_json() -> eyre::Result<()> {
     switch_encoding_failed_inner(WireFormat::Cbor, WireFormat::Json).await
+}
+
+/// Tests that a delegate OPRF request against a real 2-of-3 cluster succeeds end to end.
+#[tokio::test]
+async fn delegate_happy_path() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let connection_string = oprf_test_utils::shared_postgres_testcontainer().await?;
+    let nodes =
+        setup::start_nodes_for_delegate(connection_string, &setup, setup::OPRF_KEY_ID.into())
+            .await?;
+
+    let node_urls = nodes
+        .iter()
+        .map(|n| n.server.server_address().expect("Server has address"))
+        .collect::<Vec<_>>();
+    let node_urls = oprf_client::to_oprf_pub_key_url_many(node_urls)?;
+    let client = reqwest::Client::new();
+    let should_key = oprf_client::fetch_oprf_public_key(
+        &node_urls,
+        u16::from(setup.setup.threshold()) as usize,
+        setup::OPRF_KEY_ID.into(),
+        &client,
+    )
+    .await?
+    .expect("setup should have this key");
+
+    let response = nodes[0]
+        .server
+        .post("/api/test/delegate")
+        .add_query_param("version", oprf_client::VERSION)
+        .json(&setup::request(&mut rand::thread_rng()))
+        .await;
+    response.assert_status_ok();
+    let body: DelegateOprfResponse = response.json();
+    assert_eq!(body.oprf_pub_key_with_epoch, should_key);
+    Ok(())
+}
+
+/// Tests that a delegate request with a wrong OPRF key id is rejected by every node in the
+/// cluster, which the delegator aggregates into a `ThresholdServiceError` -> 400.
+#[tokio::test]
+async fn delegate_auth_failed() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let connection_string = oprf_test_utils::shared_postgres_testcontainer().await?;
+    let nodes =
+        setup::start_nodes_for_delegate(connection_string, &setup, setup::OPRF_KEY_ID.into())
+            .await?;
+
+    let mut request = setup::request(&mut rand::thread_rng());
+    request.auth = setup::ConfigurableTestRequestAuth(OprfKeyId::from(123_usize));
+
+    let response = nodes[0]
+        .server
+        .post("/api/test/delegate")
+        .add_query_param("version", oprf_client::VERSION)
+        .json(&request)
+        .await;
+    response.assert_status(StatusCode::BAD_REQUEST);
+    response.assert_text(INVALID_AUTH_CODE.to_string());
+    Ok(())
+}
+
+/// Tests that a delegate request where the number of reachable nodes drops below the
+/// threshold surfaces as a `Networking` error -> 503.
+#[tokio::test]
+async fn delegate_not_enough_nodes() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let connection_string = oprf_test_utils::shared_postgres_testcontainer().await?;
+    let mut nodes =
+        setup::start_nodes_for_delegate(connection_string, &setup, setup::OPRF_KEY_ID.into())
+            .await?;
+
+    // drop all but one node so the (threshold-2) cluster can no longer reach consensus
+    let delegator = nodes.remove(0);
+    drop(nodes);
+
+    let response = delegator
+        .server
+        .post("/api/test/delegate")
+        .add_query_param("version", oprf_client::VERSION)
+        .json(&setup::request(&mut rand::thread_rng()))
+        .await;
+    response.assert_status(StatusCode::SERVICE_UNAVAILABLE);
+    Ok(())
+}
+
+/// Tests that a delegate request without a client version query param is rejected before any
+/// node in the cluster is contacted.
+#[tokio::test]
+async fn delegate_missing_version() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let connection_string = oprf_test_utils::shared_postgres_testcontainer().await?;
+    let nodes =
+        setup::start_nodes_for_delegate(connection_string, &setup, setup::OPRF_KEY_ID.into())
+            .await?;
+
+    let response = nodes[0]
+        .server
+        .post("/api/test/delegate")
+        .json(&setup::request(&mut rand::thread_rng()))
+        .await;
+    response.assert_status(StatusCode::BAD_REQUEST);
+    response.assert_text("missing client version");
+    Ok(())
+}
+
+/// Tests that a delegate request with a client version the node's `version_req` rejects gets a
+/// 400 before any node in the cluster is contacted.
+#[tokio::test]
+async fn delegate_unsupported_version() -> eyre::Result<()> {
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let connection_string = oprf_test_utils::shared_postgres_testcontainer().await?;
+    let nodes =
+        setup::start_nodes_for_delegate(connection_string, &setup, setup::OPRF_KEY_ID.into())
+            .await?;
+
+    let response = nodes[0]
+        .server
+        .post("/api/test/delegate")
+        .add_query_param("version", "0.0.0")
+        .json(&setup::request(&mut rand::thread_rng()))
+        .await;
+    response.assert_status(StatusCode::BAD_REQUEST);
+    response.assert_text(format!(
+        "invalid version, expected: ^{} got: 0.0.0",
+        oprf_client::VERSION
+    ));
+    Ok(())
 }

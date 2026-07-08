@@ -1,15 +1,18 @@
 use core::fmt;
+use std::net::{IpAddr, Ipv4Addr};
 use std::num::NonZeroU32;
 use std::{sync::Arc, time::Duration};
 
+use ark_ec::{AffineRepr as _, CurveGroup as _};
 use ark_ff::UniformRand as _;
 use ark_serialize::CanonicalSerialize;
 use async_trait::async_trait;
 use axum_test::{TestServer, TestWebSocket};
 use eyre::Context as _;
-use http::StatusCode;
+use http::{StatusCode, Uri};
 use nodes_common::postgres::{CreateSchema, PostgresConfig};
 use nodes_common::{Environment, StartedServices};
+use oprf_client::Connector;
 use oprf_core::ddlog_equality::shamir::{
     DLogCommitmentsShamir, DLogProofShareShamir, DLogShareShamir,
 };
@@ -36,7 +39,6 @@ use crate::secret_manager::postgres::PostgresSecretManager;
 use crate::{OprfServiceBuilder, config::OprfNodeServiceConfig};
 
 pub const OPRF_KEY_ID: u32 = 42;
-pub const TEST_PROTOCOL_VERSION: &str = "1.3.101";
 pub const INVALID_AUTH_CODE: u16 = 4500;
 pub const INVALID_AUTH_MSG: &str = "invalid auth";
 
@@ -95,24 +97,30 @@ impl TestNode {
             .get_websocket("/api/test/oprf")
             .add_header(
                 oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
-                TEST_PROTOCOL_VERSION,
+                oprf_client::VERSION,
             )
             .await
             .into_websocket()
             .await
     }
 
+    /// Starts a test node with the given `secret_manager` and binds it to the specified `bind_port`.
+    ///
+    /// If `services` is provided, it will be used as the delegate services for the node.
+    /// If `services` is `None`, request to `/delegate` will fail.
     pub fn start_with_secret_manager(
         party_id: usize,
         setup: &TestSetup,
         pool: PgPool,
+        bind_port: u16,
+        services: Option<Vec<Uri>>,
         secret_manager: PostgresSecretManager,
     ) -> Self {
         assert!(party_id < 5, "can only spawn 5 nodes");
 
         let mut config = OprfNodeServiceConfig::with_default_values(
             Environment::Dev,
-            "1.0.0".parse().expect("Valid VersionReq"),
+            oprf_client::VERSION.parse().expect("valid semver"),
         );
         config.session_lifetime = Duration::from_secs(10);
 
@@ -129,10 +137,15 @@ impl TestNode {
             ),
             nodes_common::version_info!(),
         )
-        .module("/test", Arc::new(ConfigurableTestAuthenticator))
+        .module_with_delegate(
+            "/test",
+            Arc::new(ConfigurableTestAuthenticator),
+            services.unwrap_or_default(), // we dont care about delegate if services is None
+            Connector::Plain,
+        )
         .build();
         let server = TestServer::builder()
-            .http_transport()
+            .http_transport_with_ip_port(Some(IpAddr::V4(Ipv4Addr::LOCALHOST)), Some(bind_port))
             .build(service)
             .expect("Can build test-server");
         TestNode {
@@ -164,7 +177,9 @@ impl TestNode {
         let pool = nodes_common::postgres::pg_pool_with_schema(&postgres_config, CreateSchema::Yes)
             .await?;
         MIGRATOR.run(&pool).await?;
-        let test_node = Self::start_with_secret_manager(party_id, setup, pool, secret_manager);
+        let port = nodes_common::test_utils::random_port()?;
+        let test_node =
+            Self::start_with_secret_manager(party_id, setup, pool, port, None, secret_manager);
         let key_id = OprfKeyId::from(oprf_key_id);
         test_node
             .add_random_key_material_with_id(key_id, &mut rand::thread_rng())
@@ -286,6 +301,20 @@ impl TestNode {
     ) -> eyre::Result<()> {
         let share = DLogShareShamir::from(ark_babyjubjub::Fr::rand(rng));
         let public_key = OprfPublicKey::new(rng.r#gen());
+        self.add_key_material_with_id_epoch_and_share(key_id, epoch, share, public_key)
+            .await
+    }
+
+    /// Inserts a specific (non-random) share and public key for `key_id`. Used to give
+    /// multiple nodes consistent Shamir shares of the same secret, e.g. via
+    /// [`generate_shamir_shares`], so that a real threshold protocol run across them succeeds.
+    pub async fn add_key_material_with_id_epoch_and_share(
+        &self,
+        key_id: OprfKeyId,
+        epoch: ShareEpoch,
+        share: DLogShareShamir,
+        public_key: OprfPublicKey,
+    ) -> eyre::Result<()> {
         sqlx::query(
             "
                 INSERT INTO shares (id, share, epoch, public_key)
@@ -338,6 +367,87 @@ fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: &T) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(t.uncompressed_size());
     t.serialize_uncompressed(&mut bytes).expect("Can serialize");
     bytes
+}
+
+/// Generates `n` Shamir shares (for party indices `1..=n`, matching [`PartyId`]'s
+/// `party_id + 1` coefficient convention) of a single random secret, of degree `threshold - 1`,
+/// together with the corresponding OPRF public key. Used to give a cluster of real nodes
+/// consistent key material so a genuine threshold protocol run across them succeeds.
+fn generate_shamir_shares<R: Rng + CryptoRng>(
+    threshold: usize,
+    n: usize,
+    rng: &mut R,
+) -> (OprfPublicKey, Vec<DLogShareShamir>) {
+    let poly: Vec<ark_babyjubjub::Fr> = (0..threshold)
+        .map(|_| ark_babyjubjub::Fr::rand(rng))
+        .collect();
+    let public_key =
+        OprfPublicKey::new((ark_babyjubjub::EdwardsAffine::generator() * poly[0]).into_affine());
+    let shares = (1..=n)
+        .map(|x| {
+            DLogShareShamir::from(oprf_core::shamir::evaluate_poly(
+                &poly,
+                ark_babyjubjub::Fr::from(x as u64),
+            ))
+        })
+        .collect();
+    (public_key, shares)
+}
+
+/// Starts a cluster of `n` real, network-bound nodes (`n` and the threshold taken from
+/// `setup.setup`), each holding a consistent Shamir share of the same OPRF key, and each
+/// exposing both the normal `/oprf` websocket route and the `/delegate` HTTP route pointed
+/// at the whole cluster (including itself). Any of the returned nodes can be used to drive
+/// the delegate OPRF flow.
+pub async fn start_nodes_for_delegate(
+    connection_string: &str,
+    setup: &TestSetup,
+    key_id: OprfKeyId,
+) -> eyre::Result<Vec<TestNode>> {
+    let n = setup.setup.addresses().len();
+    let threshold = usize::from(u16::from(setup.setup.threshold()));
+    let ports: Vec<u16> = (0..n)
+        .map(|_| nodes_common::test_utils::random_port().expect("Can find random port"))
+        .collect();
+    let base_urls: Vec<String> = ports
+        .iter()
+        .map(|port| format!("http://127.0.0.1:{port}"))
+        .collect();
+    let services = oprf_client::to_oprf_uri_many(&base_urls, "test")?;
+
+    let epoch = ShareEpoch::default();
+    let (public_key, shares) = generate_shamir_shares(threshold, n, &mut rand::thread_rng());
+
+    let mut nodes = Vec::with_capacity(n);
+    for (party_id, port) in ports.into_iter().enumerate() {
+        let schema = oprf_test_utils::next_test_schema();
+        let mut postgres_config =
+            PostgresConfig::with_default_values(connection_string.into(), schema);
+        // set low max_connections because many parallel tests connect to the same testcontainer
+        postgres_config.max_connections = NonZeroU32::new(1).expect("1 is non-zero");
+        let secret_manager = PostgresSecretManager::init(&postgres_config).await?;
+        let pool = nodes_common::postgres::pg_pool_with_schema(&postgres_config, CreateSchema::Yes)
+            .await?;
+        MIGRATOR.run(&pool).await?;
+
+        let node = TestNode::start_with_secret_manager(
+            party_id,
+            setup,
+            pool,
+            port,
+            Some(services.clone()),
+            secret_manager,
+        );
+        node.add_key_material_with_id_epoch_and_share(
+            key_id,
+            epoch,
+            shares[party_id].clone(),
+            public_key,
+        )
+        .await?;
+        nodes.push(node);
+    }
+    Ok(nodes)
 }
 
 pub async fn wait_until_started(started_services: &StartedServices) -> eyre::Result<()> {

@@ -376,6 +376,13 @@ start_oprf_service_nodes() {
     log "Starting OPRF service nodes"
     mkdir -p "$LOG_DIR"
 
+    local all_node_urls=()
+    for i in $(peer_indices); do
+        all_node_urls+=("http://127.0.0.1:$((10000 + i))")
+    done
+    local node_urls_csv
+    node_urls_csv=$(IFS=,; echo "${all_node_urls[*]}")
+
     for i in $(peer_indices); do
         local port=$((10000 + i))
         local wallet="${participant_addresses[$i]}"
@@ -400,6 +407,7 @@ start_oprf_service_nodes() {
         TACEO_OPRF_NODE__SERVICE__STORE_TTL=0s \
         TACEO_OPRF_NODE__SERVICE__STORE_TTI=0s \
         TACEO_OPRF_NODE__BIND_ADDR="0.0.0.0:${port}" \
+        TACEO_OPRF_NODE__NODE_URLS="$node_urls_csv" \
         "${dd_env[@]+"${dd_env[@]}"}" \
         ./target/release/examples/taceo-oprf-service-example >"$LOG_DIR/node${i}.log" 2>&1 &
         nodes_pids[$i]="$!"

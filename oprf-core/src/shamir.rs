@@ -65,7 +65,7 @@ pub fn single_lagrange_from_coeff<F: PrimeField + From<T>, T: Copy + Eq>(
 ///
 /// # Panics
 /// If the provided polynomial is empty.
-pub(crate) fn evaluate_poly<F: PrimeField>(poly: &[F], x: F) -> F {
+pub fn evaluate_poly<F: PrimeField>(poly: &[F], x: F) -> F {
     assert!(!poly.is_empty(), "Poly must not be empty");
     let mut iter = poly.iter().rev();
     let mut eval = iter.next().expect("Checked that not empty").to_owned();

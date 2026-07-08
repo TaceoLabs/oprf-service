@@ -1,4 +1,4 @@
-use ark_ff::{AdditiveGroup, PrimeField};
+use ark_ff::AdditiveGroup;
 use std::{collections::HashMap, path::PathBuf, process::ExitCode};
 
 use alloy::primitives::U256;
@@ -182,17 +182,6 @@ fn sol_call_proof(proof: &Proof<Bn254>) -> String {
         .map(|x| x.to_string())
         .collect::<Vec<String>>()
         .join(",")
-}
-
-pub(crate) fn evaluate_poly<F: PrimeField>(poly: &[F], x: F) -> F {
-    debug_assert!(!poly.is_empty());
-    let mut iter = poly.iter().rev();
-    let mut eval = iter.next().unwrap().to_owned();
-    for coeff in iter {
-        eval *= x;
-        eval += coeff;
-    }
-    eval
 }
 
 fn producer_contributions<R: Rng + CryptoRng>(
@@ -411,17 +400,17 @@ fn check_keygen(
     lagrange12: &[ark_babyjubjub::Fr],
     lagrange23: &[ark_babyjubjub::Fr],
 ) -> [ark_babyjubjub::Fr; 3] {
-    let alice_alice_share = evaluate_poly(alice_poly.coeffs(), 1.into());
-    let alice_bob_share = evaluate_poly(alice_poly.coeffs(), 2.into());
-    let alice_carol_share = evaluate_poly(alice_poly.coeffs(), 3.into());
+    let alice_alice_share = shamir::evaluate_poly(alice_poly.coeffs(), 1.into());
+    let alice_bob_share = shamir::evaluate_poly(alice_poly.coeffs(), 2.into());
+    let alice_carol_share = shamir::evaluate_poly(alice_poly.coeffs(), 3.into());
 
-    let bob_alice_share = evaluate_poly(bob_poly.coeffs(), 1.into());
-    let bob_bob_share = evaluate_poly(bob_poly.coeffs(), 2.into());
-    let bob_carol_share = evaluate_poly(bob_poly.coeffs(), 3.into());
+    let bob_alice_share = shamir::evaluate_poly(bob_poly.coeffs(), 1.into());
+    let bob_bob_share = shamir::evaluate_poly(bob_poly.coeffs(), 2.into());
+    let bob_carol_share = shamir::evaluate_poly(bob_poly.coeffs(), 3.into());
 
-    let carol_alice_share = evaluate_poly(carol_poly.coeffs(), 1.into());
-    let carol_bob_share = evaluate_poly(carol_poly.coeffs(), 2.into());
-    let carol_carol_share = evaluate_poly(carol_poly.coeffs(), 3.into());
+    let carol_alice_share = shamir::evaluate_poly(carol_poly.coeffs(), 1.into());
+    let carol_bob_share = shamir::evaluate_poly(carol_poly.coeffs(), 2.into());
+    let carol_carol_share = shamir::evaluate_poly(carol_poly.coeffs(), 3.into());
 
     let should_public_key =
         alice_poly.get_pk_share() + bob_poly.get_pk_share() + carol_poly.get_pk_share();
@@ -455,13 +444,13 @@ fn check_reshare(
     lagrange23: &[ark_babyjubjub::Fr],
     should_public_key: ark_babyjubjub::EdwardsAffine,
 ) -> [ark_babyjubjub::Fr; 3] {
-    let bob_alice_share = evaluate_poly(poly1.coeffs(), 1.into());
-    let bob_bob_share = evaluate_poly(poly1.coeffs(), 2.into());
-    let bob_carol_share = evaluate_poly(poly1.coeffs(), 3.into());
+    let bob_alice_share = shamir::evaluate_poly(poly1.coeffs(), 1.into());
+    let bob_bob_share = shamir::evaluate_poly(poly1.coeffs(), 2.into());
+    let bob_carol_share = shamir::evaluate_poly(poly1.coeffs(), 3.into());
 
-    let carol_alice_share = evaluate_poly(poly2.coeffs(), 1.into());
-    let carol_bob_share = evaluate_poly(poly2.coeffs(), 2.into());
-    let carol_carol_share = evaluate_poly(poly2.coeffs(), 3.into());
+    let carol_alice_share = shamir::evaluate_poly(poly2.coeffs(), 1.into());
+    let carol_bob_share = shamir::evaluate_poly(poly2.coeffs(), 2.into());
+    let carol_carol_share = shamir::evaluate_poly(poly2.coeffs(), 3.into());
 
     // reconstruct shares
     let alice_share =

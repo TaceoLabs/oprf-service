@@ -27,11 +27,8 @@ http = { workspace = true }
 humantime-serde = { workspace = true }
 metrics = { workspace = true }
 moka.workspace = true
-nodes-common = { workspace = true, features = [
-  "api",
-  "postgres",
-  "serde"
-] }
+nodes-common = { workspace = true, features = ["api", "postgres", "serde"] }
+oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.10" }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.15", features = [
   "service"
@@ -57,25 +54,39 @@ tokio = { workspace = true, features = [
   "tokio-macros",
 ] }
 tokio-util = { workspace = true }
-tower-http = { workspace = true, features = ["set-header", "timeout", "trace", "cors"] }
+tower-http = { workspace = true, features = [
+  "cors",
+  "set-header",
+  "timeout",
+  "trace"
+] }
 tracing.workspace = true
 tungstenite = { workspace = true }
 uuid = { workspace = true, features = ["serde", "v4"] }
 zeroize.workspace = true
 
 [dev-dependencies]
+ark-ec = { workspace = true }
 ark-ff = { workspace = true }
 axum-test = { workspace = true, features = ["ws"] }
 config = { workspace = true }
 itertools = { workspace = true }
+nodes-common = { workspace = true, features = [
+  "api",
+  "postgres",
+  "serde",
+  "test-utils"
+] }
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.10" }
 oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.14", default-features = false, features = [
   "deploy-anvil",
   "postgres-test-container"
 ] }
-ruint.workspace = true
+reqwest = { workspace = true, features = ["json"] }
+ruint = { workspace = true, features = ["rand"] }
 rustls = { workspace = true }
 telemetry-batteries = { workspace = true, features = ["metrics-statsd"] }
+url = { workspace = true }
 
 [features]
 default = ["postgres"]

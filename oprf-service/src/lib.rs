@@ -50,16 +50,18 @@ use std::fmt;
 use std::num::NonZeroU16;
 
 use crate::api::oprf::OprfModuleState;
+use crate::api::oprf_delegate::DelegateOprfState;
 use crate::services::open_sessions::OpenSessions;
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
 use crate::{config::OprfNodeServiceConfig, services::secret_manager::SecretManagerService};
 use axum::Router;
-use axum::extract::MatchedPath;
-use http::{HeaderMap, HeaderName, Method, StatusCode};
+use axum::extract::{DefaultBodyLimit, MatchedPath};
+use http::{HeaderMap, HeaderName, Method, StatusCode, Uri};
+use oprf_client::Connector;
 use oprf_types::api::OprfRequestAuthService;
 use oprf_types::crypto::PartyId;
 use oprf_types::service::NodeInformation;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::{MakeSpan, TraceLayer};
@@ -190,6 +192,51 @@ impl OprfServiceBuilder {
         self
     }
 
+    /// Like [`OprfServiceBuilder::module`], but adds a delegate OPRF module that can forward requests to other OPRF services.
+    ///
+    /// # Parameters
+    ///
+    /// - `path`: The URL path where the OPRF module will be accessible (`/api/{path}`).
+    /// - `service`: An instance of `OprfRequestAuthService` that will handle authentication for this module.
+    /// - `services`: A list of URIs of other OPRF services to which requests can be delegated.
+    /// - `connector`: A connector used to establish connections to the delegate OPRF services
+    #[must_use]
+    pub fn module_with_delegate<
+        RequestAuth: Serialize + for<'de> Deserialize<'de> + Clone + Send + 'static,
+    >(
+        mut self,
+        path: &str,
+        service: OprfRequestAuthService<RequestAuth>,
+        services: Vec<Uri>,
+        connector: Connector,
+    ) -> Self {
+        let args = Router::new().merge(self.api).nest(
+            path,
+            Router::new()
+                .merge(api::oprf::routes(OprfModuleState {
+                    party_id: self.party_id,
+                    threshold: self.threshold,
+                    oprf_material_store: self.oprf_key_material_store.clone(),
+                    req_auth_service: service,
+                    version_req: self.config.version_req.clone(),
+                    max_message_size: self.config.ws_max_message_size,
+                    max_connection_lifetime: self.config.session_lifetime,
+                    websocket_shutdown_timeout: self.config.websocket_shutdown_timeout,
+                    open_sessions: self.open_sessions.clone(),
+                }))
+                .merge(api::oprf_delegate::routes::<RequestAuth>(
+                    DelegateOprfState {
+                        threshold: self.threshold,
+                        services,
+                        version_req: self.config.version_req.clone(),
+                        connector,
+                    },
+                )),
+        );
+        self.api = args;
+        self
+    }
+
     /// Build the `axum` [`Router`] with all added oprf modules.
     ///
     /// # Panics
@@ -203,12 +250,18 @@ impl OprfServiceBuilder {
             .layer(TraceLayer::new_for_http().make_span_with(OprfAuthModulesMakeSpan));
 
         Router::new()
-            .merge(self.info_routes)
-            .nest("/api", auth_modules)
-            .layer(TimeoutLayer::with_status_code(
+            .merge(self.info_routes.layer(TimeoutLayer::with_status_code(
                 StatusCode::REQUEST_TIMEOUT,
                 self.config.http_request_timeout,
-            ))
+            )))
+            .nest(
+                "/api",
+                auth_modules.layer(TimeoutLayer::with_status_code(
+                    StatusCode::REQUEST_TIMEOUT,
+                    self.config.session_lifetime, // use session lifetime align with ws timeout
+                )),
+            )
+            .layer(DefaultBodyLimit::max(self.config.ws_max_message_size))
     }
 }
 

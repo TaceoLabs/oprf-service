@@ -5,9 +5,11 @@
 //! - [`errors`] – Defines API error types and conversions from internal service errors.
 //! - [`info`] – Info about the service (`/version`, `/wallet` and `/oprf_pub/{id}`).
 //! - [`oprf`] – The implementation of the OPRF WebSocket endpoint `/oprf`.
+//! - [`oprf_delegate`] – The implementation of the OPRF delegate endpoint `/delegate`.
 //! - [`version_header`] – Serialization for the custom [`version_header::ProtocolVersion`] header the clients needs to send.
 
 pub(crate) mod errors;
 pub(crate) mod info;
 pub(crate) mod oprf;
+pub(crate) mod oprf_delegate;
 pub(crate) mod version_header;

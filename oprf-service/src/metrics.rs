@@ -35,6 +35,12 @@ pub(crate) mod request {
     /// Metrics key for how often we terminated user connection due to timeout.
     const METRICS_CLIENT_TIMEOUT: &str = "taceo.oprf.node.request.timeout";
 
+    /// Metrics key for counting all OPRF delegate requests
+    const METRICS_ID_NODE_DELEGATE_REQUESTS: &str = "taceo.oprf.node.delegate";
+
+    /// Metrics key for counting successful OPRF delegate evaluations
+    const METRICS_ID_NODE_DELEGATE_SUCCESS: &str = "taceo.oprf.node.delegate.success";
+
     pub(super) fn describe_metrics() {
         params::describe_metrics();
         metrics::describe_counter!(
@@ -78,6 +84,18 @@ pub(crate) mod request {
             metrics::Unit::Count,
             "How often we terminated user connection due to timeout"
         );
+
+        metrics::describe_counter!(
+            METRICS_ID_NODE_DELEGATE_REQUESTS,
+            metrics::Unit::Count,
+            "Number of OPRF delegate requests observed. Includes successes and failures."
+        );
+
+        metrics::describe_counter!(
+            METRICS_ID_NODE_DELEGATE_SUCCESS,
+            metrics::Unit::Count,
+            "Number of successful OPRF delegate evaluations"
+        );
     }
 
     pub(crate) fn inc_client_version_mismatch() {
@@ -107,6 +125,14 @@ pub(crate) mod request {
 
     pub(crate) fn record_part2_duration(duration: Duration) {
         metrics::histogram!(METRICS_ID_NODE_PART_2_DURATION).record(duration.as_millis() as f64);
+    }
+
+    pub(crate) fn inc_delegate_request() {
+        metrics::counter!(METRICS_ID_NODE_DELEGATE_REQUESTS).increment(1);
+    }
+
+    pub(crate) fn inc_delegate_success() {
+        metrics::counter!(METRICS_ID_NODE_DELEGATE_SUCCESS).increment(1);
     }
 
     pub(crate) mod params {
