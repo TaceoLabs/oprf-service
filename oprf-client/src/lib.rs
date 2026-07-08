@@ -22,27 +22,34 @@
 
 //! This crate provides utility functions for clients of the distributed OPRF protocol.
 //!
-//! Most implementations will only need the [`distributed_oprf`] method. For more fine-grained workflows, we expose all necessary functions.
+//! Most implementations will only need the [`distributed_oprf`] method, or [`delegate_distributed_oprf`] if a single
+//! delegate node should perform the distributed OPRF protocol on the client's behalf. For more
+//! fine-grained workflows, we expose all necessary functions.
 use core::fmt;
 use std::collections::{HashMap, HashSet};
 
 use ark_ec::AffineRepr as _;
+use futures::stream::{FuturesUnordered, StreamExt as _};
 use oprf_core::{
     ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir},
     dlog_equality::DLogEqualityProof,
     oprf::{BlindedOprfRequest, BlindedOprfResponse, BlindingFactor},
 };
 use oprf_types::{
-    ShareEpoch,
-    api::{OprfErrorKind, OprfRequest},
+    OprfKeyId, ShareEpoch,
+    api::{DelegateOprfResponse, OprfErrorKind, OprfPublicKeyWithEpoch, OprfRequest},
     crypto::OprfPublicKey,
 };
 use serde::Serialize;
 use tracing::instrument;
+use url::Url;
 use uuid::Uuid;
 
 mod sessions;
 mod ws;
+
+/// The version of this crate.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub use http::Uri;
 pub use http::uri::InvalidUri;
@@ -144,6 +151,108 @@ where
     services
         .into_iter()
         .map(|s| to_oprf_uri(s.as_ref(), &auth))
+        .collect()
+}
+
+/// Builds the delegate OPRF endpoint [`Url`].
+///
+/// Builds the URL for the delegate OPRF endpoint:
+/// - Normalizes trailing slashes
+/// - Appends `/api/{auth}/delegate`
+///
+/// # Arguments
+/// - `service`: Base URL of the service (e.g., `"https://example.com"`)
+/// - `auth`: Authentication module (e.g., `"issuer"`)
+///
+/// # Returns
+/// `Result<Url, url::ParseError>`
+///
+/// # Errors
+/// Returns `url::ParseError` when it is not possible to convert to [`Url`].
+///
+/// # Example
+/// ```
+/// # use url::Url;
+/// # use url::ParseError;
+/// # use taceo_oprf_client::to_delegate_oprf_url;
+/// let url = to_delegate_oprf_url("https://example.com", "issuer")?;
+/// assert_eq!(url.to_string(), "https://example.com/api/issuer/delegate");
+/// # Ok::<(), ParseError>(())
+/// ```
+pub fn to_delegate_oprf_url<Auth: fmt::Display>(
+    service: &str,
+    auth: Auth,
+) -> Result<Url, url::ParseError> {
+    // Remove trailing slash if any
+    let http_base = service.trim_end_matches('/');
+
+    let uri_str = format!("{http_base}/api/{auth}/delegate");
+    uri_str.parse::<Url>()
+}
+
+/// Builds the OPRF public-key info endpoint [`Url`].
+///
+/// Builds the URL for the endpoint exposing the [`OprfPublicKeyWithEpoch`].
+/// - Normalizes trailing slashes
+/// - Appends `/oprf_pub`
+///
+/// # Arguments
+/// - `service`: Base URL of the service (e.g., `"https://example.com"`)
+///
+/// # Returns
+/// `Result<Url, url::ParseError>`
+///
+/// # Errors
+/// Returns `url::ParseError` when it is not possible to convert to [`Url`].
+///
+/// # Example
+/// ```
+/// # use url::Url;
+/// # use url::ParseError;
+/// # use taceo_oprf_client::to_oprf_pub_key_url;
+/// let url = to_oprf_pub_key_url("https://example.com")?;
+/// assert_eq!(url.to_string(), "https://example.com/oprf_pub");
+/// # Ok::<(), ParseError>(())
+/// ```
+pub fn to_oprf_pub_key_url(service: &str) -> Result<Url, url::ParseError> {
+    // Remove trailing slash if any
+    let http_base = service.trim_end_matches('/');
+
+    let uri_str = format!("{http_base}/oprf_pub");
+    uri_str.parse::<Url>()
+}
+
+/// Builds the OPRF public-key info endpoint [`Url`]s for multiple services.
+///
+/// Calls [`to_oprf_pub_key_url`] for each service and collects the results. Returns the first encountered error if any service URL is invalid.
+///
+/// # Arguments
+/// - `services`: Iterable of service base URLs
+///
+/// # Returns
+/// `Result<Vec<Url>, url::ParseError>`
+///
+/// # Errors
+/// Returns `url::ParseError` when one of the service cannot be converted to URL.
+///
+/// # Example
+/// ```
+/// # use url::Url;
+/// # use url::ParseError;
+/// # use taceo_oprf_client::to_oprf_pub_key_url_many;
+/// let services = vec!["https://a.example.com", "https://b.example.com"];
+/// let urls = to_oprf_pub_key_url_many(services)?;
+/// assert_eq!(urls.len(), 2);
+/// # Ok::<(), ParseError>(())
+/// ```
+pub fn to_oprf_pub_key_url_many<S, I>(services: I) -> Result<Vec<Url>, url::ParseError>
+where
+    S: AsRef<str>,
+    I: IntoIterator<Item = S>,
+{
+    services
+        .into_iter()
+        .map(|s| to_oprf_pub_key_url(s.as_ref()))
         .collect()
 }
 
@@ -272,6 +381,20 @@ pub enum Error {
     /// Primarily included for forward compatibility and future-proofing.
     #[error("Unknown error: {0}")]
     Unknown(#[source] Box<dyn core::error::Error + Send + Sync + 'static>),
+    /// Represents a `reqwest` error when sending the request to the delegate service.
+    #[error(transparent)]
+    DelegateRequest(#[from] reqwest::Error),
+    /// Error that happened during the delegate request.
+    ///
+    /// If the nodes agreed on a [`ServiceError`] and returned it, the delegate service will forward that error to the client.
+    /// In that case, the client will return a [`Error::ThresholdServiceError`] instead.
+    #[error("Delegate service returned a error: status: {status}, reason: {reason}")]
+    DelegateServerError {
+        /// The HTTP status code returned by the delegate service.
+        status: reqwest::StatusCode,
+        /// The body of the response returned by the delegate service.
+        reason: String,
+    },
 }
 
 /// Aggregates errors returned by nodes.
@@ -421,20 +544,7 @@ pub async fn distributed_oprf<OprfRequestAuth>(
 where
     OprfRequestAuth: Clone + Serialize + 'static,
 {
-    tracing::trace!(
-        "starting distributed oprf. my version: {}",
-        env!("CARGO_PKG_VERSION")
-    );
-    if threshold == 0 || threshold > services.len() {
-        return Err(Error::InvalidThreshold {
-            num_peers: services.len(),
-            threshold,
-        });
-    }
-    let services_dedup = services.iter().collect::<HashSet<_>>();
-    if services_dedup.len() != services.len() {
-        return Err(Error::NonUniqueServices);
-    }
+    tracing::trace!("starting distributed oprf. my version: {}", VERSION);
 
     let request_id = Uuid::new_v4();
     let distributed_oprf_span = tracing::Span::current();
@@ -448,8 +558,193 @@ where
         auth,
     };
 
+    let (oprf_public_key, epoch, challenge, responses) =
+        distributed_oprf_core(services, threshold, oprf_req, connector).await?;
+
+    finalize_distributed_oprf(FinalizeDistributedOprfArgs {
+        request_id,
+        query,
+        blinding_factor,
+        domain_separator,
+        blinded_request,
+        challenge,
+        responses,
+        oprf_public_key,
+        epoch,
+    })
+}
+
+/// Executes the distributed OPRF protocol via a single delegate node over HTTP.
+///
+/// Instead of the client directly contacting every OPRF node and driving [`distributed_oprf_core`]
+/// itself, this function sends the (blinded) [`OprfRequest`] to a single delegate service. That
+/// delegate acts as the client of the distributed OPRF protocol on our behalf: it runs
+/// [`distributed_oprf_core`] against the OPRF nodes and forwards the combined result back to us
+/// as a [`DelegateOprfResponse`].
+///
+/// This function performs the following steps:
+/// 1. Blinds the input query using the provided blinding factor.
+/// 2. Sends the blinded query and authentication information to the delegate service via a single HTTP POST request.
+/// 3. Verifies the combined `DLog` equality proof from the services.
+/// 4. Unblinds the combined OPRF response using the blinding factor.
+/// 5. Computes the final OPRF output by hashing the original query and the unblinded response.
+///
+/// # Returns
+/// The final [`VerifiableOprfOutput`] containing the OPRF output, the `DLog` equality proof, and the blinded and unblinded responses.
+///
+/// # Arguments
+/// - `service`: URL of the delegate service that will run the distributed OPRF protocol on our behalf
+/// - `query`: The OPRF input value to evaluate
+/// - `blinding_factor`: The blinding factor used to blind the query
+/// - `domain_separator`: Domain separator used in the final Poseidon hash to derive the output
+/// - `auth`: Implementation specific authentication request forwarded to the delegate service as part of the request
+/// - `client`: The [`reqwest::Client`] used to send the request to the delegate service
+///
+/// # Timeout and Cancellation
+///
+/// This method does not implement any timeout policy. Callers are expected to
+/// enforce timeouts at a higher level (e.g., via `tokio::time::timeout`, by setting
+/// timeouts in `reqwest::Client` or equivalent mechanisms).
+///
+/// For more details on cancellation and side effects, see the documentation of [`distributed_oprf`].
+///
+/// # Errors
+/// See the [`Error`] enum for all potential errors of this function.
+#[instrument(level = "debug", skip_all, fields(request_id = tracing::field::Empty))]
+pub async fn delegate_distributed_oprf<OprfRequestAuth>(
+    service: &Url,
+    query: ark_babyjubjub::Fq,
+    blinding_factor: BlindingFactor,
+    domain_separator: ark_babyjubjub::Fq,
+    auth: OprfRequestAuth,
+    client: &reqwest::Client,
+) -> Result<VerifiableOprfOutput, Error>
+where
+    OprfRequestAuth: Clone + Serialize + 'static,
+{
+    tracing::trace!("starting distributed oprf. my version: {}", VERSION);
+
+    let request_id = Uuid::new_v4();
+    let distributed_oprf_span = tracing::Span::current();
+    distributed_oprf_span.record("request_id", request_id.to_string());
+    tracing::debug!("starting with request id: {request_id}");
+
+    let blinded_request = oprf_core::oprf::client::blind_query(query, blinding_factor);
+    let oprf_req = OprfRequest {
+        request_id,
+        blinded_query: blinded_request.blinded_query(),
+        auth,
+    };
+
+    // add client version to query params so the delegate service can check for compatibility
+    let mut service = service.clone();
+    service.query_pairs_mut().append_pair("version", VERSION);
+
+    let response = client.post(service).json(&oprf_req).send().await?;
+    let status = response.status();
+    tracing::debug!("delegate service returned status: {status}");
+
+    let response = if status.is_success() {
+        response.json::<DelegateOprfResponse>().await?
+    } else {
+        let body = response.text().await?;
+
+        // If the delegate service returned a `ServiceError` (with a code), we wrap it in a `ThresholdServiceError`.
+        // If the nodes disagreed on an error, or if a unexpected (e.g. Networking) error occurred, the delegate service will return a generic error. We wrap that in a `DelegateServerError`.
+        if let Ok(error_code) = body.parse::<u16>() {
+            return Err(Error::ThresholdServiceError(ServiceError {
+                error_code,
+                msg: None,
+                kind: error_code.into(),
+            }));
+        }
+
+        return Err(Error::DelegateServerError {
+            status,
+            reason: body,
+        });
+    };
+
+    finalize_distributed_oprf(FinalizeDistributedOprfArgs {
+        request_id,
+        query,
+        blinding_factor,
+        domain_separator,
+        blinded_request,
+        challenge: response.challenge,
+        responses: response.responses,
+        oprf_public_key: response.oprf_pub_key_with_epoch.key,
+        epoch: response.oprf_pub_key_with_epoch.epoch,
+    })
+}
+
+/// Executes the core, network-facing part of the distributed OPRF protocol against a set of nodes.
+///
+/// This is the lower-level building block used by [`distributed_oprf`] and by [`delegate_distributed_oprf`]'s
+/// delegate node. Unlike [`distributed_oprf`], it does not blind the query itself (the caller supplies
+/// an already-built [`OprfRequest`]) and it does not unblind the response or derive the final OPRF
+/// output; it stops right after the combined `DLog` equality proof has been verified.
+///
+/// Concretely, this function:
+/// 1. Initializes sessions with the specified OPRF services, sending the blinded query and authentication information.
+/// 2. Checks that all responding nodes agree on the same [`OprfPublicKey`].
+/// 3. Generates the `DLog` equality challenge based on the commitments received from the services.
+/// 4. Finishes the sessions by sending the challenge to the services and collecting their responses.
+/// 5. Combines and verifies the `DLog` equality proof from the services.
+///
+/// # Returns
+/// A tuple of the [`OprfPublicKey`] used, the [`ShareEpoch`] the nodes agreed on, the combined [`BlindedOprfResponse`], and the verified [`DLogEqualityProof`].
+///
+/// # Arguments
+/// - `services`: List of WebSocket URIs of the OPRF nodes to contact (must be unique). See the helper functions [`to_oprf_uri`] and [`to_oprf_uri_many`].
+/// - `threshold`: Number of nodes required to complete the protocol
+/// - `request_id`: The UUID identifying this OPRF request, forwarded to all nodes
+/// - `req`: The already-blinded [`OprfRequest`] to send to every node
+/// - `connector`: TLS connector configuration for the WebSocket connections
+///
+/// # Timeout and Cancellation
+/// Same considerations as [`distributed_oprf`] apply: no timeout is enforced internally, and dropping
+/// the returned future drops all in-flight requests, but work already processed by a node cannot be undone.
+///
+/// # Errors
+/// See the [`Error`] enum for all potential errors of this function.
+#[instrument(level = "debug", skip_all, fields(request_id = %req.request_id))]
+#[allow(
+    clippy::missing_panics_doc,
+    reason = "Can't really panic due to promises from called method"
+)]
+pub async fn distributed_oprf_core<OprfRequestAuth>(
+    services: &[Uri],
+    threshold: usize,
+    req: OprfRequest<OprfRequestAuth>,
+    connector: Connector,
+) -> Result<
+    (
+        OprfPublicKey,
+        ShareEpoch,
+        DLogCommitmentsShamir,
+        Vec<DLogProofShareShamir>,
+    ),
+    Error,
+>
+where
+    OprfRequestAuth: Clone + Serialize + 'static,
+{
+    if threshold == 0 || threshold > services.len() {
+        return Err(Error::InvalidThreshold {
+            num_peers: services.len(),
+            threshold,
+        });
+    }
+    let services_dedup = services.iter().collect::<HashSet<_>>();
+    if services_dedup.len() != services.len() {
+        return Err(Error::NonUniqueServices);
+    }
+
+    let request_id = req.request_id;
+
     tracing::debug!("initializing sessions at {} services", services.len());
-    let sessions = sessions::init_sessions(request_id, services, threshold, oprf_req, connector)
+    let sessions = sessions::init_sessions(request_id, services, threshold, req, connector)
         .await
         .map_err(|errors| aggregate_error(threshold, errors))?;
 
@@ -477,6 +772,62 @@ where
         .await
         .map_err(Error::CannotFinishSession)?;
 
+    Ok((oprf_public_key, epoch, challenge, responses))
+}
+
+/// Arguments required to finalize the distributed OPRF protocol after the network-facing part has completed.
+pub struct FinalizeDistributedOprfArgs {
+    /// The UUID identifying this OPRF request.
+    pub request_id: Uuid,
+    /// The OPRF input value to evaluate.
+    pub query: ark_babyjubjub::Fq,
+    /// The blinding factor used to blind the query.
+    pub blinding_factor: BlindingFactor,
+    /// Domain separator used in the final Poseidon hash to derive the output.
+    pub domain_separator: ark_babyjubjub::Fq,
+    /// The blinded query sent to the OPRF nodes.
+    pub blinded_request: BlindedOprfRequest,
+    /// The combined `DLog` commitments used to generate the challenge.
+    pub challenge: DLogCommitmentsShamir,
+    /// The proof shares collected from each node.
+    pub responses: Vec<DLogProofShareShamir>,
+    /// The public key of the OPRF, must be consistent across all nodes.
+    pub oprf_public_key: OprfPublicKey,
+    /// The `ShareEpoch` the nodes agreed on.
+    pub epoch: ShareEpoch,
+}
+
+/// Finalizes the distributed OPRF protocol after the network-facing part has completed.
+///
+/// Unblinds the combined blinded response using the blinding factor, verifies the combined
+/// `DLog` equality proof against the collected proof shares, and derives the final OPRF output
+/// by hashing the domain separator, the original query, and the unblinded response.
+///
+/// # Returns
+/// The final [`VerifiableOprfOutput`] containing the OPRF output, the `DLog` equality proof, and the blinded and unblinded responses.
+///
+/// # Arguments
+/// - `args`: The [`FinalizeDistributedOprfArgs`] collected from the network-facing part of the protocol.
+///
+/// # Errors
+/// Returns [`Error::InvalidDLogProof`] if the combined `DLog` equality proof fails verification.
+pub fn finalize_distributed_oprf(
+    FinalizeDistributedOprfArgs {
+        request_id,
+        query,
+        blinding_factor,
+        domain_separator,
+        blinded_request,
+        challenge,
+        responses,
+        oprf_public_key,
+        epoch,
+    }: FinalizeDistributedOprfArgs,
+) -> Result<VerifiableOprfOutput, Error> {
+    let blinding_factor_prepared = blinding_factor.prepare();
+    let blinded_response = BlindedOprfResponse::new(challenge.blinded_response());
+    let unblinded_response = blinded_response.unblind_response(&blinding_factor_prepared);
+
     let dlog_proof = verify_dlog_equality(
         request_id,
         oprf_public_key,
@@ -484,11 +835,6 @@ where
         &responses,
         challenge.clone(),
     )?;
-
-    let blinded_response = challenge.blinded_response();
-    let blinding_factor_prepared = blinding_factor.prepare();
-    let oprf_blinded_response = BlindedOprfResponse::new(blinded_response);
-    let unblinded_response = oprf_blinded_response.unblind_response(&blinding_factor_prepared);
 
     let digest = poseidon2::bn254::t4::permutation(&[
         domain_separator,
@@ -502,7 +848,7 @@ where
     Ok(VerifiableOprfOutput {
         output,
         blinded_request: blinded_request.blinded_query(),
-        blinded_response,
+        blinded_response: blinded_response.response(),
         dlog_proof,
         unblinded_response,
         oprf_public_key,
@@ -559,6 +905,108 @@ pub fn generate_challenge_request(sessions: &OprfSessions) -> DLogCommitmentsSha
         .collect::<Vec<_>>();
     // Combine commitments from all sessions and create a single challenge
     DLogCommitmentsShamir::combine_commitments(&sessions.commitments, contributing_parties)
+}
+
+/// Fetches the [`OprfPublicKeyWithEpoch`] for the given [`OprfKeyId`] from a single service.
+async fn fetch_oprf_public_key_from_service(
+    url: &Url,
+    oprf_key_id: OprfKeyId,
+    client: &reqwest::Client,
+) -> Result<Option<OprfPublicKeyWithEpoch>, reqwest::Error> {
+    // Get rid of existing trailing slash, if any, and append a trailing slash to the path segments.
+    let mut url = url.clone();
+    url.path_segments_mut()
+        .expect("url should not be cannot-be-a-base")
+        .pop_if_empty()
+        .push("");
+
+    let response = client
+        .get(
+            url.join(oprf_key_id.to_string().as_str())
+                .expect("OprfKeyId to_string() should produce a valid URL"),
+        )
+        .send()
+        .await?;
+
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+
+    let response = response.error_for_status()?;
+
+    Ok(Some(response.json::<OprfPublicKeyWithEpoch>().await?))
+}
+
+/// Fetches the [`OprfPublicKeyWithEpoch`] for a given [`OprfKeyId`] from a set of OPRF nodes,
+/// returning it if `threshold` many nodes agree on the same value.
+/// If `threshold` many nodes return `404 Not Found`, returns `Ok(None)`.
+///
+/// Nodes are queried concurrently via `GET {service}/oprf_pub/{key_id}` (see [`to_oprf_pub_key_url`]).
+///
+/// # Arguments
+/// - `services`: Base URLs (up to `/oprf_pub`) of the OPRF nodes to query (must be unique)
+/// - `threshold`: Number of nodes required to agree on the same [`OprfPublicKeyWithEpoch`]
+/// - `key_id`: The [`OprfKeyId`] to fetch the public key for
+/// - `client`: The [`reqwest::Client`] used to send the requests
+///
+/// # Errors
+/// - [`Error::InvalidThreshold`] if `threshold` is `0` or greater than `services.len()`.
+/// - [`Error::NonUniqueServices`] if `services` contains duplicate URLs.
+/// - [`Error::Networking`] if `threshold` many nodes could not be reached, or returned an unexpected response.
+/// - [`Error::InconsistentOprfPublicKeys`] if no single response reached `threshold` agreement.
+#[instrument(level = "debug", skip(client))]
+pub async fn fetch_oprf_public_key(
+    urls: &[Url],
+    threshold: usize,
+    key_id: OprfKeyId,
+    client: &reqwest::Client,
+) -> Result<Option<OprfPublicKeyWithEpoch>, Error> {
+    if threshold == 0 || threshold > urls.len() {
+        return Err(Error::InvalidThreshold {
+            num_peers: urls.len(),
+            threshold,
+        });
+    }
+
+    let urls_dedup = urls.iter().collect::<HashSet<_>>();
+    if urls_dedup.len() != urls.len() {
+        return Err(Error::NonUniqueServices);
+    }
+
+    let mut futures: FuturesUnordered<_> = urls
+        .iter()
+        .map(|url| fetch_oprf_public_key_from_service(url, key_id, client))
+        .collect();
+
+    let mut agreement: HashMap<OprfPublicKeyWithEpoch, usize> = HashMap::new();
+    let mut not_found_count = 0usize;
+    let mut network_errors = Vec::new();
+
+    while let Some(result) = futures.next().await {
+        match result {
+            Ok(Some(response)) => {
+                let count = agreement.entry(response.clone()).or_insert(0);
+                *count += 1;
+                if *count >= threshold {
+                    return Ok(Some(response));
+                }
+            }
+            Ok(None) => {
+                not_found_count += 1;
+                if not_found_count >= threshold {
+                    return Ok(None);
+                }
+            }
+            Err(err) => {
+                network_errors.push(Box::new(err).into());
+                if network_errors.len() >= threshold {
+                    return Err(Error::Networking(network_errors));
+                }
+            }
+        }
+    }
+
+    Err(Error::InconsistentOprfPublicKeys)
 }
 
 #[cfg(test)]
