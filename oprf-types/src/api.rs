@@ -10,7 +10,9 @@ use std::{borrow::Cow, fmt, sync::Arc};
 
 use async_trait::async_trait;
 use http::HeaderName;
-use oprf_core::ddlog_equality::shamir::PartialDLogCommitmentsShamir;
+use oprf_core::ddlog_equality::shamir::{
+    DLogCommitmentsShamir, DLogProofShareShamir, PartialDLogCommitmentsShamir,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -42,7 +44,7 @@ macro_rules! close_frame_message {
 }
 
 /// The [`OprfPublicKey`] with its latest [`ShareEpoch`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct OprfPublicKeyWithEpoch {
     /// The key
     pub key: OprfPublicKey,
@@ -220,6 +222,17 @@ pub struct OprfResponse {
     pub commitments: PartialDLogCommitmentsShamir,
     /// The party ID of the node
     pub party_id: PartyId,
+    /// The [`OprfPublicKeyWithEpoch`].
+    pub oprf_pub_key_with_epoch: OprfPublicKeyWithEpoch,
+}
+
+/// Server response to a delegate [`OprfRequest`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DelegateOprfResponse {
+    /// The `DLog` equality challenge based on the commitments received from the services.
+    pub challenge: DLogCommitmentsShamir,
+    /// The `DLog` equality proof shares received from the services.
+    pub responses: Vec<DLogProofShareShamir>,
     /// The [`OprfPublicKeyWithEpoch`].
     pub oprf_pub_key_with_epoch: OprfPublicKeyWithEpoch,
 }
