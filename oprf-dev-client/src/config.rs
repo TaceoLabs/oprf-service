@@ -33,10 +33,20 @@ pub struct ReshareTest {
     pub acceptance_num: usize,
 }
 
+#[derive(Clone, Parser, Debug)]
+pub struct DelegateTestCommand {
+    /// The URL of the delegate service used for `DelegateTest`.
+    ///
+    /// Defaults to the first of `nodes` if not set.
+    #[clap(long, env = "OPRF_DEV_CLIENT_DELEGATE_SERVICE")]
+    pub delegate_service: Option<String>,
+}
+
 #[derive(Clone, Debug, Subcommand)]
 pub enum Command {
     Test,
     DeleteTest,
+    DelegateTest(DelegateTestCommand),
     StressTestOprf(StressTestOprfCommand),
     StressTestKeyGen(StressTestKeyGenCommand),
     ReshareTest(ReshareTest),

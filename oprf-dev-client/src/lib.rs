@@ -51,6 +51,14 @@ pub trait DevClient: Send + Sync + 'static {
         connector: Connector,
     ) -> eyre::Result<ShareEpoch>;
 
+    async fn run_delegate_oprf(
+        &self,
+        config: &DevClientConfig,
+        setup: Self::Setup,
+        delegate_service: Option<String>,
+        client: &reqwest::Client,
+    ) -> eyre::Result<ShareEpoch>;
+
     async fn prepare_stress_test_item<R: Rng + CryptoRng + Send>(
         &self,
         setup: &Self::Setup,
@@ -306,6 +314,19 @@ async fn stress_test_key_gen(
     Ok(())
 }
 
+async fn delegate_test<T: DevClient>(
+    dev_client: T,
+    config: DevClientConfig,
+    cmd: DelegateTestCommand,
+    setup: T::Setup,
+) -> eyre::Result<()> {
+    let client = reqwest::Client::new();
+    dev_client
+        .run_delegate_oprf(&config, setup, cmd.delegate_service, &client)
+        .await?;
+    Ok(())
+}
+
 async fn stress_test<T: DevClient>(
     dev_client: T,
     config: DevClientConfig,
@@ -505,6 +526,14 @@ pub async fn run<T: DevClient>(config: DevClientConfig, dev_client: T) -> eyre::
             tracing::info!("running delete-test");
             delete_test(config, provider).await?;
             tracing::info!("oprf delete test successful");
+        }
+        Command::DelegateTest(cmd) => {
+            tracing::info!("running delegate-test");
+            let setup = dev_client
+                .setup_oprf_test(&config, provider.clone())
+                .await?;
+            delegate_test(dev_client, config, cmd, setup).await?;
+            tracing::info!("oprf delegate test successful");
         }
         Command::StressTestOprf(cmd) => {
             tracing::info!("running oprf stress-test");

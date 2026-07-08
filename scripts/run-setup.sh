@@ -49,6 +49,7 @@ main() {
         ./target/release/examples/dev-client-example stress-test-oprf
         ./target/release/examples/dev-client-example stress-test-key-gen
         ./target/release/examples/dev-client-example delete-test
+        ./target/release/examples/dev-client-example delegate-test
         log "Dev-client tests completed successfully"
     else
         log "No dev-client tests requested, entering sleep mode. Press Ctrl+C to stop"

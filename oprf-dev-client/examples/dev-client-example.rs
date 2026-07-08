@@ -1,7 +1,7 @@
 use alloy::{primitives::U160, providers::DynProvider};
 use ark_ff::{PrimeField as _, UniformRand as _};
 use clap::Parser;
-use eyre::Context;
+use eyre::{Context, ContextCompat};
 use oprf_client::Connector;
 use oprf_core::oprf::BlindingFactor;
 use oprf_types::{
@@ -113,6 +113,52 @@ impl DevClient for ExampleDevClient {
             connector,
         )
         .await?;
+
+        Ok(verifiable_oprf_output.epoch)
+    }
+
+    async fn run_delegate_oprf(
+        &self,
+        config: &DevClientConfig,
+        setup: Self::Setup,
+        delegate_service: Option<String>,
+        client: &reqwest::Client,
+    ) -> eyre::Result<ShareEpoch> {
+        let mut rng = rand_chacha::ChaCha12Rng::from_entropy();
+
+        let query = ark_babyjubjub::Fq::rand(&mut rng);
+        let blinding_factor = BlindingFactor::rand(&mut rng);
+        let domain_separator = ark_babyjubjub::Fq::from_be_bytes_mod_order(b"OPRF");
+        let auth = ExampleOprfRequestAuth(setup.oprf_key_id);
+        let node_urls = oprf_client::to_oprf_pub_key_url_many(&config.nodes)?;
+        let should_key = oprf_client::fetch_oprf_public_key(
+            &node_urls,
+            config.threshold,
+            setup.oprf_key_id,
+            client,
+        )
+        .await?
+        .context("while fetching OPRF public key from nodes")?;
+
+        let delegate_service = delegate_service
+            .as_deref()
+            .unwrap_or(config.nodes[0].as_str());
+        let url = oprf_client::to_delegate_oprf_url(delegate_service, EXAMPLE_MODULE)?;
+
+        let verifiable_oprf_output = oprf_client::delegate_distributed_oprf(
+            &url,
+            query,
+            blinding_factor,
+            domain_separator,
+            auth,
+            client,
+        )
+        .await?;
+
+        eyre::ensure!(
+            verifiable_oprf_output.oprf_public_key == should_key.key,
+            "Delegate service returned a different OPRF public key than the one fetched from the nodes"
+        );
 
         Ok(verifiable_oprf_output.epoch)
     }
