@@ -38,7 +38,7 @@ jobs:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: foundry-rs/foundry-toolchain@v1.8.0
       - run: cd contracts && forge install && forge build
       - name: Rustfmt
         run: cargo fmt --all -- --check
@@ -62,7 +62,7 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@v2
-      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: foundry-rs/foundry-toolchain@v1.8.0
       - run: cd contracts && forge install && forge build
       - name: Unit & Integration Tests
         run: cargo test --workspace --profile ci-dev --all-features
@@ -80,7 +80,7 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@v2
-      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: foundry-rs/foundry-toolchain@v1.8.0
       - run: cd contracts && forge install && forge build
       - name: E2E test
         run: bash scripts/run-setup.sh e2e-test
@@ -98,7 +98,7 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@v2
-      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: foundry-rs/foundry-toolchain@v1.8.0
       - name: Install sqlx-cli
         run: cargo install sqlx-cli --locked --no-default-features --features postgres
       - run: cd contracts && forge install && forge build
