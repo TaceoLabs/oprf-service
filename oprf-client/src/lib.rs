@@ -577,9 +577,9 @@ where
 /// Executes the distributed OPRF protocol via a single delegate node over HTTP.
 ///
 /// Instead of the client directly contacting every OPRF node and driving [`distributed_oprf_core`]
-/// itself, this function sends the (blinded) [`OprfRequest`] to a single delegate service. That
-/// delegate acts as the client of the distributed OPRF protocol on our behalf: it runs
-/// [`distributed_oprf_core`] against the OPRF nodes and forwards the combined result back to us
+/// itself, this function sends the (blinded) [`OprfRequest`] to a single delegate service (proxy). That
+/// proxy acts as the client of the distributed OPRF protocol on the client's behalf: it runs
+/// [`distributed_oprf_core`] against the OPRF nodes and forwards the combined result back to the client
 /// as a [`DelegateOprfResponse`].
 ///
 /// This function performs the following steps:
@@ -588,6 +588,15 @@ where
 /// 3. Verifies the combined `DLog` equality proof from the services.
 /// 4. Unblinds the combined OPRF response using the blinding factor.
 /// 5. Computes the final OPRF output by hashing the original query and the unblinded response.
+///
+/// # Security Considerations
+/// The proxy learns the same information as the nodes: the blinded query and authentication material.
+/// If the proxy is untrusted a client should verify its returned public key against a trusted source - either by
+/// fetching it directly from the contract or querying threshold-many nodes (see [`fetch_oprf_public_key`]).
+///
+/// If the public key does not match, a client _MUST_ abort the request. Generally, a diligent client should always verify the
+/// created upstream proof with the expected public inputs. This ensures a malicious proxy cannot
+/// produce an incorrect result undetected.
 ///
 /// # Returns
 /// The final [`VerifiableOprfOutput`] containing the OPRF output, the `DLog` equality proof, and the blinded and unblinded responses.
