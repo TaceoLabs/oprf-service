@@ -72,7 +72,7 @@ async fn delete_row(oprf_key_id: OprfKeyId, connection: &mut PgConnection) -> ey
     .bind(oprf_key_id.to_le_bytes())
     .execute(connection)
     .await?;
-    assert!(success.rows_affected() == 1);
+    assert_eq!(success.rows_affected(), 1);
     Ok(())
 }
 
