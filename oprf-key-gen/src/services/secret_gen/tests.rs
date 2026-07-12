@@ -76,25 +76,25 @@ async fn test_secret_gen() -> eyre::Result<()> {
         .bbf_num_2_bits_helper()
         .build_from_bytes(&key_gen_zkey, &graph)?;
 
-    let connection_string = oprf_test_utils::shared_postgres_testcontainer().await?;
+    let connection_string = nodes_common::test_utils::shared_postgres_testcontainer().await?;
     let secret_manager0 = Arc::new(
         postgres::tests::postgres_secret_manager_with_schema(
             connection_string,
-            oprf_test_utils::next_test_schema(),
+            nodes_common::test_utils::next_test_schema(),
         )
         .await?,
     );
     let secret_manager1 = Arc::new(
         postgres::tests::postgres_secret_manager_with_schema(
             connection_string,
-            oprf_test_utils::next_test_schema(),
+            nodes_common::test_utils::next_test_schema(),
         )
         .await?,
     );
     let secret_manager2 = Arc::new(
         postgres::tests::postgres_secret_manager_with_schema(
             connection_string,
-            oprf_test_utils::next_test_schema(),
+            nodes_common::test_utils::next_test_schema(),
         )
         .await?,
     );

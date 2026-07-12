@@ -30,15 +30,18 @@ ark-babyjubjub = { workspace = true }
 ark-bn254 = { workspace = true, optional = true }
 ark-ec.workspace = true
 ark-ff.workspace = true
+ark-serialize.workspace = true
 askama = { version = "0.16", optional = true }
+axum-test.workspace = true
 clap = { workspace = true, features = ["derive", "env"], optional = true }
 eyre.workspace = true
 futures = { workspace = true }
 groth16-material = { workspace = true, optional = true }
 groth16-sol = { workspace = true, optional = true }
 itertools.workspace = true
-nodes-common = { workspace = true, features = ["postgres"], optional = true }
+nodes-common = { workspace = true, features = ["postgres", "test-utils"], optional = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
+oprf-key-gen = { package = "taceo-oprf-key-gen", path = "../oprf-key-gen/", version = "0.12" }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.15", features = [
   "chain",
   "service",

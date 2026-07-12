@@ -3,14 +3,12 @@ use std::time::Duration;
 
 use alloy::{primitives::U160, sol_types::SolEvent};
 use eyre::Context as _;
-use oprf_test_utils::TEST_TIMEOUT;
-use oprf_test_utils::{DeploySetup, MineStrategy, OPRF_PEER_ADDRESS_0, TestSetup};
+use oprf_key_gen::event_cursor_store::ChainCursorStorage as _;
 use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
-
-use crate::event_cursor_store::ChainCursorStorage;
-use crate::tests::setup::{TestKeyGen, keygen_asserts};
-
-mod setup;
+use taceo_oprf_test_utils::{
+    DeploySetup, MineStrategy, OPRF_PEER_ADDRESS_0, TEST_TIMEOUT, TestSetup,
+    key_gen_setup::{TestKeyGen, keygen_asserts},
+};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_delete_oprf_key() -> eyre::Result<()> {
@@ -258,7 +256,8 @@ async fn test_version() -> eyre::Result<()> {
     let key_gen = TestKeyGen::start(0, &setup).await?;
     let result = key_gen.server.get("/version").expect_success().await;
     result.assert_status_ok();
-    result.assert_text(nodes_common::version_info!());
+    let is_text = result.text();
+    assert!(is_text.starts_with("taceo-oprf-key-gen"));
     Ok(())
 }
 

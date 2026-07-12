@@ -1,8 +1,21 @@
-use std::{num::NonZeroU16, str::FromStr, sync::Arc, time::Duration};
+use std::{num::NonZeroU16, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
+use alloy::{
+    primitives::{Address, Bytes, U160, U256},
+    providers::mock::Asserter,
+    sol_types::{SolCall as _, SolError},
+};
 use ark_ff::UniformRand as _;
-use nodes_common::postgres::PostgresConfig;
-use secrecy::SecretString;
+use groth16_material::circom::{CircomGroth16Material, CircomGroth16MaterialBuilder};
+use nodes_common::{postgres::PostgresConfig, web3::HttpRpcProvider};
+use oprf_core::ddlog_equality::shamir::DLogShareShamir;
+use oprf_types::{
+    OprfKeyId, ShareEpoch,
+    chain::{BabyJubJub, OprfKeyRegistry, RevertError, Verifier, Verifier::VerifierErrors},
+    crypto::OprfPublicKey,
+};
+use rand::{CryptoRng, Rng};
+use sqlx::PgPool;
 
 use crate::{
     postgres::{PostgresDb, to_db_ark_serialize_uncompressed},
@@ -13,48 +26,37 @@ use crate::{
         transaction_handler::{TransactionHandler, TransactionHandlerArgs},
     },
 };
-use alloy::{network::EthereumWallet, primitives::U160, signers::local::PrivateKeySigner};
-use groth16_material::circom::{CircomGroth16Material, CircomGroth16MaterialBuilder};
-use nodes_common::{Environment, web3::HttpRpcProviderBuilder};
-use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_test_utils::{DeploySetup, OPRF_PEER_PRIVATE_KEY_0, PEER_ADDRESSES, TestSetup};
-use oprf_types::{
-    OprfKeyId, ShareEpoch,
-    chain::{OprfKeyRegistry, RevertError, Verifier::VerifierErrors},
-    crypto::OprfPublicKey,
-};
-use rand::{CryptoRng, Rng};
-use sqlx::PgPool;
 
 use super::events::KeyRegistryEvent;
 
-// Key IDs that trigger special behaviour in TestOprfKeyRegistry:
-//   43 → loadPeerPublicKeysForProducers returns hardcoded EPKs; addRound2Contribution runs the
-//        verifier with all-zero public inputs so any real proof yields ProofInvalid.
-//   44 → loadPeerPublicKeysForProducers reverts with WrongRound, exercising the consumer path.
-const INVALID_PROOF_KEY: u32 = 43;
-const WRONG_ROUND_LOAD_PEER_PUBLIC_KEYS: u32 = 44;
+const CONTRACT_ADDRESS: Address = Address::repeat_byte(0x42);
+const WALLET_ADDRESS: Address = Address::repeat_byte(0x24);
 
 struct HandlerFixture {
     handler: KeyRegistryEventHandler,
     secret_manager: Arc<PostgresDb>,
     secret_gen: DLogSecretGenService,
     pool: PgPool,
+    asserter: Asserter,
 }
 
-fn key_gen_material(deploy_setup: DeploySetup) -> CircomGroth16Material {
+fn key_gen_material() -> CircomGroth16Material {
+    let artifacts = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../artifacts");
     CircomGroth16MaterialBuilder::new()
         .bbf_inv()
         .bbf_num_2_bits_helper()
-        .build_from_paths(deploy_setup.key_gen_path(), deploy_setup.witness_path())
+        .build_from_paths(
+            artifacts.join("OPRFKeyGen.13.arks.zkey"),
+            artifacts.join("OPRFKeyGenGraph.13.bin"),
+        )
         .expect("Can build key_gen_material")
 }
 
-async fn fixture(setup: &TestSetup) -> eyre::Result<HandlerFixture> {
-    let connection_string = oprf_test_utils::shared_postgres_testcontainer().await?;
-    let schema = oprf_test_utils::next_test_schema();
+async fn fixture() -> eyre::Result<HandlerFixture> {
+    let connection_string = nodes_common::test_utils::shared_postgres_testcontainer().await?;
+    let schema = nodes_common::test_utils::next_test_schema();
     let postgres_config = PostgresConfig::with_default_values(
-        SecretString::from(connection_string.to_owned()),
+        secrecy::SecretString::from(connection_string.to_owned()),
         schema,
     );
     let pool = nodes_common::postgres::pg_pool_with_schema(
@@ -66,17 +68,10 @@ async fn fixture(setup: &TestSetup) -> eyre::Result<HandlerFixture> {
     let secret_manager = Arc::new(postgres_db);
 
     let sm_service: crate::secret_manager::SecretManagerService = secret_manager.clone();
-    let secret_gen = DLogSecretGenService::init(key_gen_material(setup.setup), sm_service);
+    let secret_gen = DLogSecretGenService::init(key_gen_material(), sm_service);
 
-    let rpc_provider = HttpRpcProviderBuilder::with_default_values([setup.anvil.endpoint_url()])
-        .expect("Can build provider")
-        .environment(Environment::Dev)
-        .chain_id(31_337)
-        .wallet(EthereumWallet::new(
-            PrivateKeySigner::from_str(OPRF_PEER_PRIVATE_KEY_0).expect("works"),
-        ))
-        .build()
-        .expect("can build RPC providers");
+    let asserter = Asserter::new();
+    let rpc_provider = HttpRpcProvider::with_mock_asserter(asserter.clone());
 
     let transaction_handler = TransactionHandler::new(TransactionHandlerArgs {
         max_wait_time_watch_transaction: Duration::from_secs(10),
@@ -84,12 +79,13 @@ async fn fixture(setup: &TestSetup) -> eyre::Result<HandlerFixture> {
         sleep_between_get_receipt: Duration::from_millis(500),
         max_tries_fetching_receipt: 5,
         max_gas_per_transaction: 10_000_000,
-        rpc_provider,
-        wallet_address: PEER_ADDRESSES[0],
-        contract_address: setup.oprf_key_registry,
+        rpc_provider: rpc_provider.clone(),
+        wallet_address: WALLET_ADDRESS,
+        contract_address: CONTRACT_ADDRESS,
     });
 
-    let contract = OprfKeyRegistry::new(setup.oprf_key_registry, setup.provider.clone());
+    // Handler view-call contract shares the same asserter-backed provider.
+    let contract = OprfKeyRegistry::new(CONTRACT_ADDRESS, rpc_provider.inner());
     let threshold = NonZeroU16::new(2).expect("2 is non-zero");
     let handler =
         KeyRegistryEventHandler::new(contract, secret_gen.clone(), threshold, transaction_handler);
@@ -99,6 +95,7 @@ async fn fixture(setup: &TestSetup) -> eyre::Result<HandlerFixture> {
         secret_manager,
         secret_gen,
         pool,
+        asserter,
     })
 }
 
@@ -126,18 +123,58 @@ fn random_share() -> DLogShareShamir {
     DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>())
 }
 
+/// Queue a successful `loadPeerPublicKeysForProducers` `eth_call` response containing
+/// three valid `BabyJubJub` points (copied from the former TestOprfKeyRegistry.sol fixture).
+fn push_producer_public_keys(asserter: &Asserter) {
+    let point = |x: &str, y: &str| BabyJubJub::Affine {
+        x: U256::from_str(x).expect("valid decimal"),
+        y: U256::from_str(y).expect("valid decimal"),
+    };
+    let keys = vec![
+        point(
+            "12821603125475748520011037468870418930812538699668722876863355416717947078760",
+            "17067928114558614218231702459319414114121381971449529647004646393893219524072",
+        ),
+        point(
+            "1688152706970503579483116674764161908712002477111907598715160302455660303671",
+            "20413269805955861205216587925478893435677791255572561712193586073128762510903",
+        ),
+        point(
+            "181606117961119882406004099351368673462695832980672617028988734026223981902",
+            "16711318399047418081809052707903382106816693867662676821566699591386252462603",
+        ),
+    ];
+    let encoded = OprfKeyRegistry::loadPeerPublicKeysForProducersCall::abi_encode_returns(&keys);
+    asserter.push_success(&Bytes::from(encoded));
+}
+
+/// Queue an `eth_call` revert whose data is the ABI-encoded custom error, so the
+/// existing decoders (`as_decoded_error` in handler.rs, `From<alloy::contract::Error>`
+/// in `key_event_watcher.rs`) can identify it.
+fn push_revert<E: SolError>(asserter: &Asserter, error: &E) {
+    let data = alloy::hex::encode_prefixed(error.abi_encode());
+    let payload = alloy::rpc::json_rpc::ErrorPayload {
+        code: 3,
+        message: "execution reverted".into(),
+        data: Some(serde_json::value::to_raw_value(&data).expect("valid json")),
+    };
+    asserter.push_failure(payload);
+}
+
 #[tokio::test]
 async fn test_round2_invalid_proof() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let fx = fixture(&setup).await?;
-    let key_id = OprfKeyId::from(U160::from(INVALID_PROOF_KEY));
+    let fx = fixture().await?;
+    let key_id = OprfKeyId::from(U160::from(43u32));
     let epoch = ShareEpoch::default();
 
-    // Generate local intermediates (TestOprfKeyRegistry returns hardcoded EPKs for key 43,
-    // so producer_round2 will produce a proof whose public inputs mismatch on-chain → ProofInvalid).
     fx.secret_gen
         .key_gen_round1(key_id, epoch, NonZeroU16::new(2).expect("non-zero"))
         .await?;
+
+    // eth_call #1: fetch_producer_public_keys returns 3 EPKs -> producer path.
+    push_producer_public_keys(&fx.asserter);
+    // eth_call #2: TransactionHandler::simulate_transaction pre-flight reverts ProofInvalid.
+    push_revert(&fx.asserter, &Verifier::ProofInvalid {});
 
     let error = fx
         .handler
@@ -157,16 +194,17 @@ async fn test_round2_invalid_proof() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_round2_consumer_path_when_contract_in_wrong_round() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let fx = fixture(&setup).await?;
-    let key_id = OprfKeyId::from(U160::from(WRONG_ROUND_LOAD_PEER_PUBLIC_KEYS));
+    let fx = fixture().await?;
+    let key_id = OprfKeyId::from(U160::from(44u32));
     let epoch = ShareEpoch::default();
 
     fx.secret_gen
         .key_gen_round1(key_id, epoch, NonZeroU16::new(2).expect("non-zero"))
         .await?;
 
-    // TestOprfKeyRegistry reverts with WrongRound for key 44; handler takes the consumer path → Ok(()).
+    // eth_call #1: fetch_producer_public_keys reverts WrongRound -> consumer path -> Ok(()).
+    push_revert(&fx.asserter, &OprfKeyRegistry::WrongRound(3));
+
     fx.handler
         .handle(
             KeyRegistryEvent::Round2 { key_id, epoch },
@@ -190,8 +228,7 @@ async fn test_round2_consumer_path_when_contract_in_wrong_round() -> eyre::Resul
 
 #[tokio::test]
 async fn test_delete() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let fx = fixture(&setup).await?;
+    let fx = fixture().await?;
     let key_id = OprfKeyId::new(U160::from(42u32));
     let confirmed_epoch = ShareEpoch::default();
     let pending_epoch = confirmed_epoch.next();
@@ -244,8 +281,7 @@ async fn test_delete() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_abort() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let fx = fixture(&setup).await?;
+    let fx = fixture().await?;
     let key_id = OprfKeyId::new(U160::from(142u32));
     let confirmed_epoch = ShareEpoch::default();
     let pending_epoch = confirmed_epoch.next();

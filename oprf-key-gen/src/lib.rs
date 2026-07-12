@@ -57,9 +57,6 @@ pub mod metrics;
 pub mod postgres;
 pub(crate) mod services;
 
-#[cfg(test)]
-mod tests;
-
 pub use nodes_common::Environment;
 pub use nodes_common::StartedServices;
 pub use services::event_cursor_store;
