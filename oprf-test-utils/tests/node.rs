@@ -13,10 +13,9 @@ use oprf_types::{
 use ruint::aliases::U160;
 use serde::{Deserialize, Serialize};
 use taceo_oprf_test_utils::{
-    DeploySetup, OPRF_PEER_ADDRESS_0, TestSetup,
-    node_setup::{
-        self, INVALID_AUTH_CODE, INVALID_AUTH_MSG, TestNode, WireFormat, wait_until_started,
-    },
+    DeploySetup, OPRF_PEER_ADDRESS_0,
+    node_setup::{self, INVALID_AUTH_CODE, INVALID_AUTH_MSG, TestNode, WireFormat},
+    wait_until_started,
 };
 use tungstenite::protocol::{CloseFrame, frame::coding::CloseCode};
 use uuid::Uuid;
@@ -46,13 +45,40 @@ async fn test_can_fetch_new_key() -> eyre::Result<()> {
     Ok(())
 }
 
+/// Covers the `/health`, `/wallet`, `/version` and `/oprf_pub/:id` routes against one node.
 #[tokio::test]
-async fn test_health_route() -> eyre::Result<()> {
+async fn test_basic_routes() -> eyre::Result<()> {
     let node = TestNode::start().await?;
     wait_until_started(&node.started_services).await?;
+
     let result = node.server.get("/health").expect_success().await;
     result.assert_status_ok();
     result.assert_text("healthy");
+
+    let result = node.server.get("/wallet").await;
+    result.assert_status_ok();
+    result.assert_text(OPRF_PEER_ADDRESS_0.to_string());
+
+    let result = node.server.get("/version").await;
+    result.assert_status_ok();
+    result.assert_text(nodes_common::version_info!());
+
+    let should_public_key_with_epoch = node
+        .secret_manager
+        .get_oprf_key_material(OprfKeyId::from(node_setup::OPRF_KEY_ID))
+        .await
+        .expect("Is there")
+        .public_key_with_epoch();
+    let result = node
+        .server
+        .get(&format!("/oprf_pub/{}", node_setup::OPRF_KEY_ID))
+        .await;
+    result.assert_status_ok();
+    result.assert_json(&should_public_key_with_epoch);
+
+    let result = node.server.get("/oprf_pub/1234").await;
+    result.assert_status_not_found();
+
     Ok(())
 }
 
@@ -66,53 +92,11 @@ async fn test_health_route_not_ready() -> eyre::Result<()> {
     Ok(())
 }
 
+/// Covers every way the server rejects an unsupported / malformed client version.
 #[tokio::test]
-async fn test_wallet() -> eyre::Result<()> {
+async fn client_version_rejected() -> eyre::Result<()> {
     let node = TestNode::start().await?;
-    let result = node.server.get("/wallet").await;
-    result.assert_status_ok();
-    result.assert_text(OPRF_PEER_ADDRESS_0.to_string());
-    Ok(())
-}
 
-#[tokio::test]
-async fn test_version() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
-    let result = node.server.get("/version").await;
-    result.assert_status_ok();
-    result.assert_text(nodes_common::version_info!());
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_oprf_pub() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
-    let should_public_key_with_epoch = node
-        .secret_manager
-        .get_oprf_key_material(OprfKeyId::from(node_setup::OPRF_KEY_ID))
-        .await
-        .expect("Is there")
-        .public_key_with_epoch();
-    let result = node
-        .server
-        .get(&format!("/oprf_pub/{}", node_setup::OPRF_KEY_ID))
-        .await;
-    result.assert_status_ok();
-    result.assert_json(&should_public_key_with_epoch);
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_oprf_pub_not_know() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
-    let result = node.server.get("/oprf_pub/1234").await;
-    result.assert_status_not_found();
-    Ok(())
-}
-
-#[tokio::test]
-async fn wrong_client_version_header() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
     let response = node
         .server
         .get_websocket("/api/test/oprf")
@@ -126,12 +110,7 @@ async fn wrong_client_version_header() -> eyre::Result<()> {
         "invalid version, expected: ^{} got: 0.0.0",
         oprf_client::VERSION
     ));
-    Ok(())
-}
 
-#[tokio::test]
-async fn wrong_client_version_query() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
     let response = node
         .server
         .get_websocket("/api/test/oprf?version=0.0.0")
@@ -141,12 +120,7 @@ async fn wrong_client_version_query() -> eyre::Result<()> {
         "invalid version, expected: ^{} got: 0.0.0",
         oprf_client::VERSION
     ));
-    Ok(())
-}
 
-#[tokio::test]
-async fn corrupt_client_version_header() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
     let response = node
         .server
         .get_websocket("/api/test/oprf")
@@ -157,12 +131,7 @@ async fn corrupt_client_version_header() -> eyre::Result<()> {
         .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
     response.assert_text("invalid HTTP header (x-taceo-oprf-protocol-version)");
-    Ok(())
-}
 
-#[tokio::test]
-async fn corrupt_client_version_query() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
     let response = node
         .server
         .get_websocket("/api/test/oprf?version=abc")
@@ -173,45 +142,41 @@ async fn corrupt_client_version_query() -> eyre::Result<()> {
         .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
     response.assert_text("Failed to deserialize query string: version: expected semver version");
-    Ok(())
-}
 
-#[tokio::test]
-async fn init_with_version_query_but_header_good() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
     let response = node
         .server
         .get_websocket("/api/test/oprf?version=abc")
         .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
     response.assert_text("Failed to deserialize query string: version: expected semver version");
+
+    let response = node.server.get_websocket("/api/test/oprf").await;
+    assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
+    response.assert_text("missing client version");
+
     Ok(())
 }
 
+/// Covers the two ways a client version is accepted: via query param, and via query param
+/// taking precedence over a wrong header.
 #[tokio::test]
-async fn init_with_version_query() -> eyre::Result<()> {
+async fn client_version_accepted() -> eyre::Result<()> {
     let node = TestNode::start().await?;
+
     let mut ws = node
         .server
         .get_websocket(&format!("/api/test/oprf?version={}", oprf_client::VERSION))
         .await
         .into_websocket()
         .await;
-    // check that the init request works
     node_setup::ws_send(
         &mut ws,
         &node_setup::request(&mut rand::thread_rng()),
         WireFormat::Json,
     )
     .await;
-
     let _response = node_setup::ws_recv::<OprfResponse>(&mut ws, WireFormat::Json).await;
-    Ok(())
-}
 
-#[tokio::test]
-async fn client_version_query_precedence() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
     let mut ws = node
         .server
         .get_websocket(&format!("/api/test/oprf?version={}", oprf_client::VERSION))
@@ -222,30 +187,20 @@ async fn client_version_query_precedence() -> eyre::Result<()> {
         .await
         .into_websocket()
         .await;
-    // check that the init request works even if HTTP header is wrong
     node_setup::ws_send(
         &mut ws,
         &node_setup::request(&mut rand::thread_rng()),
         WireFormat::Json,
     )
     .await;
-
     let _response = node_setup::ws_recv::<OprfResponse>(&mut ws, WireFormat::Json).await;
-    Ok(())
-}
 
-#[tokio::test]
-async fn no_protocol_version() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
-    let response = node.server.get_websocket("/api/test/oprf").await;
-    assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
-    response.assert_text("missing client version");
     Ok(())
 }
 
 #[tokio::test]
 async fn session_timeout_no_message() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
+    let node = TestNode::start_with_session_lifetime(Duration::from_secs(2)).await?;
     let mut ws = node
         .server
         .get_websocket("/api/test/oprf")
@@ -260,20 +215,16 @@ async fn session_timeout_no_message() -> eyre::Result<()> {
         code: oprf_error_codes::TIMEOUT.into(),
         reason: "timeout".into(),
     };
-    tokio::select! {
-        () = tokio::time::sleep(Duration::from_secs(15)) => {
-            panic!("should receive close frame within 10 seconds")
-        }
-        is_message = ws.receive_message() => {
-            node_setup::assert_close_frame(is_message, &should_close_frame);
-        }
-    }
+    let is_message =
+        tokio::time::timeout(taceo_oprf_test_utils::test_timeout(), ws.receive_message())
+            .await
+            .expect("should receive close frame before timeout");
+    node_setup::assert_close_frame(is_message, &should_close_frame);
     Ok(())
 }
 
 /// Test that sending a message that exceeds the maximum allowed size returns the correct close code.
-async fn message_too_large_inner(format: WireFormat) -> eyre::Result<()> {
-    let node = TestNode::start().await?;
+async fn message_too_large_inner(node: &TestNode, format: WireFormat) -> eyre::Result<()> {
     let mut ws = node
         .server
         .get_websocket("/api/test/oprf")
@@ -307,16 +258,14 @@ async fn message_too_large_inner(format: WireFormat) -> eyre::Result<()> {
 }
 
 /// Test that checks that the happy path works
-async fn happy_path_inner(format: WireFormat) -> eyre::Result<()> {
-    let node = TestNode::start().await?;
+async fn happy_path_inner(node: &TestNode, format: WireFormat) -> eyre::Result<()> {
     node.happy_path(format).await;
     Ok(())
 }
 
 /// Test that the session ID is dropped after successfully finished request
-async fn drop_session_id_inner(format: WireFormat) -> eyre::Result<()> {
+async fn drop_session_id_inner(node: &TestNode, format: WireFormat) -> eyre::Result<()> {
     let mut rng = rand::thread_rng();
-    let node = TestNode::start().await?;
     let request0 = node_setup::request(&mut rng);
     let mut request1 = node_setup::request(&mut rng);
     request1.request_id = request0.request_id;
@@ -353,7 +302,7 @@ async fn drop_session_id_inner(format: WireFormat) -> eyre::Result<()> {
 
 /// Checks that successfully closes connection after first message is send if runs into timeout
 async fn session_timeout_after_init_inner(format: WireFormat) -> eyre::Result<()> {
-    let node = TestNode::start().await?;
+    let node = TestNode::start_with_session_lifetime(Duration::from_secs(2)).await?;
     let mut ws = node
         .send_success_init_request(format, &mut rand::thread_rng())
         .await;
@@ -361,23 +310,20 @@ async fn session_timeout_after_init_inner(format: WireFormat) -> eyre::Result<()
         code: oprf_error_codes::TIMEOUT.into(),
         reason: "timeout".into(),
     };
-    tokio::select! {
-        () = tokio::time::sleep(Duration::from_secs(15)) => {
-            panic!("should receive close frame within 10 seconds")
-        }
-        is_message = ws.receive_message() => {
-            node_setup::assert_close_frame(is_message, &should_close_frame);
-        }
-    }
+    let is_message =
+        tokio::time::timeout(taceo_oprf_test_utils::test_timeout(), ws.receive_message())
+            .await
+            .expect("should receive close frame before timeout");
+    node_setup::assert_close_frame(is_message, &should_close_frame);
     Ok(())
 }
 
 /// Switch encoding between first and second round
 async fn switch_encoding_failed_inner(
+    node: &TestNode,
     init_format: WireFormat,
     challenge_format: WireFormat,
 ) -> eyre::Result<()> {
-    let node = TestNode::start().await?;
     let mut ws = node
         .send_success_init_request(init_format, &mut rand::thread_rng())
         .await;
@@ -393,9 +339,16 @@ async fn switch_encoding_failed_inner(
     Ok(())
 }
 
-/// Test that checks that the happy path works
-async fn auth_failed_inner(format: WireFormat) -> eyre::Result<()> {
+#[tokio::test]
+async fn switch_encoding_failed() -> eyre::Result<()> {
     let node = TestNode::start().await?;
+    switch_encoding_failed_inner(&node, WireFormat::Json, WireFormat::Cbor).await?;
+    switch_encoding_failed_inner(&node, WireFormat::Cbor, WireFormat::Json).await?;
+    Ok(())
+}
+
+/// Test that checks that the happy path works
+async fn auth_failed_inner(node: &TestNode, format: WireFormat) -> eyre::Result<()> {
     let mut request = node_setup::request(&mut rand::thread_rng());
     request.auth = node_setup::ConfigurableTestRequestAuth(OprfKeyId::from(123_usize));
 
@@ -408,8 +361,10 @@ async fn auth_failed_inner(format: WireFormat) -> eyre::Result<()> {
     Ok(())
 }
 
-/// Tests that after a key is soft-deleted from the secret manager, the node returns the deleted-key error.
-async fn delete_oprf_key_inner(format: WireFormat) -> eyre::Result<()> {
+/// Tests that after a key is soft-deleted from the secret manager, the node returns the
+/// deleted-key error, for both wire formats.
+#[tokio::test]
+async fn delete_oprf_key() -> eyre::Result<()> {
     let node = TestNode::start().await?;
 
     let key_id = OprfKeyId::from(node_setup::OPRF_KEY_ID);
@@ -423,20 +378,20 @@ async fn delete_oprf_key_inner(format: WireFormat) -> eyre::Result<()> {
         reason: "OPRF key already deleted".into(),
     };
 
-    node.init_expect_error(
-        node_setup::request(&mut rand::thread_rng()),
-        format,
-        &should_close_frame,
-    )
-    .await;
+    for format in [WireFormat::Json, WireFormat::Cbor] {
+        node.init_expect_error(
+            node_setup::request(&mut rand::thread_rng()),
+            format,
+            &should_close_frame,
+        )
+        .await;
+    }
 
     Ok(())
 }
 
 /// Tests that reusing the same session ID for multiple init requests results in an error.
-async fn init_session_reuse_inner(format: WireFormat) -> eyre::Result<()> {
-    let node = TestNode::start().await?;
-
+async fn init_session_reuse_inner(node: &TestNode, format: WireFormat) -> eyre::Result<()> {
     let request0 = node_setup::request(&mut rand::thread_rng());
     let mut request1 = node_setup::request(&mut rand::thread_rng());
     request1.request_id = request0.request_id;
@@ -456,9 +411,7 @@ async fn init_session_reuse_inner(format: WireFormat) -> eyre::Result<()> {
 }
 
 /// Tests that an init request with the identity element as blinded query is rejected.
-async fn init_bad_blinded_query_inner(format: WireFormat) -> eyre::Result<()> {
-    let node = TestNode::start().await?;
-
+async fn init_bad_blinded_query_inner(node: &TestNode, format: WireFormat) -> eyre::Result<()> {
     let mut request = node_setup::request(&mut rand::thread_rng());
     request.blinded_query = ark_babyjubjub::EdwardsAffine::zero();
 
@@ -473,9 +426,7 @@ async fn init_bad_blinded_query_inner(format: WireFormat) -> eyre::Result<()> {
 }
 
 /// Tests that malformed init requests with missing required fields are rejected.
-async fn init_bad_request_inner(format: WireFormat) -> eyre::Result<()> {
-    let node = TestNode::start().await?;
-
+async fn init_bad_request_inner(node: &TestNode, format: WireFormat) -> eyre::Result<()> {
     let mut ws = node
         .server
         .get_websocket("/api/test/oprf")
@@ -506,9 +457,7 @@ async fn init_bad_request_inner(format: WireFormat) -> eyre::Result<()> {
 }
 
 /// Tests that malformed challenge requests with missing required fields are rejected.
-async fn challenge_bad_request_inner(format: WireFormat) -> eyre::Result<()> {
-    let node = TestNode::start().await?;
-
+async fn challenge_bad_request_inner(node: &TestNode, format: WireFormat) -> eyre::Result<()> {
     let mut ws = node
         .send_success_init_request(format, &mut rand::thread_rng())
         .await;
@@ -533,9 +482,11 @@ async fn challenge_bad_request_inner(format: WireFormat) -> eyre::Result<()> {
 }
 
 /// Tests that a challenge with incorrect number of contributing parties is rejected.
-async fn challenge_bad_contributing_parties_inner(format: WireFormat) -> eyre::Result<()> {
+async fn challenge_bad_contributing_parties_inner(
+    node: &TestNode,
+    format: WireFormat,
+) -> eyre::Result<()> {
     let mut rng = rand::thread_rng();
-    let node = TestNode::start().await?;
     let mut ws = node.send_success_init_request(format, &mut rng).await;
 
     let challenge = node_setup::random_challenge(&mut rng, vec![42]);
@@ -552,9 +503,11 @@ async fn challenge_bad_contributing_parties_inner(format: WireFormat) -> eyre::R
 }
 
 /// Tests that a challenge where the current node is not in contributing parties is rejected.
-async fn challenge_challenge_not_contributing_party_inner(format: WireFormat) -> eyre::Result<()> {
+async fn challenge_challenge_not_contributing_party_inner(
+    node: &TestNode,
+    format: WireFormat,
+) -> eyre::Result<()> {
     let mut rng = rand::thread_rng();
-    let node = TestNode::start().await?;
     let mut ws = node.send_success_init_request(format, &mut rng).await;
 
     let challenge = node_setup::random_challenge(&mut rng, vec![2, 3]);
@@ -571,9 +524,11 @@ async fn challenge_challenge_not_contributing_party_inner(format: WireFormat) ->
 }
 
 /// Tests that contributing parties that are not sorted in ascending order are rejected.
-async fn challenge_contributing_parties_not_sorted_inner(format: WireFormat) -> eyre::Result<()> {
+async fn challenge_contributing_parties_not_sorted_inner(
+    node: &TestNode,
+    format: WireFormat,
+) -> eyre::Result<()> {
     let mut rng = rand::thread_rng();
-    let node = TestNode::start().await?;
     let mut ws = node.send_success_init_request(format, &mut rng).await;
     let challenge = node_setup::random_challenge(&mut rng, vec![3, 1]);
 
@@ -588,9 +543,11 @@ async fn challenge_contributing_parties_not_sorted_inner(format: WireFormat) -> 
 }
 
 /// Tests that contributing parties with duplicate entries are rejected.
-async fn challenge_duplicate_contributions_inner(format: WireFormat) -> eyre::Result<()> {
+async fn challenge_duplicate_contributions_inner(
+    node: &TestNode,
+    format: WireFormat,
+) -> eyre::Result<()> {
     let mut rng = rand::thread_rng();
-    let node = TestNode::start().await?;
     let mut ws = node.send_success_init_request(format, &mut rng).await;
     let challenge = node_setup::random_challenge(&mut rng, vec![1, 1]);
 
@@ -604,105 +561,55 @@ async fn challenge_duplicate_contributions_inner(format: WireFormat) -> eyre::Re
     Ok(())
 }
 
-macro_rules! format_test_pair {
-    ($json_name:ident, $cbor_name:ident, $inner:ident) => {
+/// Starts one node and runs `$inner` against it once per [`WireFormat`].
+macro_rules! both_formats_test {
+    ($test_name:ident, $inner:ident) => {
         #[tokio::test]
-        async fn $json_name() -> eyre::Result<()> {
-            $inner(WireFormat::Json).await
-        }
-
-        #[tokio::test]
-        async fn $cbor_name() -> eyre::Result<()> {
-            $inner(WireFormat::Cbor).await
+        async fn $test_name() -> eyre::Result<()> {
+            let node = TestNode::start().await?;
+            $inner(&node, WireFormat::Json).await?;
+            $inner(&node, WireFormat::Cbor).await?;
+            Ok(())
         }
     };
 }
 
-format_test_pair!(happy_path_json, happy_path_cbor, happy_path_inner);
-format_test_pair!(auth_failed_json, auth_failed_cbor, auth_failed_inner);
-format_test_pair!(
-    delete_oprf_key_json,
-    delete_oprf_key_cbor,
-    delete_oprf_key_inner
-);
-format_test_pair!(
-    init_session_reuse_json,
-    init_session_reuse_cbor,
-    init_session_reuse_inner
-);
-format_test_pair!(
-    init_bad_blinded_query_json,
-    init_bad_blinded_query_cbor,
-    init_bad_blinded_query_inner
-);
-format_test_pair!(
-    init_bad_request_json,
-    init_bad_request_cbor,
-    init_bad_request_inner
-);
-format_test_pair!(
-    challenge_bad_request_json,
-    challenge_bad_request_cbor,
-    challenge_bad_request_inner
-);
-format_test_pair!(
-    challenge_bad_contributing_parties_json,
-    challenge_bad_contributing_parties_cbor,
+both_formats_test!(happy_path, happy_path_inner);
+both_formats_test!(auth_failed, auth_failed_inner);
+both_formats_test!(init_session_reuse, init_session_reuse_inner);
+both_formats_test!(init_bad_blinded_query, init_bad_blinded_query_inner);
+both_formats_test!(init_bad_request, init_bad_request_inner);
+both_formats_test!(challenge_bad_request, challenge_bad_request_inner);
+both_formats_test!(
+    challenge_bad_contributing_parties,
     challenge_bad_contributing_parties_inner
 );
-format_test_pair!(
-    challenge_challenge_not_contributing_party_json,
-    challenge_challenge_not_contributing_party_cbor,
+both_formats_test!(
+    challenge_challenge_not_contributing_party,
     challenge_challenge_not_contributing_party_inner
 );
-format_test_pair!(
-    challenge_contributing_parties_not_sorted_json,
-    challenge_contributing_parties_not_sorted_cbor,
+both_formats_test!(
+    challenge_contributing_parties_not_sorted,
     challenge_contributing_parties_not_sorted_inner
 );
-format_test_pair!(
-    challenge_duplicate_contributions_json,
-    challenge_duplicate_contributions_cbor,
+both_formats_test!(
+    challenge_duplicate_contributions,
     challenge_duplicate_contributions_inner
 );
+both_formats_test!(drop_session_id, drop_session_id_inner);
+both_formats_test!(message_too_large, message_too_large_inner);
 
 #[tokio::test]
 async fn session_timeout_after_init_json() -> eyre::Result<()> {
     session_timeout_after_init_inner(WireFormat::Json).await
 }
 
-format_test_pair!(
-    drop_session_id_json,
-    drop_session_id_cbor,
-    drop_session_id_inner
-);
-format_test_pair!(
-    message_too_large_json,
-    message_too_large_cbor,
-    message_too_large_inner
-);
-
-#[tokio::test]
-async fn switch_encoding_failed_json_cbor() -> eyre::Result<()> {
-    switch_encoding_failed_inner(WireFormat::Json, WireFormat::Cbor).await
-}
-
-#[tokio::test]
-async fn switch_encoding_failed_cbor_json() -> eyre::Result<()> {
-    switch_encoding_failed_inner(WireFormat::Cbor, WireFormat::Json).await
-}
-
 /// Tests that a delegate OPRF request against a real 2-of-3 cluster succeeds end to end.
 #[tokio::test]
 async fn delegate_happy_path() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let connection_string = nodes_common::test_utils::shared_postgres_testcontainer().await?;
-    let nodes = node_setup::start_nodes_for_delegate(
-        connection_string,
-        &setup,
-        node_setup::OPRF_KEY_ID.into(),
-    )
-    .await?;
+    let nodes =
+        node_setup::start_nodes_for_delegate(DeploySetup::TwoThree, node_setup::OPRF_KEY_ID.into())
+            .await?;
 
     let node_urls = nodes
         .iter()
@@ -712,7 +619,7 @@ async fn delegate_happy_path() -> eyre::Result<()> {
     let client = reqwest::Client::new();
     let should_key = oprf_client::fetch_oprf_public_key(
         &node_urls,
-        u16::from(setup.setup.threshold()) as usize,
+        u16::from(DeploySetup::TwoThree.threshold()) as usize,
         node_setup::OPRF_KEY_ID.into(),
         &client,
     )
@@ -731,22 +638,18 @@ async fn delegate_happy_path() -> eyre::Result<()> {
     Ok(())
 }
 
-/// Tests that a delegate request with a wrong OPRF key id is rejected by every node in the
-/// cluster, which the delegator aggregates into a `ThresholdServiceError` -> 400.
+/// Tests delegate error paths against one 2-of-3 cluster: a wrong OPRF key id auth (aggregated
+/// into a `ThresholdServiceError` -> 400), a missing client version, an unsupported client
+/// version, and finally -- since it destroys the cluster -- reachable nodes dropping below
+/// threshold (-> 503).
 #[tokio::test]
-async fn delegate_auth_failed() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let connection_string = nodes_common::test_utils::shared_postgres_testcontainer().await?;
-    let nodes = node_setup::start_nodes_for_delegate(
-        connection_string,
-        &setup,
-        node_setup::OPRF_KEY_ID.into(),
-    )
-    .await?;
+async fn delegate_errors() -> eyre::Result<()> {
+    let mut nodes =
+        node_setup::start_nodes_for_delegate(DeploySetup::TwoThree, node_setup::OPRF_KEY_ID.into())
+            .await?;
 
     let mut request = node_setup::request(&mut rand::thread_rng());
     request.auth = node_setup::ConfigurableTestRequestAuth(OprfKeyId::from(123_usize));
-
     let response = nodes[0]
         .server
         .post("/api/test/delegate")
@@ -755,48 +658,6 @@ async fn delegate_auth_failed() -> eyre::Result<()> {
         .await;
     response.assert_status(StatusCode::BAD_REQUEST);
     response.assert_text(INVALID_AUTH_CODE.to_string());
-    Ok(())
-}
-
-/// Tests that a delegate request where the number of reachable nodes drops below the
-/// threshold surfaces as a `Networking` error -> 503.
-#[tokio::test]
-async fn delegate_not_enough_nodes() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let connection_string = nodes_common::test_utils::shared_postgres_testcontainer().await?;
-    let mut nodes = node_setup::start_nodes_for_delegate(
-        connection_string,
-        &setup,
-        node_setup::OPRF_KEY_ID.into(),
-    )
-    .await?;
-
-    // drop all but one node so the (threshold-2) cluster can no longer reach consensus
-    let delegator = nodes.remove(0);
-    drop(nodes);
-
-    let response = delegator
-        .server
-        .post("/api/test/delegate")
-        .add_query_param("version", oprf_client::VERSION)
-        .json(&node_setup::request(&mut rand::thread_rng()))
-        .await;
-    response.assert_status(StatusCode::SERVICE_UNAVAILABLE);
-    Ok(())
-}
-
-/// Tests that a delegate request without a client version query param is rejected before any
-/// node in the cluster is contacted.
-#[tokio::test]
-async fn delegate_missing_version() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let connection_string = nodes_common::test_utils::shared_postgres_testcontainer().await?;
-    let nodes = node_setup::start_nodes_for_delegate(
-        connection_string,
-        &setup,
-        node_setup::OPRF_KEY_ID.into(),
-    )
-    .await?;
 
     let response = nodes[0]
         .server
@@ -805,21 +666,6 @@ async fn delegate_missing_version() -> eyre::Result<()> {
         .await;
     response.assert_status(StatusCode::BAD_REQUEST);
     response.assert_text("missing client version");
-    Ok(())
-}
-
-/// Tests that a delegate request with a client version the node's `version_req` rejects gets a
-/// 400 before any node in the cluster is contacted.
-#[tokio::test]
-async fn delegate_unsupported_version() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let connection_string = nodes_common::test_utils::shared_postgres_testcontainer().await?;
-    let nodes = node_setup::start_nodes_for_delegate(
-        connection_string,
-        &setup,
-        node_setup::OPRF_KEY_ID.into(),
-    )
-    .await?;
 
     let response = nodes[0]
         .server
@@ -832,5 +678,18 @@ async fn delegate_unsupported_version() -> eyre::Result<()> {
         "invalid version, expected: ^{} got: 0.0.0",
         oprf_client::VERSION
     ));
+
+    // drop all but one node so the (threshold-2) cluster can no longer reach consensus;
+    // this destroys the cluster, so it must run last
+    let delegator = nodes.remove(0);
+    drop(nodes);
+
+    let response = delegator
+        .server
+        .post("/api/test/delegate")
+        .add_query_param("version", oprf_client::VERSION)
+        .json(&node_setup::request(&mut rand::thread_rng()))
+        .await;
+    response.assert_status(StatusCode::SERVICE_UNAVAILABLE);
     Ok(())
 }

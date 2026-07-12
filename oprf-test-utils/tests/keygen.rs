@@ -6,8 +6,9 @@ use eyre::Context as _;
 use oprf_key_gen::event_cursor_store::ChainCursorStorage as _;
 use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
 use taceo_oprf_test_utils::{
-    DeploySetup, MineStrategy, OPRF_PEER_ADDRESS_0, TEST_TIMEOUT, TestSetup,
+    DeploySetup, MineStrategy, OPRF_PEER_ADDRESS_0, TestSetup,
     key_gen_setup::{TestKeyGen, keygen_asserts},
+    test_timeout, wait_until_started,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -191,41 +192,41 @@ async fn test_reshare_emits_stuck_if_two_consumer() -> eyre::Result<()> {
     Ok(())
 }
 
+/// Merges the not-a-participant and invalid-threshold sanity check failures against one setup,
+/// saving an anvil + contract deployment.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_not_a_participant() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+async fn test_start_sanity_checks() -> eyre::Result<()> {
+    let mut setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let is_error = TestKeyGen::start(4, &setup).await.expect_err("Should fail");
     assert_eq!(is_error.to_string(), "while doing sanity checks");
-    Ok(())
-}
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_invalid_threshold() -> eyre::Result<()> {
-    let mut setup = TestSetup::new(DeploySetup::TwoThree).await?;
     setup.setup = DeploySetup::ThreeFive;
     let is_error = TestKeyGen::start(0, &setup).await.expect_err("Should fail");
     assert_eq!(is_error.to_string(), "while doing sanity checks");
     Ok(())
 }
 
+/// Covers the `/health`, `/wallet` and `/version` routes against one key-gen.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_health_route() -> eyre::Result<()> {
+async fn test_service_routes() -> eyre::Result<()> {
     let setup =
         TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
     let key_gen = TestKeyGen::start(0, &setup).await?;
-    let started_services = key_gen.started_services.clone();
-    tokio::time::timeout(TEST_TIMEOUT, async {
-        loop {
-            if started_services.all_started() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-    })
-    .await?;
+    wait_until_started(&key_gen.started_services).await?;
+
     let result = key_gen.server.get("/health").expect_success().await;
     result.assert_status_ok();
     result.assert_text("healthy");
+
+    let result = key_gen.server.get("/wallet").expect_success().await;
+    result.assert_status_ok();
+    result.assert_text(OPRF_PEER_ADDRESS_0.to_string());
+
+    let result = key_gen.server.get("/version").expect_success().await;
+    result.assert_status_ok();
+    let is_text = result.text();
+    assert!(is_text.starts_with("taceo-oprf-key-gen"));
+
     Ok(())
 }
 
@@ -241,33 +242,12 @@ async fn test_health_route_not_ready() -> eyre::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_wallet() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let key_gen = TestKeyGen::start(0, &setup).await?;
-    let result = key_gen.server.get("/wallet").expect_success().await;
-    result.assert_status_ok();
-    result.assert_text(OPRF_PEER_ADDRESS_0.to_string());
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_version() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let key_gen = TestKeyGen::start(0, &setup).await?;
-    let result = key_gen.server.get("/version").expect_success().await;
-    result.assert_status_ok();
-    let is_text = result.text();
-    assert!(is_text.starts_with("taceo-oprf-key-gen"));
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn key_gen_dies_on_cancellation() -> eyre::Result<()> {
     let setup =
         TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
     let key_gen = TestKeyGen::start(0, &setup).await?;
     key_gen.cancellation_token.cancel();
-    tokio::time::timeout(TEST_TIMEOUT, key_gen.key_gen_task.join())
+    tokio::time::timeout(test_timeout(), key_gen.key_gen_task.join())
         .await
         .expect("Can shutdown in time")
         .expect("Was a graceful shutdown");
@@ -348,12 +328,12 @@ async fn test_cursor_checkpoint_persists() -> eyre::Result<()> {
     let key_gen = TestKeyGen::start(0, &setup).await?;
 
     let cursor_service = key_gen.secret_manager.clone();
-    tokio::time::timeout(TEST_TIMEOUT, async {
+    tokio::time::timeout(test_timeout(), async {
         loop {
             if cursor_service.load_chain_cursor().await?.block() > 0 {
                 break;
             }
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            tokio::time::sleep(Duration::from_millis(200)).await;
         }
         eyre::Ok(())
     })

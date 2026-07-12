@@ -3,12 +3,11 @@ name = "taceo-oprf-test-utils"
 version = "0.14.0"
 edition.workspace = true
 rust-version.workspace = true
-description = "Utilities for testing TACEO:OPRF based services."
+description = "Integration tests for the TACEO:OPRF workspace."
 readme.workspace = true
 homepage.workspace = true
 repository.workspace = true
 license.workspace = true
-keywords = ["oprf", "tests"]
 publish = false
 
 [[bin]]
@@ -32,7 +31,6 @@ ark-ec.workspace = true
 ark-ff.workspace = true
 ark-serialize.workspace = true
 askama = { version = "0.16", optional = true }
-axum.workspace = true
 axum-test = { workspace = true, features = ["ws"] }
 ciborium.workspace = true
 clap = { workspace = true, features = ["derive", "env"], optional = true }
@@ -42,7 +40,7 @@ groth16-material = { workspace = true, optional = true }
 groth16-sol = { workspace = true, optional = true }
 http = { workspace = true }
 itertools.workspace = true
-nodes-common = { workspace = true, features = ["postgres", "test-utils"], optional = true }
+nodes-common = { workspace = true, features = ["postgres", "test-utils"] }
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.10" }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
 oprf-key-gen = { package = "taceo-oprf-key-gen", path = "../oprf-key-gen/", version = "0.12" }
@@ -52,16 +50,13 @@ oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "
   "service",
 ] }
 rand.workspace = true
-rand_chacha.workspace = true
-reqwest.workspace = true
-ruint = { workspace = true, features = ["rand"] }
+rand_chacha = { workspace = true, optional = true }
 serde.workspace = true
-serde_json = { workspace = true, optional = true }
+serde_json.workspace = true
 sqlx = { workspace = true, features = [
   "postgres",
   "runtime-tokio",
-], optional = true }
-testcontainers-modules = { workspace = true, features = ["postgres"], optional = true }
+] }
 tokio = { workspace = true, features = [
   "net",
   "rt-multi-thread",
@@ -70,24 +65,22 @@ tokio = { workspace = true, features = [
   "time",
   "tokio-macros",
 ] }
-tokio-util = { workspace = true, optional = true }
+tokio-util.workspace = true
 tungstenite = { workspace = true }
 uuid = { workspace = true, features = ["serde", "v4"] }
 
+[dev-dependencies]
+axum.workspace = true
+reqwest.workspace = true
+ruint = { workspace = true, features = ["rand"] }
+
 [features]
-default = ["deploy-anvil", "postgres-test-container"]
-ci = []
-deploy-anvil = ["dep:serde_json", "dep:tokio-util"]
 generate-test-transcript = [
   "dep:ark-bn254",
   "dep:askama",
   "dep:clap",
   "dep:groth16-material",
   "dep:groth16-sol",
+  "dep:rand_chacha",
   "groth16-material/circom"
-]
-postgres-test-container = [
-  "dep:nodes-common",
-  "dep:sqlx",
-  "dep:testcontainers-modules"
 ]

@@ -66,3 +66,8 @@ link_parsers = [
   { pattern = "#(\\d+)", href = "{{ remote.link }}/issues/$1" },
   { pattern = "RFC(\\d+)", text = "ietf-rfc$1", href = "https://datatracker.ietf.org/doc/html/rfc$1" },
 ]
+
+[[package]]
+name = "taceo-oprf-test-utils"
+release = false
+changelog_update = false

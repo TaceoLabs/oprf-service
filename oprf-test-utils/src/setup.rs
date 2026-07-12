@@ -16,7 +16,7 @@ use alloy::{
 use eyre::Context as _;
 use futures::StreamExt as _;
 use itertools::Itertools;
-use oprf_types::{OprfKeyId, ShareEpoch};
+use oprf_types::OprfKeyId;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
@@ -134,20 +134,6 @@ impl TestSetup {
         crate::emit_delete_event(self.provider.clone(), self.oprf_key_registry, oprf_key_id).await
     }
 
-    pub async fn finalize_keygen(
-        &self,
-        oprf_key_id: OprfKeyId,
-        share_epoch: ShareEpoch,
-    ) -> eyre::Result<()> {
-        crate::emit_secret_gen_finalize(
-            self.provider.clone(),
-            self.oprf_key_registry,
-            oprf_key_id,
-            share_epoch,
-        )
-        .await
-    }
-
     pub async fn init_keygen(&self, oprf_key_id: OprfKeyId) -> eyre::Result<()> {
         oprf_key_registry::init_key_gen(self.provider.clone(), self.oprf_key_registry, oprf_key_id)
             .await
@@ -155,11 +141,6 @@ impl TestSetup {
 
     pub async fn init_reshare(&self, oprf_key_id: OprfKeyId) -> eyre::Result<()> {
         oprf_key_registry::init_reshare(self.provider.clone(), self.oprf_key_registry, oprf_key_id)
-            .await
-    }
-
-    pub async fn abort_keygen(&self, oprf_key_id: OprfKeyId) -> eyre::Result<()> {
-        oprf_key_registry::init_abort(self.provider.clone(), self.oprf_key_registry, oprf_key_id)
             .await
     }
 
@@ -176,7 +157,7 @@ impl TestSetup {
         let mut stream = sub.into_stream();
         let (tx, rx) = oneshot::channel();
         tokio::task::spawn(async move {
-            let observed = tokio::time::timeout(crate::TEST_TIMEOUT, async {
+            let observed = tokio::time::timeout(crate::test_timeout(), async {
                 let mut count = 0;
                 while stream.next().await.is_some() {
                     count += 1;
