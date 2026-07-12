@@ -75,13 +75,10 @@ nodes-common = { workspace = true, features = [
   "api",
   "postgres",
   "serde",
-  "test-utils"
+  "test-utils",
+  "web3-asserter"
 ] }
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.10" }
-oprf-test-utils = { package = "taceo-oprf-test-utils", path = "../oprf-test-utils", version = "0.14", default-features = false, features = [
-  "deploy-anvil",
-  "postgres-test-container"
-] }
 reqwest = { workspace = true, features = ["json"] }
 ruint = { workspace = true, features = ["rand"] }
 rustls = { workspace = true }

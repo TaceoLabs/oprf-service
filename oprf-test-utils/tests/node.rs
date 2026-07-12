@@ -5,21 +5,21 @@ use std::time::Duration;
 use axum::extract::ws::close_code;
 use http::StatusCode;
 use oprf_core::ddlog_equality::shamir::DLogProofShareShamir;
-use oprf_test_utils::{DeploySetup, OPRF_PEER_ADDRESS_0, TestSetup};
+use oprf_service::secret_manager::SecretManager as _;
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     api::{DelegateOprfResponse, OprfResponse, oprf_error_codes},
 };
 use ruint::aliases::U160;
 use serde::{Deserialize, Serialize};
+use taceo_oprf_test_utils::{
+    DeploySetup, OPRF_PEER_ADDRESS_0, TestSetup,
+    node_setup::{
+        self, INVALID_AUTH_CODE, INVALID_AUTH_MSG, TestNode, WireFormat, wait_until_started,
+    },
+};
 use tungstenite::protocol::{CloseFrame, frame::coding::CloseCode};
 use uuid::Uuid;
-
-use crate::secret_manager::SecretManager as _;
-
-use self::setup::{INVALID_AUTH_CODE, INVALID_AUTH_MSG, TestNode, WireFormat, wait_until_started};
-
-mod setup;
 
 #[derive(Default, Serialize, Deserialize)]
 struct BadRequest {
@@ -28,8 +28,7 @@ struct BadRequest {
 
 #[tokio::test]
 async fn test_can_fetch_new_key() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let new_oprf_key_id = OprfKeyId::new(U160::random());
     node.doesnt_have_key(new_oprf_key_id).await?;
     let epoch = ShareEpoch::new(rand::random());
@@ -49,8 +48,7 @@ async fn test_can_fetch_new_key() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_health_route() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     wait_until_started(&node.started_services).await?;
     let result = node.server.get("/health").expect_success().await;
     result.assert_status_ok();
@@ -60,8 +58,7 @@ async fn test_health_route() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_health_route_not_ready() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let _not_started_service = node.started_services.new_service();
     let result = node.server.get("/health").expect_failure().await;
     result.assert_status_service_unavailable();
@@ -71,8 +68,7 @@ async fn test_health_route_not_ready() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_wallet() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let result = node.server.get("/wallet").await;
     result.assert_status_ok();
     result.assert_text(OPRF_PEER_ADDRESS_0.to_string());
@@ -81,8 +77,7 @@ async fn test_wallet() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_version() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let result = node.server.get("/version").await;
     result.assert_status_ok();
     result.assert_text(nodes_common::version_info!());
@@ -91,17 +86,16 @@ async fn test_version() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_oprf_pub() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let should_public_key_with_epoch = node
         .secret_manager
-        .get_oprf_key_material(OprfKeyId::from(setup::OPRF_KEY_ID))
+        .get_oprf_key_material(OprfKeyId::from(node_setup::OPRF_KEY_ID))
         .await
         .expect("Is there")
         .public_key_with_epoch();
     let result = node
         .server
-        .get(&format!("/oprf_pub/{}", setup::OPRF_KEY_ID))
+        .get(&format!("/oprf_pub/{}", node_setup::OPRF_KEY_ID))
         .await;
     result.assert_status_ok();
     result.assert_json(&should_public_key_with_epoch);
@@ -110,8 +104,7 @@ async fn test_oprf_pub() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_oprf_pub_not_know() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let result = node.server.get("/oprf_pub/1234").await;
     result.assert_status_not_found();
     Ok(())
@@ -119,8 +112,7 @@ async fn test_oprf_pub_not_know() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn wrong_client_version_header() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let response = node
         .server
         .get_websocket("/api/test/oprf")
@@ -139,8 +131,7 @@ async fn wrong_client_version_header() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn wrong_client_version_query() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let response = node
         .server
         .get_websocket("/api/test/oprf?version=0.0.0")
@@ -155,8 +146,7 @@ async fn wrong_client_version_query() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn corrupt_client_version_header() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let response = node
         .server
         .get_websocket("/api/test/oprf")
@@ -172,8 +162,7 @@ async fn corrupt_client_version_header() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn corrupt_client_version_query() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let response = node
         .server
         .get_websocket("/api/test/oprf?version=abc")
@@ -189,8 +178,7 @@ async fn corrupt_client_version_query() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn init_with_version_query_but_header_good() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let response = node
         .server
         .get_websocket("/api/test/oprf?version=abc")
@@ -202,8 +190,7 @@ async fn init_with_version_query_but_header_good() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn init_with_version_query() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let mut ws = node
         .server
         .get_websocket(&format!("/api/test/oprf?version={}", oprf_client::VERSION))
@@ -211,21 +198,20 @@ async fn init_with_version_query() -> eyre::Result<()> {
         .into_websocket()
         .await;
     // check that the init request works
-    setup::ws_send(
+    node_setup::ws_send(
         &mut ws,
-        &setup::request(&mut rand::thread_rng()),
+        &node_setup::request(&mut rand::thread_rng()),
         WireFormat::Json,
     )
     .await;
 
-    let _response = setup::ws_recv::<OprfResponse>(&mut ws, WireFormat::Json).await;
+    let _response = node_setup::ws_recv::<OprfResponse>(&mut ws, WireFormat::Json).await;
     Ok(())
 }
 
 #[tokio::test]
 async fn client_version_query_precedence() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let mut ws = node
         .server
         .get_websocket(&format!("/api/test/oprf?version={}", oprf_client::VERSION))
@@ -237,21 +223,20 @@ async fn client_version_query_precedence() -> eyre::Result<()> {
         .into_websocket()
         .await;
     // check that the init request works even if HTTP header is wrong
-    setup::ws_send(
+    node_setup::ws_send(
         &mut ws,
-        &setup::request(&mut rand::thread_rng()),
+        &node_setup::request(&mut rand::thread_rng()),
         WireFormat::Json,
     )
     .await;
 
-    let _response = setup::ws_recv::<OprfResponse>(&mut ws, WireFormat::Json).await;
+    let _response = node_setup::ws_recv::<OprfResponse>(&mut ws, WireFormat::Json).await;
     Ok(())
 }
 
 #[tokio::test]
 async fn no_protocol_version() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let response = node.server.get_websocket("/api/test/oprf").await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
     response.assert_text("missing client version");
@@ -260,8 +245,7 @@ async fn no_protocol_version() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn session_timeout_no_message() -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let mut ws = node
         .server
         .get_websocket("/api/test/oprf")
@@ -281,7 +265,7 @@ async fn session_timeout_no_message() -> eyre::Result<()> {
             panic!("should receive close frame within 10 seconds")
         }
         is_message = ws.receive_message() => {
-            setup::assert_close_frame(is_message, &should_close_frame);
+            node_setup::assert_close_frame(is_message, &should_close_frame);
         }
     }
     Ok(())
@@ -289,8 +273,7 @@ async fn session_timeout_no_message() -> eyre::Result<()> {
 
 /// Test that sending a message that exceeds the maximum allowed size returns the correct close code.
 async fn message_too_large_inner(format: WireFormat) -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let mut ws = node
         .server
         .get_websocket("/api/test/oprf")
@@ -318,15 +301,14 @@ async fn message_too_large_inner(format: WireFormat) -> eyre::Result<()> {
         reason: "size exceeds max frame length".into(),
     };
     let is_message = ws.receive_message().await;
-    setup::assert_close_frame(is_message, &should_close_frame);
+    node_setup::assert_close_frame(is_message, &should_close_frame);
 
     Ok(())
 }
 
 /// Test that checks that the happy path works
 async fn happy_path_inner(format: WireFormat) -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     node.happy_path(format).await;
     Ok(())
 }
@@ -334,46 +316,44 @@ async fn happy_path_inner(format: WireFormat) -> eyre::Result<()> {
 /// Test that the session ID is dropped after successfully finished request
 async fn drop_session_id_inner(format: WireFormat) -> eyre::Result<()> {
     let mut rng = rand::thread_rng();
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
-    let request0 = setup::request(&mut rng);
-    let mut request1 = setup::request(&mut rng);
+    let node = TestNode::start().await?;
+    let request0 = node_setup::request(&mut rng);
+    let mut request1 = node_setup::request(&mut rng);
     request1.request_id = request0.request_id;
 
     let mut ws = node.send_request(request0, format).await;
 
-    let _response = setup::ws_recv::<OprfResponse>(&mut ws, format).await;
-    setup::ws_send(
+    let _response = node_setup::ws_recv::<OprfResponse>(&mut ws, format).await;
+    node_setup::ws_send(
         &mut ws,
-        &setup::random_challenge(&mut rng, vec![1, 2]),
+        &node_setup::random_challenge(&mut rng, vec![1, 2]),
         format,
     )
     .await;
 
     // Can deserialize
-    let _response = setup::ws_recv::<DLogProofShareShamir>(&mut ws, format).await;
+    let _response = node_setup::ws_recv::<DLogProofShareShamir>(&mut ws, format).await;
 
     // can finish the second request now
     let mut ws = node.send_request(request1, format).await;
 
-    let _response = setup::ws_recv::<OprfResponse>(&mut ws, format).await;
-    setup::ws_send(
+    let _response = node_setup::ws_recv::<OprfResponse>(&mut ws, format).await;
+    node_setup::ws_send(
         &mut ws,
-        &setup::random_challenge(&mut rng, vec![1, 2]),
+        &node_setup::random_challenge(&mut rng, vec![1, 2]),
         format,
     )
     .await;
 
     // Can deserialize
-    let _response = setup::ws_recv::<DLogProofShareShamir>(&mut ws, format).await;
+    let _response = node_setup::ws_recv::<DLogProofShareShamir>(&mut ws, format).await;
 
     Ok(())
 }
 
 /// Checks that successfully closes connection after first message is send if runs into timeout
 async fn session_timeout_after_init_inner(format: WireFormat) -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let mut ws = node
         .send_success_init_request(format, &mut rand::thread_rng())
         .await;
@@ -386,7 +366,7 @@ async fn session_timeout_after_init_inner(format: WireFormat) -> eyre::Result<()
             panic!("should receive close frame within 10 seconds")
         }
         is_message = ws.receive_message() => {
-            setup::assert_close_frame(is_message, &should_close_frame);
+            node_setup::assert_close_frame(is_message, &should_close_frame);
         }
     }
     Ok(())
@@ -397,13 +377,12 @@ async fn switch_encoding_failed_inner(
     init_format: WireFormat,
     challenge_format: WireFormat,
 ) -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let mut ws = node
         .send_success_init_request(init_format, &mut rand::thread_rng())
         .await;
 
-    let challenge = setup::random_challenge(&mut rand::thread_rng(), vec![42]);
+    let challenge = node_setup::random_challenge(&mut rand::thread_rng(), vec![42]);
     let should_close_frame = CloseFrame {
         code: close_code::UNSUPPORTED.into(),
         reason: "unexpected ws message".into(),
@@ -416,10 +395,9 @@ async fn switch_encoding_failed_inner(
 
 /// Test that checks that the happy path works
 async fn auth_failed_inner(format: WireFormat) -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
-    let mut request = setup::request(&mut rand::thread_rng());
-    request.auth = setup::ConfigurableTestRequestAuth(OprfKeyId::from(123_usize));
+    let node = TestNode::start().await?;
+    let mut request = node_setup::request(&mut rand::thread_rng());
+    request.auth = node_setup::ConfigurableTestRequestAuth(OprfKeyId::from(123_usize));
 
     let should_close_frame = CloseFrame {
         code: CloseCode::from(INVALID_AUTH_CODE),
@@ -432,10 +410,9 @@ async fn auth_failed_inner(format: WireFormat) -> eyre::Result<()> {
 
 /// Tests that after a key is soft-deleted from the secret manager, the node returns the deleted-key error.
 async fn delete_oprf_key_inner(format: WireFormat) -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
 
-    let key_id = OprfKeyId::from(setup::OPRF_KEY_ID);
+    let key_id = OprfKeyId::from(node_setup::OPRF_KEY_ID);
     // soft-delete the key from the secret manager
     node.delete_key_material(key_id).await?;
 
@@ -447,7 +424,7 @@ async fn delete_oprf_key_inner(format: WireFormat) -> eyre::Result<()> {
     };
 
     node.init_expect_error(
-        setup::request(&mut rand::thread_rng()),
+        node_setup::request(&mut rand::thread_rng()),
         format,
         &should_close_frame,
     )
@@ -458,16 +435,15 @@ async fn delete_oprf_key_inner(format: WireFormat) -> eyre::Result<()> {
 
 /// Tests that reusing the same session ID for multiple init requests results in an error.
 async fn init_session_reuse_inner(format: WireFormat) -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
 
-    let request0 = setup::request(&mut rand::thread_rng());
-    let mut request1 = setup::request(&mut rand::thread_rng());
+    let request0 = node_setup::request(&mut rand::thread_rng());
+    let mut request1 = node_setup::request(&mut rand::thread_rng());
     request1.request_id = request0.request_id;
 
     let mut ws0 = node.send_request(request0, format).await;
     // can deserialize success message
-    let _ = setup::ws_recv::<OprfResponse>(&mut ws0, format).await;
+    let _ = node_setup::ws_recv::<OprfResponse>(&mut ws0, format).await;
 
     let should_close_frame = CloseFrame {
         code: oprf_error_codes::SESSION_REUSE.into(),
@@ -481,10 +457,9 @@ async fn init_session_reuse_inner(format: WireFormat) -> eyre::Result<()> {
 
 /// Tests that an init request with the identity element as blinded query is rejected.
 async fn init_bad_blinded_query_inner(format: WireFormat) -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
 
-    let mut request = setup::request(&mut rand::thread_rng());
+    let mut request = node_setup::request(&mut rand::thread_rng());
     request.blinded_query = ark_babyjubjub::EdwardsAffine::zero();
 
     let should_close_frame = CloseFrame {
@@ -499,8 +474,7 @@ async fn init_bad_blinded_query_inner(format: WireFormat) -> eyre::Result<()> {
 
 /// Tests that malformed init requests with missing required fields are rejected.
 async fn init_bad_request_inner(format: WireFormat) -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
 
     let mut ws = node
         .server
@@ -512,7 +486,7 @@ async fn init_bad_request_inner(format: WireFormat) -> eyre::Result<()> {
         .await
         .into_websocket()
         .await;
-    setup::ws_send(&mut ws, &BadRequest::default(), format).await;
+    node_setup::ws_send(&mut ws, &BadRequest::default(), format).await;
     let is_message = ws.receive_message().await;
     match is_message {
         tungstenite::Message::Close(Some(is_close_frame)) => {
@@ -533,14 +507,13 @@ async fn init_bad_request_inner(format: WireFormat) -> eyre::Result<()> {
 
 /// Tests that malformed challenge requests with missing required fields are rejected.
 async fn challenge_bad_request_inner(format: WireFormat) -> eyre::Result<()> {
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
 
     let mut ws = node
         .send_success_init_request(format, &mut rand::thread_rng())
         .await;
 
-    setup::ws_send(&mut ws, &BadRequest::default(), format).await;
+    node_setup::ws_send(&mut ws, &BadRequest::default(), format).await;
     let is_message = ws.receive_message().await;
     match is_message {
         tungstenite::Message::Close(Some(is_close_frame)) => {
@@ -562,11 +535,10 @@ async fn challenge_bad_request_inner(format: WireFormat) -> eyre::Result<()> {
 /// Tests that a challenge with incorrect number of contributing parties is rejected.
 async fn challenge_bad_contributing_parties_inner(format: WireFormat) -> eyre::Result<()> {
     let mut rng = rand::thread_rng();
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let mut ws = node.send_success_init_request(format, &mut rng).await;
 
-    let challenge = setup::random_challenge(&mut rng, vec![42]);
+    let challenge = node_setup::random_challenge(&mut rng, vec![42]);
 
     let should_close_frame = CloseFrame {
         code: oprf_error_codes::COEFFICIENTS_DOES_NOT_EQUAL_THRESHOLD.into(),
@@ -582,11 +554,10 @@ async fn challenge_bad_contributing_parties_inner(format: WireFormat) -> eyre::R
 /// Tests that a challenge where the current node is not in contributing parties is rejected.
 async fn challenge_challenge_not_contributing_party_inner(format: WireFormat) -> eyre::Result<()> {
     let mut rng = rand::thread_rng();
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let mut ws = node.send_success_init_request(format, &mut rng).await;
 
-    let challenge = setup::random_challenge(&mut rng, vec![2, 3]);
+    let challenge = node_setup::random_challenge(&mut rng, vec![2, 3]);
 
     let should_close_frame = CloseFrame {
         code: oprf_error_codes::MISSING_MY_COEFFICIENT.into(),
@@ -602,10 +573,9 @@ async fn challenge_challenge_not_contributing_party_inner(format: WireFormat) ->
 /// Tests that contributing parties that are not sorted in ascending order are rejected.
 async fn challenge_contributing_parties_not_sorted_inner(format: WireFormat) -> eyre::Result<()> {
     let mut rng = rand::thread_rng();
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let mut ws = node.send_success_init_request(format, &mut rng).await;
-    let challenge = setup::random_challenge(&mut rng, vec![3, 1]);
+    let challenge = node_setup::random_challenge(&mut rng, vec![3, 1]);
 
     let should_close_frame = CloseFrame {
         code: oprf_error_codes::UNSORTED_CONTRIBUTING_PARTIES.into(),
@@ -620,10 +590,9 @@ async fn challenge_contributing_parties_not_sorted_inner(format: WireFormat) -> 
 /// Tests that contributing parties with duplicate entries are rejected.
 async fn challenge_duplicate_contributions_inner(format: WireFormat) -> eyre::Result<()> {
     let mut rng = rand::thread_rng();
-    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let node = TestNode::start(0, &setup).await?;
+    let node = TestNode::start().await?;
     let mut ws = node.send_success_init_request(format, &mut rng).await;
-    let challenge = setup::random_challenge(&mut rng, vec![1, 1]);
+    let challenge = node_setup::random_challenge(&mut rng, vec![1, 1]);
 
     let should_close_frame = CloseFrame {
         code: oprf_error_codes::DUPLICATE_COEFFICIENT.into(),
@@ -727,10 +696,13 @@ async fn switch_encoding_failed_cbor_json() -> eyre::Result<()> {
 #[tokio::test]
 async fn delegate_happy_path() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let connection_string = oprf_test_utils::shared_postgres_testcontainer().await?;
-    let nodes =
-        setup::start_nodes_for_delegate(connection_string, &setup, setup::OPRF_KEY_ID.into())
-            .await?;
+    let connection_string = nodes_common::test_utils::shared_postgres_testcontainer().await?;
+    let nodes = node_setup::start_nodes_for_delegate(
+        connection_string,
+        &setup,
+        node_setup::OPRF_KEY_ID.into(),
+    )
+    .await?;
 
     let node_urls = nodes
         .iter()
@@ -741,7 +713,7 @@ async fn delegate_happy_path() -> eyre::Result<()> {
     let should_key = oprf_client::fetch_oprf_public_key(
         &node_urls,
         u16::from(setup.setup.threshold()) as usize,
-        setup::OPRF_KEY_ID.into(),
+        node_setup::OPRF_KEY_ID.into(),
         &client,
     )
     .await?
@@ -751,7 +723,7 @@ async fn delegate_happy_path() -> eyre::Result<()> {
         .server
         .post("/api/test/delegate")
         .add_query_param("version", oprf_client::VERSION)
-        .json(&setup::request(&mut rand::thread_rng()))
+        .json(&node_setup::request(&mut rand::thread_rng()))
         .await;
     response.assert_status_ok();
     let body: DelegateOprfResponse = response.json();
@@ -764,13 +736,16 @@ async fn delegate_happy_path() -> eyre::Result<()> {
 #[tokio::test]
 async fn delegate_auth_failed() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let connection_string = oprf_test_utils::shared_postgres_testcontainer().await?;
-    let nodes =
-        setup::start_nodes_for_delegate(connection_string, &setup, setup::OPRF_KEY_ID.into())
-            .await?;
+    let connection_string = nodes_common::test_utils::shared_postgres_testcontainer().await?;
+    let nodes = node_setup::start_nodes_for_delegate(
+        connection_string,
+        &setup,
+        node_setup::OPRF_KEY_ID.into(),
+    )
+    .await?;
 
-    let mut request = setup::request(&mut rand::thread_rng());
-    request.auth = setup::ConfigurableTestRequestAuth(OprfKeyId::from(123_usize));
+    let mut request = node_setup::request(&mut rand::thread_rng());
+    request.auth = node_setup::ConfigurableTestRequestAuth(OprfKeyId::from(123_usize));
 
     let response = nodes[0]
         .server
@@ -788,10 +763,13 @@ async fn delegate_auth_failed() -> eyre::Result<()> {
 #[tokio::test]
 async fn delegate_not_enough_nodes() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let connection_string = oprf_test_utils::shared_postgres_testcontainer().await?;
-    let mut nodes =
-        setup::start_nodes_for_delegate(connection_string, &setup, setup::OPRF_KEY_ID.into())
-            .await?;
+    let connection_string = nodes_common::test_utils::shared_postgres_testcontainer().await?;
+    let mut nodes = node_setup::start_nodes_for_delegate(
+        connection_string,
+        &setup,
+        node_setup::OPRF_KEY_ID.into(),
+    )
+    .await?;
 
     // drop all but one node so the (threshold-2) cluster can no longer reach consensus
     let delegator = nodes.remove(0);
@@ -801,7 +779,7 @@ async fn delegate_not_enough_nodes() -> eyre::Result<()> {
         .server
         .post("/api/test/delegate")
         .add_query_param("version", oprf_client::VERSION)
-        .json(&setup::request(&mut rand::thread_rng()))
+        .json(&node_setup::request(&mut rand::thread_rng()))
         .await;
     response.assert_status(StatusCode::SERVICE_UNAVAILABLE);
     Ok(())
@@ -812,15 +790,18 @@ async fn delegate_not_enough_nodes() -> eyre::Result<()> {
 #[tokio::test]
 async fn delegate_missing_version() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let connection_string = oprf_test_utils::shared_postgres_testcontainer().await?;
-    let nodes =
-        setup::start_nodes_for_delegate(connection_string, &setup, setup::OPRF_KEY_ID.into())
-            .await?;
+    let connection_string = nodes_common::test_utils::shared_postgres_testcontainer().await?;
+    let nodes = node_setup::start_nodes_for_delegate(
+        connection_string,
+        &setup,
+        node_setup::OPRF_KEY_ID.into(),
+    )
+    .await?;
 
     let response = nodes[0]
         .server
         .post("/api/test/delegate")
-        .json(&setup::request(&mut rand::thread_rng()))
+        .json(&node_setup::request(&mut rand::thread_rng()))
         .await;
     response.assert_status(StatusCode::BAD_REQUEST);
     response.assert_text("missing client version");
@@ -832,16 +813,19 @@ async fn delegate_missing_version() -> eyre::Result<()> {
 #[tokio::test]
 async fn delegate_unsupported_version() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let connection_string = oprf_test_utils::shared_postgres_testcontainer().await?;
-    let nodes =
-        setup::start_nodes_for_delegate(connection_string, &setup, setup::OPRF_KEY_ID.into())
-            .await?;
+    let connection_string = nodes_common::test_utils::shared_postgres_testcontainer().await?;
+    let nodes = node_setup::start_nodes_for_delegate(
+        connection_string,
+        &setup,
+        node_setup::OPRF_KEY_ID.into(),
+    )
+    .await?;
 
     let response = nodes[0]
         .server
         .post("/api/test/delegate")
         .add_query_param("version", "0.0.0")
-        .json(&setup::request(&mut rand::thread_rng()))
+        .json(&node_setup::request(&mut rand::thread_rng()))
         .await;
     response.assert_status(StatusCode::BAD_REQUEST);
     response.assert_text(format!(

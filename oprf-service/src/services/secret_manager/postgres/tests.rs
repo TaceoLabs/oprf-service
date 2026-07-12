@@ -4,7 +4,6 @@ use crate::secret_manager::{SecretManager, SecretManagerError, postgres::Postgre
 use ark_serialize::CanonicalSerialize;
 use nodes_common::postgres::{PostgresConfig, SanitizedSchema};
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_test_utils::OPRF_PEER_ADDRESS_0;
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     crypto::{OprfPublicKey, PartyId},
@@ -23,9 +22,9 @@ fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: &T) -> Vec<u8> {
 
 async fn postgres_secret_manager()
 -> eyre::Result<(PostgresSecretManager, &'static str, SanitizedSchema)> {
-    let conn = oprf_test_utils::shared_postgres_testcontainer().await?;
-    let schema = oprf_test_utils::next_test_schema();
-    let mut pg_connection = oprf_test_utils::open_pg_connection(conn, &schema.to_string()).await?;
+    let conn = nodes_common::test_utils::shared_postgres_testcontainer().await?;
+    let schema = nodes_common::test_utils::next_test_schema();
+    let mut pg_connection = nodes_common::test_utils::open_pg_connection(conn, &schema).await?;
     sqlx::migrate!("../oprf-key-gen/migrations")
         .run(&mut pg_connection)
         .await?;
@@ -114,13 +113,12 @@ async fn load_node_information_empty() -> eyre::Result<()> {
 async fn load_node_information_success() -> eyre::Result<()> {
     let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
 
-    let should_address = OPRF_PEER_ADDRESS_0;
+    let should_address = "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc";
     let should_party_id = PartyId(42);
     let should_threshold = 2;
-    let mut conn =
-        oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
+    let mut conn = nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
     insert_node_information(
-        &should_address.to_string(),
+        should_address,
         i32::from(should_party_id.into_inner()),
         should_threshold,
         &mut conn,
@@ -145,8 +143,7 @@ async fn load_node_information_success() -> eyre::Result<()> {
 #[tokio::test]
 async fn test_get_oprf_key_material() -> eyre::Result<()> {
     let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
-    let mut conn =
-        oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
+    let mut conn = nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
 
     let oprf_key_id0 = OprfKeyId::new(U160::from(42));
     let oprf_key_id1 = OprfKeyId::new(U160::from(128));
@@ -196,8 +193,7 @@ async fn test_get_deleted_secret() -> eyre::Result<()> {
     let epoch = ShareEpoch::new(42);
     let share = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
 
-    let mut conn =
-        oprf_test_utils::open_pg_connection(connection_string, &schema.to_string()).await?;
+    let mut conn = nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
     insert_row(oprf_key_id, share.clone(), epoch, public_key, &mut conn).await?;
 
     delete_row(oprf_key_id, &mut conn).await?;

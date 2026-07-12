@@ -71,9 +71,6 @@ pub mod config;
 pub mod metrics;
 pub(crate) mod services;
 
-#[cfg(test)]
-mod tests;
-
 pub use nodes_common::{Environment, StartedServices};
 pub use semver::VersionReq;
 pub use services::secret_manager;
