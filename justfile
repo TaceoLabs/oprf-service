@@ -7,6 +7,16 @@ default:
 load-key-registry:
     grep -oP 'OprfKeyRegistry proxy deployed to: \K0x[a-fA-F0-9]+' deploy_oprf_key_registry.log
 
+[group('build')]
+[working-directory('contracts')]
+export-contract-abi:
+    forge build --silent && jq '.abi' out/OprfKeyRegistry.sol/OprfKeyRegistry.json > ../oprf-types/OprfKeyRegistry.json
+    cp out/VerifierKeyGen13.sol/Verifier.json ../oprf/contracts/Verifier.13.json
+    cp out/VerifierKeyGen25.sol/Verifier.json ../oprf/contracts/Verifier.25.json
+    cp out/BabyJubJub.sol/BabyJubJub.json ../oprf/contracts/BabyJubJub.json
+    cp out/OprfKeyRegistry.sol/OprfKeyRegistry.json ../oprf-types/
+    cp out/ERC1967Proxy.sol/ERC1967Proxy.json ../oprf/contracts
+
 [group('test')]
 rust-tests:
     cargo test --release --workspace --all-features
