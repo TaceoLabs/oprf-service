@@ -6245,6 +6245,9 @@ dependencies = [
 name = "taceo-oprf"
 version = "0.17.2"
 dependencies = [
+ "alloy",
+ "eyre",
+ "serde_json",
  "taceo-oprf-client",
  "taceo-oprf-core",
  "taceo-oprf-dev-client",

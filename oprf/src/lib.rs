@@ -32,6 +32,8 @@
 //!   (requires the `service` feature).
 //! - [`types`] – shared types and structs across OPRF crates
 //!   (requires the `types` feature).
+//! - [`anvil`] – test helpers for deploying the OPRF contracts to a local
+//!   Anvil devnet (requires the `anvil` feature; not included in `full`).
 //!
 //! ## Features
 //!
@@ -43,7 +45,7 @@
 //! taceo-oprf = { version = "0.7.1", features = ["client", "core"] }
 //! ```
 //!
-//! The default feature `full` enables all modules with their transitive deps.
+//! The feature `full` enables all modules with their transitive deps (except the test feature `anvil`).
 //!
 //! ### Transitive sub-crate features
 //!
@@ -57,6 +59,11 @@
 //! |------------------|-------------------------|-------------------------------------|
 //! | `postgres`       | `oprf-service/postgres` | On by default via `full`            |
 //! | `chain`          | `oprf-types/chain`      | On by default via `full`            |
+//!
+//! The `anvil` feature is not forwarded from a sub-crate; it enables the
+//! [`anvil`] module directly and pulls in `alloy`, `eyre`, and `serde_json`.
+//! It is opt-in only and, unlike the modules above, is **not** enabled by
+//! `full`.
 
 #[cfg(feature = "client")]
 /// Re-export of the `taceo-oprf-client` crate.
@@ -88,3 +95,6 @@ pub mod service {
 pub mod types {
     pub use oprf_types::*;
 }
+
+#[cfg(feature = "anvil")]
+pub mod anvil;

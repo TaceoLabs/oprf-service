@@ -18,22 +18,40 @@ oprf-dev-client = { package = "taceo-oprf-dev-client", path = "../oprf-dev-clien
 oprf-service = { package = "taceo-oprf-service", path = "../oprf-service", version = "0.18.2", default-features = false, optional = true }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.15.0", default-features = false, optional = true }
 
-[features]
-default = ["full"]
+alloy = { workspace = true, features = [
+  "contract",
+  "node-bindings",
+  "provider-http",
+  "provider-ws",
+  "rpc-types-eth",
+  "signer-local",
+  "sol-types"
+], optional = true }
+eyre = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 
+[features]
+default = []
+
+anvil = ["chain", "dep:alloy", "dep:eyre", "dep:serde_json", "types"]
 client = ["dep:oprf-client"]
 core = ["dep:oprf-core"]
 dev-client = ["client", "dep:oprf-dev-client"]
 service = ["dep:oprf-service"]
 types = ["dep:oprf-types"]
 
+# oprf-types
+chain = ["oprf-types?/chain"]
 # --- forwarded transitive features ---
 # oprf-service
 postgres = ["oprf-service?/postgres"]
-# oprf-types
-chain = ["oprf-types?/chain"]
 
 full = [
-  "client", "core", "dev-client", "service", "types",
-  "postgres", "chain",
+  "chain",
+  "client",
+  "core",
+  "dev-client",
+  "postgres",
+  "service",
+  "types",
 ]
