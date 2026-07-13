@@ -198,7 +198,7 @@ async fn deploy_oprf_key_registry(
     bytecode_str = link_bytecode_hex(
         oprf_key_registry_json,
         &bytecode_str,
-        "src/BabyJubJub.sol:BabyJubJub",
+        "lib/babyjubjub-solidity/src/BabyJubJub.sol:BabyJubJub",
         baby_jub_jub_address,
     )?;
 

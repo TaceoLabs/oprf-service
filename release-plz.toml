@@ -68,6 +68,6 @@ link_parsers = [
 ]
 
 [[package]]
-name = "taceo-oprf-test-utils"
+name = "taceo-oprf-test"
 release = false
 changelog_update = false

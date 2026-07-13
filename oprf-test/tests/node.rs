@@ -12,7 +12,7 @@ use oprf_types::{
 };
 use ruint::aliases::U160;
 use serde::{Deserialize, Serialize};
-use taceo_oprf_test_utils::{
+use taceo_oprf_test::{
     DeploySetup, OPRF_PEER_ADDRESS_0,
     node_setup::{self, INVALID_AUTH_CODE, INVALID_AUTH_MSG, TestNode, WireFormat},
     wait_until_started,
@@ -216,7 +216,7 @@ async fn session_timeout_no_message() -> eyre::Result<()> {
         reason: "timeout".into(),
     };
     let is_message =
-        tokio::time::timeout(taceo_oprf_test_utils::test_timeout(), ws.receive_message())
+        tokio::time::timeout(taceo_oprf_test::test_timeout(), ws.receive_message())
             .await
             .expect("should receive close frame before timeout");
     node_setup::assert_close_frame(is_message, &should_close_frame);
@@ -311,7 +311,7 @@ async fn session_timeout_after_init_inner(format: WireFormat) -> eyre::Result<()
         reason: "timeout".into(),
     };
     let is_message =
-        tokio::time::timeout(taceo_oprf_test_utils::test_timeout(), ws.receive_message())
+        tokio::time::timeout(taceo_oprf_test::test_timeout(), ws.receive_message())
             .await
             .expect("should receive close frame before timeout");
     node_setup::assert_close_frame(is_message, &should_close_frame);

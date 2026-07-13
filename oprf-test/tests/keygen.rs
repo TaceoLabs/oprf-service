@@ -5,7 +5,7 @@ use alloy::{primitives::U160, sol_types::SolEvent};
 use eyre::Context as _;
 use oprf_key_gen::event_cursor_store::ChainCursorStorage as _;
 use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
-use taceo_oprf_test_utils::{
+use taceo_oprf_test::{
     DeploySetup, MineStrategy, OPRF_PEER_ADDRESS_0, TestSetup,
     key_gen_setup::{TestKeyGen, keygen_asserts},
     test_timeout, wait_until_started,

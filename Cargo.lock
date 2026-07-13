@@ -6420,7 +6420,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "taceo-oprf-test-utils"
+name = "taceo-oprf-test"
 version = "0.14.0"
 dependencies = [
  "alloy",
