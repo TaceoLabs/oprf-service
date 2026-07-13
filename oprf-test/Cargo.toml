@@ -41,14 +41,7 @@ groth16-sol = { workspace = true, optional = true }
 http = { workspace = true }
 itertools.workspace = true
 nodes-common = { workspace = true, features = ["postgres", "test-utils"] }
-oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.10" }
-oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
 oprf-key-gen = { package = "taceo-oprf-key-gen", path = "../oprf-key-gen/", version = "0.12" }
-oprf-service = { package = "taceo-oprf-service", path = "../oprf-service/", version = "0.18" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.15", features = [
-  "chain",
-  "service",
-] }
 rand.workspace = true
 rand_chacha = { workspace = true, optional = true }
 serde.workspace = true
@@ -56,6 +49,10 @@ serde_json.workspace = true
 sqlx = { workspace = true, features = [
   "postgres",
   "runtime-tokio",
+] }
+taceo-oprf = { path = "../oprf", version = "0.17.2", features = [
+  "anvil",
+  "full"
 ] }
 tokio = { workspace = true, features = [
   "net",

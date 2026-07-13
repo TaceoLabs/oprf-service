@@ -4,33 +4,39 @@ use std::time::Duration;
 use alloy::{primitives::U160, sol_types::SolEvent};
 use eyre::Context as _;
 use oprf_key_gen::event_cursor_store::ChainCursorStorage as _;
-use oprf_types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
+use taceo_oprf::types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
 use taceo_oprf_test::{
-    DeploySetup, MineStrategy, OPRF_PEER_ADDRESS_0, TestSetup,
+    TEST_TIMEOUT,
     key_gen_setup::{TestKeyGen, keygen_asserts},
-    test_timeout, wait_until_started,
+    setup::{DeploySetup, MineStrategy, TestSetup},
+    wait_until_started,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_delete_oprf_key() -> eyre::Result<()> {
-    let setup =
-        TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
-    let key_gen = TestKeyGen::start(0, &setup).await?;
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
+    let key_gens = TestKeyGen::start_three(&setup).await?;
+    let oprf_key_id = OprfKeyId::new(U160::from(42));
+    setup.init_keygen(oprf_key_id).await?;
+    let _oprf_public_key =
+        keygen_asserts::all_have_key(&key_gens, oprf_key_id, ShareEpoch::default()).await?;
 
-    let inserted_key = key_gen
-        .add_random_key_material(&mut rand::thread_rng())
-        .await?;
-    assert!(key_gen.has_key_material(inserted_key).await?, "we added it");
-    setup.delete_oprf_key(inserted_key).await?;
+    setup.delete_oprf_key(oprf_key_id).await?;
 
-    key_gen.is_key_id_not_stored(inserted_key).await?;
+    let (res0, res1, res2) = tokio::join!(
+        key_gens[0].is_key_id_not_stored(oprf_key_id),
+        key_gens[1].is_key_id_not_stored(oprf_key_id),
+        key_gens[2].is_key_id_not_stored(oprf_key_id)
+    );
+    res0?;
+    res1?;
+    res2?;
     Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_keygen_works_two_three() -> eyre::Result<()> {
-    let setup =
-        TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gens = TestKeyGen::start_three(&setup).await?;
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     setup.init_keygen(oprf_key_id).await?;
@@ -41,6 +47,8 @@ async fn test_keygen_works_two_three() -> eyre::Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_keygen_works_when_init_before_start() -> eyre::Result<()> {
+    // init happens before any node subscribes, so this can only be caught via
+    // backfill, which requires interval mining (see `MineStrategy`).
     let setup =
         TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
     let oprf_key_id = OprfKeyId::new(U160::from(42));
@@ -84,8 +92,7 @@ async fn test_keygen_works_when_crashing_in_between() -> eyre::Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 async fn test_keygen_works_three_five() -> eyre::Result<()> {
-    let setup =
-        TestSetup::with_mine_strategy(DeploySetup::ThreeFive, MineStrategy::Interval(1)).await?;
+    let setup = TestSetup::new(DeploySetup::ThreeFive).await?;
     let key_gens = TestKeyGen::start_five(&setup).await?;
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     setup.init_keygen(oprf_key_id).await?;
@@ -96,16 +103,14 @@ async fn test_keygen_works_three_five() -> eyre::Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_reshare_five_times_works_two_three() -> eyre::Result<()> {
-    let setup =
-        TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gens = TestKeyGen::start_three(&setup).await?;
     test_reshare_five_times_works_inner(&setup, &key_gens).await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 async fn test_reshare_five_times_works_three_five() -> eyre::Result<()> {
-    let setup =
-        TestSetup::with_mine_strategy(DeploySetup::ThreeFive, MineStrategy::Interval(1)).await?;
+    let setup = TestSetup::new(DeploySetup::ThreeFive).await?;
     let key_gens = TestKeyGen::start_five(&setup).await?;
     test_reshare_five_times_works_inner(&setup, &key_gens).await
 }
@@ -131,16 +136,14 @@ async fn test_reshare_five_times_works_inner(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_reshare_with_consumer_two_three() -> eyre::Result<()> {
-    let setup =
-        TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gens = TestKeyGen::start_three(&setup).await?;
     test_reshare_with_consumer_inner(&setup, &key_gens, 1).await
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 5)]
 async fn test_reshare_with_consumer_three_five() -> eyre::Result<()> {
-    let setup =
-        TestSetup::with_mine_strategy(DeploySetup::ThreeFive, MineStrategy::Interval(1)).await?;
+    let setup = TestSetup::new(DeploySetup::ThreeFive).await?;
     let key_gens = TestKeyGen::start_five(&setup).await?;
     test_reshare_with_consumer_inner(&setup, &key_gens, 2).await
 }
@@ -172,8 +175,7 @@ async fn test_reshare_with_consumer_inner(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_reshare_emits_stuck_if_two_consumer() -> eyre::Result<()> {
-    let setup =
-        TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gens = TestKeyGen::start_three(&setup).await?;
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     setup.init_keygen(oprf_key_id).await?;
@@ -209,8 +211,7 @@ async fn test_start_sanity_checks() -> eyre::Result<()> {
 /// Covers the `/health`, `/wallet` and `/version` routes against one key-gen.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_service_routes() -> eyre::Result<()> {
-    let setup =
-        TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gen = TestKeyGen::start(0, &setup).await?;
     wait_until_started(&key_gen.started_services).await?;
 
@@ -220,7 +221,7 @@ async fn test_service_routes() -> eyre::Result<()> {
 
     let result = key_gen.server.get("/wallet").expect_success().await;
     result.assert_status_ok();
-    result.assert_text(OPRF_PEER_ADDRESS_0.to_string());
+    result.assert_text(setup.peer_addresses[0].to_string());
 
     let result = key_gen.server.get("/version").expect_success().await;
     result.assert_status_ok();
@@ -243,11 +244,10 @@ async fn test_health_route_not_ready() -> eyre::Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn key_gen_dies_on_cancellation() -> eyre::Result<()> {
-    let setup =
-        TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gen = TestKeyGen::start(0, &setup).await?;
     key_gen.cancellation_token.cancel();
-    tokio::time::timeout(test_timeout(), key_gen.key_gen_task.join())
+    tokio::time::timeout(TEST_TIMEOUT, key_gen.key_gen_task.join())
         .await
         .expect("Can shutdown in time")
         .expect("Was a graceful shutdown");
@@ -323,12 +323,11 @@ async fn test_reshare_replayed_via_backfill() -> eyre::Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_cursor_checkpoint_persists() -> eyre::Result<()> {
-    let setup =
-        TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
+    let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let key_gen = TestKeyGen::start(0, &setup).await?;
 
     let cursor_service = key_gen.secret_manager.clone();
-    tokio::time::timeout(test_timeout(), async {
+    tokio::time::timeout(TEST_TIMEOUT, async {
         loop {
             if cursor_service.load_chain_cursor().await?.block() > 0 {
                 break;

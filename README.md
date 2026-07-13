@@ -15,7 +15,7 @@ This is a monorepo containing:
 * `oprf-dev-client`: A crate implementing common dev client functionality.
 * `oprf-key-gen`: A crate implementing a OPRF key generation instance.
 * `oprf-service`: A crate implementing a service lib for the OPRF service.
-* `oprf-test-utils`: A crate implementing test utils.
+* `oprf-test`: A crate containing the integration tests for the workspace.
 * `oprf-types`: A crate implementing types that are shared between client, service, and the blockchain.
 
 ## Other repositories

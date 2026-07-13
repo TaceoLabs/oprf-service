@@ -3,44 +3,50 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::num::NonZeroU16;
 use std::{sync::Arc, time::Duration};
 
+use alloy::primitives::Address;
 use ark_ec::{AffineRepr as _, CurveGroup as _};
 use ark_ff::UniformRand as _;
 use async_trait::async_trait;
 use axum_test::{TestServer, TestWebSocket, http};
-use eyre::Context as _;
 use http::{StatusCode, Uri};
-use nodes_common::postgres::CreateSchema;
-use nodes_common::{Environment, StartedServices};
-use oprf_client::Connector;
-use oprf_core::ddlog_equality::shamir::{
-    DLogCommitmentsShamir, DLogProofShareShamir, DLogShareShamir,
-};
-use oprf_core::oprf::BlindingFactor;
-use oprf_service::OprfServiceBuilder;
-use oprf_service::config::OprfNodeServiceConfig;
-use oprf_service::secret_manager::SecretManager as _;
-use oprf_service::secret_manager::postgres::PostgresSecretManager;
-use oprf_types::api::OprfRequestAuthenticatorError;
-use oprf_types::async_trait;
-use oprf_types::crypto::PartyId;
-use oprf_types::service::NodeInformation;
-use oprf_types::{
-    OprfKeyId, ShareEpoch,
-    api::{OprfPublicKeyWithEpoch, OprfRequest, OprfRequestAuthenticator, OprfResponse},
-    crypto::OprfPublicKey,
-};
+use nodes_common::{Environment, StartedServices, postgres::CreateSchema};
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use sqlx::PgPool;
-use sqlx::migrate::Migrator;
+use sqlx::{PgPool, migrate::Migrator};
+use taceo_oprf::client::Connector;
+use taceo_oprf::core::{
+    ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir, DLogShareShamir},
+    oprf::BlindingFactor,
+};
+use taceo_oprf::service::{
+    OprfServiceBuilder,
+    config::OprfNodeServiceConfig,
+    secret_manager::{SecretManager as _, postgres::PostgresSecretManager},
+};
+use taceo_oprf::types::{
+    OprfKeyId, ShareEpoch,
+    api::{
+        OprfPublicKeyWithEpoch, OprfRequest, OprfRequestAuthenticator,
+        OprfRequestAuthenticatorError, OprfResponse,
+    },
+    async_trait,
+    crypto::{OprfPublicKey, PartyId},
+    service::NodeInformation,
+};
 use tungstenite::protocol::CloseFrame;
 use uuid::Uuid;
 
-use crate::{DeploySetup, OPRF_PEER_ADDRESS_0, test_timeout};
+use crate::TEST_TIMEOUT;
+use crate::setup::DeploySetup;
 
 pub const OPRF_KEY_ID: u32 = 42;
 pub const INVALID_AUTH_CODE: u16 = 4500;
 pub const INVALID_AUTH_MSG: &str = "invalid auth";
+
+/// Placeholder wallet address for nodes started via [`TestNode::start`]. These
+/// nodes run standalone without an Anvil chain, so there's no real signing
+/// wallet to source an address from.
+pub const PLACEHOLDER_WALLET_ADDRESS: Address = Address::ZERO;
 
 pub const MIGRATOR: Migrator = sqlx::migrate!("../oprf-key-gen/migrations");
 
@@ -69,7 +75,7 @@ impl OprfRequestAuthenticator for ConfigurableTestAuthenticator {
         } else {
             Err(OprfRequestAuthenticatorError::with_message(
                 INVALID_AUTH_CODE,
-                oprf_types::close_frame_message!(INVALID_AUTH_MSG),
+                taceo_oprf::types::close_frame_message!(INVALID_AUTH_MSG),
             ))
         }
     }
@@ -77,7 +83,7 @@ impl OprfRequestAuthenticator for ConfigurableTestAuthenticator {
 
 pub struct TestNode {
     pub party_id: usize,
-    pub secret_manager: Arc<oprf_service::secret_manager::postgres::PostgresSecretManager>,
+    pub secret_manager: Arc<taceo_oprf::service::secret_manager::postgres::PostgresSecretManager>,
     pub server: Arc<TestServer>,
     pub started_services: StartedServices,
     pub pool: PgPool,
@@ -96,8 +102,8 @@ impl TestNode {
         self.server
             .get_websocket("/api/test/oprf")
             .add_header(
-                oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
-                oprf_client::VERSION,
+                taceo_oprf::types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
+                taceo_oprf::client::VERSION,
             )
             .await
             .into_websocket()
@@ -115,12 +121,13 @@ impl TestNode {
         services: Option<Vec<Uri>>,
         secret_manager: PostgresSecretManager,
         session_lifetime: Duration,
+        threshold: NonZeroU16,
     ) -> Self {
         assert!(party_id < 5, "can only spawn 5 nodes");
 
         let mut config = OprfNodeServiceConfig::with_default_values(
             Environment::Dev,
-            oprf_client::VERSION.parse().expect("valid semver"),
+            taceo_oprf::client::VERSION.parse().expect("valid semver"),
         );
         config.session_lifetime = session_lifetime;
 
@@ -132,8 +139,8 @@ impl TestNode {
             started_services.clone(),
             &NodeInformation::new(
                 PartyId(u16::try_from(party_id).expect("party id must be u16")),
-                OPRF_PEER_ADDRESS_0.to_string(),
-                NonZeroU16::try_from(2).expect("2 is non-zero"),
+                PLACEHOLDER_WALLET_ADDRESS.to_string(),
+                threshold,
             ),
             nodes_common::version_info!(),
         )
@@ -164,8 +171,15 @@ impl TestNode {
     pub async fn start_with_session_lifetime(session_lifetime: Duration) -> eyre::Result<Self> {
         let (pool, secret_manager) = migrated_pool_and_secret_manager().await?;
         let port = nodes_common::test_utils::random_port()?;
-        let test_node =
-            Self::start_with_secret_manager(0, pool, port, None, secret_manager, session_lifetime);
+        let test_node = Self::start_with_secret_manager(
+            0,
+            pool,
+            port,
+            None,
+            secret_manager,
+            session_lifetime,
+            NonZeroU16::try_from(2).expect("2 is non-zero"),
+        );
         let key_id = OprfKeyId::from(OPRF_KEY_ID);
         test_node
             .add_random_key_material_with_id(key_id, &mut rand::thread_rng())
@@ -188,7 +202,7 @@ impl TestNode {
         should_key: OprfPublicKey,
     ) -> eyre::Result<()> {
         let server = Arc::clone(&self.server);
-        let is_key = tokio::time::timeout(test_timeout(), async move {
+        let is_key = tokio::time::timeout(TEST_TIMEOUT, async move {
             let url = format!("/oprf_pub/{oprf_key_id}");
             loop {
                 let response = server.get(&url).await.text();
@@ -207,7 +221,7 @@ impl TestNode {
 
     pub async fn doesnt_have_key(&self, oprf_key_id: OprfKeyId) -> eyre::Result<()> {
         let server = Arc::clone(&self.server);
-        tokio::time::timeout(test_timeout(), async move {
+        tokio::time::timeout(TEST_TIMEOUT, async move {
             let url = format!("/oprf_pub/{oprf_key_id}");
             loop {
                 if server.get(&url).await.status_code() == StatusCode::NOT_FOUND {
@@ -292,9 +306,6 @@ impl TestNode {
             .await
     }
 
-    /// Inserts a specific (non-random) share and public key for `key_id`. Used to give
-    /// multiple nodes consistent Shamir shares of the same secret, e.g. via
-    /// [`generate_shamir_shares`], so that a real threshold protocol run across them succeeds.
     pub async fn add_key_material_with_id_epoch_and_share(
         &self,
         key_id: OprfKeyId,
@@ -302,7 +313,7 @@ impl TestNode {
         share: DLogShareShamir,
         public_key: OprfPublicKey,
     ) -> eyre::Result<()> {
-        crate::insert_key_material(&self.pool, key_id, epoch, share, public_key).await
+        crate::setup::insert_key_material(&self.pool, key_id, epoch, share, public_key).await
     }
 
     pub async fn add_random_key_material_with_id<R: Rng + CryptoRng>(
@@ -315,24 +326,7 @@ impl TestNode {
     }
 
     pub async fn delete_key_material(&self, key_id: OprfKeyId) -> eyre::Result<()> {
-        let success = sqlx::query(
-            "
-            UPDATE shares
-            SET
-                share = NULL,
-                deleted = true
-            WHERE id = $1
-        ",
-        )
-        .bind(key_id.to_le_bytes())
-        .execute(&self.pool)
-        .await
-        .context("while deleting key material in DB")?;
-        if success.rows_affected() == 1 {
-            Ok(())
-        } else {
-            Err(eyre::eyre!("No row found to delete for key_id {key_id:?}"))
-        }
+        crate::setup::delete_key_material(&self.pool, key_id).await
     }
 }
 
@@ -364,7 +358,7 @@ fn generate_shamir_shares<R: Rng + CryptoRng>(
         OprfPublicKey::new((ark_babyjubjub::EdwardsAffine::generator() * poly[0]).into_affine());
     let shares = (1..=n)
         .map(|x| {
-            DLogShareShamir::from(oprf_core::shamir::evaluate_poly(
+            DLogShareShamir::from(taceo_oprf::core::shamir::evaluate_poly(
                 &poly,
                 ark_babyjubjub::Fr::from(x as u64),
             ))
@@ -382,7 +376,7 @@ pub async fn start_nodes_for_delegate(
     setup: DeploySetup,
     key_id: OprfKeyId,
 ) -> eyre::Result<Vec<TestNode>> {
-    let n = setup.addresses().len();
+    let n = setup.num_peers();
     let threshold = usize::from(u16::from(setup.threshold()));
     let ports: Vec<u16> = (0..n)
         .map(|_| nodes_common::test_utils::random_port().expect("Can find random port"))
@@ -391,7 +385,7 @@ pub async fn start_nodes_for_delegate(
         .iter()
         .map(|port| format!("http://127.0.0.1:{port}"))
         .collect();
-    let services = oprf_client::to_oprf_uri_many(&base_urls, "test")?;
+    let services = taceo_oprf::client::to_oprf_uri_many(&base_urls, "test")?;
 
     let epoch = ShareEpoch::default();
     let (public_key, shares) = generate_shamir_shares(threshold, n, &mut rand::thread_rng());
@@ -407,6 +401,7 @@ pub async fn start_nodes_for_delegate(
             Some(services.clone()),
             secret_manager,
             Duration::from_secs(10),
+            setup.threshold(),
         );
         node.add_key_material_with_id_epoch_and_share(
             key_id,
@@ -439,7 +434,7 @@ pub fn request_with_id<R: Rng + CryptoRng>(
 ) -> OprfRequest<ConfigurableTestRequestAuth> {
     let blinding_factor = BlindingFactor::rand(rng);
     let query = ark_babyjubjub::Fq::rand(rng);
-    let blinded_request = oprf_core::oprf::client::blind_query(query, blinding_factor);
+    let blinded_request = taceo_oprf::core::oprf::client::blind_query(query, blinding_factor);
     OprfRequest {
         request_id: Uuid::new_v4(),
         blinded_query: blinded_request.blinded_query(),

@@ -10,12 +10,12 @@ use clap::Parser;
 use eyre::Context;
 use groth16_material::circom::{CircomGroth16Material, CircomGroth16MaterialBuilder, Proof};
 use itertools::Itertools as _;
-use oprf_core::{
+use rand::{CryptoRng, Rng, SeedableRng};
+use rand_chacha::ChaCha20Rng;
+use taceo_oprf::core::{
     keygen::{self, KeyGenPoly},
     shamir::{self},
 };
-use rand::{CryptoRng, Rng, SeedableRng};
-use rand_chacha::ChaCha20Rng;
 
 const DEGREE: usize = 1;
 

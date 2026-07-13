@@ -3,22 +3,24 @@ use std::num::{NonZeroU16, NonZeroUsize};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::{DeploySetup, TestSetup};
-use crate::{PEER_PRIVATE_KEYS, test_timeout};
+use crate::TEST_TIMEOUT;
+use crate::setup::TestSetup;
+use crate::setup::{DeploySetup, MineStrategy};
 use ark_ff::UniformRand as _;
 use ark_serialize::CanonicalDeserialize as _;
 use axum_test::TestServer;
 use eyre::Context as _;
 use nodes_common::postgres::CreateSchema;
 use nodes_common::web3::HttpRpcProviderConfig;
+use nodes_common::web3::event_stream::SkipBackfill;
 use nodes_common::{Environment, StartedServices};
-use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_key_gen::KeyGenTasks;
 use oprf_key_gen::config::{OprfKeyGenServiceConfig, OprfKeyGenServiceConfigMandatoryValues};
 use oprf_key_gen::postgres::PostgresDb;
-use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 use rand::{CryptoRng, Rng};
 use sqlx::PgPool;
+use taceo_oprf::core::ddlog_equality::shamir::DLogShareShamir;
+use taceo_oprf::types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 use tokio_util::sync::CancellationToken;
 
 pub struct TestKeyGen {
@@ -51,11 +53,12 @@ impl TestKeyGen {
             oprf_key_registry,
             cancellation_token,
             setup,
+            mine_strategy,
             ..
         } = test_setup;
 
         assert!(party_id < 5, "can only spawn 5 key-gens");
-        let private_key = PEER_PRIVATE_KEYS[party_id];
+        let private_key = test_setup.peer_private_keys[party_id].as_str();
         let child_token = cancellation_token.child_token();
         let (expected_threshold, expected_num_peers) = match test_setup.setup {
             DeploySetup::TwoThree => (2, 3),
@@ -82,6 +85,9 @@ impl TestKeyGen {
         config.rpc_provider_config.chain_id = Some(31_337);
         config.event_stream_config.confirmations_after_sync_block =
             NonZeroUsize::new(2).expect("2 is non-zero");
+        // backfill only works with interval mining
+        config.event_stream_config.skip_backfill =
+            SkipBackfill::from(*mine_strategy == MineStrategy::Auto);
         config.cursor_checkpoint_interval = Duration::from_secs(2);
 
         let started_services = StartedServices::new();
@@ -101,6 +107,10 @@ impl TestKeyGen {
             .http_transport()
             .build(router)
             .expect("works");
+        // Ensure the event watcher's live log subscription is active before
+        // returning. Under auto-mining, backfill is skipped, so any chain
+        // event emitted before this node subscribes would otherwise be lost.
+        crate::wait_until_started(&started_services).await?;
         Ok(Self {
             party_id,
             secret_manager,
@@ -146,7 +156,7 @@ impl TestKeyGen {
             self.key_gen_task.join().await?;
             Ok((self.party_id, self.pool, self.secret_manager))
         };
-        tokio::time::timeout(test_timeout(), fut)
+        tokio::time::timeout(TEST_TIMEOUT, fut)
             .await
             .context("Cannot shutdown in time")?
     }
@@ -156,7 +166,7 @@ impl TestKeyGen {
             let (party_id, pool, secret_manager) = self.shutdown().await?;
             TestKeyGen::start_with_secret_manager(party_id, test_setup, secret_manager, pool).await
         };
-        tokio::time::timeout(test_timeout(), restart_fut)
+        tokio::time::timeout(TEST_TIMEOUT, restart_fut)
             .await
             .context("Cannot restart in time")?
     }
@@ -169,7 +179,7 @@ impl TestKeyGen {
     ) -> eyre::Result<()> {
         let share = DLogShareShamir::from(ark_babyjubjub::Fr::rand(rng));
         let public_key = OprfPublicKey::new(rng.r#gen());
-        crate::insert_key_material(&self.pool, key_id, epoch, share, public_key).await
+        crate::setup::insert_key_material(&self.pool, key_id, epoch, share, public_key).await
     }
 
     pub async fn add_random_key_material<R: Rng + CryptoRng>(
@@ -193,7 +203,7 @@ impl TestKeyGen {
 
     pub async fn is_key_id_not_stored(&self, oprf_key_id: OprfKeyId) -> eyre::Result<()> {
         let pool = self.pool.clone();
-        tokio::time::timeout(test_timeout(), async move {
+        tokio::time::timeout(TEST_TIMEOUT, async move {
             loop {
                 let count: i64 = sqlx::query_scalar(
                     "SELECT COUNT(*) FROM shares WHERE id = $1 AND deleted = false",
@@ -225,7 +235,7 @@ async fn poll_key_in_pool(
     oprf_key_id: OprfKeyId,
     epoch: ShareEpoch,
 ) -> eyre::Result<OprfPublicKey> {
-    let public_key = tokio::time::timeout(test_timeout(), async move {
+    let public_key = tokio::time::timeout(TEST_TIMEOUT, async move {
         loop {
             let maybe_bytes: Option<Vec<u8>> = sqlx::query_scalar(
                 "SELECT public_key FROM shares WHERE id = $1 AND epoch = $2 AND deleted = false",
@@ -249,7 +259,7 @@ async fn poll_key_in_pool(
 }
 
 pub mod keygen_asserts {
-    use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
+    use taceo_oprf::types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
     use tokio::task::JoinSet;
 
     use super::TestKeyGen;

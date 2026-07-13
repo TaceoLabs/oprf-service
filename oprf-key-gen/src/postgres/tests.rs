@@ -1,7 +1,6 @@
 #![allow(clippy::too_many_lines, reason = "doesn't matter for tests")]
 use std::num::NonZeroU16;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use crate::event_cursor_store::ChainCursorStorage;
 use crate::postgres::{PostgresDb, to_db_ark_serialize_uncompressed};
@@ -48,9 +47,7 @@ pub(crate) async fn postgres_secret_manager_with_schema(
 async fn load_node_information_success() -> eyre::Result<()> {
     let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
 
-    let key = PrivateKeySigner::from_str(
-        "0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba",
-    )?;
+    let key = PrivateKeySigner::random();
     let address = key.address();
     let should_party_id = PartyId(42);
     let should_threshold = NonZeroU16::new(2).expect("2 is non-zero");

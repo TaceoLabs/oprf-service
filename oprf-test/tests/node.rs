@@ -2,19 +2,24 @@
 
 use std::time::Duration;
 
+use ark_ff::{One, UniformRand as _};
 use axum::extract::ws::close_code;
 use http::StatusCode;
-use oprf_core::ddlog_equality::shamir::DLogProofShareShamir;
-use oprf_service::secret_manager::SecretManager as _;
-use oprf_types::{
-    OprfKeyId, ShareEpoch,
-    api::{DelegateOprfResponse, OprfResponse, oprf_error_codes},
-};
 use ruint::aliases::U160;
 use serde::{Deserialize, Serialize};
+use taceo_oprf::core::ddlog_equality::shamir::DLogProofShareShamir;
+use taceo_oprf::core::oprf::BlindingFactor;
+use taceo_oprf::service::secret_manager::SecretManager as _;
+use taceo_oprf::types::{
+    OprfKeyId, ShareEpoch,
+    api::{OprfResponse, oprf_error_codes},
+};
+use taceo_oprf_test::node_setup::ConfigurableTestRequestAuth;
 use taceo_oprf_test::{
-    DeploySetup, OPRF_PEER_ADDRESS_0,
-    node_setup::{self, INVALID_AUTH_CODE, INVALID_AUTH_MSG, TestNode, WireFormat},
+    node_setup::{
+        self, INVALID_AUTH_CODE, INVALID_AUTH_MSG, PLACEHOLDER_WALLET_ADDRESS, TestNode, WireFormat,
+    },
+    setup::DeploySetup,
     wait_until_started,
 };
 use tungstenite::protocol::{CloseFrame, frame::coding::CloseCode};
@@ -57,7 +62,7 @@ async fn test_basic_routes() -> eyre::Result<()> {
 
     let result = node.server.get("/wallet").await;
     result.assert_status_ok();
-    result.assert_text(OPRF_PEER_ADDRESS_0.to_string());
+    result.assert_text(PLACEHOLDER_WALLET_ADDRESS.to_string());
 
     let result = node.server.get("/version").await;
     result.assert_status_ok();
@@ -101,14 +106,14 @@ async fn client_version_rejected() -> eyre::Result<()> {
         .server
         .get_websocket("/api/test/oprf")
         .add_header(
-            oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
+            taceo_oprf::types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
             "0.0.0",
         )
         .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
     response.assert_text(format!(
         "invalid version, expected: ^{} got: 0.0.0",
-        oprf_client::VERSION
+        taceo_oprf::client::VERSION
     ));
 
     let response = node
@@ -118,14 +123,14 @@ async fn client_version_rejected() -> eyre::Result<()> {
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
     response.assert_text(format!(
         "invalid version, expected: ^{} got: 0.0.0",
-        oprf_client::VERSION
+        taceo_oprf::client::VERSION
     ));
 
     let response = node
         .server
         .get_websocket("/api/test/oprf")
         .add_header(
-            oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
+            taceo_oprf::types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
             "abc",
         )
         .await;
@@ -136,8 +141,8 @@ async fn client_version_rejected() -> eyre::Result<()> {
         .server
         .get_websocket("/api/test/oprf?version=abc")
         .add_header(
-            oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
-            oprf_client::VERSION,
+            taceo_oprf::types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
+            taceo_oprf::client::VERSION,
         )
         .await;
     assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
@@ -165,7 +170,10 @@ async fn client_version_accepted() -> eyre::Result<()> {
 
     let mut ws = node
         .server
-        .get_websocket(&format!("/api/test/oprf?version={}", oprf_client::VERSION))
+        .get_websocket(&format!(
+            "/api/test/oprf?version={}",
+            taceo_oprf::client::VERSION
+        ))
         .await
         .into_websocket()
         .await;
@@ -179,9 +187,12 @@ async fn client_version_accepted() -> eyre::Result<()> {
 
     let mut ws = node
         .server
-        .get_websocket(&format!("/api/test/oprf?version={}", oprf_client::VERSION))
+        .get_websocket(&format!(
+            "/api/test/oprf?version={}",
+            taceo_oprf::client::VERSION
+        ))
         .add_header(
-            oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
+            taceo_oprf::types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
             "0.0.0",
         )
         .await
@@ -205,8 +216,8 @@ async fn session_timeout_no_message() -> eyre::Result<()> {
         .server
         .get_websocket("/api/test/oprf")
         .add_header(
-            oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
-            oprf_client::VERSION,
+            taceo_oprf::types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
+            taceo_oprf::client::VERSION,
         )
         .await
         .into_websocket()
@@ -215,10 +226,9 @@ async fn session_timeout_no_message() -> eyre::Result<()> {
         code: oprf_error_codes::TIMEOUT.into(),
         reason: "timeout".into(),
     };
-    let is_message =
-        tokio::time::timeout(taceo_oprf_test::test_timeout(), ws.receive_message())
-            .await
-            .expect("should receive close frame before timeout");
+    let is_message = tokio::time::timeout(taceo_oprf_test::TEST_TIMEOUT, ws.receive_message())
+        .await
+        .expect("should receive close frame before timeout");
     node_setup::assert_close_frame(is_message, &should_close_frame);
     Ok(())
 }
@@ -229,8 +239,8 @@ async fn message_too_large_inner(node: &TestNode, format: WireFormat) -> eyre::R
         .server
         .get_websocket("/api/test/oprf")
         .add_header(
-            oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
-            oprf_client::VERSION,
+            taceo_oprf::types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
+            taceo_oprf::client::VERSION,
         )
         .await
         .into_websocket()
@@ -310,10 +320,9 @@ async fn session_timeout_after_init_inner(format: WireFormat) -> eyre::Result<()
         code: oprf_error_codes::TIMEOUT.into(),
         reason: "timeout".into(),
     };
-    let is_message =
-        tokio::time::timeout(taceo_oprf_test::test_timeout(), ws.receive_message())
-            .await
-            .expect("should receive close frame before timeout");
+    let is_message = tokio::time::timeout(taceo_oprf_test::TEST_TIMEOUT, ws.receive_message())
+        .await
+        .expect("should receive close frame before timeout");
     node_setup::assert_close_frame(is_message, &should_close_frame);
     Ok(())
 }
@@ -431,8 +440,8 @@ async fn init_bad_request_inner(node: &TestNode, format: WireFormat) -> eyre::Re
         .server
         .get_websocket("/api/test/oprf")
         .add_header(
-            oprf_types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
-            oprf_client::VERSION,
+            taceo_oprf::types::api::OPRF_PROTOCOL_VERSION_HEADER.as_str(),
+            taceo_oprf::client::VERSION,
         )
         .await
         .into_websocket()
@@ -611,13 +620,13 @@ async fn delegate_happy_path() -> eyre::Result<()> {
         node_setup::start_nodes_for_delegate(DeploySetup::TwoThree, node_setup::OPRF_KEY_ID.into())
             .await?;
 
-    let node_urls = nodes
+    let services = nodes
         .iter()
         .map(|n| n.server.server_address().expect("Server has address"))
         .collect::<Vec<_>>();
-    let node_urls = oprf_client::to_oprf_pub_key_url_many(node_urls)?;
+    let node_urls = taceo_oprf::client::to_oprf_pub_key_url_many(&services)?;
     let client = reqwest::Client::new();
-    let should_key = oprf_client::fetch_oprf_public_key(
+    let should_key = taceo_oprf::client::fetch_oprf_public_key(
         &node_urls,
         u16::from(DeploySetup::TwoThree.threshold()) as usize,
         node_setup::OPRF_KEY_ID.into(),
@@ -626,15 +635,26 @@ async fn delegate_happy_path() -> eyre::Result<()> {
     .await?
     .expect("setup should have this key");
 
-    let response = nodes[0]
+    let blinding_factor = BlindingFactor::rand(&mut rand::thread_rng());
+    let query = ark_babyjubjub::Fq::rand(&mut rand::thread_rng());
+    let auth = ConfigurableTestRequestAuth(node_setup::OPRF_KEY_ID.into());
+    let delegate_url = nodes[0]
         .server
-        .post("/api/test/delegate")
-        .add_query_param("version", oprf_client::VERSION)
-        .json(&node_setup::request(&mut rand::thread_rng()))
-        .await;
-    response.assert_status_ok();
-    let body: DelegateOprfResponse = response.json();
-    assert_eq!(body.oprf_pub_key_with_epoch, should_key);
+        .server_url("/api/test/delegate")
+        .expect("Should work");
+
+    let verifiable_oprf_output = taceo_oprf::client::delegate_distributed_oprf(
+        &delegate_url,
+        query,
+        blinding_factor,
+        ark_babyjubjub::Fq::one(),
+        auth,
+        &client,
+    )
+    .await?;
+
+    assert_eq!(verifiable_oprf_output.oprf_public_key, should_key.key);
+
     Ok(())
 }
 
@@ -653,7 +673,7 @@ async fn delegate_errors() -> eyre::Result<()> {
     let response = nodes[0]
         .server
         .post("/api/test/delegate")
-        .add_query_param("version", oprf_client::VERSION)
+        .add_query_param("version", taceo_oprf::client::VERSION)
         .json(&request)
         .await;
     response.assert_status(StatusCode::BAD_REQUEST);
@@ -676,7 +696,7 @@ async fn delegate_errors() -> eyre::Result<()> {
     response.assert_status(StatusCode::BAD_REQUEST);
     response.assert_text(format!(
         "invalid version, expected: ^{} got: 0.0.0",
-        oprf_client::VERSION
+        taceo_oprf::client::VERSION
     ));
 
     // drop all but one node so the (threshold-2) cluster can no longer reach consensus;
@@ -687,7 +707,7 @@ async fn delegate_errors() -> eyre::Result<()> {
     let response = delegator
         .server
         .post("/api/test/delegate")
-        .add_query_param("version", oprf_client::VERSION)
+        .add_query_param("version", taceo_oprf::client::VERSION)
         .json(&node_setup::request(&mut rand::thread_rng()))
         .await;
     response.assert_status(StatusCode::SERVICE_UNAVAILABLE);
