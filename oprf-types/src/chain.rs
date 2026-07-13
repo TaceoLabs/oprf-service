@@ -31,7 +31,7 @@ sol!(
         clippy::exhaustive_enums,
         reason = "Get lints from sol macro"
     )]
-    #[sol(rpc)]
+    #[sol(rpc, ignore_unlinked)]
     OprfKeyRegistry,
     "./OprfKeyRegistry.json"
 );
