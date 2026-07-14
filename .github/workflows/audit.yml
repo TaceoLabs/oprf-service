@@ -8,7 +8,7 @@ on:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
       # Run if the configuration file changes
-      - "**/audit.toml"
+      - "**/deny.toml"
   # Rerun periodically to pick up new advisories
   pull_request:
   schedule:
