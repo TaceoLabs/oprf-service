@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.6.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-core-v0.6.1...taceo-oprf-core-v0.6.2)
+
+### ⛰️ Features
+
+
+- *(node)* Add delegate route, builder method and tests - ([8ee67a8](https://github.com/TaceoLabs/oprf-service/commit/8ee67a888b50bc2adff78a045b383d3244e4c82f))
+
+### 🧪 Testing
+
+
+- Cleanup tests in test-crate - ([e41831b](https://github.com/TaceoLabs/oprf-service/commit/e41831b3a511344dfbf715a5b14be145c747995c))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Delete unlinked file - ([ee7c8de](https://github.com/TaceoLabs/oprf-service/commit/ee7c8dec3e6bf088c64446b0f111b73e94e6a4fd))
+
+
 ## [0.6.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-core-v0.6.0...taceo-oprf-core-v0.6.1)
 
 ### ⚙️ Miscellaneous Tasks

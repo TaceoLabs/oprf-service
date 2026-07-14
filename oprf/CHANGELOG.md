@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.18.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.17.2...taceo-oprf-v0.18.0)
+
+### ⛰️ Features
+
+
+- *(oprf)* [**breaking**] Add anvil feature to umbrella crate for testing + remove default features - ([f130e66](https://github.com/TaceoLabs/oprf-service/commit/f130e66cd1c0a2c8f2beada8ac229c839cb915b6))
+
+### 🧪 Testing
+
+
+- Cleanup tests in test-crate - ([e41831b](https://github.com/TaceoLabs/oprf-service/commit/e41831b3a511344dfbf715a5b14be145c747995c))
+
+
 ## [0.17.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.17.1...taceo-oprf-v0.17.2)
 
 ### ⚙️ Miscellaneous Tasks
