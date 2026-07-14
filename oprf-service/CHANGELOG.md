@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+## [0.19.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.18.2...taceo-oprf-service-v0.19.0)
+
+### ⛰️ Features
+
+
+- *(node)* Add delegate route, builder method and tests - ([8ee67a8](https://github.com/TaceoLabs/oprf-service/commit/8ee67a888b50bc2adff78a045b383d3244e4c82f))
+- *(service)* [**breaking**] Pass version_str to builder to get downstream version instead of service ([#681](https://github.com/TaceoLabs/oprf-service/pull/681)) - ([f964b82](https://github.com/TaceoLabs/oprf-service/commit/f964b82c5132e99901ffb946f7ef2f180c1f5f6e))
+
+### 🚜 Refactor
+
+
+- *(service)* [**breaking**] Remove dead i am alive config - ([6d8ee7e](https://github.com/TaceoLabs/oprf-service/commit/6d8ee7e5a9c0de74bcc04b72de9b7338789a8fc6))
+
+### 🧪 Testing
+
+
+- *(service)* Move integration tests - ([52e5989](https://github.com/TaceoLabs/oprf-service/commit/52e5989e4c59f09174c683e22796c80020736aea))
+- Cleanup tests in test-crate - ([e41831b](https://github.com/TaceoLabs/oprf-service/commit/e41831b3a511344dfbf715a5b14be145c747995c))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Clippy fmt - ([5512810](https://github.com/TaceoLabs/oprf-service/commit/55128108202a564e9f7fa38b0a1fde110e3c305d))
+
+
 ## [0.18.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.18.1...taceo-oprf-service-v0.18.2)
 
 ### 🚜 Refactor
