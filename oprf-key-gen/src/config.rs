@@ -23,6 +23,8 @@
 //! | `confirmations_for_transaction`          | 5           |
 //! | `max_tries_fetching_receipt`             | 5           |
 //! | `sleep_between_get_receipt`              | 5 s         |
+//! | `max_tries_simulation`                   | 5           |
+//! | `sleep_between_simulation`               | 3 s         |
 //! | `cursor_checkpoint_interval`             | 1 day       |
 
 use std::num::NonZeroU16;
@@ -112,6 +114,25 @@ pub struct OprfKeyGenServiceConfig {
     #[serde(with = "humantime_serde")]
     pub sleep_between_get_receipt: Duration,
 
+    /// Number of times we retry the pre-flight simulation when the RPC endpoint had not yet
+    /// reached the block of the event we are reacting to.
+    ///
+    /// Together with `sleep_between_simulation` this bounds how far the RPC pool may lag behind
+    /// the endpoint delivering the events. Once exhausted the event watcher restarts and replays
+    /// the event from the stored chain cursor.
+    ///
+    /// Defaults to `5`.
+    #[serde(default = "OprfKeyGenServiceConfig::default_max_tries_simulation")]
+    pub max_tries_simulation: usize,
+
+    /// Time to sleep between pre-flight simulation retries. Should be in the order of the
+    /// chain's block time.
+    ///
+    /// Defaults to `3s`.
+    #[serde(default = "OprfKeyGenServiceConfig::default_sleep_between_simulation")]
+    #[serde(with = "humantime_serde")]
+    pub sleep_between_simulation: Duration,
+
     /// Interval in which we persist a [`ChainCursor`](nodes_common::web3::event_stream::ChainCursor) checkpoint.
     ///
     /// The implementation will fetch the current block number, then sleep for this configured period, and then call [`ChainCursorStorage::store_chain_cursor`](crate::event_cursor_store::ChainCursorStorage::store_chain_cursor) with the fetched block number. This should prevent very large backfills in case of idle key-gens.
@@ -195,6 +216,16 @@ impl OprfKeyGenServiceConfig {
         Duration::from_secs(5)
     }
 
+    /// Default max tries for a simulation the RPC could not serve yet (`5`).
+    fn default_max_tries_simulation() -> usize {
+        5
+    }
+
+    /// Default time we sleep between simulation retries (`3s`).
+    fn default_sleep_between_simulation() -> Duration {
+        Duration::from_secs(3)
+    }
+
     /// Default cursor checkpoint interval (`1 day`).
     fn default_cursor_checkpoint_interval() -> Duration {
         Duration::from_hours(24)
@@ -230,6 +261,8 @@ impl OprfKeyGenServiceConfig {
             confirmations_for_transaction: Self::default_confirmations_for_transaction(),
             max_tries_fetching_receipt: Self::default_max_tries_fetching_receipt(),
             sleep_between_get_receipt: Self::default_sleep_between_get_receipt(),
+            max_tries_simulation: Self::default_max_tries_simulation(),
+            sleep_between_simulation: Self::default_sleep_between_simulation(),
             event_stream_config: EventStreamConfig::default(),
             cursor_checkpoint_interval: Self::default_cursor_checkpoint_interval(),
         }

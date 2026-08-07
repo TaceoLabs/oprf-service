@@ -283,6 +283,8 @@ pub async fn start(
         rpc_provider: http_rpc_provider.clone(),
         wallet_address: address,
         contract_address: config.oprf_key_registry_contract,
+        sleep_between_simulation: config.sleep_between_simulation,
+        max_tries_simulation: config.max_tries_simulation,
     });
 
     tracing::info!("spawning key event watcher..");

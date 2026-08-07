@@ -1,6 +1,6 @@
 use std::num::NonZeroU16;
 
-use alloy::{primitives::TxHash, providers::DynProvider};
+use alloy::{eips::BlockId, primitives::TxHash, providers::DynProvider};
 use eyre::Context;
 use oprf_types::{
     OprfKeyId, ShareEpoch,
@@ -53,26 +53,36 @@ impl KeyRegistryEventHandler {
     }
 
     /// Dispatch a decoded event to the appropriate protocol-round handler.
+    ///
+    /// `block` is the block the event was emitted in.  Every `eth_call` made while handling the
+    /// event - view calls and the contribution pre-flight alike - is pinned to it, so an RPC
+    /// endpoint lagging behind the event stream cannot answer from the state before the event.
     pub(super) async fn handle(
         &self,
         event: KeyRegistryEvent,
+        block: BlockId,
         event_span: &tracing::Span,
     ) -> Result<()> {
         match event {
             KeyRegistryEvent::KeyGenRound1 { key_id } => {
-                self.keygen_round1(key_id, event_span).await
+                self.keygen_round1(key_id, block, event_span).await
             }
             KeyRegistryEvent::Round2 { key_id, epoch } => {
-                self.round2(key_id, epoch, event_span).await
+                self.round2(key_id, epoch, block, event_span).await
             }
             KeyRegistryEvent::Round3 {
                 key_id,
                 epoch,
                 contributions,
-            } => self.round3(key_id, epoch, contributions, event_span).await,
-            KeyRegistryEvent::Finalize { key_id, epoch } => self.finalize(key_id, epoch).await,
+            } => {
+                self.round3(key_id, epoch, contributions, block, event_span)
+                    .await
+            }
+            KeyRegistryEvent::Finalize { key_id, epoch } => {
+                self.finalize(key_id, epoch, block).await
+            }
             KeyRegistryEvent::ReshareRound1 { key_id, epoch } => {
-                self.reshare_round1(key_id, epoch, event_span).await
+                self.reshare_round1(key_id, epoch, block, event_span).await
             }
             KeyRegistryEvent::Delete { key_id } => self.delete(key_id).await,
             KeyRegistryEvent::Abort { key_id } => self.abort(key_id).await,
@@ -92,6 +102,7 @@ impl KeyRegistryEventHandler {
     async fn keygen_round1(
         &self,
         oprf_key_id: OprfKeyId,
+        block: BlockId,
         event_span: &tracing::Span,
     ) -> Result<()> {
         tracing::trace!("Received KeyGenRound1 event");
@@ -102,7 +113,7 @@ impl KeyRegistryEventHandler {
         tracing::trace!("finished round1 - now reporting to chain..");
         let tx_hash = self
             .tx
-            .add_round1_keygen_contribution(oprf_key_id, contribution)
+            .add_round1_keygen_contribution(oprf_key_id, contribution, block)
             .await?;
 
         record_tx_hash(tx_hash, event_span);
@@ -115,10 +126,11 @@ impl KeyRegistryEventHandler {
         &self,
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
+        block: BlockId,
         event_span: &tracing::Span,
     ) -> Result<()> {
         tracing::trace!("Received SecretGenRound2 event");
-        let nodes = self.fetch_producer_public_keys(oprf_key_id).await?;
+        let nodes = self.fetch_producer_public_keys(oprf_key_id, block).await?;
         if nodes.is_empty() {
             metrics::chain_events::inc_consumer();
             tracing::info!("Finished round 2 for {oprf_key_id} and epoch {epoch} as CONSUMER");
@@ -131,7 +143,7 @@ impl KeyRegistryEventHandler {
             let contribution = Round2Contribution::from(contribution);
             let tx_hash = self
                 .tx
-                .add_round2_contribution(oprf_key_id, contribution)
+                .add_round2_contribution(oprf_key_id, contribution, block)
                 .await?;
             record_tx_hash(tx_hash, event_span);
             metrics::chain_events::inc_producer();
@@ -146,18 +158,19 @@ impl KeyRegistryEventHandler {
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
         contributions: Contributions,
+        block: BlockId,
         event_span: &tracing::Span,
     ) -> Result<()> {
         tracing::trace!("Round 3 event for {oprf_key_id} with epoch {epoch}");
         let (ciphers, pks) = tokio::join!(
-            self.fetch_round2_ciphers(oprf_key_id),
-            self.fetch_consumer_public_keys(oprf_key_id)
+            self.fetch_round2_ciphers(oprf_key_id, block),
+            self.fetch_consumer_public_keys(oprf_key_id, block)
         );
         self.secret_gen
             .round3(oprf_key_id, epoch, ciphers?, contributions, &pks?)
             .await?;
         tracing::trace!("finished round 3 - now reporting");
-        let tx_hash = self.tx.add_round3_contribution(oprf_key_id).await?;
+        let tx_hash = self.tx.add_round3_contribution(oprf_key_id, block).await?;
         record_tx_hash(tx_hash, event_span);
         metrics::chain_events::inc_round3();
         tracing::info!("Finished round 3 for {oprf_key_id} and epoch {epoch} as producer");
@@ -165,9 +178,14 @@ impl KeyRegistryEventHandler {
         Ok(())
     }
 
-    async fn finalize(&self, oprf_key_id: OprfKeyId, epoch: ShareEpoch) -> Result<()> {
+    async fn finalize(
+        &self,
+        oprf_key_id: OprfKeyId,
+        epoch: ShareEpoch,
+        block: BlockId,
+    ) -> Result<()> {
         tracing::trace!("Finalize event for {oprf_key_id} with epoch {epoch}");
-        let oprf_public_key = self.fetch_oprf_public_key(oprf_key_id).await?;
+        let oprf_public_key = self.fetch_oprf_public_key(oprf_key_id, block).await?;
         if let Some(oprf_public_key) = oprf_public_key {
             self.secret_gen
                 .finalize(oprf_key_id, epoch, oprf_public_key)
@@ -184,6 +202,7 @@ impl KeyRegistryEventHandler {
         &self,
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
+        block: BlockId,
         event_span: &tracing::Span,
     ) -> Result<()> {
         tracing::trace!("Received ReshareRound1 event");
@@ -193,7 +212,7 @@ impl KeyRegistryEventHandler {
             .await?;
         let tx_hash = self
             .tx
-            .add_round1_reshare_contribution(oprf_key_id, contribution)
+            .add_round1_reshare_contribution(oprf_key_id, contribution, block)
             .await?;
         record_tx_hash(tx_hash, event_span);
         metrics::chain_events::inc_reshare_round1();
@@ -226,15 +245,22 @@ impl KeyRegistryEventHandler {
     ///
     /// Returns an empty `Vec` if the contract responds with `WrongRound`, which signals that
     /// this node is a consumer and the contract has already advanced past the producer phase.
+    /// Pinning to `block` is what makes that inference sound: an endpoint lagging behind the
+    /// event would otherwise revert `WrongRound` because the round has *not yet* advanced there,
+    /// and we would misread it as being a consumer and skip our contribution.
     async fn fetch_producer_public_keys(
         &self,
         oprf_key_id: OprfKeyId,
+        block: BlockId,
     ) -> Result<Vec<EphemeralEncryptionPublicKey>> {
         tracing::trace!("fetching ephemeral public keys from chain..");
         let nodes = self
-            .contract
-            .loadPeerPublicKeysForProducers(oprf_key_id.into_inner())
-            .call()
+            .tx
+            .call_pinned(
+                self.contract
+                    .loadPeerPublicKeysForProducers(oprf_key_id.into_inner()),
+                block,
+            )
             .await;
         // Handle this separately because consumers can legitimately hit `WrongRound` here after
         // producers have already advanced the contract state.
@@ -263,12 +289,18 @@ impl KeyRegistryEventHandler {
     ///
     /// Returns `None` if the contract responds with `DeletedId`, indicating the key was removed
     /// between event emission and handling; the caller should no-op in that case.
-    async fn fetch_oprf_public_key(&self, oprf_key_id: OprfKeyId) -> Result<Option<OprfPublicKey>> {
+    async fn fetch_oprf_public_key(
+        &self,
+        oprf_key_id: OprfKeyId,
+        block: BlockId,
+    ) -> Result<Option<OprfPublicKey>> {
         tracing::trace!("fetching oprf public key from chain");
         let oprf_public_key = match self
-            .contract
-            .getOprfPublicKey(oprf_key_id.into_inner())
-            .call()
+            .tx
+            .call_pinned(
+                self.contract.getOprfPublicKey(oprf_key_id.into_inner()),
+                block,
+            )
             .await
         {
             Ok(oprf_public_key) => oprf_public_key,
@@ -292,12 +324,16 @@ impl KeyRegistryEventHandler {
     async fn fetch_round2_ciphers(
         &self,
         oprf_key_id: OprfKeyId,
+        block: BlockId,
     ) -> Result<Vec<SecretGenCiphertext>> {
         tracing::trace!("reading ciphers from chain..");
         let ciphers = self
-            .contract
-            .checkIsParticipantAndReturnRound2Ciphers(oprf_key_id.into_inner())
-            .call()
+            .tx
+            .call_pinned(
+                self.contract
+                    .checkIsParticipantAndReturnRound2Ciphers(oprf_key_id.into_inner()),
+                block,
+            )
             .await?;
 
         tracing::trace!("got ciphers from chain {} - parsing..", ciphers.len());
@@ -311,12 +347,16 @@ impl KeyRegistryEventHandler {
     async fn fetch_consumer_public_keys(
         &self,
         oprf_key_id: OprfKeyId,
+        block: BlockId,
     ) -> Result<Vec<EphemeralEncryptionPublicKey>> {
         tracing::trace!("getting the public keys from the producers...");
         let pks = self
-            .contract
-            .loadPeerPublicKeysForConsumers(oprf_key_id.into_inner())
-            .call()
+            .tx
+            .call_pinned(
+                self.contract
+                    .loadPeerPublicKeysForConsumers(oprf_key_id.into_inner()),
+                block,
+            )
             .await?;
 
         Ok(pks
