@@ -23,9 +23,9 @@
 //! | `confirmations_for_transaction`          | 5           |
 //! | `max_tries_fetching_receipt`             | 5           |
 //! | `sleep_between_get_receipt`              | 5 s         |
-//! | `rpc_http_timeout`                       | 5 s         |
-//! | `max_tries_simulation`                   | 5           |
-//! | `sleep_between_simulation`               | 3 s         |
+//! | `rpc_http_timeout`                       | 10 s        |
+//! | `max_tries_simulation`                   | 30          |
+//! | `sleep_between_simulation`               | 5 s         |
 //! | `cursor_checkpoint_interval`             | 1 day       |
 
 use std::num::NonZeroU16;
@@ -120,21 +120,20 @@ pub struct OprfKeyGenServiceConfig {
     #[serde(with = "humantime_serde")]
     pub sleep_between_get_receipt: Duration,
 
-    /// Number of times we retry the pre-flight simulation when the RPC endpoint had not yet
-    /// reached the block of the event we are reacting to.
+    /// Number of times we retry a pinned call that fails without revert data.
     ///
     /// Together with `sleep_between_simulation` this bounds how far the RPC pool may lag behind
     /// the endpoint delivering the events. Once exhausted the event watcher restarts and replays
     /// the event from the stored chain cursor.
     ///
-    /// Defaults to `5`.
+    /// Defaults to `30`.
     #[serde(default = "OprfKeyGenServiceConfig::default_max_tries_simulation")]
     pub max_tries_simulation: usize,
 
-    /// Time to sleep between pre-flight simulation retries. Should be in the order of the
-    /// chain's block time.
+    /// Time to sleep between pinned-call retries. Should be in the order of the chain's block
+    /// time.
     ///
-    /// Defaults to `3s`.
+    /// Defaults to `5s`.
     #[serde(default = "OprfKeyGenServiceConfig::default_sleep_between_simulation")]
     #[serde(with = "humantime_serde")]
     pub sleep_between_simulation: Duration,
@@ -227,14 +226,15 @@ impl OprfKeyGenServiceConfig {
         Duration::from_secs(5)
     }
 
-    /// Default max tries for a simulation the RPC could not serve yet (`30`).
+    /// Default max tries for a pinned call the RPC could not serve (`30`).
     ///
-    /// This is very high on purpose because this is always a retryable error that will recover eventually.
+    /// This allows a lagging HTTP endpoint time to catch up with the event source. Other errors
+    /// without revert data use the same bounded retry policy and may exhaust it.
     fn default_max_tries_simulation() -> usize {
         30
     }
 
-    /// Default time we sleep between simulation retries (`10s`).
+    /// Default time we sleep between pinned-call retries (`5s`).
     fn default_sleep_between_simulation() -> Duration {
         Duration::from_secs(5)
     }

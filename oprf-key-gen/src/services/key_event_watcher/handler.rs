@@ -6,7 +6,7 @@ use oprf_types::{
     OprfKeyId, ShareEpoch,
     chain::{
         OprfKeyGen::Round2Contribution,
-        OprfKeyRegistry::{self, OprfKeyRegistryInstance, WrongRound},
+        OprfKeyRegistry::{self, OprfKeyRegistryInstance},
     },
     crypto::{EphemeralEncryptionPublicKey, OprfPublicKey, SecretGenCiphertext},
 };
@@ -54,9 +54,9 @@ impl KeyRegistryEventHandler {
 
     /// Dispatch a decoded event to the appropriate protocol-round handler.
     ///
-    /// `block` is the block the event was emitted in.  Every `eth_call` made while handling the
-    /// event - view calls and the contribution pre-flight alike - is pinned to it, so an RPC
-    /// endpoint lagging behind the event stream cannot answer from the state before the event.
+    /// `block` identifies the event block by hash. Event-derived view calls are pinned to it so
+    /// an RPC endpoint cannot answer from a different chain state. Contributions are submitted
+    /// directly; a failed receipt triggers a separate probe pinned to the receipt block hash.
     pub(super) async fn handle(
         &self,
         event: KeyRegistryEvent,
@@ -65,7 +65,7 @@ impl KeyRegistryEventHandler {
     ) -> Result<()> {
         match event {
             KeyRegistryEvent::KeyGenRound1 { key_id } => {
-                self.keygen_round1(key_id, block, event_span).await
+                self.keygen_round1(key_id, event_span).await
             }
             KeyRegistryEvent::Round2 { key_id, epoch } => {
                 self.round2(key_id, epoch, block, event_span).await
@@ -82,7 +82,7 @@ impl KeyRegistryEventHandler {
                 self.finalize(key_id, epoch, block).await
             }
             KeyRegistryEvent::ReshareRound1 { key_id, epoch } => {
-                self.reshare_round1(key_id, epoch, block, event_span).await
+                self.reshare_round1(key_id, epoch, event_span).await
             }
             KeyRegistryEvent::Delete { key_id } => self.delete(key_id).await,
             KeyRegistryEvent::Abort { key_id } => self.abort(key_id).await,
@@ -102,7 +102,6 @@ impl KeyRegistryEventHandler {
     async fn keygen_round1(
         &self,
         oprf_key_id: OprfKeyId,
-        block: BlockId,
         event_span: &tracing::Span,
     ) -> Result<()> {
         tracing::trace!("Received KeyGenRound1 event");
@@ -113,7 +112,7 @@ impl KeyRegistryEventHandler {
         tracing::trace!("finished round1 - now reporting to chain..");
         let tx_hash = self
             .tx
-            .add_round1_keygen_contribution(oprf_key_id, contribution, block)
+            .add_round1_keygen_contribution(oprf_key_id, contribution)
             .await?;
 
         record_tx_hash(tx_hash, event_span);
@@ -143,7 +142,7 @@ impl KeyRegistryEventHandler {
             let contribution = Round2Contribution::from(contribution);
             let tx_hash = self
                 .tx
-                .add_round2_contribution(oprf_key_id, contribution, block)
+                .add_round2_contribution(oprf_key_id, contribution)
                 .await?;
             record_tx_hash(tx_hash, event_span);
             metrics::chain_events::inc_producer();
@@ -170,7 +169,7 @@ impl KeyRegistryEventHandler {
             .round3(oprf_key_id, epoch, ciphers?, contributions, &pks?)
             .await?;
         tracing::trace!("finished round 3 - now reporting");
-        let tx_hash = self.tx.add_round3_contribution(oprf_key_id, block).await?;
+        let tx_hash = self.tx.add_round3_contribution(oprf_key_id).await?;
         record_tx_hash(tx_hash, event_span);
         metrics::chain_events::inc_round3();
         tracing::info!("Finished round 3 for {oprf_key_id} and epoch {epoch} as producer");
@@ -202,7 +201,6 @@ impl KeyRegistryEventHandler {
         &self,
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
-        block: BlockId,
         event_span: &tracing::Span,
     ) -> Result<()> {
         tracing::trace!("Received ReshareRound1 event");
@@ -212,7 +210,7 @@ impl KeyRegistryEventHandler {
             .await?;
         let tx_hash = self
             .tx
-            .add_round1_reshare_contribution(oprf_key_id, contribution, block)
+            .add_round1_reshare_contribution(oprf_key_id, contribution)
             .await?;
         record_tx_hash(tx_hash, event_span);
         metrics::chain_events::inc_reshare_round1();
@@ -243,11 +241,9 @@ impl KeyRegistryEventHandler {
 
     /// Calls `OprfKeyRegistry::loadPeerPublicKeysForProducers` and parses the result.
     ///
-    /// Returns an empty `Vec` if the contract responds with `WrongRound`, which signals that
-    /// this node is a consumer and the contract has already advanced past the producer phase.
-    /// Pinning to `block` is what makes that inference sound: an endpoint lagging behind the
-    /// event would otherwise revert `WrongRound` because the round has *not yet* advanced there,
-    /// and we would misread it as being a consumer and skip our contribution.
+    /// An empty producer-key list identifies this node as a consumer. The view call is pinned to
+    /// the event's block hash so an RPC endpoint cannot answer from a different chain state.
+    /// Contract reverts, including `WrongRound`, propagate to the watcher's normal error policy.
     async fn fetch_producer_public_keys(
         &self,
         oprf_key_id: OprfKeyId,
@@ -261,23 +257,7 @@ impl KeyRegistryEventHandler {
                     .loadPeerPublicKeysForProducers(oprf_key_id.into_inner()),
                 block,
             )
-            .await;
-        // Handle this separately because consumers can legitimately hit `WrongRound` here after
-        // producers have already advanced the contract state.
-        let nodes = match nodes {
-            Ok(nodes) => nodes,
-            Err(err) => {
-                if let Some(WrongRound(round)) =
-                    err.as_decoded_error::<OprfKeyRegistry::WrongRound>()
-                {
-                    tracing::trace!("reshare is already in round: {round} - we were a consumer");
-                    // An empty producer list signals the consumer path below.
-                    Vec::new()
-                } else {
-                    Err(err)?
-                }
-            }
-        };
+            .await?;
         let nodes = nodes
             .into_iter()
             .map(EphemeralEncryptionPublicKey::try_from)

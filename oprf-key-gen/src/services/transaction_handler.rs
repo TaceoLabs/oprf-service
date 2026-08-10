@@ -24,11 +24,10 @@ use crate::{metrics, services::key_event_watcher::KeyRegistryEventError};
 
 /// Service that handles transaction submission and receipt confirmation.
 ///
-/// Simulates each call first (`eth_call` pre-flight via [`submit`](TransactionHandler::submit),
-/// pinned to the block of the event being reacted to), then broadcasts the transaction and polls
-/// for receipts, retrying on `NullResp` responses up to `max_tries_fetching_receipt` times.  On
-/// receipt, [`ReceiptResponse::ensure_success`] is called to surface reverts.  Gas price and
-/// wallet balance are recorded as metrics after every confirmed transaction.
+/// Broadcasts each transaction and polls for its receipt, retrying on `NullResp` responses up to
+/// `max_tries_fetching_receipt` times. If the receipt reports failure, an `eth_call` pinned to the
+/// receipt's block hash probes the post-block state for a decodable revert. Gas price and wallet
+/// balance are recorded as metrics after every confirmed transaction.
 #[derive(Clone)]
 pub(crate) struct TransactionHandler {
     max_wait_time_watch_transaction: Duration,
@@ -63,9 +62,9 @@ pub(crate) struct TransactionHandlerArgs {
     pub(crate) wallet_address: Address,
     /// Address of the `OprfKeyRegistry` contract.
     pub(crate) contract_address: Address,
-    /// Delay between retries of a pre-flight simulation the RPC could not serve yet.
+    /// Delay between retries of a pinned call the RPC could not serve.
     pub(crate) sleep_between_simulation: Duration,
-    /// Maximum number of pre-flight simulation retries while the RPC lags behind the event.
+    /// Maximum number of retries for a pinned call that fails without revert data.
     pub(crate) max_tries_simulation: usize,
 }
 
@@ -111,7 +110,7 @@ impl TransactionHandler {
             .build()
     }
 
-    fn simulation_backoff(&self) -> ConstantBackoff {
+    fn pinned_call_backoff(&self) -> ConstantBackoff {
         ConstantBuilder::new()
             .with_delay(self.sleep_between_simulation)
             .with_max_times(self.max_tries_simulation)
@@ -121,13 +120,11 @@ impl TransactionHandler {
     /// Runs `call` against the state at `block`, retrying while the RPC cannot serve that block.
     ///
     /// Events arrive over the WebSocket provider while calls go out over the load-balanced HTTP
-    /// pool, so a call reacting to an event can be served by an endpoint that has not seen the
-    /// event's block and answer from the state before it - reporting e.g. `WrongRound` for a
-    /// round we have already moved past. Pinning to `block` makes that impossible: such an
-    /// endpoint cannot answer at all, it can only fail. So a failure carrying revert data is
-    /// authoritative, and any other failure means the RPC lags behind and we retry. Checking for
-    /// revert data instead of the error message keeps this independent of how each node phrases
-    /// "unknown block".
+    /// pool, so an HTTP endpoint may not yet know the relevant block. Pinning prevents it from
+    /// silently answering from different state. A failure carrying revert data is authoritative;
+    /// failures without revert data are retried because they may indicate a lagging endpoint.
+    /// Other transient or permanent errors without revert data are retried as well and may still
+    /// exhaust the configured retry limit.
     ///
     /// Retries are bounded. Once exhausted the error propagates and aborts the watcher without
     /// advancing the chain cursor, so the event is replayed after the restart.
@@ -142,34 +139,17 @@ impl TransactionHandler {
     {
         let call = call.block(block);
         (|| async { call.call().await })
-            .retry(self.simulation_backoff())
+            .retry(self.pinned_call_backoff())
             .sleep(tokio::time::sleep)
-            // We retry on any error that does not carry revert data, because that means the RPC is behind and cannot serve the block yet. 
-            // If it does carry revert data, we do not retry because that is an authoritative answer from the chain.
+            // Revert data is an authoritative chain response. Errors without it may be caused by
+            // a lagging RPC (or another failure), so retry them within the configured bound.
             .when(|err: &ContractError| err.as_revert_data().is_none())
             .notify(|err, duration| {
                 tracing::warn!(
-                    "eth_call at {block:?} failed without revert data ({err}) - RPC likely behind, retrying in {duration:?}"
+                    "eth_call at {block:?} failed without revert data ({err}) - RPC may be behind, retrying in {duration:?}"
                 );
             })
             .await
-    }
-
-    /// Pre-flight `eth_call`, pinned to the block of the event this transaction responds to.
-    ///
-    /// See [`call_pinned`](Self::call_pinned) for why the pin makes a revert here trustworthy.
-    async fn simulate_transaction<D>(
-        &self,
-        transaction: CallBuilder<&DynProvider, D>,
-        block: BlockId,
-    ) -> Result<(), KeyRegistryEventError>
-    where
-        D: CallDecoder + Unpin,
-    {
-        tracing::trace!("simulating transaction at {block:?} before submitting");
-        self.call_pinned(transaction.gas(self.max_gas_per_transaction), block)
-            .await?;
-        Ok(())
     }
 
     async fn send_transaction<D>(
@@ -244,32 +224,44 @@ impl TransactionHandler {
         metrics::wallet::set_gas_price_from_wei(receipt.effective_gas_price());
     }
 
-    /// Full transaction lifecycle: simulate → send → confirm → ensure success → record metrics.
+    /// Full transaction lifecycle: send → confirm → record metrics → optional recovery probe.
     ///
-    /// Runs a pre-flight `eth_call` via [`simulate_transaction`](Self::simulate_transaction),
-    /// pinned to `block` — the block of the event we are responding to — to surface reverts
-    /// before spending gas, then broadcasts via
-    /// [`send_transaction`](Self::send_transaction), calls
-    /// [`ReceiptResponse::ensure_success`] to assert the receipt status, and
-    /// emits gas/balance metrics via [`record_metrics`](Self::record_metrics).
+    /// Broadcasts via [`send_transaction`](Self::send_transaction), then checks the confirmed
+    /// receipt and emits gas/balance metrics. A successful receipt returns immediately. For a
+    /// failed receipt, an `eth_call` pinned by the receipt's block hash probes the post-block
+    /// state. A decoded revert is propagated through the normal soft/hard error policy; if the
+    /// probe succeeds, the original receipt failure is returned. The probe is recovery guidance,
+    /// not an exact reconstruction of the transaction's historical revert.
     ///
     /// Returns the `TxHash` of the confirmed transaction.
     #[instrument(level = "info", skip_all)]
     async fn submit<D>(
         &self,
         transaction: CallBuilder<&DynProvider, D>,
-        block: BlockId,
     ) -> Result<TxHash, KeyRegistryEventError>
     where
         D: CallDecoder + Unpin + Clone,
     {
-        // first we simulate the transaction
-        self.simulate_transaction(transaction.clone(), block)
-            .await?;
-        let receipt = self.send_transaction(transaction).await?;
+        let receipt = self.send_transaction(transaction.clone()).await?;
         self.record_metrics(&receipt).await;
-        receipt.ensure_success()?;
-        Ok(receipt.transaction_hash)
+        match receipt.ensure_success() {
+            Ok(()) => Ok(receipt.transaction_hash),
+            Err(e) => {
+                let receipt_block_hash = receipt
+                    .block_hash
+                    .ok_or_else(|| eyre::eyre!("block hash not found on failed receipt"))?;
+                tracing::debug!(
+                    "transaction {e} failed - probing post-block state at {receipt_block_hash}"
+                );
+                self.call_pinned(
+                    transaction.gas(self.max_gas_per_transaction),
+                    BlockId::hash(receipt_block_hash),
+                )
+                .await?;
+                tracing::warn!("transaction failed but recovery probe succeeded");
+                Err(KeyRegistryEventError::TransactionFailedError(e))
+            }
+        }
     }
 
     /// Submits a round-1 key-gen contribution to `OprfKeyRegistry::addRound1KeyGenContribution`.
@@ -283,12 +275,11 @@ impl TransactionHandler {
         &self,
         oprf_key_id: OprfKeyId,
         contribution: Round1Contribution,
-        block: BlockId,
     ) -> Result<TxHash, KeyRegistryEventError> {
         let transaction = self
             .contract
             .addRound1KeyGenContribution(oprf_key_id.into_inner(), contribution);
-        self.submit(transaction, block).await
+        self.submit(transaction).await
     }
 
     /// Submits a round-1 reshare contribution to `OprfKeyRegistry::addRound1ReshareContribution`.
@@ -302,12 +293,11 @@ impl TransactionHandler {
         &self,
         oprf_key_id: OprfKeyId,
         contribution: Round1Contribution,
-        block: BlockId,
     ) -> Result<TxHash, KeyRegistryEventError> {
         let transaction = self
             .contract
             .addRound1ReshareContribution(oprf_key_id.into_inner(), contribution);
-        self.submit(transaction, block).await
+        self.submit(transaction).await
     }
 
     /// Submits a round-2 contribution to `OprfKeyRegistry::addRound2Contribution`.
@@ -321,12 +311,11 @@ impl TransactionHandler {
         &self,
         oprf_key_id: OprfKeyId,
         contribution: Round2Contribution,
-        block: BlockId,
     ) -> Result<TxHash, KeyRegistryEventError> {
         let transaction = self
             .contract
             .addRound2Contribution(oprf_key_id.into_inner(), contribution);
-        self.submit(transaction, block).await
+        self.submit(transaction).await
     }
 
     /// Submits a round-3 contribution to `OprfKeyRegistry::addRound3Contribution`.
@@ -339,11 +328,10 @@ impl TransactionHandler {
     pub(crate) async fn add_round3_contribution(
         &self,
         oprf_key_id: OprfKeyId,
-        block: BlockId,
     ) -> Result<TxHash, KeyRegistryEventError> {
         let transaction = self
             .contract
             .addRound3Contribution(oprf_key_id.into_inner());
-        self.submit(transaction, block).await
+        self.submit(transaction).await
     }
 }

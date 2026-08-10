@@ -250,14 +250,13 @@ async fn key_gen_event(
     let index = log
         .log_index
         .ok_or_else(|| eyre::eyre!("log index missing on log"))?;
+    let block_hash = log
+        .block_hash
+        .ok_or_else(|| eyre::eyre!("block hash missing on log"))?;
 
     tracing::trace!("process event...");
     let result = event_handler
-        .handle(
-            event,
-            BlockId::number(block_number),
-            &tracing::Span::current(),
-        )
+        .handle(event, BlockId::hash(block_hash), &tracing::Span::current())
         .await;
 
     tracing::trace!("process result...");
