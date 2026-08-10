@@ -23,6 +23,7 @@
 //! | `confirmations_for_transaction`          | 5           |
 //! | `max_tries_fetching_receipt`             | 5           |
 //! | `sleep_between_get_receipt`              | 5 s         |
+//! | `rpc_http_timeout`                       | 5 s         |
 //! | `max_tries_simulation`                   | 5           |
 //! | `sleep_between_simulation`               | 3 s         |
 //! | `cursor_checkpoint_interval`             | 1 day       |
@@ -71,6 +72,11 @@ pub struct OprfKeyGenServiceConfig {
 
     /// The websocket RPC url used for `eth_subscribe`.
     pub ws_rpc_url: SecretString,
+
+    /// The timeout for HTTP requests to the RPC.
+    #[serde(default = "OprfKeyGenServiceConfig::default_rpc_http_timeout")]
+    #[serde(with = "humantime_serde")]
+    pub rpc_http_timeout: Duration,
 
     /// Max time we wait for a submitted transaction receipt to reach the required
     /// number of confirmations before treating it as failed.
@@ -191,6 +197,11 @@ pub struct OprfKeyGenServiceConfigMandatoryValues {
 }
 
 impl OprfKeyGenServiceConfig {
+    /// Default timeout for HTTP requests to the RPC: 10 seconds
+    fn default_rpc_http_timeout() -> Duration {
+        Duration::from_secs(10)
+    }
+
     /// Default max wait time for transaction confirmation (`300 s`).
     fn default_max_wait_time_transaction_confirmation() -> Duration {
         Duration::from_mins(5) // 5min
@@ -216,14 +227,16 @@ impl OprfKeyGenServiceConfig {
         Duration::from_secs(5)
     }
 
-    /// Default max tries for a simulation the RPC could not serve yet (`5`).
+    /// Default max tries for a simulation the RPC could not serve yet (`30`).
+    ///
+    /// This is very high on purpose because this is always a retryable error that will recover eventually.
     fn default_max_tries_simulation() -> usize {
-        5
+        30
     }
 
-    /// Default time we sleep between simulation retries (`3s`).
+    /// Default time we sleep between simulation retries (`10s`).
     fn default_sleep_between_simulation() -> Duration {
-        Duration::from_secs(3)
+        Duration::from_secs(5)
     }
 
     /// Default cursor checkpoint interval (`1 day`).
@@ -265,6 +278,7 @@ impl OprfKeyGenServiceConfig {
             sleep_between_simulation: Self::default_sleep_between_simulation(),
             event_stream_config: EventStreamConfig::default(),
             cursor_checkpoint_interval: Self::default_cursor_checkpoint_interval(),
+            rpc_http_timeout: Self::default_rpc_http_timeout(),
         }
     }
 }
