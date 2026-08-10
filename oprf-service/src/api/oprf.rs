@@ -1,6 +1,7 @@
 use std::num::NonZeroU16;
 use std::time::{Duration, Instant};
 
+use ark_ec::AffineRepr;
 use axum::{
     Router,
     extract::{
