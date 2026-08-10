@@ -34,3 +34,6 @@ uuid = { workspace = true, features = ["serde", "v4"] }
 default = []
 chain = ["dep:alloy", "dep:circom-types", "dep:groth16-sol"]
 service = ["dep:sqlx"]
+
+[lints]
+workspace = true

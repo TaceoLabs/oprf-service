@@ -17,9 +17,10 @@ use crate::simple_authenticator::ExampleOprfRequestAuthenticator;
 mod simple_authenticator;
 
 /// The top-level configuration for the OPRF node example binary.
-///
+/// Loads the example service configuration from environment variables.
 /// Configured via environment variables using the `TACEO_OPRF_NODE__` prefix and `__` as separator.
 #[derive(Clone, Debug, Deserialize)]
+#[non_exhaustive]
 pub struct ExampleOprfNodeConfig {
     /// The bind addr of the AXUM server
     #[serde(default = "default_bind_addr")]
@@ -50,6 +51,10 @@ fn default_max_wait_shutdown() -> Duration {
     Duration::from_secs(10)
 }
 
+/// Starts the example OPRF service and waits for it to shut down.
+/// # Errors
+///
+/// Returns an error if the environment configuration cannot be built or parsed.
 pub fn load_example_config() -> eyre::Result<ExampleOprfNodeConfig> {
     let cfg = Config::builder().add_source(
         Environment::with_prefix("TACEO_OPRF_NODE")
@@ -104,6 +109,10 @@ async fn main() -> eyre::Result<ExitCode> {
     }
 }
 
+///
+/// # Errors
+///
+/// Returns an error if service initialization, networking, or shutdown fails.
 pub async fn start_service(
     config: ExampleOprfNodeConfig,
     secret_manager: SecretManagerService,
@@ -141,8 +150,7 @@ pub async fn start_service(
             "starting axum server on {}",
             listener
                 .local_addr()
-                .map(|x| x.to_string())
-                .unwrap_or(String::from("invalid addr"))
+                .map_or_else(|_| String::from("invalid addr"), |addr| addr.to_string())
         );
         let axum_shutdown_signal = axum_cancel_token.clone();
         let axum_result = axum::serve(listener, oprf_service_router)

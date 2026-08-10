@@ -7,7 +7,7 @@ use ark_ff::{AdditiveGroup, UniformRand};
 use ark_groth16::{Groth16, Proof};
 use ark_serialize::CanonicalDeserialize;
 use circom_types::groth16::{Proof as Groth16Proof, PublicInput};
-use criterion::*;
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use rand::seq::IteratorRandom;
 use taceo_oprf_core::{
     ddlog_equality::{
@@ -135,6 +135,10 @@ fn oprf_bench(c: &mut Criterion) {
         );
     });
 }
+#[allow(
+    clippy::too_many_lines,
+    reason = "Keeping related benchmark cases together makes comparisons easier"
+)]
 fn ddlog_bench(c: &mut Criterion) {
     c.bench_function("DDLOG/Server/Phase1", |b| {
         let rng = &mut rand::thread_rng();
@@ -215,7 +219,8 @@ fn ddlog_bench(c: &mut Criterion) {
                         .map(|i| {
                             let (session, comm) =
                                 DLogSessionAdditive::partial_commitments(point, x.into(), rng);
-                            (session, (i as u16 + 1, comm))
+                            let party_id = u16::try_from(i + 1).expect("benchmark set fits in u16");
+                            (session, (party_id, comm))
                         })
                         .collect::<(Vec<_>, Vec<_>)>();
                     let challenge = DLogCommitmentsAdditive::combine_commitments(&commitments);
@@ -240,7 +245,9 @@ fn ddlog_bench(c: &mut Criterion) {
                 || {
                     let (_session, comm) =
                         DLogSessionShamir::partial_commitments(point, x.into(), rng);
-                    let used_parties = (1..=set_size as u16 * 2).choose_multiple(rng, set_size);
+                    let party_count =
+                        u16::try_from(set_size * 2).expect("benchmark set fits in u16");
+                    let used_parties = (1..=party_count).choose_multiple(rng, set_size);
                     (vec![comm; set_size], used_parties)
                 },
                 |(commitments, used_parties)| {

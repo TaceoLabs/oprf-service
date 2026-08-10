@@ -64,7 +64,6 @@ fn load_key_gen_config() -> Result<OprfKeyGenConfig, config::ConfigError> {
     let key_gen_config = cfg.build()?.try_deserialize()?;
 
     // Unset all env vars with our prefix to prevent leakage to subprocesses.
-    // Safety: this is called before any threads are spawned.
     let keys_to_remove: Vec<String> = std::env::vars()
         .filter_map(|(k, _)| k.starts_with("TACEO_OPRF_KEY_GEN_").then_some(k))
         .collect();
@@ -145,7 +144,7 @@ async fn run(config: OprfKeyGenConfig) -> eyre::Result<()> {
     })
     .await
     {
-        Ok(Ok(_)) => {
+        Ok(Ok(())) => {
             tracing::info!("successfully finished shutdown in time");
             Ok(())
         }
@@ -182,7 +181,7 @@ fn main() -> ExitCode {
         };
         tracing::info!("starting taceo-oprf-key-gen with config: {config:#?}");
         match run(config).await {
-            Ok(_) => {
+            Ok(()) => {
                 tracing::info!("good night");
                 ExitCode::SUCCESS
             }
