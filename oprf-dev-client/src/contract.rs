@@ -1,5 +1,14 @@
-use alloy::{primitives::Address, providers::DynProvider};
-use oprf_types::{OprfKeyId, chain::OprfKeyRegistry};
+use alloy::{primitives::Address, providers::DynProvider, sol};
+use oprf_types::OprfKeyId;
+
+sol! {
+    #[sol(rpc)]
+    contract OprfKeyRegistry {
+        function deleteOprfPublicKey(uint160 oprfKeyId) external;
+        function initKeyGen(uint160 oprfKeyId) external;
+        function initReshare(uint160 oprfKeyId) external;
+    }
+}
 
 pub async fn init_key_gen(
     provider: DynProvider,
