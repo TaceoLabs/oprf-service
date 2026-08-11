@@ -1,6 +1,7 @@
 use std::{num::NonZeroU16, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
 use alloy::{
+    eips::{BlockId, BlockNumberOrTag},
     primitives::{Address, Bytes, U160, U256},
     providers::mock::Asserter,
     sol_types::{SolCall as _, SolError},
@@ -31,6 +32,8 @@ use super::events::KeyRegistryEvent;
 
 const CONTRACT_ADDRESS: Address = Address::repeat_byte(0x42);
 const WALLET_ADDRESS: Address = Address::repeat_byte(0x24);
+/// Block the simulated events are emitted in; event-derived view calls are pinned to it.
+const EVENT_BLOCK: BlockId = BlockId::Number(BlockNumberOrTag::Number(1234));
 
 struct HandlerFixture {
     handler: KeyRegistryEventHandler,
@@ -78,6 +81,8 @@ async fn fixture() -> eyre::Result<HandlerFixture> {
         confirmations_for_transaction: 1,
         sleep_between_get_receipt: Duration::from_millis(500),
         max_tries_fetching_receipt: 5,
+        sleep_between_simulation: Duration::from_millis(10),
+        max_tries_simulation: 2,
         max_gas_per_transaction: 10_000_000,
         rpc_provider: rpc_provider.clone(),
         wallet_address: WALLET_ADDRESS,
@@ -148,6 +153,12 @@ fn push_producer_public_keys(asserter: &Asserter) {
     asserter.push_success(&Bytes::from(encoded));
 }
 
+fn push_empty_producer_public_keys(asserter: &Asserter) {
+    let keys: Vec<BabyJubJub::Affine> = Vec::new();
+    let encoded = OprfKeyRegistry::loadPeerPublicKeysForProducersCall::abi_encode_returns(&keys);
+    asserter.push_success(&Bytes::from(encoded));
+}
+
 /// Queue an `eth_call` revert whose data is the ABI-encoded custom error, so the
 /// existing decoders (`as_decoded_error` in handler.rs, `From<alloy::contract::Error>`
 /// in `key_event_watcher.rs`) can identify it.
@@ -161,6 +172,16 @@ fn push_revert<E: SolError>(asserter: &Asserter, error: &E) {
     asserter.push_failure(payload);
 }
 
+/// Queue an `eth_call` failure carrying no revert data, as returned by an endpoint that has not
+/// reached the pinned block yet.
+fn push_missing_block(asserter: &Asserter) {
+    asserter.push_failure(alloy::rpc::json_rpc::ErrorPayload {
+        code: -32000,
+        message: "header not found".into(),
+        data: None,
+    });
+}
+
 #[tokio::test]
 async fn test_round2_invalid_proof() -> eyre::Result<()> {
     let fx = fixture().await?;
@@ -171,15 +192,16 @@ async fn test_round2_invalid_proof() -> eyre::Result<()> {
         .key_gen_round1(key_id, epoch, NonZeroU16::new(2).expect("non-zero"))
         .await?;
 
-    // eth_call #1: fetch_producer_public_keys returns 3 EPKs -> producer path.
+    // The pinned view call returns 3 EPKs, selecting the producer path.
     push_producer_public_keys(&fx.asserter);
-    // eth_call #2: TransactionHandler::simulate_transaction pre-flight reverts ProofInvalid.
+    // Transaction submission is rejected with the hard verifier error.
     push_revert(&fx.asserter, &Verifier::ProofInvalid {});
 
     let error = fx
         .handler
         .handle(
             KeyRegistryEvent::Round2 { key_id, epoch },
+            EVENT_BLOCK,
             &tracing::Span::none(),
         )
         .await
@@ -192,8 +214,47 @@ async fn test_round2_invalid_proof() -> eyre::Result<()> {
     Ok(())
 }
 
+/// View calls are pinned too, so a lagging endpoint must be retried rather than have its failure
+/// interpreted.  Without the retry the first response would decide the node's role.
 #[tokio::test]
-async fn test_round2_consumer_path_when_contract_in_wrong_round() -> eyre::Result<()> {
+async fn test_view_call_retries_while_rpc_lags() -> eyre::Result<()> {
+    let fx = fixture().await?;
+    let key_id = OprfKeyId::from(U160::from(47u32));
+    let epoch = ShareEpoch::default();
+
+    fx.secret_gen
+        .key_gen_round1(key_id, epoch, NonZeroU16::new(2).expect("non-zero"))
+        .await?;
+
+    // fetch_producer_public_keys: two lagging endpoints, then one that has the block.
+    push_missing_block(&fx.asserter);
+    push_missing_block(&fx.asserter);
+    push_producer_public_keys(&fx.asserter);
+    // The producer path then submits the round-2 contribution.
+    push_revert(&fx.asserter, &Verifier::ProofInvalid {});
+
+    let error = fx
+        .handler
+        .handle(
+            KeyRegistryEvent::Round2 { key_id, epoch },
+            EVENT_BLOCK,
+            &tracing::Span::none(),
+        )
+        .await
+        .expect_err("should reach the producer path and fail during submission");
+
+    assert!(
+        matches!(
+            error,
+            KeyRegistryEventError::Revert(RevertError::Verifier(VerifierErrors::ProofInvalid(_)))
+        ),
+        "expected the producer path after retrying past the lagging endpoints, got: {error}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_round2_consumer_path_when_producer_keys_are_empty() -> eyre::Result<()> {
     let fx = fixture().await?;
     let key_id = OprfKeyId::from(U160::from(44u32));
     let epoch = ShareEpoch::default();
@@ -202,12 +263,13 @@ async fn test_round2_consumer_path_when_contract_in_wrong_round() -> eyre::Resul
         .key_gen_round1(key_id, epoch, NonZeroU16::new(2).expect("non-zero"))
         .await?;
 
-    // eth_call #1: fetch_producer_public_keys reverts WrongRound -> consumer path -> Ok(()).
-    push_revert(&fx.asserter, &OprfKeyRegistry::WrongRound(3));
+    // An empty producer-key list is the contract's consumer signal.
+    push_empty_producer_public_keys(&fx.asserter);
 
     fx.handler
         .handle(
             KeyRegistryEvent::Round2 { key_id, epoch },
+            EVENT_BLOCK,
             &tracing::Span::none(),
         )
         .await
@@ -253,7 +315,11 @@ async fn test_delete() -> eyre::Result<()> {
         .await?;
 
     fx.handler
-        .handle(KeyRegistryEvent::Delete { key_id }, &tracing::Span::none())
+        .handle(
+            KeyRegistryEvent::Delete { key_id },
+            EVENT_BLOCK,
+            &tracing::Span::none(),
+        )
         .await
         .expect("delete should succeed");
 
@@ -296,7 +362,11 @@ async fn test_abort() -> eyre::Result<()> {
         .await?;
 
     fx.handler
-        .handle(KeyRegistryEvent::Abort { key_id }, &tracing::Span::none())
+        .handle(
+            KeyRegistryEvent::Abort { key_id },
+            EVENT_BLOCK,
+            &tracing::Span::none(),
+        )
         .await?;
 
     // In-progress state cleared.

@@ -38,6 +38,7 @@ use crate::{
     },
 };
 use alloy::{
+    eips::BlockId,
     network::primitives::TransactionFailedError,
     primitives::{Address, LogData},
     providers::{DynProvider, PendingTransactionError},
@@ -243,20 +244,25 @@ async fn key_gen_event(
     tracing::trace!("parsing event...");
     let event = KeyRegistryEvent::try_decode_log(&log).context("while decoding chain event")?;
     event.record_span_fields(&tracing::Span::current());
-
-    tracing::trace!("process event...");
-    let result = event_handler.handle(event, &tracing::Span::current()).await;
-
-    tracing::trace!("process result...");
-    handle_soft_errors(result).context("while handling key-gen event")?;
-
-    tracing::trace!("store chain cursor...");
     let block_number = log
         .block_number
         .ok_or_else(|| eyre::eyre!("block number missing on log"))?;
     let index = log
         .log_index
         .ok_or_else(|| eyre::eyre!("log index missing on log"))?;
+    let block_hash = log
+        .block_hash
+        .ok_or_else(|| eyre::eyre!("block hash missing on log"))?;
+
+    tracing::trace!("process event...");
+    let result = event_handler
+        .handle(event, BlockId::hash(block_hash), &tracing::Span::current())
+        .await;
+
+    tracing::trace!("process result...");
+    handle_soft_errors(result).context("while handling key-gen event")?;
+
+    tracing::trace!("store chain cursor...");
     let chain_cursor = ChainCursor::new(block_number, index);
     chain_cursor_service
         .store_chain_cursor(chain_cursor)

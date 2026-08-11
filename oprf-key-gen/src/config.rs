@@ -23,6 +23,9 @@
 //! | `confirmations_for_transaction`          | 5           |
 //! | `max_tries_fetching_receipt`             | 5           |
 //! | `sleep_between_get_receipt`              | 5 s         |
+//! | `rpc_http_timeout`                       | 10 s        |
+//! | `max_tries_simulation`                   | 30          |
+//! | `sleep_between_simulation`               | 5 s         |
 //! | `cursor_checkpoint_interval`             | 1 day       |
 
 use std::num::NonZeroU16;
@@ -70,6 +73,11 @@ pub struct OprfKeyGenServiceConfig {
     /// The websocket RPC url used for `eth_subscribe`.
     pub ws_rpc_url: SecretString,
 
+    /// The timeout for HTTP requests to the RPC.
+    #[serde(default = "OprfKeyGenServiceConfig::default_rpc_http_timeout")]
+    #[serde(with = "humantime_serde")]
+    pub rpc_http_timeout: Duration,
+
     /// Max time we wait for a submitted transaction receipt to reach the required
     /// number of confirmations before treating it as failed.
     ///
@@ -111,6 +119,24 @@ pub struct OprfKeyGenServiceConfig {
     #[serde(default = "OprfKeyGenServiceConfig::default_sleep_between_get_receipt")]
     #[serde(with = "humantime_serde")]
     pub sleep_between_get_receipt: Duration,
+
+    /// Number of times we retry a pinned call that fails without revert data.
+    ///
+    /// Together with `sleep_between_simulation` this bounds how far the RPC pool may lag behind
+    /// the endpoint delivering the events. Once exhausted the event watcher restarts and replays
+    /// the event from the stored chain cursor.
+    ///
+    /// Defaults to `30`.
+    #[serde(default = "OprfKeyGenServiceConfig::default_max_tries_simulation")]
+    pub max_tries_simulation: usize,
+
+    /// Time to sleep between pinned-call retries. Should be in the order of the chain's block
+    /// time.
+    ///
+    /// Defaults to `5s`.
+    #[serde(default = "OprfKeyGenServiceConfig::default_sleep_between_simulation")]
+    #[serde(with = "humantime_serde")]
+    pub sleep_between_simulation: Duration,
 
     /// Interval in which we persist a [`ChainCursor`](nodes_common::web3::event_stream::ChainCursor) checkpoint.
     ///
@@ -170,6 +196,11 @@ pub struct OprfKeyGenServiceConfigMandatoryValues {
 }
 
 impl OprfKeyGenServiceConfig {
+    /// Default timeout for HTTP requests to the RPC: 10 seconds
+    fn default_rpc_http_timeout() -> Duration {
+        Duration::from_secs(10)
+    }
+
     /// Default max wait time for transaction confirmation (`300 s`).
     fn default_max_wait_time_transaction_confirmation() -> Duration {
         Duration::from_mins(5) // 5min
@@ -192,6 +223,19 @@ impl OprfKeyGenServiceConfig {
 
     /// Default time we sleep between trying to fetch receipt of a confirmed transaction (`5s`).
     fn default_sleep_between_get_receipt() -> Duration {
+        Duration::from_secs(5)
+    }
+
+    /// Default max tries for a pinned call the RPC could not serve (`30`).
+    ///
+    /// This allows a lagging HTTP endpoint time to catch up with the event source. Other errors
+    /// without revert data use the same bounded retry policy and may exhaust it.
+    fn default_max_tries_simulation() -> usize {
+        30
+    }
+
+    /// Default time we sleep between pinned-call retries (`5s`).
+    fn default_sleep_between_simulation() -> Duration {
         Duration::from_secs(5)
     }
 
@@ -230,8 +274,11 @@ impl OprfKeyGenServiceConfig {
             confirmations_for_transaction: Self::default_confirmations_for_transaction(),
             max_tries_fetching_receipt: Self::default_max_tries_fetching_receipt(),
             sleep_between_get_receipt: Self::default_sleep_between_get_receipt(),
+            max_tries_simulation: Self::default_max_tries_simulation(),
+            sleep_between_simulation: Self::default_sleep_between_simulation(),
             event_stream_config: EventStreamConfig::default(),
             cursor_checkpoint_interval: Self::default_cursor_checkpoint_interval(),
+            rpc_http_timeout: Self::default_rpc_http_timeout(),
         }
     }
 }

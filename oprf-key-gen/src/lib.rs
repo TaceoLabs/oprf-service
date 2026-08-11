@@ -42,7 +42,7 @@ use alloy::{
     providers::{DynProvider, Provider as _, ProviderBuilder, WsConnect},
     pubsub::{ConnectionHandle, PubSubConnect},
     signers::local::PrivateKeySigner,
-    transports::{TransportErrorKind, TransportResult},
+    transports::{TransportErrorKind, TransportResult, http::reqwest},
 };
 use eyre::Context as _;
 use groth16_material::circom::CircomGroth16MaterialBuilder;
@@ -226,9 +226,18 @@ pub async fn start(
     tracing::info!("my wallet address: {address}");
     let wallet = EthereumWallet::from(private_key);
 
+    let reqwest_client = reqwest::ClientBuilder::new()
+        .timeout(config.rpc_http_timeout)
+        // set connection pool to zero to force a new connection on every HTTP request.
+        // This should prevent talking to stale/lagging nodes for a longer period
+        .pool_max_idle_per_host(0)
+        .build()
+        .context("while building reqwest Client")?;
+
     let http_rpc_provider =
         nodes_common::web3::HttpRpcProviderBuilder::with_config(&config.rpc_provider_config)
             .environment(config.environment)
+            .reqwest_client(reqwest_client)
             .wallet(wallet)
             .build()
             .context("while init blockchain connection")?;
@@ -283,6 +292,8 @@ pub async fn start(
         rpc_provider: http_rpc_provider.clone(),
         wallet_address: address,
         contract_address: config.oprf_key_registry_contract,
+        sleep_between_simulation: config.sleep_between_simulation,
+        max_tries_simulation: config.max_tries_simulation,
     });
 
     tracing::info!("spawning key event watcher..");

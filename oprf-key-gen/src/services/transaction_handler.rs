@@ -1,7 +1,8 @@
 use std::{f64, time::Duration};
 
 use alloy::{
-    contract::{CallBuilder, CallDecoder},
+    contract::{CallBuilder, CallDecoder, Error as ContractError},
+    eips::BlockId,
     network::ReceiptResponse,
     primitives::{Address, TxHash},
     providers::{DynProvider, PendingTransactionError, Provider, WatchTxError},
@@ -23,17 +24,18 @@ use crate::{metrics, services::key_event_watcher::KeyRegistryEventError};
 
 /// Service that handles transaction submission and receipt confirmation.
 ///
-/// Simulates each call first (`eth_call` pre-flight via [`submit`](TransactionHandler::submit)),
-/// then broadcasts the transaction and polls for receipts, retrying on `NullResp` responses up
-/// to `max_tries_fetching_receipt` times.  On receipt, [`ReceiptResponse::ensure_success`] is
-/// called to surface reverts.  Gas price and wallet balance are recorded as metrics after every
-/// confirmed transaction.
+/// Broadcasts each transaction and polls for its receipt, retrying on `NullResp` responses up to
+/// `max_tries_fetching_receipt` times. If the receipt reports failure, an `eth_call` pinned to the
+/// receipt's block hash probes the post-block state for a decodable revert. Gas price and wallet
+/// balance are recorded as metrics after every confirmed transaction.
 #[derive(Clone)]
 pub(crate) struct TransactionHandler {
     max_wait_time_watch_transaction: Duration,
     confirmations_for_transaction: u64,
     sleep_between_get_receipt: Duration,
     max_tries_fetching_receipt: usize,
+    sleep_between_simulation: Duration,
+    max_tries_simulation: usize,
     max_gas_per_transaction: u64,
     rpc_provider: web3::HttpRpcProvider,
     wallet_address: Address,
@@ -60,6 +62,10 @@ pub(crate) struct TransactionHandlerArgs {
     pub(crate) wallet_address: Address,
     /// Address of the `OprfKeyRegistry` contract.
     pub(crate) contract_address: Address,
+    /// Delay between retries of a pinned call the RPC could not serve.
+    pub(crate) sleep_between_simulation: Duration,
+    /// Maximum number of retries for a pinned call that fails without revert data.
+    pub(crate) max_tries_simulation: usize,
 }
 
 impl From<TransactionHandlerArgs> for TransactionHandler {
@@ -73,12 +79,16 @@ impl From<TransactionHandlerArgs> for TransactionHandler {
             rpc_provider,
             wallet_address,
             contract_address,
+            sleep_between_simulation,
+            max_tries_simulation,
         } = value;
         Self {
             max_wait_time_watch_transaction,
             confirmations_for_transaction,
             sleep_between_get_receipt,
             max_tries_fetching_receipt,
+            sleep_between_simulation,
+            max_tries_simulation,
             max_gas_per_transaction,
             wallet_address,
             contract: OprfKeyRegistryInstance::new(contract_address, rpc_provider.inner()),
@@ -100,16 +110,46 @@ impl TransactionHandler {
             .build()
     }
 
-    async fn simulate_transaction<D>(
+    fn pinned_call_backoff(&self) -> ConstantBackoff {
+        ConstantBuilder::new()
+            .with_delay(self.sleep_between_simulation)
+            .with_max_times(self.max_tries_simulation)
+            .build()
+    }
+
+    /// Runs `call` against the state at `block`, retrying while the RPC cannot serve that block.
+    ///
+    /// Events arrive over the WebSocket provider while calls go out over the load-balanced HTTP
+    /// pool, so an HTTP endpoint may not yet know the relevant block. Pinning prevents it from
+    /// silently answering from different state. A failure carrying revert data is authoritative;
+    /// failures without revert data are retried because they may indicate a lagging endpoint.
+    /// Other transient or permanent errors without revert data are retried as well and may still
+    /// exhaust the configured retry limit.
+    ///
+    /// Retries are bounded. Once exhausted the error propagates and aborts the watcher without
+    /// advancing the chain cursor, so the event is replayed after the restart.
+    pub(crate) async fn call_pinned<P, D>(
         &self,
-        transaction: CallBuilder<&DynProvider, D>,
-    ) -> Result<(), KeyRegistryEventError>
+        call: CallBuilder<P, D>,
+        block: BlockId,
+    ) -> Result<D::CallOutput, ContractError>
     where
-        D: CallDecoder + Unpin,
+        P: Provider,
+        D: CallDecoder,
     {
-        tracing::trace!("simulating transaction before submitting");
-        transaction.gas(self.max_gas_per_transaction).call().await?;
-        Ok(())
+        let call = call.block(block);
+        (|| async { call.call().await })
+            .retry(self.pinned_call_backoff())
+            .sleep(tokio::time::sleep)
+            // Revert data is an authoritative chain response. Errors without it may be caused by
+            // a lagging RPC (or another failure), so retry them within the configured bound.
+            .when(|err: &ContractError| err.as_revert_data().is_none())
+            .notify(|err, duration| {
+                tracing::warn!(
+                    "eth_call at {block:?} failed without revert data ({err}) - RPC may be behind, retrying in {duration:?}"
+                );
+            })
+            .await
     }
 
     async fn send_transaction<D>(
@@ -184,13 +224,14 @@ impl TransactionHandler {
         metrics::wallet::set_gas_price_from_wei(receipt.effective_gas_price());
     }
 
-    /// Full transaction lifecycle: simulate → send → confirm → ensure success → record metrics.
+    /// Full transaction lifecycle: send → confirm → record metrics → optional recovery probe.
     ///
-    /// Runs a pre-flight `eth_call` via [`simulate_transaction`](Self::simulate_transaction) to
-    /// surface reverts before spending gas, then broadcasts via
-    /// [`send_transaction`](Self::send_transaction), calls
-    /// [`ReceiptResponse::ensure_success`] to assert the receipt status, and
-    /// emits gas/balance metrics via [`record_metrics`](Self::record_metrics).
+    /// Broadcasts via [`send_transaction`](Self::send_transaction), then checks the confirmed
+    /// receipt and emits gas/balance metrics. A successful receipt returns immediately. For a
+    /// failed receipt, an `eth_call` pinned by the receipt's block hash probes the post-block
+    /// state. A decoded revert is propagated through the normal soft/hard error policy; if the
+    /// probe succeeds, the original receipt failure is returned. The probe is recovery guidance,
+    /// not an exact reconstruction of the transaction's historical revert.
     ///
     /// Returns the `TxHash` of the confirmed transaction.
     #[instrument(level = "info", skip_all)]
@@ -201,12 +242,26 @@ impl TransactionHandler {
     where
         D: CallDecoder + Unpin + Clone,
     {
-        // first we simulate the transaction
-        self.simulate_transaction(transaction.clone()).await?;
-        let receipt = self.send_transaction(transaction).await?;
+        let receipt = self.send_transaction(transaction.clone()).await?;
         self.record_metrics(&receipt).await;
-        receipt.ensure_success()?;
-        Ok(receipt.transaction_hash)
+        match receipt.ensure_success() {
+            Ok(()) => Ok(receipt.transaction_hash),
+            Err(e) => {
+                let receipt_block_hash = receipt
+                    .block_hash
+                    .ok_or_else(|| eyre::eyre!("block hash not found on failed receipt"))?;
+                tracing::debug!(
+                    "transaction {e} failed - probing post-block state at {receipt_block_hash}"
+                );
+                self.call_pinned(
+                    transaction.gas(self.max_gas_per_transaction),
+                    BlockId::hash(receipt_block_hash),
+                )
+                .await?;
+                tracing::warn!("transaction failed but recovery probe succeeded");
+                Err(KeyRegistryEventError::TransactionFailedError(e))
+            }
+        }
     }
 
     /// Submits a round-1 key-gen contribution to `OprfKeyRegistry::addRound1KeyGenContribution`.
