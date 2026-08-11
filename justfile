@@ -10,11 +10,11 @@ load-key-registry:
 [group('build')]
 [working-directory('contracts')]
 export-contract-abi:
-    forge build --silent && jq '.abi' out/OprfKeyRegistry.sol/OprfKeyRegistry.json > ../oprf-types/OprfKeyRegistry.json
+    forge build --silent
     cp out/VerifierKeyGen13.sol/Verifier.json ../oprf/contracts/Verifier.13.json
     cp out/VerifierKeyGen25.sol/Verifier.json ../oprf/contracts/Verifier.25.json
     cp out/BabyJubJub.sol/BabyJubJub.json ../oprf/contracts/BabyJubJub.json
-    cp out/OprfKeyRegistry.sol/OprfKeyRegistry.json ../oprf-types/
+    cp out/OprfKeyRegistry.sol/OprfKeyRegistry.json ../oprf/contracts/
     cp out/ERC1967Proxy.sol/ERC1967Proxy.json ../oprf/contracts
 
 [group('test')]
