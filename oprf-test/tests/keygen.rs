@@ -4,7 +4,10 @@ use std::time::Duration;
 use alloy::{primitives::U160, sol_types::SolEvent};
 use eyre::Context as _;
 use oprf_key_gen::event_cursor_store::ChainCursorStorage as _;
-use taceo_oprf::types::{OprfKeyId, ShareEpoch, chain::OprfKeyRegistry};
+use taceo_oprf::{
+    anvil::OprfKeyRegistry,
+    types::{OprfKeyId, ShareEpoch},
+};
 use taceo_oprf_test::{
     TEST_TIMEOUT,
     key_gen_setup::{TestKeyGen, keygen_asserts},
