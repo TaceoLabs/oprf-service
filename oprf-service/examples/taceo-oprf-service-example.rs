@@ -1,6 +1,5 @@
 use std::{net::SocketAddr, process::ExitCode, sync::Arc, time::Duration};
 
-use config::{Config, Environment};
 use eyre::Context;
 use nodes_common::postgres::PostgresConfig;
 use oprf_client::Connector;
@@ -18,7 +17,7 @@ mod simple_authenticator;
 
 /// The top-level configuration for the OPRF node example binary.
 /// Loads the example service configuration from environment variables.
-/// Configured via environment variables using the `TACEO_OPRF_NODE__` prefix and `__` as separator.
+/// Configured via environment variables using the `TACEO_OPRF_NODE` prefix.
 #[derive(Clone, Debug, Deserialize)]
 #[non_exhaustive]
 pub struct ExampleOprfNodeConfig {
@@ -56,19 +55,7 @@ fn default_max_wait_shutdown() -> Duration {
 ///
 /// Returns an error if the environment configuration cannot be built or parsed.
 pub fn load_example_config() -> eyre::Result<ExampleOprfNodeConfig> {
-    let cfg = Config::builder().add_source(
-        Environment::with_prefix("TACEO_OPRF_NODE")
-            .separator("__")
-            .list_separator(",")
-            .with_list_parse_key("rpc.http_urls")
-            .with_list_parse_key("node_urls")
-            .try_parsing(true),
-    );
-
-    cfg.build()
-        .context("while building from config")?
-        .try_deserialize()
-        .context("while parsing config")
+    serde_env::from_env_with_prefix("TACEO_OPRF_NODE").context("while parsing config")
 }
 
 #[tokio::main]

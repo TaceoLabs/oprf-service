@@ -69,7 +69,6 @@ zeroize.workspace = true
 [dev-dependencies]
 ark-ff = { workspace = true }
 axum-test = { workspace = true, features = ["ws"] }
-config = { workspace = true }
 itertools = { workspace = true }
 nodes-common = { workspace = true, features = [
   "api",
@@ -82,6 +81,7 @@ oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version 
 reqwest = { workspace = true, features = ["json"] }
 ruint = { workspace = true, features = ["rand"] }
 rustls = { workspace = true }
+serde-env.workspace = true
 telemetry-batteries = { workspace = true, features = ["metrics-statsd"] }
 url = { workspace = true }
 
