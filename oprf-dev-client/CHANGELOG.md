@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.11.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.10.2...taceo-oprf-dev-client-v0.11.0)
+
+### ⛰️ Features
+
+
+- *(dev-client)* Add delegate test command - ([9466446](https://github.com/TaceoLabs/oprf-service/commit/94664468d096f4b6fd411583e69e91b7b647c293))
+
+### 🧪 Testing
+
+
+- Cleanup tests in test-crate - ([e41831b](https://github.com/TaceoLabs/oprf-service/commit/e41831b3a511344dfbf715a5b14be145c747995c))
+
+
 ## [0.10.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.10.1...taceo-oprf-dev-client-v0.10.2)
 
 ### 🏗️ Build
