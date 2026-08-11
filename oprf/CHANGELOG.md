@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.18.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.18.0...taceo-oprf-v0.18.1)
+
+### 🐛 Bug Fixes
+
+
+- *(oprf)* Embedd OprfKeyRegistry.json in oprf - ([4679c85](https://github.com/TaceoLabs/oprf-service/commit/4679c85a345160a1939f7bfb2f3a9e1748fdbd25))
+
+
 ## [0.18.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.17.2...taceo-oprf-v0.18.0)
 
 ### ⛰️ Features

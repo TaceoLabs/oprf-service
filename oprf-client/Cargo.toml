@@ -1,6 +1,6 @@
 [package]
 name = "taceo-oprf-client"
-version = "0.10.4"
+version = "0.10.5"
 edition.workspace = true
 rust-version.workspace = true
 description = "Client for TACEO:OPRF"
@@ -18,7 +18,7 @@ ciborium = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.15", default-features = false }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16", default-features = false }
 poseidon2 = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true }
