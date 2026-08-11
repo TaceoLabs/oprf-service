@@ -1,6 +1,6 @@
 [package]
 name = "taceo-oprf-service"
-version = "0.19.0"
+version = "0.19.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "Main service for nodes of TACEO:OPRF"
@@ -30,7 +30,7 @@ moka.workspace = true
 nodes-common = { workspace = true, features = ["api", "postgres", "serde"] }
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.10" }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.15", features = [
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16", features = [
   "service"
 ] }
 parking_lot = { workspace = true }

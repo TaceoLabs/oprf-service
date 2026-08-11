@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.16.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.15.1...taceo-oprf-types-v0.16.0)
+
+### 🚜 Refactor
+
+
+- *(types)* [**breaking**] Use inline sol macro over .json file - ([d4fcb1f](https://github.com/TaceoLabs/oprf-service/commit/d4fcb1f4db02c21276805350aaf9f8e3589e2e8a))
+
+
 ## [0.15.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.15.0...taceo-oprf-types-v0.15.1)
 
 ### ⛰️ Features

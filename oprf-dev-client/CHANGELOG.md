@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.11.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.11.0...taceo-oprf-dev-client-v0.11.1)
+
+### 🐛 Bug Fixes
+
+
+- *(dev-client)* Use inline sol macro - ([62301d6](https://github.com/TaceoLabs/oprf-service/commit/62301d6841da03c2f57172162f83f0acd6282e02))
+
+
 ## [0.11.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.10.2...taceo-oprf-dev-client-v0.11.0)
 
 ### ⛰️ Features
