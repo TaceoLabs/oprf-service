@@ -55,3 +55,6 @@ full = [
   "service",
   "types",
 ]
+
+[lints]
+workspace = true

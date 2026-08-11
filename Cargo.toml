@@ -83,6 +83,24 @@ uuid = { version = "1" }
 webpki-roots = { version = "1.0" }
 zeroize = "1"
 
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+allow_attributes_without_reason = "deny"
+assertions_on_result_states = "deny"
+dbg_macro = "deny"
+decimal_literal_representation = "deny"
+exhaustive_enums = "deny"
+exhaustive_structs = "deny"
+iter_over_hash_type = "deny"
+let_underscore_must_use = "deny"
+missing_assert_message = "deny"
+pedantic = { level = "deny", priority = -1 }
+print_stderr = "deny"
+print_stdout = "deny"
+undocumented_unsafe_blocks = "deny"
+unnecessary_safety_comment = "deny"
+unwrap_used = "deny"
+
 # This profile can be used for CI in pull requests.
 [profile.ci-dev]
 inherits = "dev"

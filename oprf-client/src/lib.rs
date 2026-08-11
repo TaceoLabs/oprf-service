@@ -1,23 +1,8 @@
 #![deny(missing_docs)]
-#![deny(clippy::all, clippy::pedantic)]
-#![deny(
-    clippy::allow_attributes_without_reason,
-    clippy::assertions_on_result_states,
-    clippy::dbg_macro,
-    clippy::decimal_literal_representation,
-    clippy::exhaustive_enums,
-    clippy::iter_over_hash_type,
-    clippy::let_underscore_must_use,
-    clippy::missing_assert_message,
-    clippy::print_stderr,
-    clippy::print_stdout,
-    clippy::undocumented_unsafe_blocks,
-    clippy::unnecessary_safety_comment,
-    clippy::unwrap_used
-)]
 #![allow(
+    clippy::exhaustive_structs,
     clippy::missing_errors_doc,
-    reason = "We allow missing error sections in this crate"
+    reason = "Struct evolution and missing error sections are allowed in this client crate"
 )]
 
 //! This crate provides utility functions for clients of the distributed OPRF protocol.

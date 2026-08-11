@@ -88,3 +88,6 @@ url = { workspace = true }
 [features]
 default = ["postgres"]
 postgres = ["dep:sqlx"]
+
+[lints]
+workspace = true
