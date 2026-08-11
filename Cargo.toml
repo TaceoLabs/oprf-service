@@ -77,7 +77,7 @@ tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
 tokio-util = "0.7"
 tower-http = "0.7"
 tracing = { version = "0.1" }
-tungstenite = { version = "0.28" }
+tungstenite = { version = "0.30" }
 url = { version = "2" }
 uuid = { version = "1" }
 webpki-roots = { version = "1.0" }
