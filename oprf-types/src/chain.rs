@@ -7,33 +7,84 @@
 
 // we need this because the sol macro is angry otherwise
 
-#![allow(missing_docs, reason = "Get this error from sol macro")]
+#![allow(
+    missing_docs,
+    clippy::too_many_arguments,
+    clippy::exhaustive_enums,
+    reason = "Get lints from sol macro"
+)]
 use std::fmt;
 
 use alloy::{primitives::U256, sol};
 use ark_ff::PrimeField as _;
 
 use crate::{
-    chain::{
-        OprfKeyRegistry::{KeyGenConfirmation, OprfKeyRegistryErrors},
-        Verifier::VerifierErrors,
-    },
+    chain::{OprfKeyRegistry::OprfKeyRegistryErrors, Verifier::VerifierErrors},
     crypto::{
         EphemeralEncryptionPublicKey, SecretGenCiphertext, SecretGenCiphertexts,
         SecretGenCommitment,
     },
 };
 
-// Codegen from ABI file to interact with the contract.
 sol!(
-    #[allow(
-        clippy::too_many_arguments,
-        clippy::exhaustive_enums,
-        reason = "Get lints from sol macro"
-    )]
-    #[sol(rpc, ignore_unlinked)]
-    OprfKeyRegistry,
-    "./OprfKeyRegistry.json"
+    #[sol(rpc)]
+    library BabyJubJub {
+        struct Affine {
+            uint256 x;
+            uint256 y;
+        }
+    }
+
+    library OprfKeyGen {
+        struct Round1Contribution {
+            BabyJubJub.Affine commShare;
+            uint256 commCoeffs;
+            BabyJubJub.Affine ephPubKey;
+        }
+
+        struct Round2Contribution {
+            uint256[4] compressedProof;
+            SecretGenCiphertext[] ciphers;
+        }
+
+        struct SecretGenCiphertext {
+            uint256 nonce;
+            uint256 cipher;
+            BabyJubJub.Affine commitment;
+        }
+    }
+
+    #[sol(rpc, abi)]
+    contract OprfKeyRegistry {
+        function addRound1KeyGenContribution(uint160 oprfKeyId, OprfKeyGen.Round1Contribution calldata data) external;
+        function addRound1ReshareContribution(uint160 oprfKeyId, OprfKeyGen.Round1Contribution calldata data) external;
+        function addRound2Contribution(uint160 oprfKeyId, OprfKeyGen.Round2Contribution calldata data) external;
+        function addRound3Contribution(uint160 oprfKeyId) external;
+        function checkIsParticipantAndReturnRound2Ciphers(uint160 oprfKeyId) external view returns (OprfKeyGen.SecretGenCiphertext[] memory);
+        function getOprfPublicKey(uint160 oprfKeyId) external view returns (BabyJubJub.Affine memory);
+        function getPartyIdForParticipant(address participant) external view returns (uint256);
+        function loadPeerPublicKeysForConsumers(uint160 oprfKeyId) external view returns (BabyJubJub.Affine[] memory);
+        function loadPeerPublicKeysForProducers(uint160 oprfKeyId) external view returns (BabyJubJub.Affine[] memory);
+        function numPeers() external view returns (uint16);
+        function threshold() external view returns (uint16);
+
+        event KeyDeletion(uint160 indexed oprfKeyId);
+        event KeyGenAbort(uint160 indexed oprfKeyId);
+        event NotEnoughProducers(uint160 indexed oprfKeyId);
+        event ReshareRound1(uint160 indexed oprfKeyId, uint256 threshold, uint32 indexed epoch);
+        event ReshareRound3(uint160 indexed oprfKeyId, uint256[] lagrange, uint32 indexed epoch);
+        event SecretGenFinalize(uint160 indexed oprfKeyId, uint32 indexed epoch);
+        event SecretGenRound1(uint160 indexed oprfKeyId, uint256 threshold);
+        event SecretGenRound2(uint160 indexed oprfKeyId, uint32 indexed epoch);
+        event SecretGenRound3(uint160 indexed oprfKeyId);
+        error AlreadySubmitted();
+        error BadContribution();
+        error DeletedId(uint160 id);
+        error NotAParticipant();
+        error NotReady();
+        error UnknownId(uint160 id);
+        error WrongRound(uint8);
+    }
 );
 
 sol!(
@@ -65,17 +116,6 @@ pub enum RevertError {
     Verifier(VerifierErrors),
 }
 
-impl fmt::Debug for KeyGenConfirmation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("KeyGenConfirmation")
-            .field("oprfKeyId", &self.oprfKeyId)
-            .field("party_id", &self.partyId)
-            .field("round", &self.round)
-            .field("epoch", &self.epoch)
-            .finish()
-    }
-}
-
 impl fmt::Display for RevertError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -102,41 +142,12 @@ impl fmt::Display for OprfKeyRegistryErrors {
 impl fmt::Debug for OprfKeyRegistryErrors {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::PartiesNotDistinct(_) => f.debug_tuple("PartiesNotDistinct").finish(),
-            Self::AddressEmptyCode(_) => f.debug_tuple("AddressEmptyCode").finish(),
             Self::AlreadySubmitted(_) => f.debug_tuple("AlreadySubmitted").finish(),
             Self::BadContribution(_) => f.debug_tuple("BadContribution").finish(),
             Self::DeletedId(_) => f.debug_tuple("DeletedId").finish(),
-            Self::ERC1967InvalidImplementation(_) => {
-                f.debug_tuple("ERC1967InvalidImplementation").finish()
-            }
-            Self::ERC1967NonPayable(_) => f.debug_tuple("ERC1967NonPayable").finish(),
-            Self::FailedCall(_) => f.debug_tuple("FailedCall").finish(),
-            Self::ImplementationNotInitialized(_) => {
-                f.debug_tuple("ImplementationNotInitialized").finish()
-            }
-            Self::InvalidInitialization(_) => f.debug_tuple("InvalidInitialization").finish(),
-            Self::LastAdmin(_) => f.debug_tuple("LastAdmin").finish(),
             Self::NotAParticipant(_) => f.debug_tuple("NotAParticipant").finish(),
-            Self::NotAProducer(_) => f.debug_tuple("NotAProducer").finish(),
-            Self::NotInitializing(_) => f.debug_tuple("NotInitializing").finish(),
             Self::NotReady(_) => f.debug_tuple("NotReady").finish(),
-            Self::OnlyAdmin(_) => f.debug_tuple("OnlyAdmin").finish(),
-            Self::OwnableInvalidOwner(_) => f.debug_tuple("OwnableInvalidOwner").finish(),
-            Self::OwnableUnauthorizedAccount(_) => {
-                f.debug_tuple("OwnableUnauthorizedAccount").finish()
-            }
-            Self::UUPSUnauthorizedCallContext(_) => {
-                f.debug_tuple("UUPSUnauthorizedCallContext").finish()
-            }
-            Self::UUPSUnsupportedProxiableUUID(_) => {
-                f.debug_tuple("UUPSUnsupportedProxiableUUID").finish()
-            }
-            Self::UnexpectedAmountPeers(_) => f.debug_tuple("UnexpectedAmountPeers").finish(),
             Self::UnknownId(_) => f.debug_tuple("UnknownId").finish(),
-            Self::UnsupportedNumPeersThreshold(_) => {
-                f.debug_tuple("UnsupportedNumPeersThreshold").finish()
-            }
             Self::WrongRound(_) => f.debug_tuple("WrongRound").finish(),
         }
     }
