@@ -22,7 +22,16 @@ use alloy::{
     sol_types::SolCall as _,
 };
 use eyre::{Context as _, ContextCompat as _};
-use oprf_types::{OprfKeyId, chain::OprfKeyRegistry};
+use oprf_types::OprfKeyId;
+
+sol!(
+    #[sol(rpc, ignore_unlinked)]
+    OprfKeyRegistry,
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/contracts/OprfKeyRegistry.json"
+    )
+);
 
 sol!(
     #[sol(rpc, ignore_unlinked)]
@@ -144,7 +153,7 @@ async fn deploy_oprf_key_registry(
     // Link BabyJubJub to OprfKeyRegistry
     let oprf_key_registry_json = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../oprf-types/OprfKeyRegistry.json"
+        "/contracts/OprfKeyRegistry.json"
     ));
     let json_value: serde_json::Value = serde_json::from_str(oprf_key_registry_json)?;
     let mut bytecode_str = json_value["bytecode"]["object"]
