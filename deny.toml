@@ -72,7 +72,6 @@ feature-depth = 1
 ignore = [
     { id = "RUSTSEC-2024-0436", reason = "Paste crate is unmaintained, but arkworks is still using it." },
     { id = "RUSTSEC-2024-0388", reason = "derivative crate is unmaintained, but arkworks is still using it." },
-    { id = "RUSTSEC-2025-0055", reason = "ark-relations is using v0.2 of tracing-subscriber still, we do not use this functionality so it is not exploitable." },
     { id = "RUSTSEC-2023-0089", reason = "need to wait until circom-witness-rs updates deps" },
     { id = "RUSTSEC-2026-0173", reason = "need to wait until alloy removes. Not relevant as only error reporting" },
 ]
