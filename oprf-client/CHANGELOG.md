@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+## [0.10.4](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.10.3...taceo-oprf-client-v0.10.4)
+
+### ⛰️ Features
+
+
+- *(client)* Extract distributed_oprf_core, add delegate_distributed_oprf and fetch_oprf_public_key - ([1e4431e](https://github.com/TaceoLabs/oprf-service/commit/1e4431ea7be7548efcff5e5420e231977a905480))
+
+### 📚 Documentation
+
+
+- *(client)* Highlight security conisderations for delegate - ([49a2cab](https://github.com/TaceoLabs/oprf-service/commit/49a2caba7424cfeac63047f78f4da1a945cee47f))
+
+### 🧪 Testing
+
+
+- Cleanup tests in test-crate - ([e41831b](https://github.com/TaceoLabs/oprf-service/commit/e41831b3a511344dfbf715a5b14be145c747995c))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(clippy)* Moved clippy lints to Cargo.toml ([#704](https://github.com/TaceoLabs/oprf-service/pull/704)) - ([f72f802](https://github.com/TaceoLabs/oprf-service/commit/f72f802bfa5948d58050b553d422aa7aadbdbb27))
+
+
 ## [0.10.3](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.10.2...taceo-oprf-client-v0.10.3)
 
 ### 🚜 Refactor

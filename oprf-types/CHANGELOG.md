@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [0.15.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.15.0...taceo-oprf-types-v0.15.1)
+
+### ⛰️ Features
+
+
+- *(types)* Add delegate response type - ([0940ec2](https://github.com/TaceoLabs/oprf-service/commit/0940ec224ac399432a5deb5211d1c00999a35736))
+
+### 🧪 Testing
+
+
+- Cleanup tests in test-crate - ([e41831b](https://github.com/TaceoLabs/oprf-service/commit/e41831b3a511344dfbf715a5b14be145c747995c))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- *(clippy)* Moved clippy lints to Cargo.toml ([#704](https://github.com/TaceoLabs/oprf-service/pull/704)) - ([f72f802](https://github.com/TaceoLabs/oprf-service/commit/f72f802bfa5948d58050b553d422aa7aadbdbb27))
+- *(types)* Update contract abi - ([25d3681](https://github.com/TaceoLabs/oprf-service/commit/25d3681c076d889bf2f8cb58e6a71cc14ad49454))
+
+
 ## [0.15.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.14.0...taceo-oprf-types-v0.15.0)
 
 ### 🚜 Refactor

@@ -50,7 +50,7 @@ sqlx = { workspace = true, features = [
   "postgres",
   "runtime-tokio",
 ] }
-taceo-oprf = { path = "../oprf", version = "0.17.2", features = [
+taceo-oprf = { path = "../oprf", version = "0.18.0", features = [
   "anvil",
   "full"
 ] }
