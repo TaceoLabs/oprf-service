@@ -2175,17 +2175,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "config"
-version = "0.15.25"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b85f248a4de22d204ceabc6299d89d2c70fbd7f09fea53c06c852369652d8139"
-dependencies = [
- "pathdiff",
- "serde_core",
- "winnow 1.0.1",
-]
-
-[[package]]
 name = "const-hex"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4535,12 +4524,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
-name = "pathdiff"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
-
-[[package]]
 name = "pem-rfc7468"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5635,6 +5618,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-env"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9d29a4f822b7a7e7eada47da087a9d29d9b266dba45edc375fdc700965860d7"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_core"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6438,7 +6430,6 @@ dependencies = [
  "axum",
  "axum-test 18.5.0",
  "backon",
- "config",
  "eyre",
  "futures",
  "humantime-serde",
@@ -6449,6 +6440,7 @@ dependencies = [
  "rustls",
  "secrecy",
  "serde",
+ "serde-env",
  "serde_json",
  "sqlx",
  "taceo-ark-babyjubjub",
@@ -6479,7 +6471,6 @@ dependencies = [
  "axum-test 18.5.0",
  "backon",
  "ciborium",
- "config",
  "eyre",
  "http",
  "humantime-serde",
@@ -6494,6 +6485,7 @@ dependencies = [
  "secrecy",
  "semver 1.0.28",
  "serde",
+ "serde-env",
  "serde_json",
  "sqlx",
  "taceo-ark-babyjubjub",

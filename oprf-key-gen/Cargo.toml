@@ -32,7 +32,6 @@ ark-serialize.workspace = true
 async-trait = { workspace = true }
 axum = { workspace = true }
 backon = { workspace = true, features = ["std", "tokio-sleep"] }
-config = { workspace = true }
 eyre.workspace = true
 futures = { workspace = true }
 groth16-material = { workspace = true, features = ["circom"] }
@@ -54,6 +53,7 @@ rand.workspace = true
 rustls = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
+serde-env.workspace = true
 sqlx = { workspace = true, features = [
   "migrate",
   "postgres",

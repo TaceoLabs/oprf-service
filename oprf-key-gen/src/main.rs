@@ -2,7 +2,7 @@
 //!
 //! This is the main entry point for the OPRF key-gen service.
 //! It initializes tracing, metrics, and starts the service with configuration
-//! from environment variables using the `TACEO_OPRF_KEY_GEN__` prefix.
+//! from environment variables using the `TACEO_OPRF_KEY_GEN` prefix.
 
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;
@@ -13,7 +13,6 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 use std::{net::SocketAddr, process::ExitCode, sync::Arc, time::Duration};
 
-use config::Config;
 use eyre::Context;
 use nodes_common::{StartedServices, postgres::PostgresConfig};
 use serde::Deserialize;
@@ -52,20 +51,12 @@ fn default_max_wait_shutdown() -> Duration {
 
 // we are not allowed to build an eyre::Report yet because telemetry-batteries expects to install
 // the color-eyre hook
-fn load_key_gen_config() -> Result<OprfKeyGenConfig, config::ConfigError> {
-    let cfg = Config::builder().add_source(
-        config::Environment::with_prefix("TACEO_OPRF_KEY_GEN")
-            .separator("__")
-            .list_separator(",")
-            .with_list_parse_key("service.rpc.http_urls")
-            .try_parsing(true),
-    );
-
-    let key_gen_config = cfg.build()?.try_deserialize()?;
+fn load_key_gen_config() -> Result<OprfKeyGenConfig, serde_env::Error> {
+    let key_gen_config = serde_env::from_env_with_prefix("TACEO_OPRF_KEY_GEN");
 
     // Unset all env vars with our prefix to prevent leakage to subprocesses.
     let keys_to_remove: Vec<String> = std::env::vars()
-        .filter_map(|(k, _)| k.starts_with("TACEO_OPRF_KEY_GEN_").then_some(k))
+        .filter_map(|(k, _)| k.starts_with("TACEO_OPRF_KEY_GEN").then_some(k))
         .collect();
     for key in keys_to_remove {
         // SAFETY: no other threads are running at this point in the startup sequence.
@@ -74,7 +65,7 @@ fn load_key_gen_config() -> Result<OprfKeyGenConfig, config::ConfigError> {
         }
     }
 
-    Ok(key_gen_config)
+    key_gen_config
 }
 
 async fn run(config: OprfKeyGenConfig) -> eyre::Result<()> {
