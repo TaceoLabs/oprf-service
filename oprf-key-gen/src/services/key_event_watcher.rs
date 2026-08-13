@@ -21,7 +21,7 @@
 //! successfully stored position.
 
 use std::{
-    num::NonZeroU16,
+    num::{NonZeroU16, NonZeroU64},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -134,6 +134,9 @@ pub(crate) struct KeyEventWatcherTaskConfig {
     pub(crate) transaction_handler: TransactionHandler,
     /// Filtering and backfill settings forwarded to the event-stream builder.
     pub(crate) event_stream_config: EventStreamConfig,
+    /// First block to backfill, inclusively. Ignored if `chain_cursor_service` loads a
+    /// cursor at or after this block.
+    pub(crate) explicit_backfill_block: Option<NonZeroU64>,
     /// MPC threshold; passed to [`DLogSecretGenService`] for each round-1 call.
     pub(crate) threshold: NonZeroU16,
     /// Signals the task to shut down cleanly.
@@ -159,12 +162,17 @@ pub(crate) async fn key_event_watcher_task(args: KeyEventWatcherTaskConfig) -> e
         event_stream_config,
         threshold,
         cancellation_token,
+        explicit_backfill_block,
     } = args;
 
-    let chain_cursor = chain_cursor_service
+    let loaded_chain_cursor = chain_cursor_service
         .load_chain_cursor()
         .await
         .context("while loading chain cursor")?;
+
+    // check if there is an explicit block set for backfill
+    let chain_cursor = select_backfill_cursor(loaded_chain_cursor, explicit_backfill_block);
+
     tracing::info!("loaded chain cursor at: {chain_cursor}");
 
     let contract = OprfKeyRegistry::new(contract_address, http_rpc_provider.inner());
@@ -219,6 +227,33 @@ pub(crate) async fn key_event_watcher_task(args: KeyEventWatcherTaskConfig) -> e
 
     tracing::info!("successfully closed key_event_watcher without error");
     Ok(())
+}
+
+/// Chooses the cursor passed to the event stream.
+///
+/// Event streams emit logs strictly after their cursor. Positioning the cursor at the end of the
+/// preceding block therefore includes every log in `explicit_backfill_block`, including index 0.
+fn select_backfill_cursor(
+    loaded_chain_cursor: ChainCursor,
+    explicit_backfill_block: Option<NonZeroU64>,
+) -> ChainCursor {
+    match explicit_backfill_block {
+        Some(block) if loaded_chain_cursor.block() < block.get() => {
+            tracing::info!(
+                old_chain_cursor = %loaded_chain_cursor,
+                "updating chain cursor to backfill from explicit block: {block}"
+            );
+            ChainCursor::new(block.get() - 1, u64::MAX)
+        }
+        Some(block) => {
+            tracing::info!(
+                chain_cursor = %loaded_chain_cursor,
+                "ignoring explicit block: {block}. ChainCursor is at or after it"
+            );
+            loaded_chain_cursor
+        }
+        None => loaded_chain_cursor,
+    }
 }
 
 /// Decode a single chain log, dispatch it to the event handler, apply the soft-error policy,

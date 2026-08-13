@@ -202,7 +202,6 @@ pub async fn start(
 ) -> eyre::Result<(axum::Router, KeyGenTasks)> {
     tracing::info!("init oprf key-gen service..");
 
-    tracing::info!("initializing wallet...");
     let private_key = PrivateKeySigner::from_str(config.wallet_private_key.expose_secret())
         .context("while loading wallet private key")?;
     let address = private_key.address();
@@ -295,6 +294,7 @@ pub async fn start(
                 event_stream_config: config.event_stream_config,
                 threshold: config.expected_threshold,
                 cancellation_token,
+                explicit_backfill_block: config.explicit_backfill_block,
             },
         )
     });

@@ -1,4 +1,10 @@
-use std::{num::NonZeroU16, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{
+    num::{NonZeroU16, NonZeroU64},
+    path::PathBuf,
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
+};
 
 use alloy::{
     eips::{BlockId, BlockNumberOrTag},
@@ -8,7 +14,10 @@ use alloy::{
 };
 use ark_ff::UniformRand as _;
 use groth16_material::circom::{CircomGroth16Material, CircomGroth16MaterialBuilder};
-use nodes_common::{postgres::PostgresConfig, web3::HttpRpcProvider};
+use nodes_common::{
+    postgres::PostgresConfig,
+    web3::{HttpRpcProvider, event_stream::ChainCursor},
+};
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::{
     OprfKeyId, ShareEpoch,
@@ -28,7 +37,7 @@ use crate::{
     },
 };
 
-use super::events::KeyRegistryEvent;
+use super::{events::KeyRegistryEvent, select_backfill_cursor};
 
 const CONTRACT_ADDRESS: Address = Address::repeat_byte(0x42);
 const WALLET_ADDRESS: Address = Address::repeat_byte(0x24);
@@ -388,4 +397,31 @@ async fn test_abort() -> eyre::Result<()> {
             .is_some()
     );
     Ok(())
+}
+
+#[test]
+fn explicit_backfill_starts_before_configured_block() {
+    let loaded = ChainCursor::new(42, 7);
+    let explicit = NonZeroU64::new(100).expect("100 is non-zero");
+
+    assert_eq!(
+        select_backfill_cursor(loaded, Some(explicit)),
+        ChainCursor::new(99, u64::MAX)
+    );
+}
+
+#[test]
+fn explicit_backfill_preserves_cursor_at_configured_block() {
+    let loaded = ChainCursor::new(100, 7);
+    let explicit = NonZeroU64::new(100).expect("100 is non-zero");
+
+    assert_eq!(select_backfill_cursor(loaded, Some(explicit)), loaded);
+}
+
+#[test]
+fn explicit_backfill_preserves_cursor_after_configured_block() {
+    let loaded = ChainCursor::new(101, 7);
+    let explicit = NonZeroU64::new(100).expect("100 is non-zero");
+
+    assert_eq!(select_backfill_cursor(loaded, Some(explicit)), loaded);
 }

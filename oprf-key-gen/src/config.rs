@@ -28,7 +28,7 @@
 //! | `sleep_between_simulation`               | 5 s         |
 //! | `cursor_checkpoint_interval`             | 1 day       |
 
-use std::num::NonZeroU16;
+use std::num::{NonZeroU16, NonZeroU64};
 use std::{path::PathBuf, time::Duration};
 
 use alloy::primitives::Address;
@@ -148,6 +148,12 @@ pub struct OprfKeyGenServiceConfig {
     #[serde(default = "OprfKeyGenServiceConfig::default_cursor_checkpoint_interval")]
     #[serde(with = "humantime_serde")]
     pub cursor_checkpoint_interval: Duration,
+
+    /// If set, the binary will backfill from this block number inclusively.
+    ///
+    /// Ignored if the chain cursor service loads a cursor at or after this block.
+    #[serde(default)]
+    pub explicit_backfill_block: Option<NonZeroU64>,
 }
 
 /// Subset of [`OprfKeyGenServiceConfig`] containing all values that must be
@@ -279,6 +285,7 @@ impl OprfKeyGenServiceConfig {
             event_stream_config: EventStreamConfig::default(),
             cursor_checkpoint_interval: Self::default_cursor_checkpoint_interval(),
             rpc_http_timeout: Self::default_rpc_http_timeout(),
+            explicit_backfill_block: None,
         }
     }
 }
