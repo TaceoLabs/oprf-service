@@ -11,9 +11,11 @@ use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
     Connector, MaybeTlsStream, WebSocketStream,
-    tungstenite::{self, protocol::frame::coding::CloseCode},
+    tungstenite::{self, ClientRequestBuilder, protocol::frame::coding::CloseCode},
 };
 use uuid::Uuid;
+
+const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
 impl From<tungstenite::Error> for NodeError {
     fn from(value: tungstenite::Error) -> Self {
@@ -40,13 +42,14 @@ impl WebSocketSession {
             .authority()
             .map_or_else(|| "unknown authority".to_string(), ToString::to_string);
         tracing::trace!("> sending request to {service}..");
-        let (ws, _) = tokio_tungstenite::connect_async_tls_with_config(
-            super::append_client_version_to_query(&endpoint, request_id),
-            None,
-            false,
-            Some(connector),
-        )
-        .await?;
+        let endpoint = super::append_client_version_to_query(&endpoint, request_id)
+            .parse()
+            .map_err(|err| NodeError::WsError(Box::new(err)))?;
+        let request = ClientRequestBuilder::new(endpoint)
+            .with_header(http::header::USER_AGENT.as_str(), USER_AGENT);
+        let (ws, _) =
+            tokio_tungstenite::connect_async_tls_with_config(request, None, false, Some(connector))
+                .await?;
         Ok(Self { service, inner: ws })
     }
 
@@ -110,5 +113,62 @@ impl WebSocketSession {
                 reason: "non-binary frame received",
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use http::header;
+    use tokio::net::TcpListener;
+    use tokio_tungstenite::{
+        accept_hdr_async,
+        tungstenite::handshake::server::{Request, Response},
+    };
+
+    use super::{USER_AGENT, WebSocketSession};
+
+    #[tokio::test]
+    #[allow(
+        clippy::result_large_err,
+        reason = "tungstenite defines the handshake callback's response error type"
+    )]
+    async fn sends_user_agent_during_handshake() {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("can bind test listener");
+        let address = listener.local_addr().expect("test listener has an address");
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("can accept test connection");
+            let mut user_agent = None;
+            accept_hdr_async(stream, |request: &Request, response: Response| {
+                user_agent = Some(
+                    request
+                        .headers()
+                        .get(header::USER_AGENT)
+                        .expect("websocket handshake contains a user-agent")
+                        .to_str()
+                        .expect("user-agent is valid text")
+                        .to_owned(),
+                );
+                Ok(response)
+            })
+            .await
+            .expect("can complete websocket handshake");
+            user_agent
+        });
+
+        let endpoint = format!("ws://{address}/api/test/oprf")
+            .parse()
+            .expect("test endpoint is a valid URI");
+        let _session = WebSocketSession::new(
+            endpoint,
+            uuid::Uuid::new_v4(),
+            tokio_tungstenite::Connector::Plain,
+        )
+        .await
+        .expect("can open websocket session");
+        let received_user_agent = server.await.expect("test server completes successfully");
+
+        assert_eq!(received_user_agent.as_deref(), Some(USER_AGENT));
     }
 }
