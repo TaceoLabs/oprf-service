@@ -1,5 +1,5 @@
 use std::fmt;
-use std::num::{NonZeroU16, NonZeroUsize};
+use std::num::{NonZeroU16, NonZeroU64, NonZeroUsize};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -48,6 +48,23 @@ impl TestKeyGen {
         secret_manager: PostgresDb,
         pool: PgPool,
     ) -> eyre::Result<Self> {
+        Self::start_with_secret_manager_and_explicit_backfill_block(
+            party_id,
+            test_setup,
+            secret_manager,
+            pool,
+            None,
+        )
+        .await
+    }
+
+    async fn start_with_secret_manager_and_explicit_backfill_block(
+        party_id: usize,
+        test_setup: &TestSetup,
+        secret_manager: PostgresDb,
+        pool: PgPool,
+        explicit_backfill_block: Option<NonZeroU64>,
+    ) -> eyre::Result<Self> {
         let TestSetup {
             anvil,
             oprf_key_registry,
@@ -89,6 +106,7 @@ impl TestKeyGen {
         config.event_stream_config.skip_backfill =
             SkipBackfill::from(*mine_strategy == MineStrategy::Auto);
         config.cursor_checkpoint_interval = Duration::from_secs(2);
+        config.explicit_backfill_block = explicit_backfill_block;
 
         let started_services = StartedServices::new();
         let sm_service: oprf_key_gen::secret_manager::SecretManagerService =
@@ -123,11 +141,35 @@ impl TestKeyGen {
     }
 
     pub async fn start(party_id: usize, test_setup: &TestSetup) -> eyre::Result<Self> {
+        Self::start_with_new_secret_manager(party_id, test_setup, None).await
+    }
+
+    pub async fn start_with_explicit_backfill_block(
+        party_id: usize,
+        test_setup: &TestSetup,
+        explicit_backfill_block: NonZeroU64,
+    ) -> eyre::Result<Self> {
+        Self::start_with_new_secret_manager(party_id, test_setup, Some(explicit_backfill_block))
+            .await
+    }
+
+    async fn start_with_new_secret_manager(
+        party_id: usize,
+        test_setup: &TestSetup,
+        explicit_backfill_block: Option<NonZeroU64>,
+    ) -> eyre::Result<Self> {
         let postgres_config = crate::test_postgres_config().await?;
         let secret_manager = PostgresDb::init(&postgres_config).await?;
         let pool =
             nodes_common::postgres::pg_pool_with_schema(&postgres_config, CreateSchema::No).await?;
-        TestKeyGen::start_with_secret_manager(party_id, test_setup, secret_manager, pool).await
+        TestKeyGen::start_with_secret_manager_and_explicit_backfill_block(
+            party_id,
+            test_setup,
+            secret_manager,
+            pool,
+            explicit_backfill_block,
+        )
+        .await
     }
 
     pub async fn start_three(test_setup: &TestSetup) -> eyre::Result<[Self; 3]> {
@@ -135,6 +177,18 @@ impl TestKeyGen {
             Self::start(0, test_setup),
             Self::start(1, test_setup),
             Self::start(2, test_setup)
+        );
+        Ok([keygen0?, keygen1?, keygen2?])
+    }
+
+    pub async fn start_three_with_explicit_backfill_block(
+        test_setup: &TestSetup,
+        explicit_backfill_block: NonZeroU64,
+    ) -> eyre::Result<[Self; 3]> {
+        let (keygen0, keygen1, keygen2) = tokio::join!(
+            Self::start_with_explicit_backfill_block(0, test_setup, explicit_backfill_block),
+            Self::start_with_explicit_backfill_block(1, test_setup, explicit_backfill_block),
+            Self::start_with_explicit_backfill_block(2, test_setup, explicit_backfill_block)
         );
         Ok([keygen0?, keygen1?, keygen2?])
     }

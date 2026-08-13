@@ -1,7 +1,7 @@
 #![allow(clippy::large_futures, reason = "doesnt matter for tests")]
-use std::time::Duration;
+use std::{num::NonZeroU64, time::Duration};
 
-use alloy::{primitives::U160, sol_types::SolEvent};
+use alloy::{primitives::U160, providers::Provider as _, sol_types::SolEvent};
 use eyre::Context as _;
 use oprf_key_gen::event_cursor_store::ChainCursorStorage as _;
 use taceo_oprf::{
@@ -49,14 +49,23 @@ async fn test_keygen_works_two_three() -> eyre::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
-async fn test_keygen_works_when_init_before_start() -> eyre::Result<()> {
-    // init happens before any node subscribes, so this can only be caught via
-    // backfill, which requires interval mining (see `MineStrategy`).
+async fn test_keygen_works_with_explicit_backfill_when_init_before_start() -> eyre::Result<()> {
     let setup =
         TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
+    let first_possible_event_block = setup
+        .provider
+        .get_block_number()
+        .await?
+        .checked_add(1)
+        .ok_or_else(|| eyre::eyre!("chain block number overflowed"))?;
+    let explicit_backfill_block = NonZeroU64::new(first_possible_event_block)
+        .ok_or_else(|| eyre::eyre!("explicit backfill block must be non-zero"))?;
+
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     setup.init_keygen(oprf_key_id).await?;
-    let key_gens = TestKeyGen::start_three(&setup).await?;
+    let key_gens =
+        TestKeyGen::start_three_with_explicit_backfill_block(&setup, explicit_backfill_block)
+            .await?;
     let _oprf_public_key =
         keygen_asserts::all_have_key(&key_gens, oprf_key_id, ShareEpoch::default()).await?;
     Ok(())
