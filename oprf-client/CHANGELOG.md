@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.10.6](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.10.5...taceo-oprf-client-v0.10.6)
+
+### 🐛 Bug Fixes
+
+
+- *(client)* Send user-agent from native web-socket session ([#722](https://github.com/TaceoLabs/oprf-service/pull/722)) - ([ed651af](https://github.com/TaceoLabs/oprf-service/commit/ed651afa3d89f5b9cc6464a66ab76d8692f0500b))
+
+
 ## [0.10.5](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.10.4...taceo-oprf-client-v0.10.5)
 
 ### ⚙️ Miscellaneous Tasks

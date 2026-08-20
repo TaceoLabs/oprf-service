@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.19.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.19.1...taceo-oprf-service-v0.19.2)
+
+### 🚜 Refactor
+
+
+- *(key-gen,node)* Update metric keys and exposes macro for downstream - ([dc68418](https://github.com/TaceoLabs/oprf-service/commit/dc68418f5bddf82591cb50e41d7c475ed7352b01))
+
+### 🏗️ Build
+
+
+- *(deps)* Bump to arkworks 0.6.0 - ([cf6612d](https://github.com/TaceoLabs/oprf-service/commit/cf6612dda62afa7a78ee481697eb345f9dad896c))
+
+
 ## [0.19.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.19.0...taceo-oprf-service-v0.19.1)
 
 ### ⚙️ Miscellaneous Tasks
