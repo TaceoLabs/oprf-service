@@ -9,7 +9,7 @@
 //! Every metric emitted by this crate follows the schema
 //!
 //! ```text
-//! taceo.oprf.key-gen.lib.METRICS_KEY
+//! taceo.oprf.key_gen.lib.METRICS_KEY
 //! ```
 //!
 //! where `lib` is the sub-project slot reserved for keys emitted by this crate. Keys are
@@ -18,7 +18,7 @@
 
 macro_rules! oprf_metrics_key {
     ($key:expr) => {
-        concat!("taceo.oprf.key-gen.lib.", $key)
+        concat!("taceo.oprf.key_gen.lib.", $key)
     };
 }
 
