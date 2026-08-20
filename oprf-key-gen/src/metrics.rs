@@ -3,6 +3,24 @@
 //! This module defines all metrics keys used by the key-gen node and
 //! provides a helper [`describe_metrics`] to set metadata for
 //! each metric using the `metrics` crate.
+//!
+//! # Metrics key schema
+//!
+//! Every metric emitted by this crate follows the schema
+//!
+//! ```text
+//! taceo.oprf.key-gen.lib.METRICS_KEY
+//! ```
+//!
+//! where `lib` is the sub-project slot reserved for keys emitted by this crate. Keys are
+//! built with the `oprf_metrics_key!` macro instead of being hand-written, so the schema
+//! stays enforced.
+
+macro_rules! oprf_metrics_key {
+    ($key:expr) => {
+        concat!("taceo.oprf.key-gen.lib.", $key)
+    };
+}
 
 /// Describe all metrics used by the service.
 ///
@@ -14,8 +32,8 @@ pub fn describe_metrics() {
 
 pub(crate) mod wallet {
 
-    const METRICS_ID_KEY_GEN_WALLET_BALANCE: &str = "taceo.oprf.key_gen.wallet.balance";
-    const METRICS_ID_GAS_PRICE: &str = "taceo.oprf.key_gen.wallet.transaction.gas_price";
+    const METRICS_ID_KEY_GEN_WALLET_BALANCE: &str = oprf_metrics_key!("wallet.balance");
+    const METRICS_ID_GAS_PRICE: &str = oprf_metrics_key!("wallet.transaction.gas_price");
 
     pub(super) fn describe_metrics() {
         metrics::describe_gauge!(
@@ -45,7 +63,7 @@ pub(crate) mod wallet {
 pub(crate) mod chain_events {
     use nodes_common::web3::event_stream::ChainCursor;
 
-    const METRIC_EVENT_COUNTER: &str = "taceo.oprf.key_gen.chain.events";
+    const METRIC_EVENT_COUNTER: &str = oprf_metrics_key!("chain.events");
 
     const ATTR_TYPE_EVENT: &str = "type";
     const ATTR_EVENT_KEYGEN_ROUND1: &str = "round1.keygen";
@@ -57,9 +75,9 @@ pub(crate) mod chain_events {
     const ATTR_EVENT_ABORT: &str = "abort";
     const ATTR_EVENT_NOT_ENOUGH_PRODUCERS: &str = "not-enough-producers";
 
-    const METRIC_PRODUCER_ROLE: &str = "taceo.oprf.key_gen.role.producer";
-    const METRIC_CONSUMER_ROLE: &str = "taceo.oprf.key_gen.role.consumer";
-    const METRIC_CURRENT_BLOCK: &str = "taceo.oprf.key_gen.block.number";
+    const METRIC_PRODUCER_ROLE: &str = oprf_metrics_key!("role.producer");
+    const METRIC_CONSUMER_ROLE: &str = oprf_metrics_key!("role.consumer");
+    const METRIC_CURRENT_BLOCK: &str = oprf_metrics_key!("block.number");
 
     pub(super) fn describe_metrics() {
         metrics::describe_counter!(
