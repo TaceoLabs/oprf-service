@@ -38,6 +38,7 @@ impl WebSocketSession {
     /// Expects a valid `ws://` or `wss://` URI
     #[allow(
         clippy::unused_async,
+        clippy::unused_async_trait_impl,
         reason = "Want to have async to have equivalent signature with native"
     )]
     pub(crate) async fn new(
