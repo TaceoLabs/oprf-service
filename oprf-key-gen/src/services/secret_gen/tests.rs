@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use ark_ec::{CurveGroup as _, PrimeGroup};
+use ark_ec::PrimeGroup;
 use groth16_material::circom::{CircomGroth16MaterialBuilder, Validate};
 use itertools::Itertools;
 use oprf_types::crypto::{EphemeralEncryptionPublicKey, SecretGenCiphertexts};

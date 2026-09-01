@@ -471,7 +471,9 @@ fn compute_keygen_proof(
     let ciphertexts = public_inputs[5..5 + num_parties].iter();
     // parse one affine point (2 elements in inputs) per party
     let comm_plains = public_inputs[5 + num_parties..5 + num_parties * 3]
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|coords| ark_babyjubjub::EdwardsAffine::new(coords[0], coords[1]));
 
     let rp_ciphertexts = izip!(ciphertexts, comm_plains, nonces)
