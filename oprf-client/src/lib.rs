@@ -981,23 +981,30 @@ pub async fn fetch_oprf_public_key(
             Ok(Some(response)) => {
                 let count = agreement.entry(response.clone()).or_insert(0);
                 *count += 1;
-                if *count >= threshold {
-                    return Ok(Some(response));
-                }
             }
             Ok(None) => {
                 not_found_count += 1;
-                if not_found_count >= threshold {
-                    return Ok(None);
-                }
             }
             Err(err) => {
                 network_errors.push(Box::new(err).into());
-                if network_errors.len() >= threshold {
-                    return Err(Error::Networking(network_errors));
-                }
             }
         }
+    }
+
+    let mut agreed_keys = agreement
+        .into_iter()
+        .filter(|(_, count)| *count >= threshold)
+        .map(|(response, _)| response);
+    match (agreed_keys.next(), agreed_keys.next()) {
+        (Some(response), None) => return Ok(Some(response)),
+        (Some(_), Some(_)) => return Err(Error::InconsistentOprfPublicKeys),
+        (None, _) => {}
+    }
+
+    if not_found_count >= threshold {
+        return Ok(None);
+    } else if network_errors.len() >= threshold {
+        return Err(Error::Networking(network_errors));
     }
 
     Err(Error::InconsistentOprfPublicKeys)
@@ -1005,10 +1012,74 @@ pub async fn fetch_oprf_public_key(
 
 #[cfg(test)]
 mod tests {
-    use ark_ec::AdditiveGroup;
+    use ark_ec::{AdditiveGroup, AffineRepr};
+    use axum::{Json, Router, extract::State, response::IntoResponse, routing::get};
+    use axum_test::{TestServer, TestServerBuilder};
     use rand::Rng;
 
     use super::*;
+
+    #[derive(Clone)]
+    enum OprfPubKeyResponse {
+        Found(OprfPublicKeyWithEpoch),
+        NotFound,
+    }
+
+    async fn public_key_response(State(response): State<OprfPubKeyResponse>) -> impl IntoResponse {
+        match response {
+            OprfPubKeyResponse::Found(public_key) => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+                (reqwest::StatusCode::OK, Json(public_key)).into_response()
+            }
+            OprfPubKeyResponse::NotFound => reqwest::StatusCode::NOT_FOUND.into_response(),
+        }
+    }
+
+    fn mock_oprf_pub_key_server(response: OprfPubKeyResponse) -> (TestServer, Url) {
+        let test_server = TestServerBuilder::new()
+            .http_transport()
+            .build(
+                Router::new()
+                    .route("/oprf_pub/{id}", get(public_key_response))
+                    .with_state(response),
+            )
+            .expect("Can build test-server");
+        let address = test_server
+            .server_address()
+            .expect("Must be there")
+            .to_string();
+        let address = address.strip_suffix('/').unwrap_or(&address);
+        (
+            test_server,
+            format!("{address}/oprf_pub").parse().expect("Is valid URL"),
+        )
+    }
+
+    #[tokio::test]
+    async fn test_fetch_oprf_public_key_prefers_public_key_quorum_over_not_found_quorum() {
+        let public_key = OprfPublicKeyWithEpoch {
+            key: OprfPublicKey::from(ark_babyjubjub::EdwardsAffine::generator()),
+            epoch: ShareEpoch::from(1u32),
+        };
+        let servers = [
+            mock_oprf_pub_key_server(OprfPubKeyResponse::NotFound),
+            mock_oprf_pub_key_server(OprfPubKeyResponse::NotFound),
+            mock_oprf_pub_key_server(OprfPubKeyResponse::Found(public_key.clone())),
+            mock_oprf_pub_key_server(OprfPubKeyResponse::Found(public_key.clone())),
+        ];
+        let urls = servers
+            .iter()
+            .map(|(_, url)| url.clone())
+            .collect::<Vec<_>>();
+
+        let response =
+            fetch_oprf_public_key(&urls, 2, OprfKeyId::from(1u32), &reqwest::Client::new())
+                .await
+                .expect("public key quorum should win over not-found quorum");
+
+        assert_eq!(response, Some(public_key));
+    }
+
     #[test]
     fn test_threshold_service_error() {
         let err_a1 = NodeError::ServiceError(ServiceError {
