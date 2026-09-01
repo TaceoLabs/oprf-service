@@ -6307,7 +6307,7 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "alloy",
  "eyre",
@@ -6321,7 +6321,7 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf-client"
-version = "0.10.6"
+version = "0.10.7"
 dependencies = [
  "ark-ec",
  "axum",
