@@ -1,4 +1,4 @@
-use std::{f64, time::Duration};
+use std::time::Duration;
 
 use alloy::{
     contract::{CallBuilder, CallDecoder, Error as ContractError},
