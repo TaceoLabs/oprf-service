@@ -51,6 +51,10 @@ RUN cargo install simple-web-healthcheck --version 0.3.0 --locked \
     --config 'profile.release.codegen-units=1'
 
 FROM toolchain AS builder
+# Compiled into the binary via `nodes_common::version_info!()` (served on
+# /version). .git is not in the build context, so without this the fallback
+# `git describe` yields UNKNOWN. A function of the commit, hence deterministic.
+ARG GIT_HASH
 WORKDIR /app
 # look at .dockerignore if this does not copy what you want
 COPY . .
