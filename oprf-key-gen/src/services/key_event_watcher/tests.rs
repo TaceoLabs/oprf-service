@@ -50,6 +50,7 @@ struct HandlerFixture {
     secret_gen: DLogSecretGenService,
     pool: PgPool,
     asserter: Asserter,
+    _pg: Arc<nodes_common::test_utils::SharedPostgres>,
 }
 
 fn key_gen_material() -> CircomGroth16Material {
@@ -65,10 +66,10 @@ fn key_gen_material() -> CircomGroth16Material {
 }
 
 async fn fixture() -> eyre::Result<HandlerFixture> {
-    let connection_string = nodes_common::test_utils::shared_postgres_testcontainer().await?;
+    let pg = nodes_common::test_utils::shared_postgres_testcontainer().await?;
     let schema = nodes_common::test_utils::next_test_schema();
     let postgres_config = PostgresConfig::with_default_values(
-        secrecy::SecretString::from(connection_string.to_owned()),
+        secrecy::SecretString::from(pg.connection_string.clone()),
         schema,
     );
     let pool = nodes_common::postgres::pg_pool_with_schema(
@@ -110,6 +111,7 @@ async fn fixture() -> eyre::Result<HandlerFixture> {
         secret_gen,
         pool,
         asserter,
+        _pg: pg,
     })
 }
 
