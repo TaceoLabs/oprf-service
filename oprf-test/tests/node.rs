@@ -17,13 +17,24 @@ use taceo_oprf::types::{
 use taceo_oprf_test::node_setup::ConfigurableTestRequestAuth;
 use taceo_oprf_test::{
     node_setup::{
-        self, INVALID_AUTH_CODE, INVALID_AUTH_MSG, PLACEHOLDER_WALLET_ADDRESS, TestNode, WireFormat,
+        self, INVALID_AUTH_CODE, INVALID_AUTH_MSG, PLACEHOLDER_WALLET_ADDRESS, TestNode,
+        TestNodeConfig, WireFormat,
     },
     setup::DeploySetup,
     wait_until_started,
 };
 use tungstenite::protocol::{CloseFrame, frame::coding::CloseCode};
 use uuid::Uuid;
+
+async fn start_node_with_key(config: TestNodeConfig) -> eyre::Result<TestNode> {
+    let node = TestNode::start(config).await?;
+    node.add_random_key_material_with_id(
+        OprfKeyId::from(node_setup::OPRF_KEY_ID),
+        &mut rand::thread_rng(),
+    )
+    .await?;
+    Ok(node)
+}
 
 #[derive(Default, Serialize, Deserialize)]
 struct BadRequest {
@@ -32,7 +43,7 @@ struct BadRequest {
 
 #[tokio::test]
 async fn test_can_fetch_new_key() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
+    let node = start_node_with_key(TestNodeConfig::default()).await?;
     let new_oprf_key_id = OprfKeyId::new(U160::random());
     node.doesnt_have_key(new_oprf_key_id).await?;
     let epoch = ShareEpoch::new(rand::random());
@@ -53,7 +64,7 @@ async fn test_can_fetch_new_key() -> eyre::Result<()> {
 /// Covers the `/health`, `/wallet`, `/version` and `/oprf_pub/:id` routes against one node.
 #[tokio::test]
 async fn test_basic_routes() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
+    let node = start_node_with_key(TestNodeConfig::default()).await?;
     wait_until_started(&node.started_services).await?;
 
     let result = node.server.get("/health").expect_success().await;
@@ -89,7 +100,7 @@ async fn test_basic_routes() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_health_route_not_ready() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
+    let node = start_node_with_key(TestNodeConfig::default()).await?;
     let _not_started_service = node.started_services.new_service();
     let result = node.server.get("/health").expect_failure().await;
     result.assert_status_service_unavailable();
@@ -100,7 +111,7 @@ async fn test_health_route_not_ready() -> eyre::Result<()> {
 /// Covers every way the server rejects an unsupported / malformed client version.
 #[tokio::test]
 async fn client_version_rejected() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
+    let node = start_node_with_key(TestNodeConfig::default()).await?;
 
     let response = node
         .server
@@ -166,7 +177,7 @@ async fn client_version_rejected() -> eyre::Result<()> {
 /// taking precedence over a wrong header.
 #[tokio::test]
 async fn client_version_accepted() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
+    let node = start_node_with_key(TestNodeConfig::default()).await?;
 
     let mut ws = node
         .server
@@ -211,7 +222,11 @@ async fn client_version_accepted() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn session_timeout_no_message() -> eyre::Result<()> {
-    let node = TestNode::start_with_session_lifetime(Duration::from_secs(2)).await?;
+    let node = start_node_with_key(TestNodeConfig {
+        session_lifetime: Duration::from_secs(2),
+        ..TestNodeConfig::default()
+    })
+    .await?;
     let mut ws = node
         .server
         .get_websocket("/api/test/oprf")
@@ -312,7 +327,11 @@ async fn drop_session_id_inner(node: &TestNode, format: WireFormat) -> eyre::Res
 
 /// Checks that successfully closes connection after first message is send if runs into timeout
 async fn session_timeout_after_init_inner(format: WireFormat) -> eyre::Result<()> {
-    let node = TestNode::start_with_session_lifetime(Duration::from_secs(2)).await?;
+    let node = start_node_with_key(TestNodeConfig {
+        session_lifetime: Duration::from_secs(2),
+        ..TestNodeConfig::default()
+    })
+    .await?;
     let mut ws = node
         .send_success_init_request(format, &mut rand::thread_rng())
         .await;
@@ -350,7 +369,7 @@ async fn switch_encoding_failed_inner(
 
 #[tokio::test]
 async fn switch_encoding_failed() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
+    let node = start_node_with_key(TestNodeConfig::default()).await?;
     switch_encoding_failed_inner(&node, WireFormat::Json, WireFormat::Cbor).await?;
     switch_encoding_failed_inner(&node, WireFormat::Cbor, WireFormat::Json).await?;
     Ok(())
@@ -374,7 +393,7 @@ async fn auth_failed_inner(node: &TestNode, format: WireFormat) -> eyre::Result<
 /// deleted-key error, for both wire formats.
 #[tokio::test]
 async fn delete_oprf_key() -> eyre::Result<()> {
-    let node = TestNode::start().await?;
+    let node = start_node_with_key(TestNodeConfig::default()).await?;
 
     let key_id = OprfKeyId::from(node_setup::OPRF_KEY_ID);
     // soft-delete the key from the secret manager
@@ -575,7 +594,7 @@ macro_rules! both_formats_test {
     ($test_name:ident, $inner:ident) => {
         #[tokio::test]
         async fn $test_name() -> eyre::Result<()> {
-            let node = TestNode::start().await?;
+            let node = start_node_with_key(TestNodeConfig::default()).await?;
             $inner(&node, WireFormat::Json).await?;
             $inner(&node, WireFormat::Cbor).await?;
             Ok(())

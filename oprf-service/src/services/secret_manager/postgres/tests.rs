@@ -1,8 +1,10 @@
 use std::num::NonZeroU16;
+use std::sync::Arc;
 
 use crate::secret_manager::{SecretManager, SecretManagerError, postgres::PostgresSecretManager};
 use ark_serialize::CanonicalSerialize;
 use nodes_common::postgres::{PostgresConfig, SanitizedSchema};
+use nodes_common::test_utils::SharedPostgres;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::{
     OprfKeyId, ShareEpoch,
@@ -21,19 +23,20 @@ fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: &T) -> Vec<u8> {
 }
 
 async fn postgres_secret_manager()
--> eyre::Result<(PostgresSecretManager, &'static str, SanitizedSchema)> {
-    let conn = nodes_common::test_utils::shared_postgres_testcontainer().await?;
+-> eyre::Result<(PostgresSecretManager, Arc<SharedPostgres>, SanitizedSchema)> {
+    let pg = nodes_common::test_utils::shared_postgres_testcontainer().await?;
     let schema = nodes_common::test_utils::next_test_schema();
-    let mut pg_connection = nodes_common::test_utils::open_pg_connection(conn, &schema).await?;
+    let mut pg_connection =
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
     sqlx::migrate!("../oprf-key-gen/migrations")
         .run(&mut pg_connection)
         .await?;
     let mgr = PostgresSecretManager::init(&PostgresConfig::with_default_values(
-        SecretString::from(conn.to_owned()),
+        SecretString::from(pg.connection_string.clone()),
         schema.clone(),
     ))
     .await?;
-    Ok((mgr, conn, schema))
+    Ok((mgr, pg, schema))
 }
 
 async fn insert_row(
@@ -97,7 +100,7 @@ async fn insert_node_information(
 
 #[tokio::test]
 async fn load_node_information_empty() -> eyre::Result<()> {
-    let (secret_manager, _, _) = postgres_secret_manager().await?;
+    let (secret_manager, _pg, _) = postgres_secret_manager().await?;
     let report = secret_manager
         .load_node_information()
         .await
@@ -111,12 +114,13 @@ async fn load_node_information_empty() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn load_node_information_success() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
+    let (secret_manager, pg, schema) = postgres_secret_manager().await?;
 
     let should_address = "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc";
     let should_party_id = PartyId(42);
     let should_threshold = 2;
-    let mut conn = nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
+    let mut conn =
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
     insert_node_information(
         should_address,
         i32::from(should_party_id.into_inner()),
@@ -142,8 +146,9 @@ async fn load_node_information_success() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_get_oprf_key_material() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
-    let mut conn = nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
+    let (secret_manager, pg, schema) = postgres_secret_manager().await?;
+    let mut conn =
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
 
     let oprf_key_id0 = OprfKeyId::new(U160::from(42));
     let oprf_key_id1 = OprfKeyId::new(U160::from(128));
@@ -187,13 +192,14 @@ async fn test_get_oprf_key_material() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_get_deleted_secret() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
+    let (secret_manager, pg, schema) = postgres_secret_manager().await?;
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
     let epoch = ShareEpoch::new(42);
     let share = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
 
-    let mut conn = nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
+    let mut conn =
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
     insert_row(oprf_key_id, share.clone(), epoch, public_key, &mut conn).await?;
 
     delete_row(oprf_key_id, &mut conn).await?;
