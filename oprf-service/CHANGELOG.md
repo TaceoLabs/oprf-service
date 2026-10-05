@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.19.3](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.19.2...taceo-oprf-service-v0.19.3)
+
+### 🧪 Testing
+
+
+- Restructure tests after nodes-common bump - ([e603eee](https://github.com/TaceoLabs/oprf-service/commit/e603eee8500ab872360dc75d9afe8d025a23f893))
+
+
 ## [0.19.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.19.1...taceo-oprf-service-v0.19.2)
 
 ### 🚜 Refactor
