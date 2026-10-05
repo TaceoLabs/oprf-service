@@ -1577,7 +1577,7 @@ dependencies = [
  "mime",
  "pretty_assertions",
  "reserve-port",
- "rust-multipart-rfc7578_2 0.8.0",
+ "rust-multipart-rfc7578_2",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -1587,34 +1587,6 @@ dependencies = [
  "tower",
  "url",
  "uuid",
-]
-
-[[package]]
-name = "axum-test"
-version = "20.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a86bfe2ef15bee102ac34912f7f4542b0bb37dc464fa55461763999c4d625e7"
-dependencies = [
- "anyhow",
- "axum",
- "bytes",
- "bytesize",
- "cookie",
- "expect-json",
- "http",
- "http-body-util",
- "hyper",
- "hyper-util",
- "mime",
- "pretty_assertions",
- "reserve-port",
- "rust-multipart-rfc7578_2 0.9.0",
- "serde",
- "serde_json",
- "serde_urlencoded",
- "tokio",
- "tower",
- "url",
 ]
 
 [[package]]
@@ -2798,7 +2770,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4177,7 +4149,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5262,21 +5234,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-multipart-rfc7578_2"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00bdaa068902270ca7fa8619775e1838e23a63620abac0947ce0f715819b8cec"
-dependencies = [
- "bytes",
- "futures-core",
- "futures-util",
- "http",
- "mime",
- "rand 0.10.2",
- "thiserror 2.0.20",
-]
-
-[[package]]
 name = "rustc-demangle"
 version = "0.1.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5322,7 +5279,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5380,7 +5337,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6292,13 +6249,12 @@ dependencies = [
 
 [[package]]
 name = "taceo-nodes-common"
-version = "0.9.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b4168806bc8f2e5a7fe2210783ecdbc86a24c7678290113a4f143efa7f7ccbf"
+checksum = "4fac5f8c097d3cb3130af170d1b1c7bf14a9affb4a91f9c9564e7883c408de84"
 dependencies = [
  "alloy",
  "axum",
- "axum-test 20.0.0",
  "backon",
  "eyre",
  "futures",
@@ -6337,7 +6293,7 @@ version = "0.10.6"
 dependencies = [
  "ark-ec",
  "axum",
- "axum-test 18.5.0",
+ "axum-test",
  "ciborium",
  "futures",
  "getrandom 0.2.17",
@@ -6421,7 +6377,7 @@ dependencies = [
  "ark-serialize 0.6.0",
  "async-trait",
  "axum",
- "axum-test 18.5.0",
+ "axum-test",
  "backon",
  "config",
  "eyre",
@@ -6461,7 +6417,7 @@ dependencies = [
  "async-trait",
  "axum",
  "axum-extra",
- "axum-test 18.5.0",
+ "axum-test",
  "backon",
  "ciborium",
  "config",
@@ -6509,7 +6465,7 @@ dependencies = [
  "ark-serialize 0.6.0",
  "askama",
  "axum",
- "axum-test 18.5.0",
+ "axum-test",
  "ciborium",
  "clap",
  "eyre",
@@ -6625,7 +6581,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7629,7 +7585,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
