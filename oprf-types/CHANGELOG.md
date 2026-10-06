@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.16.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.16.1...taceo-oprf-types-v0.16.2)
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Update Cargo.toml dependencies - ([0000000](https://github.com/TaceoLabs/oprf-service/commit/0000000))
+
+
 ## [0.16.1](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.16.0...taceo-oprf-types-v0.16.1)
 
 ### ⚙️ Miscellaneous Tasks

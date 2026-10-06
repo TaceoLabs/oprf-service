@@ -16,7 +16,7 @@ oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version 
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6.3", default-features = false, optional = true }
 oprf-dev-client = { package = "taceo-oprf-dev-client", path = "../oprf-dev-client", version = "0.11.2", optional = true }
 oprf-service = { package = "taceo-oprf-service", path = "../oprf-service", version = "0.19.4", default-features = false, optional = true }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16.1", default-features = false, optional = true }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16.2", default-features = false, optional = true }
 
 alloy = { workspace = true, features = [
   "contract",
