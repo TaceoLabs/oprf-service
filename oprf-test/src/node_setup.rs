@@ -184,8 +184,7 @@ impl TestNode {
         .build();
         let server = TestServer::builder()
             .http_transport_with_ip_port(Some(IpAddr::V4(Ipv4Addr::LOCALHOST)), Some(bind_port))
-            .build(service)
-            .expect("Can build test-server");
+            .build(service);
         Ok(TestNode {
             secret_manager,
             started_services,

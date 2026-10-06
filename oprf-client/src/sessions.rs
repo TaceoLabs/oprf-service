@@ -276,8 +276,7 @@ mod tests {
                 any(
                     move |webscoket_upgrade| async move { ws_handler(webscoket_upgrade, callback) },
                 ),
-            ))
-            .expect("Can build test-server");
+            ));
         let address = test_server
             .server_address()
             .expect("Must be there")

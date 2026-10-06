@@ -157,10 +157,7 @@ impl TestKeyGen {
             child_token.clone(),
         )
         .await?;
-        let server = TestServer::builder()
-            .http_transport()
-            .build(router)
-            .expect("works");
+        let server = TestServer::builder().http_transport().build(router);
         // Ensure the event watcher's live log subscription is active before
         // returning. Under auto-mining, backfill is skipped, so any chain
         // event emitted before this node subscribes would otherwise be lost.
