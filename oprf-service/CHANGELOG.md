@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.19.4](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.19.3...taceo-oprf-service-v0.19.4)
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Update Cargo.toml dependencies - ([0000000](https://github.com/TaceoLabs/oprf-service/commit/0000000))
+
+
 ## [0.19.3](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.19.2...taceo-oprf-service-v0.19.3)
 
 ### 🧪 Testing
