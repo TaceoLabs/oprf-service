@@ -1,9 +1,11 @@
 use std::num::NonZeroU32;
+use std::sync::Arc;
 use std::time::Duration;
 
 use ark_serialize::CanonicalSerialize;
 use nodes_common::StartedServices;
 use nodes_common::postgres::PostgresConfig;
+use nodes_common::test_utils::SharedPostgres;
 
 pub mod key_gen_setup;
 pub mod node_setup;
@@ -24,12 +26,13 @@ pub(crate) fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: &T) -> 
 
 /// Postgres config pointing at the process-shared testcontainer, with a fresh
 /// schema and max_connections = 1 (many parallel tests share one container).
-pub async fn test_postgres_config() -> eyre::Result<PostgresConfig> {
-    let connection_string = nodes_common::test_utils::shared_postgres_testcontainer().await?;
+pub async fn test_postgres_config() -> eyre::Result<(PostgresConfig, Arc<SharedPostgres>)> {
+    let pg = nodes_common::test_utils::shared_postgres_testcontainer().await?;
     let schema = nodes_common::test_utils::next_test_schema();
-    let mut config = PostgresConfig::with_default_values(connection_string.into(), schema);
+    let mut config =
+        PostgresConfig::with_default_values(pg.connection_string.clone().into(), schema);
     config.max_connections = NonZeroU32::new(1).expect("1 is non-zero");
-    Ok(config)
+    Ok((config, pg))
 }
 
 pub async fn wait_until_started(started_services: &StartedServices) -> eyre::Result<()> {

@@ -10,7 +10,7 @@ use taceo_oprf::{
 };
 use taceo_oprf_test::{
     TEST_TIMEOUT,
-    key_gen_setup::{TestKeyGen, keygen_asserts},
+    key_gen_setup::{TestKeyGen, TestKeyGenConfig, keygen_asserts},
     setup::{DeploySetup, MineStrategy, TestSetup},
     wait_until_started,
 };
@@ -63,9 +63,14 @@ async fn test_keygen_works_with_explicit_backfill_when_init_before_start() -> ey
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     setup.init_keygen(oprf_key_id).await?;
-    let key_gens =
-        TestKeyGen::start_three_with_explicit_backfill_block(&setup, explicit_backfill_block)
-            .await?;
+    let start = |party_id| {
+        TestKeyGen::start(
+            &setup,
+            TestKeyGenConfig::new(party_id).with_explicit_backfill_block(explicit_backfill_block),
+        )
+    };
+    let (keygen0, keygen1, keygen2) = tokio::join!(start(0), start(1), start(2));
+    let key_gens = [keygen0?, keygen1?, keygen2?];
     let _oprf_public_key =
         keygen_asserts::all_have_key(&key_gens, oprf_key_id, ShareEpoch::default()).await?;
     Ok(())
@@ -76,8 +81,10 @@ async fn test_keygen_works_when_crashing_in_between() -> eyre::Result<()> {
     let setup =
         TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
     // start only two key-gens so that we don't go over round 1
-    let (keygen0, keygen1) =
-        tokio::join!(TestKeyGen::start(0, &setup), TestKeyGen::start(1, &setup));
+    let (keygen0, keygen1) = tokio::join!(
+        TestKeyGen::start(&setup, TestKeyGenConfig::new(0)),
+        TestKeyGen::start(&setup, TestKeyGenConfig::new(1))
+    );
     // init a key-gen and wait for the two KeyGenConfirmations
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let round1_confirmations = setup
@@ -93,7 +100,7 @@ async fn test_keygen_works_when_crashing_in_between() -> eyre::Result<()> {
         tokio::join!(keygen0.restart(&setup), keygen1.restart(&setup));
 
     // start the third one
-    let keygen2 = TestKeyGen::start(2, &setup).await;
+    let keygen2 = TestKeyGen::start(&setup, TestKeyGenConfig::new(2)).await;
 
     let key_gens = [keygen0_restart?, keygen1_restart?, keygen2?];
     let _oprf_public_key =
@@ -211,11 +218,15 @@ async fn test_reshare_emits_stuck_if_two_consumer() -> eyre::Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_start_sanity_checks() -> eyre::Result<()> {
     let mut setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let is_error = TestKeyGen::start(4, &setup).await.expect_err("Should fail");
+    let is_error = TestKeyGen::start(&setup, TestKeyGenConfig::new(4))
+        .await
+        .expect_err("Should fail");
     assert_eq!(is_error.to_string(), "while doing sanity checks");
 
     setup.setup = DeploySetup::ThreeFive;
-    let is_error = TestKeyGen::start(0, &setup).await.expect_err("Should fail");
+    let is_error = TestKeyGen::start(&setup, TestKeyGenConfig::new(0))
+        .await
+        .expect_err("Should fail");
     assert_eq!(is_error.to_string(), "while doing sanity checks");
     Ok(())
 }
@@ -224,7 +235,7 @@ async fn test_start_sanity_checks() -> eyre::Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_service_routes() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let key_gen = TestKeyGen::start(0, &setup).await?;
+    let key_gen = TestKeyGen::start(&setup, TestKeyGenConfig::new(0)).await?;
     wait_until_started(&key_gen.started_services).await?;
 
     let result = key_gen.server.get("/health").expect_success().await;
@@ -246,7 +257,7 @@ async fn test_service_routes() -> eyre::Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_health_route_not_ready() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let key_gen = TestKeyGen::start(0, &setup).await?;
+    let key_gen = TestKeyGen::start(&setup, TestKeyGenConfig::new(0)).await?;
     let _not_started_service = key_gen.started_services.new_service();
     let result = key_gen.server.get("/health").expect_failure().await;
     result.assert_status_service_unavailable();
@@ -257,7 +268,7 @@ async fn test_health_route_not_ready() -> eyre::Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn key_gen_dies_on_cancellation() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let key_gen = TestKeyGen::start(0, &setup).await?;
+    let key_gen = TestKeyGen::start(&setup, TestKeyGenConfig::new(0)).await?;
     key_gen.cancellation_token.cancel();
     tokio::time::timeout(TEST_TIMEOUT, key_gen.key_gen_task.join())
         .await
@@ -271,9 +282,9 @@ async fn test_keygen_works_when_all_three_crash() -> eyre::Result<()> {
     let setup =
         TestSetup::with_mine_strategy(DeploySetup::TwoThree, MineStrategy::Interval(1)).await?;
     let (keygen0, keygen1, keygen2) = tokio::join!(
-        TestKeyGen::start(0, &setup),
-        TestKeyGen::start(1, &setup),
-        TestKeyGen::start(2, &setup)
+        TestKeyGen::start(&setup, TestKeyGenConfig::new(0)),
+        TestKeyGen::start(&setup, TestKeyGenConfig::new(1)),
+        TestKeyGen::start(&setup, TestKeyGenConfig::new(2))
     );
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let round1_done = setup
@@ -301,12 +312,11 @@ async fn test_keygen_replays_deletion_via_backfill() -> eyre::Result<()> {
     keygen_asserts::all_have_key(&key_gens, oprf_key_id, ShareEpoch::default()).await?;
 
     let [keygen0, _, _] = key_gens;
-    let (party_id, pool, secret_manager) = keygen0.shutdown().await?;
+    let config = keygen0.shutdown().await?;
 
     setup.delete_oprf_key(oprf_key_id).await?;
 
-    let keygen0 =
-        TestKeyGen::start_with_secret_manager(party_id, &setup, secret_manager, pool).await?;
+    let keygen0 = TestKeyGen::start(&setup, config).await?;
     keygen0.is_key_id_not_stored(oprf_key_id).await?;
     Ok(())
 }
@@ -321,13 +331,12 @@ async fn test_reshare_replayed_via_backfill() -> eyre::Result<()> {
     keygen_asserts::all_have_key(&key_gens, oprf_key_id, ShareEpoch::default()).await?;
 
     let [keygen0, keygen1, keygen2] = key_gens;
-    let (party_id, pool, secret_manager) = keygen0.shutdown().await?;
+    let config = keygen0.shutdown().await?;
 
     let epoch1 = ShareEpoch::default().next();
     setup.init_reshare(oprf_key_id).await?;
 
-    let keygen0 =
-        TestKeyGen::start_with_secret_manager(party_id, &setup, secret_manager, pool).await?;
+    let keygen0 = TestKeyGen::start(&setup, config).await?;
 
     keygen_asserts::all_have_key(&[keygen0, keygen1, keygen2], oprf_key_id, epoch1).await?;
     Ok(())
@@ -336,7 +345,7 @@ async fn test_reshare_replayed_via_backfill() -> eyre::Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_cursor_checkpoint_persists() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
-    let key_gen = TestKeyGen::start(0, &setup).await?;
+    let key_gen = TestKeyGen::start(&setup, TestKeyGenConfig::new(0)).await?;
 
     let cursor_service = key_gen.secret_manager.clone();
     tokio::time::timeout(TEST_TIMEOUT, async {

@@ -11,6 +11,7 @@ use ark_serialize::CanonicalDeserialize as _;
 use axum_test::TestServer;
 use eyre::Context as _;
 use nodes_common::postgres::CreateSchema;
+use nodes_common::test_utils::SharedPostgres;
 use nodes_common::web3::HttpRpcProviderConfig;
 use nodes_common::web3::event_stream::SkipBackfill;
 use nodes_common::{Environment, StartedServices};
@@ -23,6 +24,49 @@ use taceo_oprf::core::ddlog_equality::shamir::DLogShareShamir;
 use taceo_oprf::types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 use tokio_util::sync::CancellationToken;
 
+pub struct TestKeyGenConfig {
+    pub party_id: usize,
+    pub explicit_backfill_block: Option<NonZeroU64>,
+    /// Database of a previously shut down key-gen, reused on restart.
+    db: Option<KeyGenDb>,
+}
+
+impl TestKeyGenConfig {
+    pub fn new(party_id: usize) -> Self {
+        Self {
+            party_id,
+            explicit_backfill_block: None,
+            db: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_explicit_backfill_block(mut self, block: NonZeroU64) -> Self {
+        self.explicit_backfill_block = Some(block);
+        self
+    }
+}
+
+struct KeyGenDb {
+    secret_manager: PostgresDb,
+    pool: PgPool,
+    pg: Arc<SharedPostgres>,
+}
+
+impl KeyGenDb {
+    async fn new() -> eyre::Result<Self> {
+        let (postgres_config, pg) = crate::test_postgres_config().await?;
+        let secret_manager = PostgresDb::init(&postgres_config).await?;
+        let pool =
+            nodes_common::postgres::pg_pool_with_schema(&postgres_config, CreateSchema::No).await?;
+        Ok(Self {
+            secret_manager,
+            pool,
+            pg,
+        })
+    }
+}
+
 pub struct TestKeyGen {
     pub party_id: usize,
     pub secret_manager: oprf_key_gen::postgres::PostgresDb,
@@ -31,6 +75,7 @@ pub struct TestKeyGen {
     pub started_services: StartedServices,
     pub cancellation_token: CancellationToken,
     pub pool: PgPool,
+    pg: Arc<SharedPostgres>,
 }
 
 impl fmt::Debug for TestKeyGen {
@@ -42,29 +87,20 @@ impl fmt::Debug for TestKeyGen {
 }
 
 impl TestKeyGen {
-    pub async fn start_with_secret_manager(
-        party_id: usize,
-        test_setup: &TestSetup,
-        secret_manager: PostgresDb,
-        pool: PgPool,
-    ) -> eyre::Result<Self> {
-        Self::start_with_secret_manager_and_explicit_backfill_block(
+    pub async fn start(test_setup: &TestSetup, config: TestKeyGenConfig) -> eyre::Result<Self> {
+        let TestKeyGenConfig {
             party_id,
-            test_setup,
+            explicit_backfill_block,
+            db,
+        } = config;
+        let KeyGenDb {
             secret_manager,
             pool,
-            None,
-        )
-        .await
-    }
-
-    async fn start_with_secret_manager_and_explicit_backfill_block(
-        party_id: usize,
-        test_setup: &TestSetup,
-        secret_manager: PostgresDb,
-        pool: PgPool,
-        explicit_backfill_block: Option<NonZeroU64>,
-    ) -> eyre::Result<Self> {
+            pg,
+        } = match db {
+            Some(db) => db,
+            None => KeyGenDb::new().await?,
+        };
         let TestSetup {
             anvil,
             oprf_key_registry,
@@ -121,10 +157,7 @@ impl TestKeyGen {
             child_token.clone(),
         )
         .await?;
-        let server = TestServer::builder()
-            .http_transport()
-            .build(router)
-            .expect("works");
+        let server = TestServer::builder().http_transport().build(router);
         // Ensure the event watcher's live log subscription is active before
         // returning. Under auto-mining, backfill is skipped, so any chain
         // event emitted before this node subscribes would otherwise be lost.
@@ -137,78 +170,43 @@ impl TestKeyGen {
             started_services,
             cancellation_token: child_token,
             pool,
+            pg,
         })
-    }
-
-    pub async fn start(party_id: usize, test_setup: &TestSetup) -> eyre::Result<Self> {
-        Self::start_with_new_secret_manager(party_id, test_setup, None).await
-    }
-
-    pub async fn start_with_explicit_backfill_block(
-        party_id: usize,
-        test_setup: &TestSetup,
-        explicit_backfill_block: NonZeroU64,
-    ) -> eyre::Result<Self> {
-        Self::start_with_new_secret_manager(party_id, test_setup, Some(explicit_backfill_block))
-            .await
-    }
-
-    async fn start_with_new_secret_manager(
-        party_id: usize,
-        test_setup: &TestSetup,
-        explicit_backfill_block: Option<NonZeroU64>,
-    ) -> eyre::Result<Self> {
-        let postgres_config = crate::test_postgres_config().await?;
-        let secret_manager = PostgresDb::init(&postgres_config).await?;
-        let pool =
-            nodes_common::postgres::pg_pool_with_schema(&postgres_config, CreateSchema::No).await?;
-        TestKeyGen::start_with_secret_manager_and_explicit_backfill_block(
-            party_id,
-            test_setup,
-            secret_manager,
-            pool,
-            explicit_backfill_block,
-        )
-        .await
     }
 
     pub async fn start_three(test_setup: &TestSetup) -> eyre::Result<[Self; 3]> {
         let (keygen0, keygen1, keygen2) = tokio::join!(
-            Self::start(0, test_setup),
-            Self::start(1, test_setup),
-            Self::start(2, test_setup)
-        );
-        Ok([keygen0?, keygen1?, keygen2?])
-    }
-
-    pub async fn start_three_with_explicit_backfill_block(
-        test_setup: &TestSetup,
-        explicit_backfill_block: NonZeroU64,
-    ) -> eyre::Result<[Self; 3]> {
-        let (keygen0, keygen1, keygen2) = tokio::join!(
-            Self::start_with_explicit_backfill_block(0, test_setup, explicit_backfill_block),
-            Self::start_with_explicit_backfill_block(1, test_setup, explicit_backfill_block),
-            Self::start_with_explicit_backfill_block(2, test_setup, explicit_backfill_block)
+            Self::start(test_setup, TestKeyGenConfig::new(0)),
+            Self::start(test_setup, TestKeyGenConfig::new(1)),
+            Self::start(test_setup, TestKeyGenConfig::new(2))
         );
         Ok([keygen0?, keygen1?, keygen2?])
     }
 
     pub async fn start_five(test_setup: &TestSetup) -> eyre::Result<[Self; 5]> {
         let (keygen0, keygen1, keygen2, keygen3, keygen4) = tokio::join!(
-            Self::start(0, test_setup),
-            Self::start(1, test_setup),
-            Self::start(2, test_setup),
-            Self::start(3, test_setup),
-            Self::start(4, test_setup)
+            Self::start(test_setup, TestKeyGenConfig::new(0)),
+            Self::start(test_setup, TestKeyGenConfig::new(1)),
+            Self::start(test_setup, TestKeyGenConfig::new(2)),
+            Self::start(test_setup, TestKeyGenConfig::new(3)),
+            Self::start(test_setup, TestKeyGenConfig::new(4))
         );
         Ok([keygen0?, keygen1?, keygen2?, keygen3?, keygen4?])
     }
 
-    pub async fn shutdown(self) -> eyre::Result<(usize, PgPool, PostgresDb)> {
+    pub async fn shutdown(self) -> eyre::Result<TestKeyGenConfig> {
         let fut = async move {
             self.cancellation_token.cancel();
             self.key_gen_task.join().await?;
-            Ok((self.party_id, self.pool, self.secret_manager))
+            Ok(TestKeyGenConfig {
+                party_id: self.party_id,
+                explicit_backfill_block: None,
+                db: Some(KeyGenDb {
+                    secret_manager: self.secret_manager,
+                    pool: self.pool,
+                    pg: self.pg,
+                }),
+            })
         };
         tokio::time::timeout(TEST_TIMEOUT, fut)
             .await
@@ -217,8 +215,8 @@ impl TestKeyGen {
 
     pub async fn restart(self, test_setup: &TestSetup) -> eyre::Result<TestKeyGen> {
         let restart_fut = async {
-            let (party_id, pool, secret_manager) = self.shutdown().await?;
-            TestKeyGen::start_with_secret_manager(party_id, test_setup, secret_manager, pool).await
+            let config = self.shutdown().await?;
+            TestKeyGen::start(test_setup, config).await
         };
         tokio::time::timeout(TEST_TIMEOUT, restart_fut)
             .await

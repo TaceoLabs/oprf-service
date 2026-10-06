@@ -30,9 +30,9 @@ ark-groth16 = "0.6"
 ark-serde-compat = { package = "taceo-ark-serde-compat", version = "0.6.1", default-features = false }
 ark-serialize = "0.6"
 async-trait = "0.1"
-axum = "=0.8.8"  # We pin this version because alloy pins a tokio-tungstenite version that needs 0.8.8
+axum = "0.8"
 axum-extra = "0.12"
-axum-test = "18"
+axum-test = "20"
 backon = { version = "1.6", default-features = false }
 blake3 = "1"
 ciborium = "0.2"
@@ -51,7 +51,7 @@ itertools = "0.15"
 k256 = "0.13"
 metrics = "0.24"
 moka = { version = "0.12", features = ["future"] }
-nodes-common = { package = "taceo-nodes-common", version = "0.9", default-features = false }
+nodes-common = { package = "taceo-nodes-common", version = "0.10", default-features = false }
 num-bigint = "0.4"
 parking_lot = "0.12"
 poseidon2 = { package = "taceo-poseidon2", version = "0.3", default-features = false }
@@ -73,11 +73,11 @@ testcontainers-modules = { version = "0.15" }
 thiserror = { version = "2" }
 tikv-jemallocator = "0.7"
 tokio = { version = "1" }
-tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
 tokio-util = "0.7"
 tower-http = "0.7"
 tracing = { version = "0.1" }
-tungstenite = { version = "0.28" }
+tungstenite = { version = "0.29" }
 url = { version = "2" }
 uuid = { version = "1" }
 webpki-roots = { version = "1.0" }

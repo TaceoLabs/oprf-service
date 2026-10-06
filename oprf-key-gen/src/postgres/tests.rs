@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_lines, reason = "doesn't matter for tests")]
 use std::num::NonZeroU16;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::event_cursor_store::ChainCursorStorage;
 use crate::postgres::{PostgresDb, to_db_ark_serialize_uncompressed};
@@ -11,6 +12,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize as _};
 use eyre::Context;
 use groth16_material::circom::{CircomGroth16Material, CircomGroth16MaterialBuilder, Validate};
 use nodes_common::postgres::{PostgresConfig, SanitizedSchema};
+use nodes_common::test_utils::SharedPostgres;
 use nodes_common::web3::event_stream::ChainCursor;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::crypto::PartyId;
@@ -20,16 +22,17 @@ use secrecy::SecretString;
 use sqlx::Row;
 use sqlx::{PgConnection, postgres::PgRow};
 
-async fn postgres_secret_manager() -> eyre::Result<(PostgresDb, &'static str, SanitizedSchema)> {
-    let conn = nodes_common::test_utils::shared_postgres_testcontainer().await?;
+async fn postgres_secret_manager()
+-> eyre::Result<(PostgresDb, Arc<SharedPostgres>, SanitizedSchema)> {
+    let pg = nodes_common::test_utils::shared_postgres_testcontainer().await?;
     let schema = nodes_common::test_utils::next_test_schema();
-    let db = postgres_secret_manager_with_schema(conn, schema.clone()).await?;
-    Ok((db, conn, schema))
+    let db = postgres_secret_manager_with_schema(&pg.connection_string, schema.clone()).await?;
+    Ok((db, pg, schema))
 }
 
-async fn postgres_db() -> eyre::Result<PostgresDb> {
-    let (db, _, _) = postgres_secret_manager().await?;
-    Ok(db)
+async fn postgres_db() -> eyre::Result<(PostgresDb, Arc<SharedPostgres>)> {
+    let (db, pg, _) = postgres_secret_manager().await?;
+    Ok((db, pg))
 }
 
 pub(crate) async fn postgres_secret_manager_with_schema(
@@ -45,7 +48,7 @@ pub(crate) async fn postgres_secret_manager_with_schema(
 
 #[tokio::test]
 async fn load_node_information_success() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
+    let (secret_manager, pg, schema) = postgres_secret_manager().await?;
 
     let key = PrivateKeySigner::random();
     let address = key.address();
@@ -59,7 +62,7 @@ async fn load_node_information_success() -> eyre::Result<()> {
 
     // check that the address is stored in the DB
     let mut pg_connection =
-        nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
     let is_node_information: NodeInformation = sqlx::query_as(
         "SELECT eth_address,party_id,threshold FROM node_information WHERE id = TRUE",
     )
@@ -187,7 +190,7 @@ fn assert_row_matches(
 
 #[tokio::test]
 async fn fetch_keygen_intermediates_missing_returns_none() -> eyre::Result<()> {
-    let secret_manager = postgres_db().await?;
+    let (secret_manager, _pg) = postgres_db().await?;
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let epoch = ShareEpoch::new(12);
 
@@ -207,7 +210,8 @@ async fn fetch_keygen_intermediates_missing_returns_none() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn key_gen_round1_is_idempotent() -> eyre::Result<()> {
-    let secret_manager = std::sync::Arc::new(postgres_db().await?);
+    let (secret_manager, _pg) = postgres_db().await?;
+    let secret_manager = Arc::new(secret_manager);
     let dlog_secret_gen = DLogSecretGenService::init(key_gen_material()?, secret_manager.clone());
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let epoch = ShareEpoch::default();
@@ -251,7 +255,7 @@ async fn key_gen_round1_is_idempotent() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn store_pending_share_without_intermediates_fails() -> eyre::Result<()> {
-    let secret_manager = postgres_db().await?;
+    let (secret_manager, _pg) = postgres_db().await?;
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let epoch = ShareEpoch::new(42);
     let share = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
@@ -270,8 +274,9 @@ async fn store_pending_share_without_intermediates_fails() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn confirm_without_pending_share_fails() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
-    let mut conn = nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
+    let (secret_manager, pg, schema) = postgres_secret_manager().await?;
+    let mut conn =
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
@@ -296,8 +301,9 @@ async fn confirm_without_pending_share_fails() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn abort_keygen_is_idempotent_and_preserves_confirmed_share() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
-    let mut conn = nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
+    let (secret_manager, pg, schema) = postgres_secret_manager().await?;
+    let mut conn =
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let epoch = ShareEpoch::new(42);
@@ -326,9 +332,9 @@ async fn abort_keygen_is_idempotent_and_preserves_confirmed_share() -> eyre::Res
 
 #[tokio::test]
 async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
+    let (secret_manager, pg, schema) = postgres_secret_manager().await?;
     let mut pg_connection =
-        nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
@@ -453,9 +459,9 @@ async fn store_dlog_share_and_fetch_previous() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn store_dlog_share_as_consumer() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
+    let (secret_manager, pg, schema) = postgres_secret_manager().await?;
     let mut pg_connection =
-        nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
@@ -512,9 +518,9 @@ async fn store_dlog_share_as_consumer() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn try_retrieve_random_empty_epochs() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
+    let (secret_manager, pg, schema) = postgres_secret_manager().await?;
     let mut pg_connection =
-        nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
@@ -568,8 +574,9 @@ async fn try_retrieve_random_empty_epochs() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn confirm_after_abort_keygen_fails() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
-    let mut conn = nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
+    let (secret_manager, pg, schema) = postgres_secret_manager().await?;
+    let mut conn =
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
@@ -593,9 +600,9 @@ async fn confirm_after_abort_keygen_fails() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn confirm_same_epoch_without_restaging_is_idempotent() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
+    let (secret_manager, pg, schema) = postgres_secret_manager().await?;
     let mut pg_connection =
-        nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
@@ -647,9 +654,9 @@ async fn confirm_same_epoch_without_restaging_is_idempotent() -> eyre::Result<()
 
 #[tokio::test]
 async fn confirm_same_epoch_after_restaging_is_idempotent() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
+    let (secret_manager, pg, schema) = postgres_secret_manager().await?;
     let mut pg_connection =
-        nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
@@ -695,8 +702,9 @@ async fn confirm_same_epoch_after_restaging_is_idempotent() -> eyre::Result<()> 
 
 #[tokio::test]
 async fn delete_oprf_key_material_is_idempotent_and_soft_deletes_share() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
-    let mut conn = nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
+    let (secret_manager, pg, schema) = postgres_secret_manager().await?;
+    let mut conn =
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
@@ -729,8 +737,9 @@ async fn delete_oprf_key_material_is_idempotent_and_soft_deletes_share() -> eyre
 
 #[tokio::test]
 async fn confirm_deleted_share_returns_store_on_deleted_share() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
-    let mut conn = nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
+    let (secret_manager, pg, schema) = postgres_secret_manager().await?;
+    let mut conn =
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
@@ -761,9 +770,9 @@ async fn confirm_deleted_share_returns_store_on_deleted_share() -> eyre::Result<
 
 #[tokio::test]
 async fn test_delete() -> eyre::Result<()> {
-    let (secret_manager, connection_string, schema) = postgres_secret_manager().await?;
+    let (secret_manager, pg, schema) = postgres_secret_manager().await?;
     let mut pg_connection =
-        nodes_common::test_utils::open_pg_connection(connection_string, &schema).await?;
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
 
     let oprf_key_id = OprfKeyId::new(U160::from(42));
     let public_key = OprfPublicKey::new(rand::random());
@@ -810,7 +819,7 @@ async fn test_delete() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_load_chain_cursor_on_empty_db() -> eyre::Result<()> {
-    let secret_manager = postgres_db().await?;
+    let (secret_manager, _pg) = postgres_db().await?;
 
     let should_genesis_cursor = secret_manager.load_chain_cursor().await?;
     assert!(
@@ -822,7 +831,7 @@ async fn test_load_chain_cursor_on_empty_db() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_insert_chain_cursor_then_load() -> eyre::Result<()> {
-    let secret_manager = postgres_db().await?;
+    let (secret_manager, _pg) = postgres_db().await?;
 
     let should_chain_cursor = ChainCursor::new(42, 0x42);
     secret_manager
@@ -838,7 +847,7 @@ async fn test_insert_chain_cursor_then_load() -> eyre::Result<()> {
 
 #[tokio::test]
 async fn test_insert_chain_cursor_refusing_rollback() -> eyre::Result<()> {
-    let secret_manager = postgres_db().await?;
+    let (secret_manager, _pg) = postgres_db().await?;
 
     let should_chain_cursor = ChainCursor::new(42, 0x42);
     let chain_cursor_earlier_block = ChainCursor::new(41, 0x42);

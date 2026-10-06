@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.10.7](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.10.6...taceo-oprf-client-v0.10.7)
+
+### 🐛 Bug Fixes
+
+
+- Allow clippy lint - ([f7f962f](https://github.com/TaceoLabs/oprf-service/commit/f7f962fbe61863b84bd2913b188cce7234ebee97))
+
+
 ## [0.10.6](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.10.5...taceo-oprf-client-v0.10.6)
 
 ### 🐛 Bug Fixes

@@ -9,7 +9,9 @@ use ark_ff::UniformRand as _;
 use async_trait::async_trait;
 use axum_test::{TestServer, TestWebSocket, http};
 use http::{StatusCode, Uri};
-use nodes_common::{Environment, StartedServices, postgres::CreateSchema};
+use nodes_common::{
+    Environment, StartedServices, postgres::CreateSchema, test_utils::SharedPostgres,
+};
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sqlx::{PgPool, migrate::Migrator};
@@ -81,12 +83,35 @@ impl OprfRequestAuthenticator for ConfigurableTestAuthenticator {
     }
 }
 
+pub struct TestNodeConfig {
+    pub party_id: usize,
+    /// `None` binds a random free port.
+    pub bind_port: Option<u16>,
+    /// Delegate services of the node. If `None`, requests to `/delegate` will fail.
+    pub services: Option<Vec<Uri>>,
+    pub session_lifetime: Duration,
+    pub threshold: NonZeroU16,
+}
+
+impl Default for TestNodeConfig {
+    fn default() -> Self {
+        Self {
+            party_id: 0,
+            bind_port: None,
+            services: None,
+            session_lifetime: Duration::from_secs(10),
+            threshold: NonZeroU16::new(2).expect("2 is non-zero"),
+        }
+    }
+}
+
 pub struct TestNode {
     pub party_id: usize,
     pub secret_manager: Arc<taceo_oprf::service::secret_manager::postgres::PostgresSecretManager>,
     pub server: Arc<TestServer>,
     pub started_services: StartedServices,
     pub pool: PgPool,
+    _pg: Arc<SharedPostgres>,
 }
 
 impl fmt::Debug for TestNode {
@@ -110,20 +135,27 @@ impl TestNode {
             .await
     }
 
-    /// Starts a test node with the given `secret_manager` and binds it to the specified `bind_port`.
-    ///
-    /// If `services` is provided, it will be used as the delegate services for the node.
-    /// If `services` is `None`, request to `/delegate` will fail.
-    pub fn start_with_secret_manager(
-        party_id: usize,
-        pool: PgPool,
-        bind_port: u16,
-        services: Option<Vec<Uri>>,
-        secret_manager: PostgresSecretManager,
-        session_lifetime: Duration,
-        threshold: NonZeroU16,
-    ) -> Self {
+    /// Starts a test node with a fresh, migrated schema. No key material is inserted.
+    pub async fn start(config: TestNodeConfig) -> eyre::Result<Self> {
+        let TestNodeConfig {
+            party_id,
+            bind_port,
+            services,
+            session_lifetime,
+            threshold,
+        } = config;
         assert!(party_id < 5, "can only spawn 5 nodes");
+
+        let (postgres_config, pg) = crate::test_postgres_config().await?;
+        let secret_manager = Arc::new(PostgresSecretManager::init(&postgres_config).await?);
+        // need to create the schema and run migrations here, normally key-gen would do it.
+        let pool = nodes_common::postgres::pg_pool_with_schema(&postgres_config, CreateSchema::Yes)
+            .await?;
+        MIGRATOR.run(&pool).await?;
+        let bind_port = match bind_port {
+            Some(port) => port,
+            None => nodes_common::test_utils::random_port()?,
+        };
 
         let mut config = OprfNodeServiceConfig::with_default_values(
             Environment::Dev,
@@ -132,7 +164,6 @@ impl TestNode {
         config.session_lifetime = session_lifetime;
 
         let started_services = StartedServices::new();
-        let secret_manager = Arc::new(secret_manager);
         let service = OprfServiceBuilder::init(
             config,
             secret_manager.clone(),
@@ -153,38 +184,15 @@ impl TestNode {
         .build();
         let server = TestServer::builder()
             .http_transport_with_ip_port(Some(IpAddr::V4(Ipv4Addr::LOCALHOST)), Some(bind_port))
-            .build(service)
-            .expect("Can build test-server");
-        TestNode {
+            .build(service);
+        Ok(TestNode {
             secret_manager,
             started_services,
             server: Arc::new(server),
             party_id,
             pool,
-        }
-    }
-
-    pub async fn start() -> eyre::Result<Self> {
-        Self::start_with_session_lifetime(Duration::from_secs(10)).await
-    }
-
-    pub async fn start_with_session_lifetime(session_lifetime: Duration) -> eyre::Result<Self> {
-        let (pool, secret_manager) = migrated_pool_and_secret_manager().await?;
-        let port = nodes_common::test_utils::random_port()?;
-        let test_node = Self::start_with_secret_manager(
-            0,
-            pool,
-            port,
-            None,
-            secret_manager,
-            session_lifetime,
-            NonZeroU16::try_from(2).expect("2 is non-zero"),
-        );
-        let key_id = OprfKeyId::from(OPRF_KEY_ID);
-        test_node
-            .add_random_key_material_with_id(key_id, &mut rand::thread_rng())
-            .await?;
-        Ok(test_node)
+            _pg: pg,
+        })
     }
 
     pub async fn happy_path(&self, format: WireFormat) {
@@ -330,18 +338,6 @@ impl TestNode {
     }
 }
 
-/// Creates a fresh schema, migrated pool, and initialized secret manager against the shared
-/// testcontainer. Shared by [`TestNode::start`] and [`start_nodes_for_delegate`].
-async fn migrated_pool_and_secret_manager() -> eyre::Result<(PgPool, PostgresSecretManager)> {
-    let postgres_config = crate::test_postgres_config().await?;
-    let secret_manager = PostgresSecretManager::init(&postgres_config).await?;
-    // need to create the schema and run migrations here, normally key-gen would do it.
-    let pool =
-        nodes_common::postgres::pg_pool_with_schema(&postgres_config, CreateSchema::Yes).await?;
-    MIGRATOR.run(&pool).await?;
-    Ok((pool, secret_manager))
-}
-
 /// Generates `n` Shamir shares (for party indices `1..=n`, matching [`PartyId`]'s
 /// `party_id + 1` coefficient convention) of a single random secret, of degree `threshold - 1`,
 /// together with the corresponding OPRF public key. Used to give a cluster of real nodes
@@ -392,17 +388,14 @@ pub async fn start_nodes_for_delegate(
 
     let mut nodes = Vec::with_capacity(n);
     for (party_id, port) in ports.into_iter().enumerate() {
-        let (pool, secret_manager) = migrated_pool_and_secret_manager().await?;
-
-        let node = TestNode::start_with_secret_manager(
+        let node = TestNode::start(TestNodeConfig {
             party_id,
-            pool,
-            port,
-            Some(services.clone()),
-            secret_manager,
-            Duration::from_secs(10),
-            setup.threshold(),
-        );
+            bind_port: Some(port),
+            services: Some(services.clone()),
+            threshold: setup.threshold(),
+            ..TestNodeConfig::default()
+        })
+        .await?;
         node.add_key_material_with_id_epoch_and_share(
             key_id,
             epoch,
