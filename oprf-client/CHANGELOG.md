@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.10.8](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.10.7...taceo-oprf-client-v0.10.8)
+
+### 🏗️ Build
+
+
+- *(deps)* Bump alloy to 2.5 + tungstenite to 0.29. Also removes axum binding to 0.8.8 ([#754](https://github.com/TaceoLabs/oprf-service/pull/754)) - ([a582c36](https://github.com/TaceoLabs/oprf-service/commit/a582c36cb686f10bdde5e8481e3d561c9f99949b))
+
+
 ## [0.10.7](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.10.6...taceo-oprf-client-v0.10.7)
 
 ### 🐛 Bug Fixes
