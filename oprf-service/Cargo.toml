@@ -28,7 +28,7 @@ http = { workspace = true }
 humantime-serde = { workspace = true }
 metrics = { workspace = true }
 moka.workspace = true
-nodes-common = { workspace = true, features = ["api", "postgres", "serde"] }
+nodes-common = { workspace = true, features = ["api", "serde"] }
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.10" }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16", features = [
@@ -87,7 +87,7 @@ url = { workspace = true }
 
 [features]
 default = ["postgres"]
-postgres = ["dep:sqlx"]
+postgres = ["dep:sqlx", "nodes-common/postgres"]
 
 [lints]
 workspace = true
