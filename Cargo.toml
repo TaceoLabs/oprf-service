@@ -13,7 +13,7 @@ members = [
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.91"
+rust-version = "1.94.1"
 readme = "./README.md"
 homepage = "https://www.taceo.io"
 repository = "https://github.com/TaceoLabs/oprf-service"
@@ -67,7 +67,7 @@ secrecy = "0.10"
 semver = "1"
 serde = { version = "1" }
 serde_json = { version = "1" }
-sqlx = "0.8"
+sqlx = "0.9"
 telemetry-batteries = { version = "0.4.0", default-features = false }
 testcontainers-modules = { version = "0.15" }
 thiserror = { version = "2" }
