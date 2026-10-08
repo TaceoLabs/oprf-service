@@ -112,3 +112,13 @@ incremental = false
 inherits = "bench"
 debug = true
 lto = "thin"
+
+# Deterministic release build used for the attested container images.
+# codegen-units>1 and incremental builds are documented sources of
+# nondeterministic output; strip drops debuginfo that embeds build paths.
+[profile.reproducible]
+inherits = "release"
+codegen-units = 1
+incremental = false
+debug = false
+strip = true
