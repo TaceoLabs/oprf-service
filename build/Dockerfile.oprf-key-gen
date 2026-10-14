@@ -64,6 +64,15 @@ RUN cargo fetch --locked --target "${TARGET}"
 RUN --network=none cargo build --frozen --locked --profile reproducible \
     --target "${TARGET}" --bin taceo-oprf-key-gen
 
+# Files copied from the build context keep the host's mode (umask) and mtime,
+# and rewrite-timestamp only clamps mtimes newer than SOURCE_DATE_EPOCH, so an
+# old checkout leaks its date into the layer. Normalise both here.
+FROM pallet-rust AS artifacts
+COPY ./artifacts/OPRFKeyGen.13.arks.zkey ./artifacts/OPRFKeyGenGraph.13.bin \
+     ./artifacts/OPRFKeyGen.25.arks.zkey ./artifacts/OPRFKeyGenGraph.25.bin \
+     /artifacts/
+RUN chmod 0644 /artifacts/* && touch -d @0 /artifacts/*
+
 FROM scratch AS runtime
 ARG GIT_HASH
 LABEL org.opencontainers.image.revision=$GIT_HASH
@@ -74,10 +83,7 @@ WORKDIR /app
 USER 65532:65532
 COPY --from=healthcheck-builder /out/bin/simple-web-healthcheck /healthcheck
 
-COPY ./artifacts/OPRFKeyGen.13.arks.zkey /app/OPRFKeyGen.13.arks.zkey
-COPY ./artifacts/OPRFKeyGenGraph.13.bin /app/OPRFKeyGenGraph.13.bin
-COPY ./artifacts/OPRFKeyGen.25.arks.zkey /app/OPRFKeyGen.25.arks.zkey
-COPY ./artifacts/OPRFKeyGenGraph.25.bin /app/OPRFKeyGenGraph.25.bin
+COPY --from=artifacts /artifacts/ /app/
 COPY --from=builder /app/target/x86_64-unknown-linux-musl/reproducible/taceo-oprf-key-gen /app/taceo-oprf-key-gen
 COPY --from=core-ca-certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 

@@ -135,8 +135,11 @@ jobs:
       - name: Save tags
         if: matrix.builder == 'primary'
         shell: bash
+        env:
+          LABELS: ${{ steps.meta.outputs.labels }}
         run: |
           printf '%s\n' '${{ steps.meta.outputs.tags }}' > "${{ runner.temp }}/tags.txt"
+          printf '%s\n' "$LABELS" > "${{ runner.temp }}/labels.txt"
           echo "$SOURCE_DATE_EPOCH" > "${{ runner.temp }}/source-date-epoch.txt"
 
       - name: Upload tags
@@ -146,6 +149,7 @@ jobs:
           name: ${{ inputs.image-name }}-tags
           path: |
             ${{ runner.temp }}/tags.txt
+            ${{ runner.temp }}/labels.txt
             ${{ runner.temp }}/source-date-epoch.txt
           if-no-files-found: error
           retention-days: 1
@@ -221,12 +225,25 @@ jobs:
       - name: Summary
         shell: bash
         run: |
+          meta="${{ runner.temp }}/in/${{ inputs.image-name }}-tags"
+          # Labels are part of the image config, so the rebuild command must
+          # carry them; single-quote each one for the shell.
+          labels=""
+          while IFS= read -r l; do
+            [[ -n "$l" ]] || continue
+            q=$(printf '%s' "$l" | sed "s/'/'\\\\''/g")
+            labels+=" --label '$q'"
+          done < "$meta/labels.txt"
           {
             echo "### ${{ inputs.image-name }}"
             echo
             echo "Reproducible digest (two runners agreed): \`$EXPECTED_DIGEST\`"
             echo
-            echo "Rebuild: \`SOURCE_DATE_EPOCH=$(cat "${{ runner.temp }}/in/${{ inputs.image-name }}-tags/source-date-epoch.txt") docker buildx build --platform linux/amd64 --provenance=false --sbom=false --no-cache --build-arg GIT_HASH=${{ github.sha }} --output type=oci,dest=out,tar=false,rewrite-timestamp=true,force-compression=true,oci-mediatypes=true -f ${{ inputs.dockerfile }} .\` with BuildKit \`${{ env.BUILDKIT_IMAGE }}\` and the labels from this workflow."
+            echo "Rebuild with BuildKit \`${{ env.BUILDKIT_IMAGE }}\`:"
+            echo
+            echo '```sh'
+            echo "SOURCE_DATE_EPOCH=$(cat "$meta/source-date-epoch.txt") docker buildx build --platform linux/amd64 --provenance=false --sbom=false --no-cache --build-arg GIT_HASH=${{ github.sha }}${labels} --output type=oci,dest=out,tar=false,rewrite-timestamp=true,force-compression=true,oci-mediatypes=true -f ${{ inputs.dockerfile }} ."
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
   upload-sbom:
