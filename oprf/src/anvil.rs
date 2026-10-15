@@ -4,9 +4,9 @@
 //! Test helpers for deploying the OPRF contracts to a local
 //! [Anvil](https://book.getfoundry.sh/anvil/) devnet, for use in integration tests.
 //!
-//! From the compiled artifacts in `contracts/`, these helpers deploy the Groth16
-//! key-gen verifier, the `BabyJubJub` library, and `OprfKeyRegistry` behind an
-//! ERC-1967 upgradeable proxy.
+//! From the compiled artifacts in `contracts/` (regenerate with `just export-contract-abi`),
+//! these helpers deploy the Groth16 key-gen verifier, the `BabyJubJub` library, and the
+//! latest registry implementation (`OprfKeyRegistryV2`) behind an ERC-1967 upgradeable proxy.
 //!
 //! Two committee presets are provided as entry points:
 //! - [`deploy_oprf_key_registry_13`] – a 2-of-3 committee.
@@ -24,12 +24,14 @@ use alloy::{
 use eyre::{Context as _, ContextCompat as _};
 use oprf_types::OprfKeyId;
 
+// Bindings are generated from the V2 implementation; the Rust name stays `OprfKeyRegistry`
+// since V2 is a strict superset of the V1 interface.
 sol!(
     #[sol(rpc, ignore_unlinked)]
     OprfKeyRegistry,
     concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/contracts/OprfKeyRegistry.json"
+        "/contracts/OprfKeyRegistryV2.json"
     )
 );
 
@@ -150,10 +152,10 @@ async fn deploy_oprf_key_registry(
             .await
             .context("failed to deploy BabyJubJub library")?;
 
-    // Link BabyJubJub to OprfKeyRegistry
+    // Link BabyJubJub to OprfKeyRegistryV2
     let oprf_key_registry_json = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/contracts/OprfKeyRegistry.json"
+        "/contracts/OprfKeyRegistryV2.json"
     ));
     let json_value: serde_json::Value = serde_json::from_str(oprf_key_registry_json)?;
     let mut bytecode_str = json_value["bytecode"]["object"]
@@ -180,7 +182,7 @@ async fn deploy_oprf_key_registry(
     let implementation_address =
         deploy_contract(provider.clone(), oprf_key_registry_bytecode, Bytes::new())
             .await
-            .context("failed to deploy OprfKeyRegistry implementation")?;
+            .context("failed to deploy OprfKeyRegistryV2 implementation")?;
 
     let init_data = Bytes::from(
         OprfKeyRegistry::initializeCall {

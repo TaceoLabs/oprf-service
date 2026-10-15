@@ -11,11 +11,12 @@ load-key-registry:
 [working-directory('contracts')]
 export-contract-abi:
     forge build --silent
-    cp out/VerifierKeyGen13.sol/Verifier.json ../oprf/contracts/Verifier.13.json
-    cp out/VerifierKeyGen25.sol/Verifier.json ../oprf/contracts/Verifier.25.json
-    cp out/BabyJubJub.sol/BabyJubJub.json ../oprf/contracts/BabyJubJub.json
-    cp out/OprfKeyRegistry.sol/OprfKeyRegistry.json ../oprf/contracts/
-    cp out/ERC1967Proxy.sol/ERC1967Proxy.json ../oprf/contracts
+    # keep only what `sol!` and the anvil deploy helpers need; drops metadata with machine-local remapping paths
+    jq '{abi, bytecode, deployedBytecode}' out/VerifierKeyGen13.sol/Verifier.json > ../oprf/contracts/Verifier.13.json
+    jq '{abi, bytecode, deployedBytecode}' out/VerifierKeyGen25.sol/Verifier.json > ../oprf/contracts/Verifier.25.json
+    jq '{abi, bytecode, deployedBytecode}' out/BabyJubJub.sol/BabyJubJub.json > ../oprf/contracts/BabyJubJub.json
+    jq '{abi, bytecode, deployedBytecode}' out/OprfKeyRegistryV2.sol/OprfKeyRegistryV2.json > ../oprf/contracts/OprfKeyRegistryV2.json
+    jq '{abi, bytecode, deployedBytecode}' out/ERC1967Proxy.sol/ERC1967Proxy.json > ../oprf/contracts/ERC1967Proxy.json
 
 [group('test')]
 rust-tests:
