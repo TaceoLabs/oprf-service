@@ -239,7 +239,13 @@ jobs:
             echo
             echo "Reproducible digest (two runners agreed): \`$EXPECTED_DIGEST\`"
             echo
-            echo "Rebuild with BuildKit \`${{ env.BUILDKIT_IMAGE }}\`:"
+            echo "Create a builder with the pinned BuildKit (once):"
+            echo
+            echo '```sh'
+            echo "docker buildx create --name repro --driver docker-container --driver-opt image=${{ env.BUILDKIT_IMAGE }} --use"
+            echo '```'
+            echo
+            echo "Rebuild from a checkout of \`${{ github.sha }}\` (with LFS files) with that builder active:"
             echo
             echo '```sh'
             echo "SOURCE_DATE_EPOCH=$(cat "$meta/source-date-epoch.txt") docker buildx build --platform linux/amd64 --provenance=false --sbom=false --no-cache --build-arg GIT_HASH=${{ github.sha }}${labels} --output type=oci,dest=out,tar=false,rewrite-timestamp=true,force-compression=true,oci-mediatypes=true -f ${{ inputs.dockerfile }} ."
