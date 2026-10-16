@@ -44,7 +44,7 @@ sol!(
 
         struct Round2Contribution {
             uint256[4] compressedProof;
-            SecretGenCiphertext[] ciphers;
+            OprfKeyGen.SecretGenCiphertext[] ciphers;
         }
 
         struct SecretGenCiphertext {
