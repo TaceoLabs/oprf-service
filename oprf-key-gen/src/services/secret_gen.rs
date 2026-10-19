@@ -49,10 +49,26 @@ mod tests;
 /// Error type returned by [`DLogSecretGenService`] methods.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum SecretGenError {
-    #[error(transparent)]
-    SecretManagerError(#[from] SecretManagerError),
+    #[error("Intermediates NOT stored for {0}/{1} - stuck")]
+    MissingIntermediates(OprfKeyId, ShareEpoch),
+    #[error("Refusing to overwrite newer share")]
+    RefusingToRollbackEpoch,
     #[error("internal error: {0:?}")]
     Internal(#[from] eyre::Report),
+}
+
+impl From<SecretManagerError> for SecretGenError {
+    fn from(err: SecretManagerError) -> Self {
+        match err {
+            SecretManagerError::MissingIntermediates(id, epoch) => {
+                Self::MissingIntermediates(id, epoch)
+            }
+            SecretManagerError::RefusingToRollbackEpoch => Self::RefusingToRollbackEpoch,
+            SecretManagerError::Internal(report) => Self::Internal(report),
+            // DuplicateIntermediates, StoreOnDeletedShare, and anything added later
+            other => Self::Internal(other.into()),
+        }
+    }
 }
 
 // Cannot use type alias Result because CanonicalSerialize/CanonicalDeserialize yield compiler errors in that case

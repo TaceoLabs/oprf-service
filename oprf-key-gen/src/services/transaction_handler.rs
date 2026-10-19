@@ -259,7 +259,7 @@ impl TransactionHandler {
                 )
                 .await?;
                 tracing::warn!("transaction failed but recovery probe succeeded");
-                Err(KeyRegistryEventError::TransactionFailedError(e))
+                Err(e.into())
             }
         }
     }
