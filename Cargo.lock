@@ -6325,11 +6325,12 @@ dependencies = [
 
 [[package]]
 name = "taceo-nodes-common"
-version = "0.10.2"
+version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10e0121c98e9cc4b907291fb69bd1ac27591a84728ffb646562353e051946740"
+checksum = "ed45c9c11bb1eb1687575a5e9ebc563068e09397e654f34fdd76c26e9222df68"
 dependencies = [
  "alloy",
+ "ark-serialize 0.6.0",
  "axum",
  "backon",
  "eyre",
@@ -6347,6 +6348,7 @@ dependencies = [
  "tower",
  "tower-http 0.7.1",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]

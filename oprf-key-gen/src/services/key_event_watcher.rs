@@ -30,7 +30,6 @@ use std::{
 
 use crate::{
     event_cursor_store::ChainCursorService,
-    secret_manager::SecretManagerError,
     services::{
         key_event_watcher::{events::KeyRegistryEvent, handler::KeyRegistryEventHandler},
         secret_gen::{DLogSecretGenService, SecretGenError},
@@ -57,6 +56,7 @@ use oprf_types::chain::{
     RevertError,
     Verifier::VerifierErrors,
 };
+use oprf_types::{OprfKeyId, ShareEpoch};
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
@@ -73,30 +73,21 @@ type Result<T> = std::result::Result<T, KeyRegistryEventError>;
 pub(crate) enum KeyRegistryEventError {
     #[error("RevertReason: {0}")]
     Revert(RevertError),
-    #[error("Error when interacting with contract - source: {0}")]
-    Contract(#[source] alloy::contract::Error),
-    #[error(transparent)]
-    Rpc(#[from] alloy::transports::RpcError<TransportErrorKind>),
-    #[error(transparent)]
-    PendingTransactionError(#[from] PendingTransactionError),
-    #[error(transparent)]
-    TransactionFailedError(#[from] TransactionFailedError),
-    #[error("Cannot handle event due to secret-manager error: {0}")]
-    SecretManagerError(#[source] SecretManagerError),
+    #[error("Intermediates NOT stored for {0}/{1} - stuck")]
+    MissingIntermediates(OprfKeyId, ShareEpoch),
+    #[error("Refusing to overwrite newer share")]
+    RefusingToRollbackEpoch,
     #[error("internal error: {0:?}")]
     Internal(#[from] eyre::Report),
 }
 
 impl From<SecretGenError> for KeyRegistryEventError {
-    fn from(value: SecretGenError) -> Self {
-        match value {
-            SecretGenError::SecretManagerError(secret_manager_error) => {
-                if let SecretManagerError::Internal(report) = secret_manager_error {
-                    Self::Internal(report)
-                } else {
-                    Self::SecretManagerError(secret_manager_error)
-                }
+    fn from(err: SecretGenError) -> Self {
+        match err {
+            SecretGenError::MissingIntermediates(id, epoch) => {
+                Self::MissingIntermediates(id, epoch)
             }
+            SecretGenError::RefusingToRollbackEpoch => Self::RefusingToRollbackEpoch,
             SecretGenError::Internal(report) => Self::Internal(report),
         }
     }
@@ -105,12 +96,30 @@ impl From<SecretGenError> for KeyRegistryEventError {
 impl From<alloy::contract::Error> for KeyRegistryEventError {
     fn from(value: alloy::contract::Error) -> Self {
         if let Some(err) = value.as_decoded_interface_error::<OprfKeyRegistryErrors>() {
-            KeyRegistryEventError::Revert(RevertError::OprfKeyRegistry(err))
+            Self::Revert(RevertError::OprfKeyRegistry(err))
         } else if let Some(err) = value.as_decoded_interface_error::<VerifierErrors>() {
-            KeyRegistryEventError::Revert(RevertError::Verifier(err))
+            Self::Revert(RevertError::Verifier(err))
         } else {
-            KeyRegistryEventError::Contract(value)
+            Self::Internal(eyre::Report::new(value).wrap_err("interacting with contract"))
         }
+    }
+}
+
+impl From<alloy::transports::RpcError<TransportErrorKind>> for KeyRegistryEventError {
+    fn from(err: alloy::transports::RpcError<TransportErrorKind>) -> Self {
+        Self::Internal(eyre::Report::new(err).wrap_err("rpc call"))
+    }
+}
+
+impl From<PendingTransactionError> for KeyRegistryEventError {
+    fn from(err: PendingTransactionError) -> Self {
+        Self::Internal(eyre::Report::new(err).wrap_err("waiting for transaction receipt"))
+    }
+}
+
+impl From<TransactionFailedError> for KeyRegistryEventError {
+    fn from(err: TransactionFailedError) -> Self {
+        Self::Internal(eyre::Report::new(err).wrap_err("transaction failed on chain"))
     }
 }
 
@@ -349,28 +358,20 @@ fn handle_soft_errors(result: Result<()>) -> eyre::Result<()> {
             );
             Ok(())
         }
-        Err(KeyRegistryEventError::SecretManagerError(
-            SecretManagerError::MissingIntermediates(oprf_key_id, epoch),
-        )) => {
+        Err(KeyRegistryEventError::MissingIntermediates(oprf_key_id, epoch)) => {
             // TODO as soon as we release contract version 2 we call the appropriate function to mark this key-gen as stuck
             tracing::error!(
                 "Cannot find intermediates for key-id {oprf_key_id} in epoch {epoch} - this key-gen is stuck"
             );
             Ok(())
         }
-
-        Err(KeyRegistryEventError::SecretManagerError(
-            SecretManagerError::RefusingToRollbackEpoch,
-        )) => {
+        Err(KeyRegistryEventError::RefusingToRollbackEpoch) => {
             tracing::warn!(
                 "SecretManager refusing to rollback to older share - maybe we got an event out of order?"
             );
             Ok(())
         }
-        Err(
-            KeyRegistryEventError::SecretManagerError(SecretManagerError::Internal(report))
-            | KeyRegistryEventError::Internal(report),
-        ) => Err(report),
+        Err(KeyRegistryEventError::Internal(report)) => Err(report),
         Err(err) => Err(eyre::Report::from(err)),
     }
 }

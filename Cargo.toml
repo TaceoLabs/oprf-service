@@ -51,7 +51,7 @@ itertools = "0.15"
 k256 = "0.13"
 metrics = "0.24"
 moka = { version = "0.12", features = ["future"] }
-nodes-common = { package = "taceo-nodes-common", version = "0.10", default-features = false }
+nodes-common = { package = "taceo-nodes-common", version = "0.10.3", default-features = false }
 num-bigint = "0.4"
 parking_lot = "0.12"
 poseidon2 = { package = "taceo-poseidon2", version = "0.3", default-features = false }
@@ -118,7 +118,7 @@ lto = "thin"
 # nondeterministic output; strip drops debuginfo that embeds build paths.
 [profile.reproducible]
 inherits = "release"
-codegen-units = 1
-incremental = false
 debug = false
 strip = true
+incremental = false
+codegen-units = 1
