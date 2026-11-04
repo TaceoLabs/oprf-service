@@ -778,7 +778,7 @@ dependencies = [
  "rustls",
  "serde_json",
  "tokio",
- "tokio-tungstenite",
+ "tokio-tungstenite 0.29.0",
  "tracing",
  "url",
  "ws_stream_wasm",
@@ -943,7 +943,7 @@ dependencies = [
  "ark-poly",
  "ark-serialize 0.6.0",
  "ark-std 0.6.0",
- "educe",
+ "educe 0.6.0",
  "fnv",
  "hashbrown 0.17.1",
  "itertools 0.14.0",
@@ -1004,7 +1004,7 @@ dependencies = [
  "ark-std 0.5.0",
  "arrayvec",
  "digest 0.10.7",
- "educe",
+ "educe 0.6.0",
  "itertools 0.13.0",
  "num-bigint",
  "num-traits",
@@ -1023,7 +1023,7 @@ dependencies = [
  "ark-serialize 0.6.0",
  "ark-std 0.6.0",
  "digest 0.10.7",
- "educe",
+ "educe 0.6.0",
  "num-bigint",
  "num-traits",
  "rayon",
@@ -1148,7 +1148,7 @@ dependencies = [
  "ark-ff 0.6.0",
  "ark-serialize 0.6.0",
  "ark-std 0.6.0",
- "educe",
+ "educe 0.6.0",
  "fnv",
  "hashbrown 0.17.1",
  "rayon",
@@ -1164,7 +1164,7 @@ dependencies = [
  "ark-ff 0.6.0",
  "ark-relations",
  "ark-std 0.6.0",
- "educe",
+ "educe 0.6.0",
  "itertools 0.14.0",
  "num-bigint",
  "num-integer",
@@ -1523,7 +1523,7 @@ dependencies = [
  "sha1 0.10.6",
  "sync_wrapper",
  "tokio",
- "tokio-tungstenite",
+ "tokio-tungstenite 0.29.0",
  "tower",
  "tower-layer",
  "tower-service",
@@ -1573,16 +1573,17 @@ dependencies = [
 
 [[package]]
 name = "axum-test"
-version = "20.1.0"
+version = "21.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43c6a2f1d97ee33c39f13dacc0f84ae781a9c2ed373a75bad1129094f5a7c4bd"
+checksum = "7bf0893561659ea1365921a0aed8bbb620fae83dae00b53fe64d41fea4877640"
 dependencies = [
  "anyhow",
  "axum",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "bytesize",
  "cookie",
+ "educe 0.7.6",
  "expect-json",
  "futures-util",
  "http",
@@ -1597,7 +1598,7 @@ dependencies = [
  "serde_json",
  "serde_urlencoded",
  "tokio",
- "tokio-tungstenite",
+ "tokio-tungstenite 0.30.0",
  "tower",
  "url",
  "uuid",
@@ -2754,6 +2755,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "educe"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e451fac8dd8dece16234604bf1efce6e90fddd8ab6ad4d66eec0eca5160959dd"
+dependencies = [
+ "enum-ordinalize",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.3",
 ]
 
 [[package]]
@@ -6386,7 +6399,7 @@ dependencies = [
  "taceo-poseidon2",
  "thiserror 2.0.21",
  "tokio",
- "tokio-tungstenite",
+ "tokio-tungstenite 0.29.0",
  "tracing",
  "url",
  "uuid",
@@ -6526,7 +6539,7 @@ dependencies = [
  "tokio-util",
  "tower-http 0.7.1",
  "tracing",
- "tungstenite",
+ "tungstenite 0.29.0",
  "url",
  "uuid",
  "zeroize",
@@ -6565,7 +6578,7 @@ dependencies = [
  "taceo-oprf-key-gen",
  "tokio",
  "tokio-util",
- "tungstenite",
+ "tungstenite 0.29.0",
  "uuid",
 ]
 
@@ -6916,8 +6929,20 @@ dependencies = [
  "rustls-pki-types",
  "tokio",
  "tokio-rustls",
- "tungstenite",
+ "tungstenite 0.29.0",
  "webpki-roots 0.26.11",
+]
+
+[[package]]
+name = "tokio-tungstenite"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17a073bfed563fa236697a068031408a93cd9522e08abf9933ead3e73411bd71"
+dependencies = [
+ "futures-util",
+ "log",
+ "tokio",
+ "tungstenite 0.30.0",
 ]
 
 [[package]]
@@ -7219,6 +7244,22 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "sha1 0.10.6",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "tungstenite"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e48ac77174b19c110a50ab2128b24215ac9cb40e0e12e093fb602d175c569d22"
+dependencies = [
+ "bytes",
+ "data-encoding",
+ "http",
+ "httparse",
+ "log",
+ "rand 0.10.2",
+ "sha1 0.11.0",
  "thiserror 2.0.21",
 ]
 
