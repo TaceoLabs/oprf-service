@@ -51,12 +51,6 @@ ENV JEMALLOC_SYS_WITH_LG_PAGE=14 \
 ENV RUSTFLAGS="-C target-feature=+crt-static -C link-arg=-Wl,--build-id=none"
 # SOURCE_DATE_EPOCH=1 and CARGO_INCREMENTAL=0 are preset by the pallet.
 
-# Health check binary (statically linked, runs on scratch)
-FROM toolchain AS healthcheck-builder
-RUN cargo install simple-web-healthcheck --version 0.3.0 --locked \
-    --target "${TARGET}" --root /out \
-    --config 'profile.release.codegen-units=1'
-
 FROM toolchain AS builder
 # Compiled into the binary via `nodes_common::version_info!()` (served on
 # /version). .git is not in the build context, so without this the fallback
@@ -88,7 +82,6 @@ LABEL org.opencontainers.image.source=https://github.com/TaceoLabs/oprf-service
 LABEL org.opencontainers.image.description="OPRF key gen"
 WORKDIR /app
 USER 65532:65532
-COPY --from=healthcheck-builder /out/bin/simple-web-healthcheck /healthcheck
 
 COPY --from=artifacts /artifacts/ /app/
 COPY --from=builder /app/target/x86_64-unknown-linux-musl/reproducible/taceo-oprf-key-gen /app/taceo-oprf-key-gen
