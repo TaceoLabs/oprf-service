@@ -76,6 +76,8 @@ ignore = [
     { id = "RUSTSEC-2026-0173", reason = "need to wait until alloy removes. Not relevant as only error reporting" },
     { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5 via alloy -> k256 0.13; no alloy release uses k256 0.14 yet. Revisit when alloy bumps k256." },
     { id = "RUSTSEC-2026-0374", reason = "basic-toml is unmaintained but all askama_derive versions use it; only used in oprf-test." },
+    { id = "RUSTSEC-2026-0440", reason = "astral-tokio-tar is unmaintained; pulled in by testcontainers (dev-only), latest testcontainers 0.28 still uses it. Revisit when testcontainers switches tar crate." },
+    { id = "RUSTSEC-2026-0441", reason = "pin-utils is unmaintained; pulled in by wasmtimer via alloy, no wasmtimer release without it yet. Revisit when alloy/wasmtimer drop it." },
 ]
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.
