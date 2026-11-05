@@ -32,7 +32,7 @@ ark-serialize = "0.6"
 async-trait = "0.1"
 axum = "0.8"
 axum-extra = "0.12"
-axum-test = "21"
+axum-test = "20"
 backon = { version = "1.6", default-features = false }
 blake3 = "1"
 ciborium = "0.2"
@@ -73,11 +73,11 @@ testcontainers-modules = { version = "0.15" }
 thiserror = { version = "2" }
 tikv-jemallocator = "0.7"
 tokio = { version = "1" }
-tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
 tokio-util = "0.7"
 tower-http = "0.7"
 tracing = { version = "0.1" }
-tungstenite = { version = "0.30" }
+tungstenite = { version = "0.29" }
 url = { version = "2" }
 uuid = { version = "1" }
 webpki-roots = { version = "1.0" }
