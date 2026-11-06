@@ -79,5 +79,6 @@ generate-test-transcript = [
   "dep:groth16-material",
   "dep:groth16-sol",
   "dep:rand_chacha",
-  "groth16-material/circom"
+  "groth16-material/circom",
+  "groth16-material/parallel"
 ]

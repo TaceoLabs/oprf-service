@@ -35,7 +35,7 @@ backon = { workspace = true, features = ["std", "tokio-sleep"] }
 config = { workspace = true }
 eyre.workspace = true
 futures = { workspace = true }
-groth16-material = { workspace = true, features = ["circom"] }
+groth16-material = { workspace = true, features = ["circom", "parallel"] }
 humantime-serde = { workspace = true }
 itertools = { workspace = true }
 metrics = { workspace = true }
