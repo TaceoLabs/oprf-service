@@ -6222,6 +6222,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "taceo-ark-algebra"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96b0243d172ecdc7d8626383d4ca5e4a61491b1c55b0206f9d4a213da7c2518f"
+dependencies = [
+ "ark-ec",
+ "ark-ff 0.6.0",
+ "ark-poly",
+ "ark-std 0.6.0",
+ "rayon",
+]
+
+[[package]]
 name = "taceo-ark-babyjubjub"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6235,9 +6248,9 @@ dependencies = [
 
 [[package]]
 name = "taceo-ark-serde-compat"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c402039e430b61f92ca37288170234db8dad190e53737005a2b3534d5a1229f"
+checksum = "0d338a8f08216a0982c20bd301f11a4fe620e99e8bdc6b8e8be20ec66eaf158d"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -6250,9 +6263,9 @@ dependencies = [
 
 [[package]]
 name = "taceo-circom-types"
-version = "0.3.1"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f26809b64b4b3f1540eef51b7f5a8d3d3df837db9fc7bd620eac9a99875a6e4a"
+checksum = "233713446cca1bbfd0af558445c53b235dba8619a0dfcb08af23fbfa9502102b"
 dependencies = [
  "ark-bn254",
  "ark-ec",
@@ -6263,6 +6276,7 @@ dependencies = [
  "ark-serialize 0.6.0",
  "ark-std 0.6.0",
  "byteorder",
+ "rayon",
  "serde",
  "serde_json",
  "taceo-ark-serde-compat",
@@ -6273,25 +6287,25 @@ dependencies = [
 
 [[package]]
 name = "taceo-groth16"
-version = "0.2.0"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "875d57ca43e964c44b9c9e462d053d452a0795a9655e84d9cb6113d8c9e7bead"
+checksum = "e3e8a37f7210dd71e97b37f54b5aacb7a312675c177d65be92c8afbd2d51d9c3"
 dependencies = [
  "ark-ec",
  "ark-ff 0.6.0",
  "ark-groth16",
- "ark-poly",
  "ark-relations",
  "eyre",
  "rayon",
+ "taceo-ark-algebra",
  "tracing",
 ]
 
 [[package]]
 name = "taceo-groth16-material"
-version = "0.4.1"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77654b507a79e3a07a79f4138bb03b36577fdfc1de21721445692bda7bbd0e31"
+checksum = "f5033433b92f11df31db5d715f7fd51f32cf54bc1ee3f2a4a8c511ebfcb5deeb"
 dependencies = [
  "ark-bn254",
  "ark-ff 0.6.0",
@@ -6311,9 +6325,9 @@ dependencies = [
 
 [[package]]
 name = "taceo-groth16-sol"
-version = "0.4.1"
+version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b288177f2bf8c346d2a067f2c4be94661554fe66f8aa69db4cfceb8c63dd3f74"
+checksum = "1885c86250dd4a1b399d3a1b1f9f0807e4847039f0dba572dae4893de23615b6"
 dependencies = [
  "alloy-primitives",
  "ark-bn254",
