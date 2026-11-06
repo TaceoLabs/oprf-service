@@ -48,7 +48,6 @@ http = "1"
 humantime = "2"
 humantime-serde = "1.1.1"
 itertools = "0.15"
-k256 = "0.13"
 metrics = "0.24"
 moka = { version = "0.12", features = ["future"] }
 nodes-common = { package = "taceo-nodes-common", version = "0.10.3", default-features = false }
