@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.20.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.19.0...taceo-oprf-v0.20.0)
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Regenerate contract JSON ABI files - ([1a6c4ee](https://github.com/TaceoLabs/oprf-service/commit/1a6c4ee2ba4356d7c930990f35826f9f9e5dd66c))
+
+
 ## [0.19.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.18.3...taceo-oprf-v0.19.0)
 
 ### ⚙️ Miscellaneous Tasks
