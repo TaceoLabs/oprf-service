@@ -27,6 +27,11 @@ FROM --platform=linux/amd64 docker.io/stagex/pallet-rust:sx2026.11.0@sha256:4f12
 FROM --platform=linux/amd64 docker.io/stagex/core-cmake:sx2026.11.0@sha256:75ab41e96e7142fbe667e36f482858ce190d3fe5e2bb29835cf1b153cff74d34 AS core-cmake
 FROM --platform=linux/amd64 docker.io/stagex/core-make:sx2026.11.0@sha256:224e0158be845e591c1ebfedc3bda2495e7b45efff94674f9c5d6d8b08a59918 AS core-make
 FROM --platform=linux/amd64 docker.io/stagex/core-ca-certificates:sx2026.11.0@sha256:2e5d0da04413dfbc739f3009fe6616e90e733c463f8495ce6997b02c0832735c AS core-ca-certificates
+# arm64 builds of the same StageX recipes (musl 1.2.6, LLVM 22.1.8), published
+# by https://github.com/siderolabs/stagex; StageX itself publishes amd64 only.
+# Only target libraries are taken from these, nothing is executed.
+FROM --platform=linux/arm64 ghcr.io/siderolabs/stagex/core-musl:2026.09.0@sha256:e6c75fa4bc20a90503a25eea64c7d49e3d25f024736f5ccd9461ed615f107a89 AS musl-arm64
+FROM --platform=linux/arm64 ghcr.io/siderolabs/stagex/core-llvm:2026.09.0@sha256:9b815cc2f56804ebc846bba8e95502b29ad3cb5bf6888a6d5f981beb97448213 AS llvm-arm64
 
 FROM pallet-rust AS toolchain
 # cmake + make for aws-lc-sys (cmake) and tikv-jemalloc-sys (autotools).
@@ -58,61 +63,22 @@ FROM toolchain AS toolchain-amd64
 ENV TARGET=x86_64-unknown-linux-musl
 
 # The pallet has clang/lld with the AArch64 backend and rust-src, but no aarch64
-# target libraries. Build them from pinned sources with the StageX compilers:
-# static musl, compiler-rt (builtins, crtbegin/crtend), libunwind and Rust std.
-# musl and LLVM versions match the pallet's own.
-# Will be removed once the upstream pallet provides them.
+# target libraries. libc, crt objects, compiler-rt and libunwind come from the
+# arm64 StageX packages built by Sidero Labs' CI; Rust std is built here.
 FROM toolchain AS toolchain-arm64
-ADD --checksum=sha256:d585fd3b613c66151fc3249e8ed44f77020cb5e6c1e635a616d3f9f82460512a \
-    https://musl.libc.org/releases/musl-1.2.6.tar.gz /src/musl.tar.gz
-ADD --checksum=sha256:922f1817a0df7b1489272d18134ee0087a8b068828f87ac63b9861b1a9965888 \
-    https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/llvm-project-22.1.8.src.tar.xz /src/llvm.tar.xz
 ENV TARGET=aarch64-unknown-linux-musl
+COPY --from=musl-arm64 / /opt/aarch64/
+COPY --from=llvm-arm64 /usr/lib/libunwind.a /opt/aarch64/usr/lib/
+COPY --from=llvm-arm64 /usr/lib/clang/22/lib/${TARGET}/ /usr/lib/clang/22/lib/${TARGET}/
 RUN --network=none <<'EOF'
 set -eux
 SYSROOT=/opt/aarch64
 RT=/usr/lib/clang/22/lib/${TARGET}
 RL=/usr/lib/rustlib/${TARGET}/lib
-L=llvm-project-22.1.8.src
-cd /src
-tar -xzf musl.tar.gz
-tar -xJf llvm.tar.xz $L/cmake $L/compiler-rt $L/libunwind $L/llvm/cmake $L/third-party/siphash
-
-# musl: headers, crt objects and static libc.
-cd /src/musl-1.2.6
-./configure --target=aarch64-linux-musl --prefix=/usr --disable-shared \
-    CC="clang --target=${TARGET}" CROSS_COMPILE=llvm- \
-    CFLAGS="-fstack-protector-strong -fstack-clash-protection"
-make -j"$(nproc)"
-make DESTDIR=${SYSROOT} install
-ln -s usr/lib ${SYSROOT}/lib
 
 # Makes `clang --target=aarch64-unknown-linux-musl` a working cross compiler
 # and linker driver for cc-rs, cmake and autoconf without further flags.
 printf -- '--sysroot=%s\n-fuse-ld=lld\n' ${SYSROOT} > /usr/bin/${TARGET}.cfg
-
-# compiler-rt builtins and crtbegin/crtend, into clang's per-target runtime dir.
-cmake -S /src/$L/compiler-rt/lib/builtins -B /src/rt -G 'Unix Makefiles' \
-    -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
-    -DCMAKE_C_COMPILER_TARGET=${TARGET} -DCMAKE_CXX_COMPILER_TARGET=${TARGET} \
-    -DCMAKE_ASM_COMPILER=clang -DCMAKE_ASM_COMPILER_TARGET=${TARGET} \
-    -DCMAKE_AR=/usr/bin/llvm-ar -DCMAKE_RANLIB=/usr/bin/llvm-ranlib -DCMAKE_NM=/usr/bin/llvm-nm \
-    -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY -DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=ON \
-    -DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON -DCOMPILER_RT_BUILD_CRT=ON \
-    -DCMAKE_INSTALL_PREFIX=/usr/lib/clang/22
-make -C /src/rt -j"$(nproc)" install
-
-# libunwind, compiled directly (its CMake build needs Python).
-mkdir /src/unwind && cd /src/unwind
-U=/src/$L/libunwind
-F="--target=${TARGET} -O2 -fPIC -I${U}/include -funwind-tables -fstrict-aliasing -fvisibility=hidden"
-F="$F -D_LIBUNWIND_IS_NATIVE_ONLY -D_LIBUNWIND_HIDE_SYMBOLS -DNDEBUG -D_GNU_SOURCE"
-for f in Unwind-sjlj UnwindLevel1-gcc-ext UnwindLevel1; do clang $F -std=c99 -c ${U}/src/$f.c; done
-for f in UnwindRegistersRestore UnwindRegistersSave; do clang $F -c ${U}/src/$f.S; done
-for f in Unwind-EHABI Unwind-seh libunwind; do
-    clang++ $F -std=c++17 -nostdinc++ -fno-exceptions -fno-rtti -c ${U}/src/$f.cpp
-done
-llvm-ar rcsD ${SYSROOT}/usr/lib/libunwind.a *.o
 
 # Rust std from the pallet's rust-src (build-std is unstable, hence
 # RUSTC_BOOTSTRAP; the application build below is plain stable cargo).
