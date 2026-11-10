@@ -3,7 +3,11 @@
 # StageX is a full-source-bootstrapped musl/LLVM toolchain distributed as
 # digest-pinned, multi-maintainer-signed OCI images. Every input below is pinned
 # by digest, the build runs offline after `cargo fetch`, and the resulting image
-# manifest digest is a function of the git commit. linux/amd64 only.
+# manifest digest is a function of the git commit and the target platform.
+#
+# Platforms: linux/amd64 and linux/arm64. StageX only publishes amd64 images, so
+# every build stage runs on amd64 (emulated on other hosts) and arm64 is
+# cross-compiled; see the toolchain-arm64 stage.
 #
 # To reproduce a published image, use the commands in the "Build and Push" run
 # summary: they set up the pinned BuildKit (BUILDKIT_IMAGE in
@@ -19,14 +23,14 @@
 #     -f build/Dockerfile.oprf-key-gen .
 #
 # StageX release sx2026.11.0 (Rust 1.97.1). Bump all digests together.
-FROM docker.io/stagex/pallet-rust:sx2026.11.0@sha256:4f12174acd7ccab9506e20a986c556cd5837dbd0ce616abf3031bcaaaa365590 AS pallet-rust
-FROM docker.io/stagex/core-cmake:sx2026.11.0@sha256:75ab41e96e7142fbe667e36f482858ce190d3fe5e2bb29835cf1b153cff74d34 AS core-cmake
-FROM docker.io/stagex/core-make:sx2026.11.0@sha256:224e0158be845e591c1ebfedc3bda2495e7b45efff94674f9c5d6d8b08a59918 AS core-make
-FROM docker.io/stagex/core-ca-certificates:sx2026.11.0@sha256:2e5d0da04413dfbc739f3009fe6616e90e733c463f8495ce6997b02c0832735c AS core-ca-certificates
+FROM --platform=linux/amd64 docker.io/stagex/pallet-rust:sx2026.11.0@sha256:4f12174acd7ccab9506e20a986c556cd5837dbd0ce616abf3031bcaaaa365590 AS pallet-rust
+FROM --platform=linux/amd64 docker.io/stagex/core-cmake:sx2026.11.0@sha256:75ab41e96e7142fbe667e36f482858ce190d3fe5e2bb29835cf1b153cff74d34 AS core-cmake
+FROM --platform=linux/amd64 docker.io/stagex/core-make:sx2026.11.0@sha256:224e0158be845e591c1ebfedc3bda2495e7b45efff94674f9c5d6d8b08a59918 AS core-make
+FROM --platform=linux/amd64 docker.io/stagex/core-ca-certificates:sx2026.11.0@sha256:2e5d0da04413dfbc739f3009fe6616e90e733c463f8495ce6997b02c0832735c AS core-ca-certificates
 
 FROM pallet-rust AS toolchain
 # cmake + make for aws-lc-sys (cmake) and tikv-jemalloc-sys (autotools).
-# aws-lc-sys ships pregenerated bindings for x86_64-unknown-linux-musl, so
+# aws-lc-sys ships pregenerated bindings for both musl targets, so
 # neither bindgen/libclang nor perl is needed.
 COPY --from=core-cmake . /
 COPY --from=core-make . /
@@ -34,8 +38,7 @@ COPY --from=core-make . /
 # (login shells). Set them explicitly so cc-rs, cmake and configure agree.
 ENV CC=clang CXX=clang++ AR=llvm-ar RANLIB=llvm-ranlib \
     TZ=UTC LC_ALL=C \
-    CARGO_HOME=/cargo \
-    TARGET=x86_64-unknown-linux-musl
+    CARGO_HOME=/cargo
 # Pin every value jemalloc's configure would otherwise probe from the build host.
 # LG_PAGE=14 keeps the binary usable on 4 KiB and 16 KiB page kernels (see git
 # history); LG_VADDR is cpuid-detected on x86_64 (48 vs 57 on LA57 hosts);
@@ -51,7 +54,94 @@ ENV JEMALLOC_SYS_WITH_LG_PAGE=14 \
 ENV RUSTFLAGS="-C target-feature=+crt-static -C link-arg=-Wl,--build-id=none"
 # SOURCE_DATE_EPOCH=1 and CARGO_INCREMENTAL=0 are preset by the pallet.
 
-FROM toolchain AS builder
+FROM toolchain AS toolchain-amd64
+ENV TARGET=x86_64-unknown-linux-musl
+
+# The pallet has clang/lld with the AArch64 backend and rust-src, but no aarch64
+# target libraries. Build them from pinned sources with the StageX compilers:
+# static musl, compiler-rt (builtins, crtbegin/crtend), libunwind and Rust std.
+# musl and LLVM versions match the pallet's own.
+# Will be removed once the upstream pallet provides them.
+FROM toolchain AS toolchain-arm64
+ADD --checksum=sha256:d585fd3b613c66151fc3249e8ed44f77020cb5e6c1e635a616d3f9f82460512a \
+    https://musl.libc.org/releases/musl-1.2.6.tar.gz /src/musl.tar.gz
+ADD --checksum=sha256:922f1817a0df7b1489272d18134ee0087a8b068828f87ac63b9861b1a9965888 \
+    https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/llvm-project-22.1.8.src.tar.xz /src/llvm.tar.xz
+ENV TARGET=aarch64-unknown-linux-musl
+RUN --network=none <<'EOF'
+set -eux
+SYSROOT=/opt/aarch64
+RT=/usr/lib/clang/22/lib/${TARGET}
+RL=/usr/lib/rustlib/${TARGET}/lib
+L=llvm-project-22.1.8.src
+cd /src
+tar -xzf musl.tar.gz
+tar -xJf llvm.tar.xz $L/cmake $L/compiler-rt $L/libunwind $L/llvm/cmake $L/third-party/siphash
+
+# musl: headers, crt objects and static libc.
+cd /src/musl-1.2.6
+./configure --target=aarch64-linux-musl --prefix=/usr --disable-shared \
+    CC="clang --target=${TARGET}" CROSS_COMPILE=llvm- \
+    CFLAGS="-fstack-protector-strong -fstack-clash-protection"
+make -j"$(nproc)"
+make DESTDIR=${SYSROOT} install
+ln -s usr/lib ${SYSROOT}/lib
+
+# Makes `clang --target=aarch64-unknown-linux-musl` a working cross compiler
+# and linker driver for cc-rs, cmake and autoconf without further flags.
+printf -- '--sysroot=%s\n-fuse-ld=lld\n' ${SYSROOT} > /usr/bin/${TARGET}.cfg
+
+# compiler-rt builtins and crtbegin/crtend, into clang's per-target runtime dir.
+cmake -S /src/$L/compiler-rt/lib/builtins -B /src/rt -G 'Unix Makefiles' \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+    -DCMAKE_C_COMPILER_TARGET=${TARGET} -DCMAKE_CXX_COMPILER_TARGET=${TARGET} \
+    -DCMAKE_ASM_COMPILER=clang -DCMAKE_ASM_COMPILER_TARGET=${TARGET} \
+    -DCMAKE_AR=/usr/bin/llvm-ar -DCMAKE_RANLIB=/usr/bin/llvm-ranlib -DCMAKE_NM=/usr/bin/llvm-nm \
+    -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY -DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=ON \
+    -DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON -DCOMPILER_RT_BUILD_CRT=ON \
+    -DCMAKE_INSTALL_PREFIX=/usr/lib/clang/22
+make -C /src/rt -j"$(nproc)" install
+
+# libunwind, compiled directly (its CMake build needs Python).
+mkdir /src/unwind && cd /src/unwind
+U=/src/$L/libunwind
+F="--target=${TARGET} -O2 -fPIC -I${U}/include -funwind-tables -fstrict-aliasing -fvisibility=hidden"
+F="$F -D_LIBUNWIND_IS_NATIVE_ONLY -D_LIBUNWIND_HIDE_SYMBOLS -DNDEBUG -D_GNU_SOURCE"
+for f in Unwind-sjlj UnwindLevel1-gcc-ext UnwindLevel1; do clang $F -std=c99 -c ${U}/src/$f.c; done
+for f in UnwindRegistersRestore UnwindRegistersSave; do clang $F -c ${U}/src/$f.S; done
+for f in Unwind-EHABI Unwind-seh libunwind; do
+    clang++ $F -std=c++17 -nostdinc++ -fno-exceptions -fno-rtti -c ${U}/src/$f.cpp
+done
+llvm-ar rcsD ${SYSROOT}/usr/lib/libunwind.a *.o
+
+# Rust std from the pallet's rust-src (build-std is unstable, hence
+# RUSTC_BOOTSTRAP; the application build below is plain stable cargo).
+# StageX strips *.orig from the vendored std deps, which leaves stale file
+# checksums behind; clear them.
+mkdir -p /src/std/src && cd /src/std
+cp -r /usr/lib/rustlib/src/rust/library/vendor vendor
+sed -i 's/"files":{[^}]*}/"files":{}/' vendor/*/.cargo-checksum.json
+printf '[package]\nname = "sysroot"\nversion = "0.0.0"\nedition = "2024"\n' > Cargo.toml
+touch src/lib.rs
+RUSTC_BOOTSTRAP=1 cargo build --offline --release -Zbuild-std=std,panic_abort --target ${TARGET} \
+    --config 'profile.release.codegen-units=1' \
+    --config 'source.crates-io.replace-with="vendor"' --config 'source.vendor.directory="vendor"'
+rm target/${TARGET}/release/deps/libsysroot-*
+mkdir -p ${RL}/self-contained
+cp target/${TARGET}/release/deps/*.rlib ${RL}/
+# Same layout as the pallet's x86_64 target: rustc links crt-static musl
+# binaries with the crt objects from self-contained/.
+for f in crt1.o rcrt1.o Scrt1.o crti.o crtn.o; do cp ${SYSROOT}/usr/lib/$f ${RL}/self-contained/; done
+for f in crtbegin crtend; do
+    cp ${RT}/clang_rt.$f.o ${RL}/self-contained/$f.o
+    cp ${RT}/clang_rt.$f.o ${RL}/self-contained/${f}S.o
+done
+rm -rf /src
+EOF
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=clang \
+    RUSTFLAGS="${RUSTFLAGS} -C link-arg=--target=aarch64-unknown-linux-musl"
+
+FROM toolchain-${TARGETARCH} AS builder
 # Compiled into the binary via `nodes_common::version_info!()` (served on
 # /version). .git is not in the build context, so without this the fallback
 # `git describe` yields UNKNOWN. A function of the commit, hence deterministic.
@@ -63,15 +153,16 @@ COPY . .
 # apply to proc-macros and build scripts (crt-static breaks proc-macro dylibs).
 RUN cargo fetch --locked --target "${TARGET}"
 RUN --network=none cargo build --frozen --locked --profile reproducible \
-    --target "${TARGET}" --bin taceo-oprf-key-gen
+    --target "${TARGET}" --bin taceo-oprf-key-gen \
+    && cp "target/${TARGET}/reproducible/taceo-oprf-key-gen" /taceo-oprf-key-gen
 
 # Files copied from the build context keep the host's mode (umask) and mtime,
 # and rewrite-timestamp only clamps mtimes newer than SOURCE_DATE_EPOCH, so an
 # old checkout leaks its date into the layer. Normalise both here.
 FROM pallet-rust AS artifacts
 COPY ./artifacts/OPRFKeyGen.13.arks.zkey ./artifacts/OPRFKeyGenGraph.13.bin \
-     ./artifacts/OPRFKeyGen.25.arks.zkey ./artifacts/OPRFKeyGenGraph.25.bin \
-     /artifacts/
+    ./artifacts/OPRFKeyGen.25.arks.zkey ./artifacts/OPRFKeyGenGraph.25.bin \
+    /artifacts/
 RUN chmod 0644 /artifacts/* && touch -d @0 /artifacts/*
 
 FROM scratch AS runtime
@@ -84,7 +175,7 @@ WORKDIR /app
 USER 65532:65532
 
 COPY --from=artifacts /artifacts/ /app/
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/reproducible/taceo-oprf-key-gen /app/taceo-oprf-key-gen
+COPY --from=builder /taceo-oprf-key-gen /app/taceo-oprf-key-gen
 COPY --from=core-ca-certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 ENTRYPOINT [ "/app/taceo-oprf-key-gen" ]
