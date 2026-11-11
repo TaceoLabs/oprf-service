@@ -58,6 +58,7 @@ fn load_key_gen_config() -> Result<OprfKeyGenConfig, config::ConfigError> {
             .separator("__")
             .list_separator(",")
             .with_list_parse_key("service.rpc.http_urls")
+            .with_list_parse_key("service.allowed_storage_formats")
             .try_parsing(true),
     );
 
@@ -80,6 +81,11 @@ fn load_key_gen_config() -> Result<OprfKeyGenConfig, config::ConfigError> {
 async fn run(config: OprfKeyGenConfig) -> eyre::Result<()> {
     taceo_oprf_key_gen::metrics::describe_metrics();
     tracing::info!("{}", nodes_common::version_info!());
+
+    config
+        .key_gen_config
+        .validate_storage()
+        .context("invalid storage configuration")?;
 
     tracing::info!("connecting to postgres DB...");
 
