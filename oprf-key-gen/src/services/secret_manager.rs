@@ -40,6 +40,10 @@ pub enum SecretManagerError {
     /// Tried to overwrite a confirmed share with the same or an older epoch.
     #[error("Refusing to overwrite newer share")]
     RefusingToRollbackEpoch,
+    /// A stored value could not be read or written in its storage format, e.g. because the
+    /// format is not allowed or decryption failed. Never retried.
+    #[error("storage format error: {0}")]
+    StorageFormat(oprf_store::EnvelopeError),
     /// Implementation specific error.
     #[error("internal error: {0:?}")]
     Internal(#[from] eyre::Report),
