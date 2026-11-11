@@ -2,7 +2,7 @@
 
 use aes_gcm::{
     Aes256Gcm, Nonce,
-    aead::{Aead, AeadCore, KeyInit, OsRng, Payload},
+    aead::{Aead, Generate, KeyInit, Payload},
 };
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -16,6 +16,14 @@ const TAG_LEN: usize = 16;
 ///
 /// Seals and opens stored bytes laid out as `nonce (12 bytes) || ciphertext || tag (16 bytes)`.
 /// The key is zeroized on drop and never exposed or printed.
+///
+/// Every call builds a short-lived `Aes256Gcm`. With the `zeroize` feature of `aes-gcm` (which
+/// enables it on `aes`, `ghash` and `polyval`), all of its key-dependent state is wiped when it
+/// is dropped: the expanded AES round keys, the GHASH subkey `H = AES_K(0^128)` with its
+/// precomputed powers, and the per-call copy of the GHASH state used to compute a tag. Not
+/// covered: transient values on the stack or in registers that no zeroizing type owns, such as
+/// intermediate copies made while the AES key schedule is built and counter-mode keystream
+/// blocks.
 pub struct Dek {
     id: Uuid,
     key: Zeroizing<[u8; 32]>,
@@ -55,7 +63,8 @@ impl Dek {
     /// Panics if the operating system RNG fails or the plaintext exceeds the AES-GCM size limit.
     #[must_use]
     pub fn seal(&self, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
-        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        // Drawn from the operating system RNG (`getrandom`).
+        let nonce = Nonce::generate();
         let ct = self
             .cipher()
             .encrypt(

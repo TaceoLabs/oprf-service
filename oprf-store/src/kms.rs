@@ -214,10 +214,10 @@ impl DekWrapper for InMemoryWrapper {
         &self,
         data_key_id: Uuid,
     ) -> Result<(Zeroizing<[u8; 32]>, Vec<u8>), KmsError> {
-        use aes_gcm::aead::{OsRng, rand_core::RngCore};
-
         let mut key = Zeroizing::new([0u8; 32]);
-        OsRng.fill_bytes(key.as_mut_slice());
+        // Filled in place from the operating system RNG.
+        aes_gcm::aead::common::getrandom::fill(key.as_mut_slice())
+            .expect("the operating system RNG must not fail");
         let wrapped = self
             .master_dek(data_key_id)
             .seal(&Self::aad(data_key_id), key.as_slice());

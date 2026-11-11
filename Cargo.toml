@@ -22,7 +22,7 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [workspace.dependencies]
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 alloy = { version = "2", default-features = false }
 ark-babyjubjub = { package = "taceo-ark-babyjubjub", version = "0.6" }
 ark-bn254 = { version = "0.6" }
