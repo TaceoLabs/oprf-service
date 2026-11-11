@@ -1,8 +1,8 @@
 //! AES-256-GCM sealing and opening of stored bytes with a data encryption key.
 
 use aes_gcm::{
-    Aes256Gcm,
-    aead::{Aead, AeadCore, KeyInit, OsRng, Payload},
+    Aes256Gcm, Nonce,
+    aead::{Aead, Generate, KeyInit, Payload},
 };
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -54,7 +54,8 @@ impl Dek {
     /// Panics if the operating system RNG fails or the plaintext exceeds the AES-GCM size limit.
     #[must_use]
     pub(crate) fn seal(&self, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
-        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        // Drawn from the operating system RNG (`getrandom`).
+        let nonce = Nonce::generate();
         let ct = self
             .cipher
             .encrypt(
