@@ -17,7 +17,8 @@ use nodes_common::web3::event_stream::SkipBackfill;
 use nodes_common::{Environment, StartedServices};
 use oprf_key_gen::KeyGenTasks;
 use oprf_key_gen::config::{OprfKeyGenServiceConfig, OprfKeyGenServiceConfigMandatoryValues};
-use oprf_key_gen::postgres::PostgresDb;
+use oprf_key_gen::postgres::{PostgresDb, StorageSettings};
+use oprf_store::format::StorageFormat;
 use rand::{CryptoRng, Rng};
 use sqlx::PgPool;
 use taceo_oprf::core::ddlog_equality::shamir::DLogShareShamir;
@@ -56,7 +57,11 @@ struct KeyGenDb {
 impl KeyGenDb {
     async fn new() -> eyre::Result<Self> {
         let (postgres_config, pg) = crate::test_postgres_config().await?;
-        let secret_manager = PostgresDb::init(&postgres_config).await?;
+        let storage = StorageSettings {
+            allowed: vec![StorageFormat::Direct],
+            write: StorageFormat::Direct,
+        };
+        let secret_manager = PostgresDb::init(&postgres_config, storage, None).await?;
         let pool =
             nodes_common::postgres::pg_pool_with_schema(&postgres_config, CreateSchema::No).await?;
         Ok(Self {

@@ -88,9 +88,15 @@ pub enum EnvelopeError {
     /// An `envelopeV1` row has no data key id.
     #[error("envelope row has no data key id")]
     MissingDataKeyId,
-    /// The data key is not known. The nil UUID stands for "no data key id configured".
+    /// The data key is not known.
     #[error("unknown data key {0}")]
     UnknownDataKey(Uuid),
+    /// Writing `envelopeV1` was requested without a current data key.
+    #[error("no current data key configured for envelope writes")]
+    NoCurrentDataKey,
+    /// A `direct` value carries a data key id.
+    #[error("direct row has a data key id")]
+    UnexpectedDataKeyId,
     /// The configured write format is not in the allowed set.
     #[error("write format {0} is not in the allowed formats")]
     WriteFormatNotAllowed(StorageFormat),

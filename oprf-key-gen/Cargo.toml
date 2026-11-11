@@ -61,6 +61,7 @@ sqlx = { workspace = true, features = [
   "postgres",
   "runtime-tokio",
   "tls-rustls-aws-lc-rs",
+  "uuid",
 ] }
 telemetry-batteries = { workspace = true, features = ["metrics-statsd"] }
 thiserror.workspace = true
@@ -75,12 +76,16 @@ tokio = { workspace = true, features = [
 tokio-util = { workspace = true }
 tower-http = { workspace = true, features = ["set-header", "trace"] }
 tracing = { workspace = true, features = ["release_max_level_debug"] }
+uuid = { workspace = true }
 zeroize = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 alloy = { workspace = true, features = ["node-bindings"] }
 axum-test = { workspace = true, features = ["ws"] }
 nodes-common = { workspace = true, features = ["test-utils", "web3-asserter"] }
+oprf-store = { package = "taceo-oprf-store", path = "../oprf-store", version = "0.1", features = [
+  "test-utils",
+] }
 parking_lot = { workspace = true }
 serde_json = { workspace = true }
 

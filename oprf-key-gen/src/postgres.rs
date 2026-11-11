@@ -12,8 +12,13 @@
 //! The schema is managed by the embedded migrations of [`oprf_store::MIGRATOR`], applied automatically
 //! during [`PostgresDb::init`].
 
-use std::{num::NonZeroUsize, time::Duration};
+use std::{
+    num::{NonZeroU16, NonZeroUsize},
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 
+use alloy::primitives::Address;
 use async_trait::async_trait;
 use backon::ConstantBackoff;
 use eyre::Context;
@@ -22,9 +27,21 @@ use nodes_common::{
     web3::event_stream::ChainCursor,
 };
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey, service::NodeInformation};
+use oprf_store::{
+    DekWrapper, EnvelopeError, StorageCrypto,
+    aad::{AadContext, Kind, RowId},
+    codec,
+    format::StorageFormat,
+};
+use oprf_types::{
+    OprfKeyId, ShareEpoch,
+    crypto::{OprfPublicKey, PartyId},
+    service::NodeInformation,
+};
 use sqlx::{Acquire, PgExecutor, PgPool, Row as _};
 use tracing::instrument;
+use uuid::Uuid;
+use zeroize::Zeroizing;
 
 use crate::{
     metrics,
@@ -34,12 +51,52 @@ use crate::{
 
 type Result<T> = std::result::Result<T, PostgresDbError>;
 
+/// The storage formats key-gen reads and writes secret columns in.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(
+    clippy::exhaustive_structs,
+    reason = "constructed by callers with a struct literal"
+)]
+pub struct StorageSettings {
+    /// The formats rows may be stored in to be read.
+    pub allowed: Vec<StorageFormat>,
+    /// The format new values are written in.
+    pub write: StorageFormat,
+}
+
+impl StorageSettings {
+    /// Whether only `direct` is allowed and written.
+    fn is_direct_only(&self) -> bool {
+        self.write == StorageFormat::Direct
+            && self.allowed.iter().all(|f| *f == StorageFormat::Direct)
+    }
+}
+
 /// Postgres-backed store implementing both [`SecretManager`] and [`ChainCursorStorage`] on a shared `PgPool`.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct PostgresDb {
     pool: PgPool,
     max_retries: NonZeroUsize,
     retry_delay: Duration,
+    /// The storage policy; operations on secret columns fail until it is set.
+    crypto: Arc<OnceLock<StorageCrypto>>,
+    /// Wraps data keys; used to prepare the storage policy.
+    wrapper: Option<Arc<dyn DekWrapper>>,
+    /// The configured storage formats; used to prepare the storage policy.
+    storage: StorageSettings,
+}
+
+impl std::fmt::Debug for PostgresDb {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PostgresDb")
+            .field("pool", &self.pool)
+            .field("max_retries", &self.max_retries)
+            .field("retry_delay", &self.retry_delay)
+            .field("crypto", &self.crypto.get())
+            .field("kms_key_arn", &self.wrapper.as_ref().map(|w| w.key_arn()))
+            .field("storage", &self.storage)
+            .finish()
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -52,6 +109,8 @@ pub(crate) enum PostgresDbError {
     DbError(#[from] sqlx::Error),
     #[error(transparent)]
     Store(oprf_store::StoreError),
+    #[error(transparent)]
+    Envelope(EnvelopeError),
     #[error("internal error: {0:?}")]
     Internal(#[from] eyre::Report),
 }
@@ -62,18 +121,32 @@ impl From<oprf_store::StoreError> for PostgresDbError {
             // Keep database errors on the `DbError` path so that transient errors are retried
             // and constraint violations are mapped.
             oprf_store::StoreError::Db(error) => Self::DbError(error),
+            oprf_store::StoreError::Envelope(error) => Self::Envelope(error),
             other => Self::Store(other),
         }
+    }
+}
+
+impl From<EnvelopeError> for PostgresDbError {
+    fn from(value: EnvelopeError) -> Self {
+        Self::Envelope(value)
     }
 }
 
 impl PostgresDb {
     /// Initializes a [`PostgresDb`] by building the connection pool, ensuring the configured schema exists, and running all pending migrations.
     ///
+    /// `storage` names the formats secret columns are read and written in; `wrapper` wraps the
+    /// data keys of `envelopeV1`.
+    ///
     /// # Errors
     /// Returns an error if creating the database pool fails, or if running the migrations fails.
     #[instrument(level = "info", skip_all)]
-    pub async fn init(db_config: &PostgresConfig) -> eyre::Result<Self> {
+    pub async fn init(
+        db_config: &PostgresConfig,
+        storage: StorageSettings,
+        wrapper: Option<Arc<dyn DekWrapper>>,
+    ) -> eyre::Result<Self> {
         tracing::info!("init PgPool with schema: {}", db_config.schema);
         let pool = nodes_common::postgres::pg_pool_with_schema(db_config, CreateSchema::Yes)
             .await
@@ -85,11 +158,46 @@ impl PostgresDb {
             .await
             .context("while running migrations")?;
 
+        // Temporary until startup prepares the storage policy (`prepare_storage`): direct-only
+        // settings need no data keys, so their policy is ready here. With `envelopeV1` the
+        // policy stays unset and secret operations fail with "storage not prepared".
+        let crypto = if storage.is_direct_only() {
+            let direct =
+                StorageCrypto::new(&[StorageFormat::Direct], placeholder_aad_context(), vec![])
+                    .with_write(StorageFormat::Direct, None)
+                    .context("while building the direct storage policy")?;
+            OnceLock::from(direct)
+        } else {
+            OnceLock::new()
+        };
+
         Ok(Self {
             pool,
             max_retries: db_config.max_retries,
             retry_delay: db_config.retry_delay,
+            crypto: Arc::new(crypto),
+            wrapper,
+            storage,
         })
+    }
+
+    /// Installs the storage policy in tests.
+    ///
+    /// # Panics
+    /// Panics if a policy is already set.
+    #[cfg(test)]
+    pub(crate) fn set_crypto_for_tests(&self, crypto: StorageCrypto) {
+        assert!(
+            self.crypto.set(crypto).is_ok(),
+            "storage policy is already set"
+        );
+    }
+
+    /// Returns the storage policy, or an internal error if it is not prepared yet.
+    fn crypto(&self) -> Result<&StorageCrypto> {
+        self.crypto
+            .get()
+            .ok_or_else(|| PostgresDbError::Internal(eyre::eyre!("storage not prepared")))
     }
 
     #[inline]
@@ -187,6 +295,7 @@ impl From<PostgresDbError> for SecretManagerError {
                 }
             }
             PostgresDbError::Store(error) => Self::Internal(eyre::Report::from(error)),
+            PostgresDbError::Envelope(error) => Self::StorageFormat(error),
             PostgresDbError::Internal(report) => Self::Internal(report),
         }
     }
@@ -232,7 +341,8 @@ impl SecretManager for PostgresDb {
         epoch: ShareEpoch,
     ) -> secret_manager::Result<Option<DLogShareShamir>> {
         tracing::trace!("loading share...");
-        let get_share = || Self::get_share_by_epoch_inner(oprf_key_id, epoch, &self.pool);
+        let crypto = self.crypto()?;
+        let get_share = || Self::get_share_by_epoch_inner(crypto, oprf_key_id, epoch, &self.pool);
         Ok(self.with_retry("get-share-by-epoch", get_share).await?)
     }
 
@@ -272,24 +382,39 @@ impl SecretManager for PostgresDb {
         intermediate: KeyGenIntermediateValues,
     ) -> secret_manager::Result<KeyGenIntermediateValues> {
         tracing::trace!("trying to store intermediates...");
+        let crypto = self.crypto()?;
+        let row = RowId {
+            kind: Kind::Intermediates,
+            oprf_key_id,
+            epoch: pending_epoch,
+            public_key: None,
+        };
+        let sealed = crypto
+            .seal(&row, &codec::to_bytes(&intermediate))
+            .map_err(PostgresDbError::from)?;
         let store_intermediates = || async {
-            sqlx::query_scalar(
+            // On conflict the stored row is returned unchanged, possibly in another format.
+            let (stored, format, data_key_id): (Vec<u8>, String, Option<Uuid>) = sqlx::query_as(
                 "
-                INSERT INTO in_progress_keygens (id, pending_epoch, intermediates)
-                VALUES ($1, $2, $3)
+                INSERT INTO in_progress_keygens
+                    (id, pending_epoch, intermediates, storage_format, data_key_id)
+                VALUES ($1, $2, $3, $4, $5)
                 ON CONFLICT (id, pending_epoch) DO UPDATE
                 SET intermediates = in_progress_keygens.intermediates
-                RETURNING intermediates;
+                RETURNING intermediates, storage_format, data_key_id;
             ",
             )
             .bind(oprf_key_id.to_le_bytes())
             // Postgres lacks u32; cast to i64 to satisfy SQLx type mapping
             .bind(i64::from(pending_epoch))
-            .bind(oprf_store::codec::to_bytes(&intermediate).as_slice())
+            .bind(sealed.bytes.as_slice())
+            .bind(sealed.format.as_str())
+            .bind(sealed.data_key_id)
             .fetch_one(&self.pool)
-            .await
-            .map(oprf_store::codec::from_vec)?
-            .map_err(PostgresDbError::from)
+            .await?;
+            let stored = Zeroizing::new(stored);
+            let plaintext = crypto.open(&format, data_key_id, &row, &stored)?;
+            Ok(codec::from_bytes(&plaintext)?)
         };
 
         Ok(self
@@ -304,24 +429,35 @@ impl SecretManager for PostgresDb {
         pending_epoch: ShareEpoch,
     ) -> secret_manager::Result<KeyGenIntermediateValues> {
         tracing::trace!("trying to fetch intermediates...");
+        let crypto = self.crypto()?;
+        let row = RowId {
+            kind: Kind::Intermediates,
+            oprf_key_id,
+            epoch: pending_epoch,
+            public_key: None,
+        };
 
         let fetch_keygen = || async {
-            sqlx::query_scalar(
-                "
-                SELECT intermediates
+            let Some((stored, format, data_key_id)): Option<(Vec<u8>, String, Option<Uuid>)> =
+                sqlx::query_as(
+                    "
+                SELECT intermediates, storage_format, data_key_id
                 FROM in_progress_keygens
                 WHERE id = $1
                   AND pending_epoch = $2;
             ",
-            )
-            .bind(oprf_key_id.to_le_bytes())
-            // Postgres lacks u32; cast to i64 to satisfy SQLx type mapping
-            .bind(i64::from(pending_epoch))
-            .fetch_optional(&self.pool)
-            .await?
-            .map(oprf_store::codec::from_vec)
-            .transpose()
-            .map_err(PostgresDbError::from)
+                )
+                .bind(oprf_key_id.to_le_bytes())
+                // Postgres lacks u32; cast to i64 to satisfy SQLx type mapping
+                .bind(i64::from(pending_epoch))
+                .fetch_optional(&self.pool)
+                .await?
+            else {
+                return Ok(None);
+            };
+            let stored = Zeroizing::new(stored);
+            let plaintext = crypto.open(&format, data_key_id, &row, &stored)?;
+            Ok(Some(codec::from_bytes(&plaintext)?))
         };
 
         Ok(self
@@ -349,11 +485,43 @@ impl SecretManager for PostgresDb {
         share: DLogShareShamir,
     ) -> secret_manager::Result<()> {
         tracing::trace!("store pending dlog-share..");
+        let crypto = self.crypto()?;
+        let row = RowId {
+            kind: Kind::PendingShare,
+            oprf_key_id,
+            epoch: pending_epoch,
+            public_key: None,
+        };
+        let plaintext = codec::to_bytes(&share);
         let store_pending = || async {
-            Ok(sqlx::query(
+            // use standard isolation level: READ COMMITTED
+            let mut tx = self.pool.begin().await?;
+            // The pending share is stored in the format and under the data key of its row.
+            let target: Option<(String, Option<Uuid>)> = sqlx::query_as(
+                "
+                    SELECT storage_format, data_key_id
+                    FROM in_progress_keygens
+                    WHERE id = $1
+                      AND pending_epoch = $2
+                    FOR UPDATE;
+                ",
+            )
+            .bind(oprf_key_id.to_le_bytes())
+            // Postgres lacks u32; cast to i64 to satisfy SQLx type mapping
+            .bind(i64::from(pending_epoch))
+            .fetch_optional(&mut *tx)
+            .await?;
+            let Some((format, data_key_id)) = target else {
+                return Err(PostgresDbError::MissingIntermediates(
+                    oprf_key_id,
+                    pending_epoch,
+                ));
+            };
+            let sealed = crypto.seal_as(format.parse()?, data_key_id, &row, &plaintext)?;
+            sqlx::query(
                 "
                     UPDATE in_progress_keygens
-                    SET pending_share = $3
+                    SET pending_share = $3, storage_format = $4, data_key_id = $5
                     WHERE id = $1
                       AND pending_epoch = $2;
                 ",
@@ -361,24 +529,32 @@ impl SecretManager for PostgresDb {
             .bind(oprf_key_id.to_le_bytes())
             // Postgres lacks u32; cast to i64 to satisfy SQLx type mapping
             .bind(i64::from(pending_epoch))
-            .bind(oprf_store::codec::to_bytes(&share).as_slice())
-            .execute(&self.pool)
-            .await?
-            .rows_affected())
-        };
-        let rows_affected = self
-            .with_retry("store-pending-dlog-share", store_pending)
+            .bind(sealed.bytes.as_slice())
+            .bind(sealed.format.as_str())
+            .bind(sealed.data_key_id)
+            .execute(&mut *tx)
             .await?;
-
-        if rows_affected == 1 {
-            tracing::debug!("successfully stored pending dlog share");
+            tx.commit().await?;
             Ok(())
-        } else {
-            tracing::warn!("cannot store pending share because no matching intermediates exist");
-            Err(SecretManagerError::MissingIntermediates(
-                oprf_key_id,
-                pending_epoch,
-            ))
+        };
+        match self
+            .with_retry("store-pending-dlog-share", store_pending)
+            .await
+        {
+            Ok(()) => {
+                tracing::debug!("successfully stored pending dlog share");
+                Ok(())
+            }
+            Err(PostgresDbError::MissingIntermediates(oprf_key_id, pending_epoch)) => {
+                tracing::warn!(
+                    "cannot store pending share because no matching intermediates exist"
+                );
+                Err(SecretManagerError::MissingIntermediates(
+                    oprf_key_id,
+                    pending_epoch,
+                ))
+            }
+            Err(error) => Err(error.into()),
         }
     }
 
@@ -390,6 +566,7 @@ impl SecretManager for PostgresDb {
         public_key: OprfPublicKey,
     ) -> secret_manager::Result<()> {
         tracing::trace!("storing share...");
+        let crypto = self.crypto()?;
 
         let confirm_dlog_share = || async {
             let mut tx = self.pool.begin().await?;
@@ -403,7 +580,7 @@ impl SecretManager for PostgresDb {
                 .execute(&mut *conn)
                 .await?;
             // check if we already stored this share - maybe we had to redo this operation so that it is idempotent
-            if Self::get_share_by_epoch_inner(oprf_key_id, epoch, &mut *conn)
+            if Self::get_share_by_epoch_inner(crypto, oprf_key_id, epoch, &mut *conn)
                 .await?
                 .is_some()
             {
@@ -412,11 +589,13 @@ impl SecretManager for PostgresDb {
                 tx.commit().await?;
                 return Ok(());
             }
-            let pending_share = Self::fetch_pending_share_inner(oprf_key_id, epoch, &mut *conn)
-                .await?
-                .ok_or_else(|| PostgresDbError::MissingIntermediates(oprf_key_id, epoch))?;
+            let pending_share =
+                Self::fetch_pending_share_inner(crypto, oprf_key_id, epoch, &mut *conn)
+                    .await?
+                    .ok_or_else(|| PostgresDbError::MissingIntermediates(oprf_key_id, epoch))?;
 
             let rows_affected = Self::store_confirmed_dlog_share_inner(
+                crypto,
                 oprf_key_id,
                 epoch,
                 &public_key,
@@ -439,6 +618,7 @@ impl SecretManager for PostgresDb {
 
 impl PostgresDb {
     async fn get_share_by_epoch_inner(
+        crypto: &StorageCrypto,
         oprf_key_id: OprfKeyId,
         epoch: ShareEpoch,
         conn: impl PgExecutor<'_>,
@@ -449,7 +629,7 @@ impl PostgresDb {
         if row.is_deleted() || row.epoch()? != epoch {
             return Ok(None);
         }
-        Ok(Some(row.decode()?.share))
+        Ok(Some(row.open(crypto)?.share))
     }
 
     async fn soft_delete_shares_inner(
@@ -471,14 +651,16 @@ impl PostgresDb {
         .rows_affected())
     }
 
+    /// Reads and opens the pending share; `None` if there is no row or no pending share.
     async fn fetch_pending_share_inner(
+        crypto: &StorageCrypto,
         oprf_key_id: OprfKeyId,
         pending_epoch: ShareEpoch,
         conn: impl PgExecutor<'_>,
     ) -> Result<Option<DLogShareShamir>> {
-        sqlx::query_scalar(
+        let row: Option<(Option<Vec<u8>>, String, Option<Uuid>)> = sqlx::query_as(
             "
-                SELECT pending_share
+                SELECT pending_share, storage_format, data_key_id
                 FROM in_progress_keygens
                 WHERE id = $1
                   AND pending_epoch = $2;
@@ -488,38 +670,59 @@ impl PostgresDb {
         // Postgres lacks u32; cast to i64 to satisfy SQLx type mapping
         .bind(i64::from(pending_epoch))
         .fetch_optional(conn)
-        .await?
-        .flatten()
-        .map(oprf_store::codec::from_vec)
-        .transpose()
-        .map_err(PostgresDbError::from)
+        .await?;
+        let Some((Some(stored), format, data_key_id)) = row else {
+            return Ok(None);
+        };
+        let stored = Zeroizing::new(stored);
+        let row = RowId {
+            kind: Kind::PendingShare,
+            oprf_key_id,
+            epoch: pending_epoch,
+            public_key: None,
+        };
+        let plaintext = crypto.open(&format, data_key_id, &row, &stored)?;
+        Ok(Some(codec::from_bytes(&plaintext)?))
     }
 
+    /// Seals `share` in the write format and stores it as the confirmed share.
     async fn store_confirmed_dlog_share_inner(
+        crypto: &StorageCrypto,
         oprf_key_id: OprfKeyId,
         pending_epoch: ShareEpoch,
         public_key: &OprfPublicKey,
         share: &DLogShareShamir,
         conn: impl PgExecutor<'_>,
     ) -> Result<u64> {
+        let row = RowId {
+            kind: Kind::Share,
+            oprf_key_id,
+            epoch: pending_epoch,
+            public_key: Some(public_key),
+        };
+        let sealed = crypto.seal(&row, &codec::to_bytes(share))?;
         Ok(sqlx::query(
             "
-                INSERT INTO shares (id, share, epoch, public_key)
-                VALUES ($1, $2, $3, $4)
+                INSERT INTO shares (id, share, epoch, public_key, storage_format, data_key_id)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 ON CONFLICT (id)
                 DO UPDATE SET
                     share = EXCLUDED.share,
                     epoch = EXCLUDED.epoch,
-                    public_key = EXCLUDED.public_key
+                    public_key = EXCLUDED.public_key,
+                    storage_format = EXCLUDED.storage_format,
+                    data_key_id = EXCLUDED.data_key_id
                 WHERE
                     shares.epoch < EXCLUDED.epoch;
             ",
         )
         .bind(oprf_key_id.to_le_bytes())
-        .bind(oprf_store::codec::to_bytes(share).as_slice())
+        .bind(sealed.bytes.as_slice())
         // Postgres lacks u32; cast to i64 to satisfy SQLx type mapping
         .bind(i64::from(pending_epoch))
-        .bind(oprf_store::codec::to_bytes(public_key).as_slice())
+        .bind(codec::to_bytes(public_key).as_slice())
+        .bind(sealed.format.as_str())
+        .bind(sealed.data_key_id)
         .execute(conn)
         .await?
         .rows_affected())
@@ -539,6 +742,16 @@ impl PostgresDb {
         .execute(conn)
         .await?
         .rows_affected())
+    }
+}
+
+/// The AAD context of the direct-only storage policy, which never builds an AAD.
+fn placeholder_aad_context() -> AadContext {
+    AadContext {
+        chain_id: 0,
+        registry: Address::ZERO,
+        party_id: PartyId(0),
+        threshold: NonZeroU16::MIN,
     }
 }
 

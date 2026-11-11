@@ -138,12 +138,21 @@ mod postgres {
 
     #[cfg(feature = "test-utils")]
     mod shares_table {
+        use std::num::NonZeroU16;
+
+        use alloy::primitives::Address;
         use ark_babyjubjub::Fr;
         use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-        use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
+        use oprf_types::{
+            OprfKeyId, ShareEpoch,
+            crypto::{OprfPublicKey, PartyId},
+        };
         use ruint::aliases::U160;
 
-        use crate::{MIGRATOR, StoreError, shares, test_utils};
+        use crate::{
+            Dek, EnvelopeError, InMemoryWrapper, MIGRATOR, StorageCrypto, StoreError,
+            aad::AadContext, data_keys, format::StorageFormat, shares, test_utils,
+        };
 
         /// Returns the container handle too; the container stops once the last handle is dropped.
         async fn migrated_connection() -> eyre::Result<(
@@ -268,6 +277,108 @@ mod postgres {
             assert!(
                 matches!(row.decode(), Err(StoreError::Corrupt(_))),
                 "invalid share bytes must be corrupt"
+            );
+            Ok(())
+        }
+
+        fn crypto(allowed: &[StorageFormat], deks: Vec<Dek>) -> StorageCrypto {
+            StorageCrypto::new(
+                allowed,
+                AadContext {
+                    chain_id: 31337,
+                    registry: Address::from([0xAA; 20]),
+                    party_id: PartyId(1),
+                    threshold: NonZeroU16::new(2).expect("nonzero"),
+                },
+                deks,
+            )
+        }
+
+        fn assert_opens_to(
+            row: &shares::ShareRow,
+            crypto: &StorageCrypto,
+            id: OprfKeyId,
+            epoch: ShareEpoch,
+            share: &DLogShareShamir,
+            public_key: &OprfPublicKey,
+        ) -> eyre::Result<()> {
+            let stored = row.open(crypto)?;
+            assert_eq!(stored.oprf_key_id, id, "id must match");
+            assert_eq!(stored.epoch, epoch, "epoch must match");
+            assert_eq!(stored.public_key, *public_key, "public key must match");
+            assert_eq!(
+                Fr::from(stored.share),
+                Fr::from(share.clone()),
+                "share must match"
+            );
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn open_direct_row() -> eyre::Result<()> {
+            let (_pg, mut connection) = migrated_connection().await?;
+            let (id, share, public_key) = random_key();
+            let epoch = ShareEpoch::new(7);
+            test_utils::insert_share(&mut connection, id, epoch, &share, &public_key).await?;
+
+            let row = shares::fetch(&mut connection, id)
+                .await?
+                .expect("row exists");
+            assert_eq!(row.data_key_id(), None, "direct row has no data key");
+            let crypto = crypto(&[StorageFormat::Direct], vec![]);
+            assert_opens_to(&row, &crypto, id, epoch, &share, &public_key)
+        }
+
+        #[tokio::test]
+        async fn open_envelope_row() -> eyre::Result<()> {
+            let (_pg, mut connection) = migrated_connection().await?;
+            let wrapper = InMemoryWrapper::new("arn:test:key", [1; 32]);
+            let dek = data_keys::create(&mut connection, &wrapper).await?;
+            let dek_id = dek.id();
+            let crypto = crypto(&[StorageFormat::EnvelopeV1], vec![dek])
+                .with_write(StorageFormat::EnvelopeV1, Some(dek_id))?;
+            let (id, share, public_key) = random_key();
+            let epoch = ShareEpoch::new(7);
+            test_utils::insert_share_sealed(
+                &mut connection,
+                &crypto,
+                id,
+                epoch,
+                &share,
+                &public_key,
+            )
+            .await?;
+
+            let row = shares::fetch(&mut connection, id)
+                .await?
+                .expect("row exists");
+            assert_eq!(row.data_key_id(), Some(dek_id), "row names its data key");
+            assert!(
+                matches!(row.decode(), Err(StoreError::UnsupportedStorageFormat(_))),
+                "the stored bytes are not plaintext"
+            );
+            assert_opens_to(&row, &crypto, id, epoch, &share, &public_key)
+        }
+
+        #[tokio::test]
+        async fn open_rejects_disallowed_format() -> eyre::Result<()> {
+            let (_pg, mut connection) = migrated_connection().await?;
+            let (id, share, public_key) = random_key();
+            test_utils::insert_share(&mut connection, id, ShareEpoch::new(7), &share, &public_key)
+                .await?;
+
+            let row = shares::fetch(&mut connection, id)
+                .await?
+                .expect("row exists");
+            let err = row
+                .open(&crypto(&[StorageFormat::EnvelopeV1], vec![]))
+                .expect_err("direct is not allowed");
+            assert!(
+                matches!(
+                    err,
+                    StoreError::Envelope(EnvelopeError::FormatNotAllowed(StorageFormat::Direct))
+                ),
+                "expected FormatNotAllowed(Direct), got {err:?}"
             );
             Ok(())
         }

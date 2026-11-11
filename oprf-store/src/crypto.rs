@@ -99,8 +99,8 @@ impl StorageCrypto {
     ///
     /// # Errors
     /// - [`EnvelopeError::WriteFormatNotAllowed`] if `format` is not in the allowed set.
-    /// - [`EnvelopeError::UnknownDataKey`] for `envelopeV1` if `current` is `None` (reported
-    ///   with the nil UUID, as there is no id to report) or not a known data key.
+    /// - [`EnvelopeError::NoCurrentDataKey`] for `envelopeV1` if `current` is `None`.
+    /// - [`EnvelopeError::UnknownDataKey`] for `envelopeV1` if `current` is not a known data key.
     pub fn with_write(
         mut self,
         format: StorageFormat,
@@ -112,7 +112,7 @@ impl StorageCrypto {
         let current = match format {
             StorageFormat::Direct => None,
             StorageFormat::EnvelopeV1 => {
-                let id = current.ok_or(EnvelopeError::UnknownDataKey(Uuid::nil()))?;
+                let id = current.ok_or(EnvelopeError::NoCurrentDataKey)?;
                 if !self.has_dek(id) {
                     return Err(EnvelopeError::UnknownDataKey(id));
                 }
@@ -166,12 +166,13 @@ impl StorageCrypto {
     /// `format` and `data_key_id` are the raw column values of the row. Checks run in this
     /// order: the format is known, the format is allowed, then for `envelopeV1` a data key id
     /// is present, that key is known, and finally authenticated decryption under the AAD of
-    /// `row`. For `direct`, `stored` is returned unchanged and `data_key_id` and `row` are
-    /// ignored.
+    /// `row`. For `direct`, `data_key_id` must be `None` and `stored` is returned unchanged;
+    /// `row` is ignored.
     ///
     /// # Errors
     /// - [`EnvelopeError::UnknownFormat`] if `format` is not a known format string.
     /// - [`EnvelopeError::FormatNotAllowed`] if the format is not in the allowed set.
+    /// - [`EnvelopeError::UnexpectedDataKeyId`] if a `direct` row has a data key id.
     /// - [`EnvelopeError::MissingDataKeyId`] if an `envelopeV1` row has no data key id.
     /// - [`EnvelopeError::UnknownDataKey`] if the data key is not known.
     /// - [`EnvelopeError::PublicKeyMismatch`] if `row` is inconsistent (see [`AadContext::aad`]).
@@ -188,7 +189,12 @@ impl StorageCrypto {
             return Err(EnvelopeError::FormatNotAllowed(format));
         }
         match format {
-            StorageFormat::Direct => Ok(Zeroizing::new(stored.to_vec())),
+            StorageFormat::Direct => {
+                if data_key_id.is_some() {
+                    return Err(EnvelopeError::UnexpectedDataKeyId);
+                }
+                Ok(Zeroizing::new(stored.to_vec()))
+            }
             StorageFormat::EnvelopeV1 => {
                 let id = data_key_id.ok_or(EnvelopeError::MissingDataKeyId)?;
                 let deks = self.deks.read().unwrap_or_else(PoisonError::into_inner);
@@ -201,23 +207,62 @@ impl StorageCrypto {
 
     /// Prepares `plaintext` for storage in the configured write format.
     ///
-    /// For `direct` the plaintext is returned as is; for `envelopeV1` it is sealed under the
-    /// current data key with the AAD of `row`.
+    /// Same as [`StorageCrypto::seal_as`] with the configured write target.
     ///
     /// # Errors
     /// - [`EnvelopeError::ReadOnly`] if no write target is configured.
-    /// - [`EnvelopeError::UnknownDataKey`] if the current data key is not known.
-    /// - [`EnvelopeError::PublicKeyMismatch`] if `row` is inconsistent (see [`AadContext::aad`]).
+    /// - [`EnvelopeError::NoCurrentDataKey`] if the write format is `envelopeV1` but no current
+    ///   data key is configured.
+    /// - Otherwise as [`StorageCrypto::seal_as`].
     pub fn seal(&self, row: &RowId<'_>, plaintext: &[u8]) -> Result<Sealed, EnvelopeError> {
         let (format, current) = self.write.ok_or(EnvelopeError::ReadOnly)?;
+        if format == StorageFormat::EnvelopeV1 && current.is_none() {
+            return Err(EnvelopeError::NoCurrentDataKey);
+        }
+        self.seal_as(format, current, row, plaintext)
+    }
+
+    /// Prepares `plaintext` for storage in `format`, for `envelopeV1` under the known data key
+    /// `data_key_id`.
+    ///
+    /// Used to rewrite a row in the format and under the data key it already has. For `direct`
+    /// the plaintext is returned as is; for `envelopeV1` it is sealed with the AAD of `row`.
+    /// Requires a write-enabled instance, like [`StorageCrypto::seal`].
+    ///
+    /// # Errors
+    /// - [`EnvelopeError::ReadOnly`] if no write target is configured.
+    /// - [`EnvelopeError::FormatNotAllowed`] if `format` is not in the allowed set.
+    /// - [`EnvelopeError::UnexpectedDataKeyId`] if `format` is `direct` and `data_key_id` is set.
+    /// - [`EnvelopeError::MissingDataKeyId`] if `format` is `envelopeV1` and `data_key_id` is
+    ///   `None`.
+    /// - [`EnvelopeError::UnknownDataKey`] if the data key is not known.
+    /// - [`EnvelopeError::PublicKeyMismatch`] if `row` is inconsistent (see [`AadContext::aad`]).
+    pub fn seal_as(
+        &self,
+        format: StorageFormat,
+        data_key_id: Option<Uuid>,
+        row: &RowId<'_>,
+        plaintext: &[u8],
+    ) -> Result<Sealed, EnvelopeError> {
+        if self.write.is_none() {
+            return Err(EnvelopeError::ReadOnly);
+        }
+        if !self.allows(format) {
+            return Err(EnvelopeError::FormatNotAllowed(format));
+        }
         match format {
-            StorageFormat::Direct => Ok(Sealed {
-                format,
-                data_key_id: None,
-                bytes: Zeroizing::new(plaintext.to_vec()),
-            }),
+            StorageFormat::Direct => {
+                if data_key_id.is_some() {
+                    return Err(EnvelopeError::UnexpectedDataKeyId);
+                }
+                Ok(Sealed {
+                    format,
+                    data_key_id: None,
+                    bytes: Zeroizing::new(plaintext.to_vec()),
+                })
+            }
             StorageFormat::EnvelopeV1 => {
-                let id = current.ok_or(EnvelopeError::UnknownDataKey(Uuid::nil()))?;
+                let id = data_key_id.ok_or(EnvelopeError::MissingDataKeyId)?;
                 let deks = self.deks.read().unwrap_or_else(PoisonError::into_inner);
                 let dek = deks.get(&id).ok_or(EnvelopeError::UnknownDataKey(id))?;
                 let aad = self.ctx.aad(row)?;
@@ -290,14 +335,26 @@ mod tests {
     fn direct_passthrough() {
         let c = StorageCrypto::new(&[StorageFormat::Direct], ctx(), vec![]);
         let out = c
-            .open(
-                "direct",
-                Some(CURRENT),
-                &row(Kind::PendingShare, None),
-                b"plain",
-            )
+            .open("direct", None, &row(Kind::PendingShare, None), b"plain")
             .expect("open");
         assert_eq!(out.as_slice(), b"plain", "bytes unchanged");
+    }
+
+    #[test]
+    fn direct_row_with_data_key_id_is_rejected() {
+        let c = StorageCrypto::new(&[StorageFormat::Direct], ctx(), vec![]);
+        assert!(
+            matches!(
+                c.open(
+                    "direct",
+                    Some(CURRENT),
+                    &row(Kind::PendingShare, None),
+                    b"plain"
+                ),
+                Err(EnvelopeError::UnexpectedDataKeyId)
+            ),
+            "a direct row must not carry a data key id"
+        );
     }
 
     #[test]
@@ -499,13 +556,6 @@ mod tests {
             ),
             "direct write not allowed"
         );
-        assert!(
-            matches!(
-                new(&all()).with_write(StorageFormat::EnvelopeV1, None),
-                Err(EnvelopeError::UnknownDataKey(_))
-            ),
-            "envelope without current id"
-        );
         let unknown = Uuid::from_u128(42);
         assert!(
             matches!(
@@ -526,6 +576,64 @@ mod tests {
         assert!(
             !new(&[StorageFormat::Direct]).allows(StorageFormat::EnvelopeV1),
             "denies"
+        );
+    }
+
+    #[test]
+    fn no_current_data_key_is_its_own_error() {
+        let c = StorageCrypto::new(&all(), ctx(), vec![dek(CURRENT)]);
+        assert!(
+            matches!(
+                c.with_write(StorageFormat::EnvelopeV1, None),
+                Err(EnvelopeError::NoCurrentDataKey)
+            ),
+            "envelope without current id"
+        );
+    }
+
+    #[test]
+    fn seal_as_uses_given_key() {
+        let other = Uuid::from_u128(2);
+        let c = StorageCrypto::new(
+            &all(),
+            ctx(),
+            vec![dek(CURRENT), Dek::new(other, Zeroizing::new([8u8; 32]))],
+        )
+        .with_write(StorageFormat::EnvelopeV1, Some(CURRENT))
+        .expect("with_write");
+        let r = row(Kind::PendingShare, None);
+        let sealed = c
+            .seal_as(StorageFormat::EnvelopeV1, Some(other), &r, b"x")
+            .expect("seal_as");
+        assert_eq!(sealed.format, StorageFormat::EnvelopeV1, "format");
+        assert_eq!(sealed.data_key_id, Some(other), "data key id");
+        assert!(
+            matches!(
+                c.open("envelopeV1", Some(CURRENT), &r, &sealed.bytes),
+                Err(EnvelopeError::Decrypt)
+            ),
+            "not sealed under the current key"
+        );
+        let out = c
+            .open("envelopeV1", Some(other), &r, &sealed.bytes)
+            .expect("open");
+        assert_eq!(out.as_slice(), b"x", "plaintext");
+    }
+
+    #[test]
+    fn seal_as_rejects_disallowed_format() {
+        let c = writer(&[StorageFormat::EnvelopeV1]);
+        assert!(
+            matches!(
+                c.seal_as(
+                    StorageFormat::Direct,
+                    None,
+                    &row(Kind::PendingShare, None),
+                    b"x"
+                ),
+                Err(EnvelopeError::FormatNotAllowed(StorageFormat::Direct))
+            ),
+            "direct is not allowed"
         );
     }
 

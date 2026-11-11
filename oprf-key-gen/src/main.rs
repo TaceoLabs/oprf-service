@@ -17,7 +17,10 @@ use config::Config;
 use eyre::Context;
 use nodes_common::{StartedServices, postgres::PostgresConfig};
 use serde::Deserialize;
-use taceo_oprf_key_gen::{config::OprfKeyGenServiceConfig, postgres::PostgresDb};
+use taceo_oprf_key_gen::{
+    config::OprfKeyGenServiceConfig,
+    postgres::{PostgresDb, StorageSettings},
+};
 
 /// The top-level configuration for the OPRF key-gen binary.
 ///
@@ -89,7 +92,12 @@ async fn run(config: OprfKeyGenConfig) -> eyre::Result<()> {
 
     tracing::info!("connecting to postgres DB...");
 
-    let postgres = PostgresDb::init(&config.postgres_config)
+    let storage = StorageSettings {
+        allowed: config.key_gen_config.allowed_storage_formats.clone(),
+        write: config.key_gen_config.storage_write_format,
+    };
+    // No data key wrapper yet: nothing can use `envelopeV1` until storage is prepared at startup.
+    let postgres = PostgresDb::init(&config.postgres_config, storage, None)
         .await
         .context("while starting postgres secret-manager")?;
 
