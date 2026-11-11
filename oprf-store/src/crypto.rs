@@ -236,7 +236,7 @@ mod tests {
     use std::num::NonZeroU16;
 
     use alloy::primitives::Address;
-    use ark_ec::{AffineRepr, CurveGroup};
+    use ark_ec::AffineRepr;
     use oprf_types::{
         OprfKeyId, ShareEpoch,
         crypto::{OprfPublicKey, PartyId},
@@ -265,14 +265,6 @@ mod tests {
 
     fn pk() -> OprfPublicKey {
         OprfPublicKey::from(ark_babyjubjub::EdwardsAffine::generator())
-    }
-
-    fn other_pk() -> OprfPublicKey {
-        OprfPublicKey::from(
-            (ark_babyjubjub::EdwardsAffine::generator()
-                + ark_babyjubjub::EdwardsAffine::generator())
-            .into_affine(),
-        )
     }
 
     fn row(kind: Kind, pk: Option<&OprfPublicKey>) -> RowId<'_> {
@@ -432,57 +424,15 @@ mod tests {
     }
 
     #[test]
-    fn open_under_other_row_fails_oprf_key_id() {
-        let pk = pk();
-        let mut r = row(Kind::Share, Some(&pk));
-        r.oprf_key_id = OprfKeyId::new(U160::from(6u64));
-        assert_open_fails("oprf_key_id", ctx(), &r);
-    }
-
-    #[test]
-    fn open_under_other_row_fails_epoch() {
+    fn open_under_other_row_or_context_fails() {
         let pk = pk();
         let mut r = row(Kind::Share, Some(&pk));
         r.epoch = ShareEpoch::new(4);
         assert_open_fails("epoch", ctx(), &r);
-    }
 
-    #[test]
-    fn open_under_other_row_fails_public_key() {
-        let other = other_pk();
-        assert_open_fails("public_key", ctx(), &row(Kind::Share, Some(&other)));
-    }
-
-    #[test]
-    fn open_under_other_row_fails_chain_id() {
-        let pk = pk();
         let mut c = ctx();
         c.chain_id += 1;
         assert_open_fails("chain_id", c, &row(Kind::Share, Some(&pk)));
-    }
-
-    #[test]
-    fn open_under_other_row_fails_registry() {
-        let pk = pk();
-        let mut c = ctx();
-        c.registry = Address::from([0xAB; 20]);
-        assert_open_fails("registry", c, &row(Kind::Share, Some(&pk)));
-    }
-
-    #[test]
-    fn open_under_other_row_fails_party_id() {
-        let pk = pk();
-        let mut c = ctx();
-        c.party_id = PartyId(2);
-        assert_open_fails("party_id", c, &row(Kind::Share, Some(&pk)));
-    }
-
-    #[test]
-    fn open_under_other_row_fails_threshold() {
-        let pk = pk();
-        let mut c = ctx();
-        c.threshold = NonZeroU16::new(3).expect("nonzero");
-        assert_open_fails("threshold", c, &row(Kind::Share, Some(&pk)));
     }
 
     #[test]

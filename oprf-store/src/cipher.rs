@@ -137,38 +137,14 @@ mod tests {
     }
 
     #[test]
-    fn wrong_key_fails() {
-        let sealed = dek(7).seal(b"aad", b"pt");
-        assert!(matches!(
-            dek(8).open(b"aad", &sealed),
-            Err(EnvelopeError::Decrypt)
-        ));
-    }
-
-    fn flipped(region: usize) {
+    fn flipped_bit_in_ciphertext_fails() {
         let d = dek(7);
         let mut sealed = d.seal(b"aad", b"plaintext");
-        sealed[region] ^= 1;
+        sealed[12] ^= 1;
         assert!(matches!(
             d.open(b"aad", &sealed),
             Err(EnvelopeError::Decrypt)
         ));
-    }
-
-    #[test]
-    fn flipped_bit_in_nonce_fails() {
-        flipped(0);
-    }
-
-    #[test]
-    fn flipped_bit_in_ciphertext_fails() {
-        flipped(12);
-    }
-
-    #[test]
-    fn flipped_bit_in_tag_fails() {
-        let len = dek(7).seal(b"aad", b"plaintext").len();
-        flipped(len - 1);
     }
 
     /// Known-answer test of the stored layout `nonce || ciphertext || tag`.

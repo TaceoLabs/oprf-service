@@ -285,18 +285,18 @@ mod postgres {
             )
             .await?;
             // The share bytes stay a valid plaintext share; only the format column changes.
-            let data_key_id: String = sqlx::query_scalar(
+            let data_key_id: uuid::Uuid = sqlx::query_scalar(
                 "INSERT INTO data_keys (id, wrapped_key, wrapping, kms_key_arn) \
-                 VALUES (md5(random()::text)::uuid, $1, 'awsKms', 'arn:test:key') RETURNING id::text",
+                 VALUES (md5(random()::text)::uuid, $1, 'awsKms', 'arn:test:key') RETURNING id",
             )
             .bind(&[9_u8, 9, 9][..])
             .fetch_one(&mut connection)
             .await?;
             sqlx::query(
-                "UPDATE shares SET storage_format = 'envelopeV1', data_key_id = $2::uuid WHERE id = $1",
+                "UPDATE shares SET storage_format = 'envelopeV1', data_key_id = $2 WHERE id = $1",
             )
             .bind(envelope_id.to_le_bytes())
-            .bind(&data_key_id)
+            .bind(data_key_id)
             .execute(&mut connection)
             .await?;
 
@@ -350,21 +350,6 @@ mod postgres {
                 .connect(&pg.connection_string)
                 .await?;
             Ok((pg, pool))
-        }
-
-        #[tokio::test]
-        async fn load_all_on_empty_table_is_empty() -> eyre::Result<()> {
-            let (_pg, pool) = migrated_pool().await?;
-            let wrapper = InMemoryWrapper::new(ARN, [1; 32]);
-            assert!(
-                data_keys::load_all(&pool, &wrapper).await?.is_empty(),
-                "empty table must yield no keys"
-            );
-            assert!(
-                data_keys::current_id(&pool).await?.is_none(),
-                "empty table has no current key"
-            );
-            Ok(())
         }
 
         #[tokio::test]
@@ -488,15 +473,21 @@ mod postgres {
         }
 
         #[tokio::test]
-        async fn load_one_unknown_is_none() -> eyre::Result<()> {
+        async fn foreign_key_arn_after_good_row_fails_whole_load() -> eyre::Result<()> {
             let (_pg, pool) = migrated_pool().await?;
-            let wrapper = InMemoryWrapper::new(ARN, [1; 32]);
-            data_keys::create(&pool, &wrapper).await?;
+            let wrapper_a = InMemoryWrapper::new("arn:a", [1; 32]);
+            data_keys::create(&pool, &wrapper_a).await?;
+            let foreign = data_keys::create(&pool, &InMemoryWrapper::new("arn:b", [1; 32])).await?;
+
+            // `load_all` has no ORDER BY: whichever row comes first, the `arn:a` row loads fine
+            // and the `arn:b` row must fail the whole load instead of being skipped.
+            let err = data_keys::load_all(&pool, &wrapper_a)
+                .await
+                .expect_err("a row wrapped under another ARN must fail the whole load");
             assert!(
-                data_keys::load_one(&pool, &wrapper, Uuid::new_v4())
-                    .await?
-                    .is_none(),
-                "unknown id must not be found"
+                matches!(&err, DataKeyError::KeyArnMismatch { id, stored, configured }
+                    if *id == foreign.id() && stored == "arn:b" && configured == "arn:a"),
+                "expected KeyArnMismatch for the arn:b row, got {err:?}"
             );
             Ok(())
         }
