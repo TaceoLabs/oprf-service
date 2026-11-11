@@ -16,6 +16,7 @@
 pub mod aad;
 mod cipher;
 pub mod codec;
+mod crypto;
 pub mod format;
 pub mod kms;
 #[cfg(feature = "postgres")]
@@ -25,7 +26,11 @@ pub mod shares;
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
 
+use format::StorageFormat;
+use uuid::Uuid;
+
 pub use cipher::Dek;
+pub use crypto::{Sealed, StorageCrypto};
 #[cfg(feature = "aws-kms")]
 pub use kms::AwsKmsWrapper;
 #[cfg(feature = "test-utils")]
@@ -74,4 +79,19 @@ pub enum EnvelopeError {
     /// bytes are indistinguishable.
     #[error("decryption failed")]
     Decrypt,
+    /// The row's storage format is not in the configured allowed set.
+    #[error("storage format {0} is not allowed")]
+    FormatNotAllowed(StorageFormat),
+    /// An `envelopeV1` row has no data key id.
+    #[error("envelope row has no data key id")]
+    MissingDataKeyId,
+    /// The data key is not known. The nil UUID stands for "no data key id configured".
+    #[error("unknown data key {0}")]
+    UnknownDataKey(Uuid),
+    /// The configured write format is not in the allowed set.
+    #[error("write format {0} is not in the allowed formats")]
+    WriteFormatNotAllowed(StorageFormat),
+    /// A write was attempted on a read-only storage policy.
+    #[error("storage is read-only")]
+    ReadOnly,
 }
