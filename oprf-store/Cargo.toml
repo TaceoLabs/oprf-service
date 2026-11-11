@@ -1,0 +1,40 @@
+[package]
+name = "taceo-oprf-store"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Shared database storage layer for TACEO:OPRF"
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords = ["cryptography", "mpc", "oprf"]
+publish = true
+
+[dependencies]
+ark-serialize = { workspace = true }
+backon = { workspace = true, features = ["std"], optional = true }
+sqlx = { workspace = true, features = [
+  "migrate",
+  "postgres",
+  "runtime-tokio",
+], optional = true }
+thiserror = { workspace = true }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+ark-babyjubjub = { workspace = true }
+eyre = { workspace = true }
+nodes-common = { workspace = true, features = ["postgres", "test-utils"] }
+oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16" }
+rand = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[features]
+default = []
+postgres = ["dep:backon", "dep:sqlx"]
+test-utils = []
+
+[lints]
+workspace = true

@@ -14,7 +14,7 @@ use nodes_common::{
 };
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use sqlx::{PgPool, migrate::Migrator};
+use sqlx::PgPool;
 use taceo_oprf::client::Connector;
 use taceo_oprf::core::{
     ddlog_equality::shamir::{DLogCommitmentsShamir, DLogProofShareShamir, DLogShareShamir},
@@ -49,8 +49,6 @@ pub const INVALID_AUTH_MSG: &str = "invalid auth";
 /// nodes run standalone without an Anvil chain, so there's no real signing
 /// wallet to source an address from.
 pub const PLACEHOLDER_WALLET_ADDRESS: Address = Address::ZERO;
-
-pub const MIGRATOR: Migrator = sqlx::migrate!("../oprf-key-gen/migrations");
 
 #[derive(Clone, Copy, Debug)]
 pub enum WireFormat {
@@ -151,7 +149,7 @@ impl TestNode {
         // need to create the schema and run migrations here, normally key-gen would do it.
         let pool = nodes_common::postgres::pg_pool_with_schema(&postgres_config, CreateSchema::Yes)
             .await?;
-        MIGRATOR.run(&pool).await?;
+        oprf_store::MIGRATOR.run(&pool).await?;
         let bind_port = match bind_port {
             Some(port) => port,
             None => nodes_common::test_utils::random_port()?,

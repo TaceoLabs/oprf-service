@@ -6489,6 +6489,7 @@ dependencies = [
  "taceo-groth16-material",
  "taceo-nodes-common",
  "taceo-oprf-core",
+ "taceo-oprf-store",
  "taceo-oprf-types",
  "telemetry-batteries",
  "thiserror 2.0.21",
@@ -6534,6 +6535,7 @@ dependencies = [
  "taceo-nodes-common",
  "taceo-oprf-client",
  "taceo-oprf-core",
+ "taceo-oprf-store",
  "taceo-oprf-types",
  "telemetry-batteries",
  "thiserror 2.0.21",
@@ -6544,6 +6546,24 @@ dependencies = [
  "tungstenite",
  "url",
  "uuid",
+ "zeroize",
+]
+
+[[package]]
+name = "taceo-oprf-store"
+version = "0.1.0"
+dependencies = [
+ "ark-serialize 0.6.0",
+ "backon",
+ "eyre",
+ "rand 0.8.6",
+ "sqlx",
+ "taceo-ark-babyjubjub",
+ "taceo-nodes-common",
+ "taceo-oprf-core",
+ "taceo-oprf-types",
+ "thiserror 2.0.21",
+ "tokio",
  "zeroize",
 ]
 
@@ -6578,6 +6598,7 @@ dependencies = [
  "taceo-nodes-common",
  "taceo-oprf",
  "taceo-oprf-key-gen",
+ "taceo-oprf-store",
  "tokio",
  "tokio-util",
  "tungstenite",

@@ -438,7 +438,7 @@ prepare_keygen_db() {
         docker_psql "CREATE SCHEMA IF NOT EXISTS \"${schema}\";"
         sqlx migrate run \
             --no-dotenv \
-            --source oprf-key-gen/migrations \
+            --source oprf-store/migrations \
             --database-url "$migration_url" >"$LOG_DIR/sqlx-${schema}.log" 2>&1
     done
 }

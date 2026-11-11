@@ -46,6 +46,9 @@ nodes-common = { workspace = true, features = [
   "web3",
 ] }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
+oprf-store = { package = "taceo-oprf-store", path = "../oprf-store", version = "0.1", features = [
+  "postgres",
+] }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16", features = [
   "chain",
   "service"
@@ -55,7 +58,6 @@ rustls = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 sqlx = { workspace = true, features = [
-  "migrate",
   "postgres",
   "runtime-tokio",
   "tls-rustls-aws-lc-rs",

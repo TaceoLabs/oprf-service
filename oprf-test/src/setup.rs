@@ -19,7 +19,7 @@ use taceo_oprf::types::{ShareEpoch, crypto::OprfPublicKey};
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
-use crate::{TEST_TIMEOUT, to_db_ark_serialize_uncompressed};
+use crate::TEST_TIMEOUT;
 
 /// Upper bound on the number of peers any [`DeploySetup`] registers, and the
 /// number of peer key/address slots [`TestSetup`] derives from Anvil.
@@ -45,9 +45,9 @@ pub(crate) async fn insert_key_material(
     ",
     )
     .bind(key_id.to_le_bytes())
-    .bind(to_db_ark_serialize_uncompressed(&share).as_slice())
+    .bind(oprf_store::codec::to_bytes(&share).as_slice())
     .bind(i64::from(epoch))
-    .bind(to_db_ark_serialize_uncompressed(&public_key).as_slice())
+    .bind(oprf_store::codec::to_bytes(&public_key).as_slice())
     .execute(pool)
     .await?;
     Ok(())
