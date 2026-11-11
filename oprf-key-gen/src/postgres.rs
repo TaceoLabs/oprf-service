@@ -14,7 +14,6 @@
 
 use std::{num::NonZeroUsize, time::Duration};
 
-use ark_serialize::CanonicalDeserialize;
 use async_trait::async_trait;
 use backon::{ConstantBackoff, Retryable};
 use eyre::Context;
@@ -283,7 +282,8 @@ impl SecretManager for PostgresDb {
             .bind(oprf_store::codec::to_bytes(&intermediate).as_slice())
             .fetch_one(&self.pool)
             .await
-            .map(from_db_bytes)?
+            .map(oprf_store::codec::from_vec)?
+            .map_err(PostgresDbError::from)
         };
 
         Ok(self
@@ -313,8 +313,9 @@ impl SecretManager for PostgresDb {
             .bind(i64::from(pending_epoch))
             .fetch_optional(&self.pool)
             .await?
-            .map(from_db_bytes)
+            .map(oprf_store::codec::from_vec)
             .transpose()
+            .map_err(PostgresDbError::from)
         };
 
         Ok(self
@@ -483,8 +484,9 @@ impl PostgresDb {
         .fetch_optional(conn)
         .await?
         .flatten()
-        .map(from_db_bytes)
+        .map(oprf_store::codec::from_vec)
         .transpose()
+        .map_err(PostgresDbError::from)
     }
 
     async fn store_confirmed_dlog_share_inner(
@@ -532,14 +534,6 @@ impl PostgresDb {
         .await?
         .rows_affected())
     }
-}
-
-#[inline]
-fn from_db_bytes<T: CanonicalDeserialize>(b: Vec<u8>) -> Result<T> {
-    // the bytes may contain secret key material, so make sure they are wiped after decoding
-    Ok(oprf_store::codec::from_bytes(
-        zeroize::Zeroizing::from(b).as_slice(),
-    )?)
 }
 
 #[inline]
