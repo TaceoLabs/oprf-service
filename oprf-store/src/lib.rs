@@ -3,6 +3,7 @@
 //! This crate holds the pieces that the OPRF key-gen service and the OPRF node
 //! have in common when talking to the database:
 //!
+//! - [`mod@format`] and [`aad`]: the per-row storage format and the AAD binding ciphertexts to rows.
 //! - [`codec`]: the canonical byte encoding of key material in the database.
 //! - `retry` (feature `postgres`): classification of transient database errors and the
 //!   shared backoff strategy.
@@ -11,7 +12,9 @@
 //! - `MIGRATOR` (feature `postgres`): the embedded database migrations.
 #![deny(missing_docs)]
 
+pub mod aad;
 pub mod codec;
+pub mod format;
 #[cfg(feature = "postgres")]
 pub mod retry;
 #[cfg(feature = "postgres")]
@@ -40,4 +43,19 @@ pub enum StoreError {
     /// The row is stored in a storage format this code path cannot read.
     #[error("unsupported storage format: {0}")]
     UnsupportedStorageFormat(String),
+    /// An envelope-encryption error.
+    #[error(transparent)]
+    Envelope(#[from] EnvelopeError),
+}
+
+/// Errors of the envelope-encryption layer.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum EnvelopeError {
+    /// The storage format string is not known.
+    #[error("unknown storage format: {0}")]
+    UnknownFormat(String),
+    /// A public key was supplied for a row kind that has none, or is missing for one that has.
+    #[error("public key does not match the row kind")]
+    PublicKeyMismatch,
 }

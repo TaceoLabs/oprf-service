@@ -22,6 +22,7 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [workspace.dependencies]
+aes-gcm = "0.10"
 alloy = { version = "2", default-features = false }
 ark-babyjubjub = { package = "taceo-ark-babyjubjub", version = "0.6" }
 ark-bn254 = { version = "0.6" }
@@ -31,6 +32,8 @@ ark-groth16 = "0.6"
 ark-serde-compat = { package = "taceo-ark-serde-compat", version = "0.6.2", default-features = false }
 ark-serialize = "0.6"
 async-trait = "0.1"
+aws-config = "1"
+aws-sdk-kms = "1"
 axum = "0.8"
 axum-extra = "0.12"
 axum-test = "20"

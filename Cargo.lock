@@ -6550,11 +6550,15 @@ dependencies = [
 name = "taceo-oprf-store"
 version = "0.1.0"
 dependencies = [
+ "alloy",
+ "ark-ec",
  "ark-serialize 0.6.0",
  "backon",
  "eyre",
  "rand 0.8.6",
  "ruint",
+ "serde",
+ "serde_json",
  "sqlx",
  "taceo-ark-babyjubjub",
  "taceo-nodes-common",
