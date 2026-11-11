@@ -144,6 +144,14 @@ fn handle_secret_manager_error(err: &SecretManagerError) -> CloseFrame {
                 reason: to_close_frame_bytes!("unexpected error"),
             }
         }
+        #[cfg(feature = "postgres")]
+        SecretManagerError::StorageFormat(err) => {
+            tracing::error!(%err, "stored key material refused");
+            CloseFrame {
+                code: close_code::ERROR,
+                reason: to_close_frame_bytes!("unexpected error"),
+            }
+        }
     }
 }
 

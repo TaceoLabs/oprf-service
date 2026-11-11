@@ -16,8 +16,12 @@ use std::{net::SocketAddr, process::ExitCode, sync::Arc, time::Duration};
 use config::Config;
 use eyre::Context;
 use nodes_common::{StartedServices, postgres::PostgresConfig};
+use oprf_store::{AwsKmsWrapper, DekWrapper};
 use serde::Deserialize;
-use taceo_oprf_key_gen::{config::OprfKeyGenServiceConfig, postgres::PostgresDb};
+use taceo_oprf_key_gen::{
+    config::OprfKeyGenServiceConfig,
+    postgres::{PostgresDb, StorageSettings},
+};
 
 /// The top-level configuration for the OPRF key-gen binary.
 ///
@@ -58,6 +62,7 @@ fn load_key_gen_config() -> Result<OprfKeyGenConfig, config::ConfigError> {
             .separator("__")
             .list_separator(",")
             .with_list_parse_key("service.rpc.http_urls")
+            .with_list_parse_key("service.allowed_storage_formats")
             .try_parsing(true),
     );
 
@@ -81,9 +86,30 @@ async fn run(config: OprfKeyGenConfig) -> eyre::Result<()> {
     taceo_oprf_key_gen::metrics::describe_metrics();
     tracing::info!("{}", nodes_common::version_info!());
 
+    // `start` validates again; validating here fails before the database is opened.
+    config
+        .key_gen_config
+        .validate_storage()
+        .context("invalid storage configuration")?;
+
     tracing::info!("connecting to postgres DB...");
 
-    let postgres = PostgresDb::init(&config.postgres_config)
+    let storage = StorageSettings {
+        allowed: config.key_gen_config.allowed_storage_formats.clone(),
+        write: config.key_gen_config.storage_write_format,
+    };
+    // Only a deployment with a KMS key touches AWS; direct-only needs no wrapper.
+    let wrapper: Option<Arc<dyn DekWrapper>> = match &config.key_gen_config.kms_key_arn {
+        Some(key_arn) => {
+            tracing::info!("using KMS key {key_arn} to wrap data keys");
+            let wrapper =
+                AwsKmsWrapper::new(key_arn.clone(), config.key_gen_config.kms_endpoint.clone())
+                    .await;
+            Some(Arc::new(wrapper))
+        }
+        None => None,
+    };
+    let postgres = PostgresDb::init(&config.postgres_config, storage, wrapper)
         .await
         .context("while starting postgres secret-manager")?;
 

@@ -58,9 +58,6 @@ pub enum StoreError {
     /// Data read from the database is corrupt and could not be decoded.
     #[error("corrupt data in database: {0}")]
     Corrupt(String),
-    /// The row is stored in a storage format this code path cannot read.
-    #[error("unsupported storage format: {0}")]
-    UnsupportedStorageFormat(String),
     /// An envelope-encryption error.
     #[error(transparent)]
     Envelope(#[from] EnvelopeError),
@@ -88,9 +85,15 @@ pub enum EnvelopeError {
     /// An `envelopeV1` row has no data key id.
     #[error("envelope row has no data key id")]
     MissingDataKeyId,
-    /// The data key is not known. The nil UUID stands for "no data key id configured".
+    /// The data key is not known.
     #[error("unknown data key {0}")]
     UnknownDataKey(Uuid),
+    /// Writing `envelopeV1` was requested without a current data key.
+    #[error("no current data key configured for envelope writes")]
+    NoCurrentDataKey,
+    /// A `direct` value carries a data key id.
+    #[error("direct row has a data key id")]
+    UnexpectedDataKeyId,
     /// The configured write format is not in the allowed set.
     #[error("write format {0} is not in the allowed formats")]
     WriteFormatNotAllowed(StorageFormat),

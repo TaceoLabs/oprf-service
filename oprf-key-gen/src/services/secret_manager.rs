@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
+use oprf_store::aad::AadContext;
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey, service::NodeInformation};
 
 pub use crate::services::secret_gen::KeyGenIntermediateValues;
@@ -40,9 +41,38 @@ pub enum SecretManagerError {
     /// Tried to overwrite a confirmed share with the same or an older epoch.
     #[error("Refusing to overwrite newer share")]
     RefusingToRollbackEpoch,
+    /// A stored value could not be read or written in its storage format, e.g. because the
+    /// format is not allowed or decryption failed. Never retried.
+    #[error("storage format error: {0}")]
+    StorageFormat(oprf_store::EnvelopeError),
     /// Implementation specific error.
     #[error("internal error: {0:?}")]
     Internal(#[from] eyre::Report),
+}
+
+/// What [`SecretManager::prepare_storage`] found and did.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct StorageReport {
+    /// Rows converted from `direct` to `envelopeV1` by this call.
+    pub upgraded: u64,
+    /// Rows still stored as `direct` afterwards.
+    pub remaining_direct: u64,
+    /// Rows stored in a format that is not allowed (including unknown format strings); reading
+    /// them fails.
+    pub disallowed: u64,
+}
+
+impl StorageReport {
+    /// Creates a report from its counts.
+    #[must_use]
+    pub const fn new(upgraded: u64, remaining_direct: u64, disallowed: u64) -> Self {
+        Self {
+            upgraded,
+            remaining_direct,
+            disallowed,
+        }
+    }
 }
 
 /// Trait that implementations of secret managers must provide.
@@ -50,6 +80,15 @@ pub enum SecretManagerError {
 /// Handles persistence of `OprfKeyMaterial`.
 #[async_trait]
 pub trait SecretManager {
+    /// Prepares the storage of secret columns; must be called once at startup before any other
+    /// method that reads or writes secrets, which fail until then.
+    ///
+    /// Loads (and if needed creates) the data keys, binds every sealed value to `ctx`, upgrades
+    /// `direct` rows to the configured write format and reports the stored formats. Calling it
+    /// again keeps the prepared storage (and ignores `ctx`) and only repeats the upgrade and the
+    /// report.
+    async fn prepare_storage(&self, ctx: AadContext) -> Result<StorageReport>;
+
     /// Stores the [`NodeInformation`] for the node in the secret manager.
     async fn store_node_information(&self, node_information: NodeInformation) -> Result<()>;
 

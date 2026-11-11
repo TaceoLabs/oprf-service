@@ -3,9 +3,17 @@
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 use sqlx::PgExecutor;
+use uuid::Uuid;
 use zeroize::ZeroizeOnDrop;
 
-use crate::{StoreError, codec};
+use crate::{
+    StorageCrypto, StoreError,
+    aad::{Kind, RowId},
+    codec,
+};
+
+/// Byte length of an encoded [`OprfKeyId`].
+const OPRF_KEY_ID_LEN: usize = 20;
 
 /// A raw row of the `shares` table.
 ///
@@ -18,6 +26,8 @@ pub struct ShareRow {
     public_key: Vec<u8>,
     deleted: bool,
     storage_format: String,
+    #[zeroize(skip)]
+    data_key_id: Option<Uuid>,
 }
 
 impl std::fmt::Debug for ShareRow {
@@ -26,6 +36,7 @@ impl std::fmt::Debug for ShareRow {
             .field("deleted", &self.deleted)
             .field("epoch", &self.epoch)
             .field("storage_format", &self.storage_format)
+            .field("data_key_id", &self.data_key_id)
             .field("has_share", &self.share.is_some())
             .finish_non_exhaustive()
     }
@@ -70,7 +81,8 @@ pub async fn fetch(
                 epoch,
                 deleted,
                 public_key,
-                storage_format
+                storage_format,
+                data_key_id
             FROM shares
             WHERE id = $1
         ",
@@ -97,33 +109,51 @@ impl ShareRow {
             .map_err(|_| StoreError::Corrupt(format!("epoch {} out of range", self.epoch)))
     }
 
-    /// Decodes the row into a [`StoredShare`].
+    /// Returns the id of the data key the share is sealed under, if any.
+    #[must_use]
+    pub fn data_key_id(&self) -> Option<Uuid> {
+        self.data_key_id
+    }
+
+    /// Opens the share through `crypto` and decodes the row into a [`StoredShare`].
     ///
-    /// Only rows in the `direct` storage format are decoded; the format is checked before any
-    /// stored byte is deserialized.
+    /// The share is opened as [`Kind::Share`] bound to the row's key id, epoch and public key.
+    /// The storage format is checked by `crypto` before any share byte is deserialized.
     ///
     /// # Errors
     /// - [`StoreError::Corrupt`] if the row is deleted, the share is NULL, or any stored bytes
     ///   are invalid.
-    /// - [`StoreError::UnsupportedStorageFormat`] if the row is not stored as `direct`.
-    pub fn decode(&self) -> Result<StoredShare, StoreError> {
+    /// - [`StoreError::Envelope`] if `crypto` refuses the row, e.g. because its format is not
+    ///   allowed or authentication fails.
+    pub fn open(&self, crypto: &StorageCrypto) -> Result<StoredShare, StoreError> {
         if self.deleted {
             return Err(StoreError::Corrupt("row is deleted".to_owned()));
-        }
-        if self.storage_format != "direct" {
-            return Err(StoreError::UnsupportedStorageFormat(
-                self.storage_format.clone(),
-            ));
         }
         let share_bytes = self
             .share
             .as_deref()
             .ok_or_else(|| StoreError::Corrupt("share column is NULL for live row".to_owned()))?;
+        if self.id.len() > OPRF_KEY_ID_LEN {
+            return Err(StoreError::Corrupt(format!(
+                "oprf key id has {} bytes",
+                self.id.len()
+            )));
+        }
+        let oprf_key_id = OprfKeyId::from_le_slice(&self.id);
+        let epoch = self.epoch()?;
+        let public_key: OprfPublicKey = codec::from_bytes(&self.public_key)?;
+        let row = RowId {
+            kind: Kind::Share,
+            oprf_key_id,
+            epoch,
+            public_key: Some(&public_key),
+        };
+        let plaintext = crypto.open(&self.storage_format, self.data_key_id, &row, share_bytes)?;
         Ok(StoredShare {
-            oprf_key_id: OprfKeyId::from_le_slice(&self.id),
-            epoch: self.epoch()?,
-            public_key: codec::from_bytes(&self.public_key)?,
-            share: codec::from_bytes(share_bytes)?,
+            oprf_key_id,
+            epoch,
+            public_key,
+            share: codec::from_bytes(&plaintext)?,
         })
     }
 }

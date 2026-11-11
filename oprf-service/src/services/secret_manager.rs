@@ -31,6 +31,11 @@ pub enum SecretManagerError {
     /// Deleted [`OprfKeyId`]
     #[error("requested deleted OPRF key-id: {0}")]
     DeletedOprfKeyId(OprfKeyId),
+    /// The stored key material was refused by the storage policy, e.g. because its storage
+    /// format is not allowed or authenticated decryption failed.
+    #[cfg(feature = "postgres")]
+    #[error("stored key material refused: {0}")]
+    StorageFormat(postgres::EnvelopeError),
     /// Implementation specific error.
     #[error("internal error: {0:?}")]
     Internal(#[from] eyre::Report),

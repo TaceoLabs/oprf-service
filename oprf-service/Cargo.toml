@@ -15,6 +15,7 @@ publish = true
 ignored = ["humantime-serde"]
 
 [dependencies]
+alloy = { workspace = true, features = ["serde"], optional = true }
 ark-babyjubjub = { workspace = true }
 ark-ec.workspace = true
 async-trait = { workspace = true }
@@ -30,6 +31,7 @@ nodes-common = { workspace = true, features = ["api", "serde"] }
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.10" }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
 oprf-store = { package = "taceo-oprf-store", path = "../oprf-store", version = "0.1", features = [
+  "aws-kms",
   "postgres",
 ], optional = true }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16", features = [
@@ -87,10 +89,11 @@ ruint = { workspace = true, features = ["rand"] }
 rustls = { workspace = true }
 telemetry-batteries = { workspace = true, features = ["metrics-statsd"] }
 url = { workspace = true }
+zeroize = { workspace = true }
 
 [features]
 default = ["postgres"]
-postgres = ["dep:oprf-store", "dep:sqlx", "nodes-common/postgres"]
+postgres = ["dep:alloy", "dep:oprf-store", "dep:sqlx", "nodes-common/postgres"]
 
 [lints]
 workspace = true

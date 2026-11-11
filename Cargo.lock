@@ -6961,6 +6961,7 @@ dependencies = [
  "tokio-util",
  "tower-http 0.7.1",
  "tracing",
+ "uuid",
  "zeroize",
 ]
 
@@ -6968,6 +6969,7 @@ dependencies = [
 name = "taceo-oprf-service"
 version = "0.19.4"
 dependencies = [
+ "alloy",
  "ark-ec",
  "ark-ff 0.6.0",
  "async-trait",
@@ -7007,6 +7009,7 @@ dependencies = [
  "tungstenite",
  "url",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]

@@ -28,6 +28,54 @@ macro_rules! oprf_metrics_key {
 pub fn describe_metrics() {
     wallet::describe_metrics();
     chain_events::describe_metrics();
+    storage::describe_metrics();
+}
+
+pub(crate) mod storage {
+    const METRIC_ROWS_DIRECT: &str = oprf_metrics_key!("storage.rows.direct");
+    const METRIC_ROWS_ENVELOPE_V1: &str = oprf_metrics_key!("storage.rows.envelope_v1");
+    const METRIC_ROWS_DISALLOWED: &str = oprf_metrics_key!("storage.rows.disallowed");
+    const METRIC_ROWS_UPGRADED: &str = oprf_metrics_key!("storage.rows.upgraded");
+
+    pub(super) fn describe_metrics() {
+        metrics::describe_gauge!(
+            METRIC_ROWS_DIRECT,
+            metrics::Unit::Count,
+            "Number of rows with secrets stored as plaintext (direct), counted at startup"
+        );
+
+        metrics::describe_gauge!(
+            METRIC_ROWS_ENVELOPE_V1,
+            metrics::Unit::Count,
+            "Number of rows with secrets stored encrypted (envelopeV1), counted at startup"
+        );
+
+        metrics::describe_gauge!(
+            METRIC_ROWS_DISALLOWED,
+            metrics::Unit::Count,
+            "Number of rows stored in a format that is not allowed, counted at startup"
+        );
+
+        metrics::describe_counter!(
+            METRIC_ROWS_UPGRADED,
+            metrics::Unit::Count,
+            "Number of rows upgraded from direct to envelopeV1"
+        );
+    }
+
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "row counts stay far below 2^52, where f64 is exact"
+    )]
+    pub(crate) fn set_row_counts(direct: u64, envelope_v1: u64, disallowed: u64) {
+        metrics::gauge!(METRIC_ROWS_DIRECT).set(direct as f64);
+        metrics::gauge!(METRIC_ROWS_ENVELOPE_V1).set(envelope_v1 as f64);
+        metrics::gauge!(METRIC_ROWS_DISALLOWED).set(disallowed as f64);
+    }
+
+    pub(crate) fn inc_upgraded(upgraded: u64) {
+        metrics::counter!(METRIC_ROWS_UPGRADED).increment(upgraded);
+    }
 }
 
 pub(crate) mod wallet {
