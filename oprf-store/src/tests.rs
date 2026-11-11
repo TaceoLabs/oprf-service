@@ -285,18 +285,18 @@ mod postgres {
             )
             .await?;
             // The share bytes stay a valid plaintext share; only the format column changes.
-            let data_key_id: String = sqlx::query_scalar(
+            let data_key_id: uuid::Uuid = sqlx::query_scalar(
                 "INSERT INTO data_keys (id, wrapped_key, wrapping, kms_key_arn) \
-                 VALUES (md5(random()::text)::uuid, $1, 'awsKms', 'arn:test:key') RETURNING id::text",
+                 VALUES (md5(random()::text)::uuid, $1, 'awsKms', 'arn:test:key') RETURNING id",
             )
             .bind(&[9_u8, 9, 9][..])
             .fetch_one(&mut connection)
             .await?;
             sqlx::query(
-                "UPDATE shares SET storage_format = 'envelopeV1', data_key_id = $2::uuid WHERE id = $1",
+                "UPDATE shares SET storage_format = 'envelopeV1', data_key_id = $2 WHERE id = $1",
             )
             .bind(envelope_id.to_le_bytes())
-            .bind(&data_key_id)
+            .bind(data_key_id)
             .execute(&mut connection)
             .await?;
 
@@ -307,6 +307,187 @@ mod postgres {
             assert!(
                 matches!(&err, StoreError::UnsupportedStorageFormat(format) if format == "envelopeV1"),
                 "expected UnsupportedStorageFormat(\"envelopeV1\"), got {err:?}"
+            );
+            Ok(())
+        }
+    }
+
+    #[cfg(feature = "test-utils")]
+    mod data_keys_table {
+        use sqlx::postgres::PgPoolOptions;
+        use uuid::Uuid;
+
+        use crate::{
+            Dek, InMemoryWrapper, MIGRATOR,
+            data_keys::{self, DataKeyError},
+        };
+
+        const ARN: &str = "arn:test:key";
+
+        /// Returns the container handle too; the container stops once the last handle is dropped.
+        async fn migrated_pool() -> eyre::Result<(
+            std::sync::Arc<nodes_common::test_utils::SharedPostgres>,
+            sqlx::PgPool,
+        )> {
+            let pg = nodes_common::test_utils::shared_postgres_testcontainer().await?;
+            let schema = nodes_common::test_utils::next_test_schema();
+            let mut connection =
+                nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema)
+                    .await?;
+            MIGRATOR.run(&mut connection).await?;
+            let search_path = format!("SET search_path TO \"{schema}\"");
+            let pool = PgPoolOptions::new()
+                .max_connections(2)
+                .after_connect(move |conn, _meta| {
+                    let search_path = search_path.clone();
+                    Box::pin(async move {
+                        sqlx::query(sqlx::AssertSqlSafe(search_path))
+                            .execute(conn)
+                            .await?;
+                        Ok(())
+                    })
+                })
+                .connect(&pg.connection_string)
+                .await?;
+            Ok((pg, pool))
+        }
+
+        #[tokio::test]
+        async fn create_then_load_all() -> eyre::Result<()> {
+            let (_pg, pool) = migrated_pool().await?;
+            let wrapper = InMemoryWrapper::new(ARN, [1; 32]);
+            let created = data_keys::create(&pool, &wrapper).await?;
+            let sealed = created.seal(b"aad", b"secret");
+
+            let loaded = data_keys::load_all(&pool, &wrapper).await?;
+            assert_eq!(loaded.len(), 1, "exactly one key");
+            assert_eq!(loaded[0].id(), created.id(), "same id");
+            assert_eq!(
+                loaded[0].open(b"aad", &sealed)?.as_slice(),
+                b"secret",
+                "loaded key must open a value sealed with the created key"
+            );
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn load_all_returns_every_key() -> eyre::Result<()> {
+            let (_pg, pool) = migrated_pool().await?;
+            let wrapper = InMemoryWrapper::new(ARN, [1; 32]);
+            let a = data_keys::create(&pool, &wrapper).await?;
+            let b = data_keys::create(&pool, &wrapper).await?;
+            let c = data_keys::create(&pool, &wrapper).await?;
+
+            let mut expected = vec![a.id(), b.id(), c.id()];
+            expected.sort();
+            let mut ids: Vec<Uuid> = data_keys::load_all(&pool, &wrapper)
+                .await?
+                .iter()
+                .map(Dek::id)
+                .collect();
+            ids.sort();
+            assert_eq!(ids, expected, "every created key must be loaded");
+
+            let one = data_keys::load_one(&pool, &wrapper, b.id())
+                .await?
+                .expect("key exists");
+            assert_eq!(one.id(), b.id(), "load_one returns the requested key");
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn current_id_is_newest() -> eyre::Result<()> {
+            let (_pg, pool) = migrated_pool().await?;
+            let wrapper = InMemoryWrapper::new(ARN, [1; 32]);
+            let old = data_keys::create(&pool, &wrapper).await?;
+            let newest = data_keys::create(&pool, &wrapper).await?;
+            let middle = data_keys::create(&pool, &wrapper).await?;
+            for (id, created_at) in [
+                (old.id(), "2024-01-01T00:00:00Z"),
+                (middle.id(), "2025-01-01T00:00:00Z"),
+                (newest.id(), "2026-01-01T00:00:00Z"),
+            ] {
+                sqlx::query("UPDATE data_keys SET created_at = $2::timestamptz WHERE id = $1")
+                    .bind(id)
+                    .bind(created_at)
+                    .execute(&pool)
+                    .await?;
+            }
+            assert_eq!(
+                data_keys::current_id(&pool).await?,
+                Some(newest.id()),
+                "the newest created_at wins"
+            );
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn key_arn_mismatch_is_error() -> eyre::Result<()> {
+            let (_pg, pool) = migrated_pool().await?;
+            let created = data_keys::create(&pool, &InMemoryWrapper::new("arn:a", [1; 32])).await?;
+            let other = InMemoryWrapper::new("arn:b", [1; 32]);
+
+            let err = data_keys::load_all(&pool, &other)
+                .await
+                .expect_err("ARN differs");
+            assert!(
+                matches!(&err, DataKeyError::KeyArnMismatch { id, stored, configured }
+                    if *id == created.id() && stored == "arn:a" && configured == "arn:b"),
+                "expected KeyArnMismatch, got {err:?}"
+            );
+            let message = err.to_string();
+            assert!(message.contains("arn:a"), "message names stored ARN");
+            assert!(message.contains("arn:b"), "message names configured ARN");
+
+            let err = data_keys::load_one(&pool, &other, created.id())
+                .await
+                .expect_err("ARN differs");
+            assert!(
+                matches!(err, DataKeyError::KeyArnMismatch { .. }),
+                "load_one must also check the ARN"
+            );
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn unwrap_failure_is_error() -> eyre::Result<()> {
+            let (_pg, pool) = migrated_pool().await?;
+            let created = data_keys::create(&pool, &InMemoryWrapper::new(ARN, [1; 32])).await?;
+            let other_master = InMemoryWrapper::new(ARN, [2; 32]);
+
+            assert!(
+                matches!(
+                    data_keys::load_all(&pool, &other_master).await,
+                    Err(DataKeyError::Kms(_))
+                ),
+                "load_all must surface the unwrap failure"
+            );
+            assert!(
+                matches!(
+                    data_keys::load_one(&pool, &other_master, created.id()).await,
+                    Err(DataKeyError::Kms(_))
+                ),
+                "load_one must surface the unwrap failure"
+            );
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn foreign_key_arn_after_good_row_fails_whole_load() -> eyre::Result<()> {
+            let (_pg, pool) = migrated_pool().await?;
+            let wrapper_a = InMemoryWrapper::new("arn:a", [1; 32]);
+            data_keys::create(&pool, &wrapper_a).await?;
+            let foreign = data_keys::create(&pool, &InMemoryWrapper::new("arn:b", [1; 32])).await?;
+
+            // `load_all` has no ORDER BY: whichever row comes first, the `arn:a` row loads fine
+            // and the `arn:b` row must fail the whole load instead of being skipped.
+            let err = data_keys::load_all(&pool, &wrapper_a)
+                .await
+                .expect_err("a row wrapped under another ARN must fail the whole load");
+            assert!(
+                matches!(&err, DataKeyError::KeyArnMismatch { id, stored, configured }
+                    if *id == foreign.id() && stored == "arn:b" && configured == "arn:a"),
+                "expected KeyArnMismatch for the arn:b row, got {err:?}"
             );
             Ok(())
         }
