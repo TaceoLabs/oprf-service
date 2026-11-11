@@ -6507,7 +6507,6 @@ version = "0.19.4"
 dependencies = [
  "ark-ec",
  "ark-ff 0.6.0",
- "ark-serialize 0.6.0",
  "async-trait",
  "axum",
  "axum-extra",
@@ -6545,7 +6544,6 @@ dependencies = [
  "tungstenite",
  "url",
  "uuid",
- "zeroize",
 ]
 
 [[package]]
