@@ -5,7 +5,6 @@
 use std::{num::NonZeroUsize, time::Duration};
 
 use async_trait::async_trait;
-use backon::Retryable as _;
 use eyre::Context as _;
 use nodes_common::postgres::{CreateSchema, PostgresConfig};
 use oprf_types::{OprfKeyId, crypto::OprfKeyMaterial, service::NodeInformation};
@@ -47,29 +46,38 @@ impl PostgresSecretManager {
             retry_delay: config.retry_delay,
         })
     }
+
+    /// Runs `op`, retrying transient database errors with the configured backoff.
+    async fn with_retry<T, Fut, F>(&self, op_name: &str, op: F) -> Result<T, sqlx::Error>
+    where
+        F: Fn() -> Fut,
+        Fut: Future<Output = Result<T, sqlx::Error>>,
+    {
+        oprf_store::retry::with_retry(
+            op_name,
+            oprf_store::retry::backoff(self.max_retries, self.retry_delay),
+            oprf_store::retry::is_transient,
+            op,
+        )
+        .await
+    }
 }
 
 #[async_trait]
 impl SecretManager for PostgresSecretManager {
     #[instrument(level = "debug", skip_all)]
     async fn load_node_information(&self) -> eyre::Result<NodeInformation> {
-        let node_information: NodeInformation = (|| {
-            sqlx::query_as(
-                "SELECT eth_address,party_id,threshold FROM node_information WHERE id = TRUE",
-            )
-            .fetch_optional(&self.pool)
-        })
-        .retry(oprf_store::retry::backoff(
-            self.max_retries,
-            self.retry_delay,
-        ))
-        .sleep(tokio::time::sleep)
-        .when(oprf_store::retry::is_transient)
-        .notify(|err, duration| tracing::warn!(%err, "retrying load address after {duration:?}"))
-        .await?
-        .ok_or_else(|| {
-            eyre::eyre!("Cannot get node information from DB, maybe key-gen needs to start")
-        })?;
+        let node_information: NodeInformation = self
+            .with_retry("load address", || {
+                sqlx::query_as(
+                    "SELECT eth_address,party_id,threshold FROM node_information WHERE id = TRUE",
+                )
+                .fetch_optional(&self.pool)
+            })
+            .await?
+            .ok_or_else(|| {
+                eyre::eyre!("Cannot get node information from DB, maybe key-gen needs to start")
+            })?;
         Ok(node_information)
     }
 
@@ -78,12 +86,9 @@ impl SecretManager for PostgresSecretManager {
         &self,
         oprf_key_id: OprfKeyId,
     ) -> Result<OprfKeyMaterial, SecretManagerError> {
-        let maybe_row = (|| oprf_store::shares::fetch(&self.pool, oprf_key_id))
-            .retry(oprf_store::retry::backoff(self.max_retries, self.retry_delay))
-            .sleep(tokio::time::sleep)
-            .when(oprf_store::retry::is_transient)
-            .notify(|err, duration| {
-                tracing::warn!(%err, "retrying get_oprf_key_material for {oprf_key_id} after {duration:?}");
+        let maybe_row = self
+            .with_retry(&format!("get_oprf_key_material for {oprf_key_id}"), || {
+                oprf_store::shares::fetch(&self.pool, oprf_key_id)
             })
             .await
             .context("while fetching previous share")?;
