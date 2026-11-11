@@ -436,20 +436,13 @@ impl PostgresDb {
         epoch: ShareEpoch,
         conn: impl PgExecutor<'_>,
     ) -> Result<Option<DLogShareShamir>> {
-        sqlx::query_scalar(
-            "
-                SELECT share
-                FROM shares
-                WHERE id = $1 AND epoch = $2 AND deleted = false
-            ",
-        )
-        .bind(oprf_key_id.to_le_bytes())
-        // Postgres lacks u32; cast to i64 to satisfy SQLx type mapping
-        .bind(i64::from(epoch))
-        .fetch_optional(conn)
-        .await?
-        .map(from_db_bytes)
-        .transpose()
+        let Some(row) = oprf_store::shares::fetch(conn, oprf_key_id).await? else {
+            return Ok(None);
+        };
+        if row.is_deleted() || row.epoch()? != epoch {
+            return Ok(None);
+        }
+        Ok(Some(row.decode()?.share))
     }
 
     async fn soft_delete_shares_inner(

@@ -82,6 +82,9 @@ nodes-common = { workspace = true, features = [
   "web3-asserter"
 ] }
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.10" }
+oprf-store = { package = "taceo-oprf-store", path = "../oprf-store", version = "0.1", features = [
+  "test-utils",
+] }
 reqwest = { workspace = true, features = ["json"] }
 ruint = { workspace = true, features = ["rand"] }
 rustls = { workspace = true }

@@ -6557,6 +6557,7 @@ dependencies = [
  "backon",
  "eyre",
  "rand 0.8.6",
+ "ruint",
  "sqlx",
  "taceo-ark-babyjubjub",
  "taceo-nodes-common",
