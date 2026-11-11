@@ -23,6 +23,17 @@ pub enum KmsError {
     /// The wrapped data key could not be unwrapped.
     #[error("unwrapping the data key failed")]
     Unwrap,
+    /// The KMS reported a different key than the configured one, e.g. because an alias or a bare
+    /// key id is configured instead of the key ARN.
+    #[error(
+        "KMS key {configured} is configured, but the KMS reported key {returned}; configure the full key ARN"
+    )]
+    KeyIdMismatch {
+        /// The configured key identifier.
+        configured: String,
+        /// The key ARN reported by the KMS.
+        returned: String,
+    },
 }
 
 /// Wraps and unwraps data encryption keys with a KMS key.
@@ -89,6 +100,9 @@ pub struct AwsKmsWrapper {
 impl AwsKmsWrapper {
     /// Creates a wrapper for the KMS key `key_arn`.
     ///
+    /// `key_arn` must be the full key ARN, not an alias or a bare key id: every KMS response is
+    /// checked against it and a mismatch fails with [`KmsError::KeyIdMismatch`].
+    ///
     /// Region and credentials come from the default AWS configuration of the environment.
     /// `endpoint` overrides the KMS endpoint URL if set.
     pub async fn new(key_arn: String, endpoint: Option<String>) -> Self {
@@ -101,6 +115,18 @@ impl AwsKmsWrapper {
             client: aws_sdk_kms::Client::new(&config),
             key_arn,
         }
+    }
+
+    /// Checks that the key reported by the KMS is exactly the configured key ARN.
+    fn check_key_id(&self, returned: Option<String>) -> Result<(), KmsError> {
+        let returned = returned.ok_or(KmsError::MalformedResponse("missing key id"))?;
+        if returned != self.key_arn {
+            return Err(KmsError::KeyIdMismatch {
+                configured: self.key_arn.clone(),
+                returned,
+            });
+        }
+        Ok(())
     }
 }
 
@@ -124,6 +150,7 @@ impl DekWrapper for AwsKmsWrapper {
             request = request.encryption_context(k, v);
         }
         let mut output = request.send().await.map_err(|e| KmsError::Call(e.into()))?;
+        self.check_key_id(output.key_id.take())?;
         let plaintext = output
             .plaintext
             .take()
@@ -151,6 +178,7 @@ impl DekWrapper for AwsKmsWrapper {
             request = request.encryption_context(k, v);
         }
         let mut output = request.send().await.map_err(|e| KmsError::Call(e.into()))?;
+        self.check_key_id(output.key_id.take())?;
         let plaintext = output
             .plaintext
             .take()
