@@ -3,9 +3,17 @@
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 use sqlx::PgExecutor;
+use uuid::Uuid;
 use zeroize::ZeroizeOnDrop;
 
-use crate::{StoreError, codec};
+use crate::{
+    StorageCrypto, StoreError,
+    aad::{Kind, RowId},
+    codec,
+};
+
+/// Byte length of an encoded [`OprfKeyId`].
+const OPRF_KEY_ID_LEN: usize = 20;
 
 /// A raw row of the `shares` table.
 ///
@@ -18,6 +26,8 @@ pub struct ShareRow {
     public_key: Vec<u8>,
     deleted: bool,
     storage_format: String,
+    #[zeroize(skip)]
+    data_key_id: Option<Uuid>,
 }
 
 impl std::fmt::Debug for ShareRow {
@@ -26,6 +36,7 @@ impl std::fmt::Debug for ShareRow {
             .field("deleted", &self.deleted)
             .field("epoch", &self.epoch)
             .field("storage_format", &self.storage_format)
+            .field("data_key_id", &self.data_key_id)
             .field("has_share", &self.share.is_some())
             .finish_non_exhaustive()
     }
@@ -54,6 +65,30 @@ impl std::fmt::Debug for StoredShare {
     }
 }
 
+/// Decodes the `id` column of a row into an [`OprfKeyId`].
+///
+/// # Errors
+/// Returns [`StoreError::Corrupt`] if `raw` is longer than an encoded key id.
+pub fn key_id(raw: &[u8]) -> Result<OprfKeyId, StoreError> {
+    if raw.len() > OPRF_KEY_ID_LEN {
+        return Err(StoreError::Corrupt(format!(
+            "oprf key id has {} bytes",
+            raw.len()
+        )));
+    }
+    Ok(OprfKeyId::from_le_slice(raw))
+}
+
+/// Decodes an epoch column of a row into a [`ShareEpoch`].
+///
+/// # Errors
+/// Returns [`StoreError::Corrupt`] if `raw` does not fit into a `u32`.
+pub fn epoch(raw: i64) -> Result<ShareEpoch, StoreError> {
+    u32::try_from(raw)
+        .map(ShareEpoch::new)
+        .map_err(|_| StoreError::Corrupt(format!("epoch {raw} out of range")))
+}
+
 /// Fetches the row of the OPRF key `oprf_key_id`, whether live or deleted.
 ///
 /// # Errors
@@ -70,7 +105,8 @@ pub async fn fetch(
                 epoch,
                 deleted,
                 public_key,
-                storage_format
+                storage_format,
+                data_key_id
             FROM shares
             WHERE id = $1
         ",
@@ -92,9 +128,48 @@ impl ShareRow {
     /// # Errors
     /// Returns [`StoreError::Corrupt`] if the stored epoch does not fit into a `u32`.
     pub fn epoch(&self) -> Result<ShareEpoch, StoreError> {
-        u32::try_from(self.epoch)
-            .map(ShareEpoch::new)
-            .map_err(|_| StoreError::Corrupt(format!("epoch {} out of range", self.epoch)))
+        epoch(self.epoch)
+    }
+
+    /// Returns the id of the data key the share is sealed under, if any.
+    #[must_use]
+    pub fn data_key_id(&self) -> Option<Uuid> {
+        self.data_key_id
+    }
+
+    /// Opens the share through `crypto` and decodes the row into a [`StoredShare`].
+    ///
+    /// The share is opened as [`Kind::Share`] bound to the row's key id, epoch and public key.
+    /// The storage format is checked by `crypto` before any share byte is deserialized.
+    ///
+    /// # Errors
+    /// - [`StoreError::Corrupt`] if the row is deleted, the share is NULL, or any stored bytes
+    ///   are invalid.
+    /// - [`StoreError::Envelope`] if `crypto` refuses the row, e.g. because its format is not
+    ///   allowed or authentication fails.
+    pub fn open(&self, crypto: &StorageCrypto) -> Result<StoredShare, StoreError> {
+        if self.deleted {
+            return Err(StoreError::Corrupt("row is deleted".to_owned()));
+        }
+        let share_bytes = self
+            .share
+            .as_deref()
+            .ok_or_else(|| StoreError::Corrupt("share column is NULL for live row".to_owned()))?;
+        let oprf_key_id = key_id(&self.id)?;
+        let epoch = self.epoch()?;
+        let public_key: OprfPublicKey = codec::from_bytes(&self.public_key)?;
+        let row = RowId {
+            kind: Kind::Share(public_key),
+            oprf_key_id,
+            epoch,
+        };
+        let plaintext = crypto.open(&self.storage_format, self.data_key_id, &row, share_bytes)?;
+        Ok(StoredShare {
+            oprf_key_id,
+            epoch,
+            public_key,
+            share: codec::from_bytes(&plaintext)?,
+        })
     }
 
     /// Decodes the row into a [`StoredShare`].

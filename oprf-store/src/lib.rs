@@ -88,6 +88,9 @@ pub enum EnvelopeError {
     /// The data key is not known.
     #[error("unknown data key {0}")]
     UnknownDataKey(Uuid),
+    /// A `direct` value carries a data key id.
+    #[error("direct row has a data key id")]
+    UnexpectedDataKeyId,
     /// The configured write format is not in the allowed set.
     #[error("write format {0} is not in the allowed formats")]
     WriteFormatNotAllowed(StorageFormat),

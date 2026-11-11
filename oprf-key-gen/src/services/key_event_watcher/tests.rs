@@ -77,7 +77,12 @@ async fn fixture() -> eyre::Result<HandlerFixture> {
         nodes_common::postgres::CreateSchema::Yes,
     )
     .await?;
-    let postgres_db = PostgresDb::init(&postgres_config).await?;
+    let postgres_db = PostgresDb::init(
+        &postgres_config,
+        crate::postgres::tests::direct_settings(),
+        None,
+    )
+    .await?;
     let secret_manager = Arc::new(postgres_db);
 
     let sm_service: crate::secret_manager::SecretManagerService = secret_manager.clone();
