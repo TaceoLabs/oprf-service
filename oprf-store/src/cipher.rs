@@ -53,7 +53,7 @@ impl Dek {
     ///
     /// Panics if the operating system RNG fails or the plaintext exceeds the AES-GCM size limit.
     #[must_use]
-    pub fn seal(&self, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+    pub(crate) fn seal(&self, aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
         let ct = self
             .cipher
@@ -77,7 +77,11 @@ impl Dek {
     ///
     /// Returns [`EnvelopeError::Decrypt`] for every failure (too short, wrong key, wrong AAD,
     /// modified bytes), so callers cannot tell them apart.
-    pub fn open(&self, aad: &[u8], stored: &[u8]) -> Result<Zeroizing<Vec<u8>>, EnvelopeError> {
+    pub(crate) fn open(
+        &self,
+        aad: &[u8],
+        stored: &[u8],
+    ) -> Result<Zeroizing<Vec<u8>>, EnvelopeError> {
         let (nonce, ct) = stored
             .split_first_chunk::<NONCE_LEN>()
             .ok_or(EnvelopeError::Decrypt)?;
