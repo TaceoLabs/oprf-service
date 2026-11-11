@@ -461,6 +461,79 @@ async fn down_migration_restores_previous_schema() -> eyre::Result<()> {
     Ok(())
 }
 
+/// Version of the storage format migration.
+const STORAGE_FORMAT: i64 = 20_261_111_000_000;
+
+/// Runs the down migration, expects it to be refused, and asserts the schema and data survived.
+async fn assert_down_migration_refused(
+    connection: &mut PgConnection,
+    shares: i64,
+    data_keys: i64,
+) -> eyre::Result<()> {
+    let err = MIGRATOR
+        .undo(&mut *connection, PRE_CHANGE)
+        .await
+        .expect_err("down migration must be refused");
+    assert!(
+        err.to_string().contains("refusing to undo"),
+        "down migration must fail with the guard message, got {err}"
+    );
+
+    assert!(
+        table_exists(connection, "data_keys").await?,
+        "data_keys is kept"
+    );
+    for table in ["shares", "in_progress_keygens"] {
+        for column in ["storage_format", "data_key_id"] {
+            assert!(
+                column_exists(connection, table, column).await?,
+                "{table}.{column} is kept"
+            );
+        }
+    }
+    let applied: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM _sqlx_migrations WHERE version = $1")
+            .bind(STORAGE_FORMAT)
+            .fetch_one(&mut *connection)
+            .await?;
+    assert_eq!(applied, 1, "storage format migration stays applied");
+    let share_count: i64 = sqlx::query_scalar("SELECT count(*) FROM shares")
+        .fetch_one(&mut *connection)
+        .await?;
+    let data_key_count: i64 = sqlx::query_scalar("SELECT count(*) FROM data_keys")
+        .fetch_one(&mut *connection)
+        .await?;
+    assert_eq!(share_count, shares, "shares are kept");
+    assert_eq!(data_key_count, data_keys, "data keys are kept");
+    Ok(())
+}
+
+#[tokio::test]
+async fn down_migration_refused_with_envelope_share() -> eyre::Result<()> {
+    let (_pg, mut connection) = migrated_connection().await?;
+    let data_key = insert_data_key(&mut connection).await?;
+    insert_old_share(&mut connection, &[1], &[1, 2], 1, &[3, 4]).await?;
+    sqlx::query("UPDATE shares SET storage_format = 'envelopeV1', data_key_id = $1::uuid")
+        .bind(&data_key)
+        .execute(&mut connection)
+        .await?;
+
+    assert_down_migration_refused(&mut connection, 1, 1).await?;
+    let format: String = sqlx::query_scalar("SELECT storage_format FROM shares")
+        .fetch_one(&mut connection)
+        .await?;
+    assert_eq!(format, "envelopeV1", "envelope share is kept");
+    Ok(())
+}
+
+#[tokio::test]
+async fn down_migration_refused_with_data_key_only() -> eyre::Result<()> {
+    let (_pg, mut connection) = migrated_connection().await?;
+    insert_data_key(&mut connection).await?;
+
+    assert_down_migration_refused(&mut connection, 0, 1).await
+}
+
 #[test]
 fn moved_migrations_keep_their_checksums() {
     let expected: [(i64, &str); 4] = [
