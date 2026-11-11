@@ -12,6 +12,7 @@ keywords = ["cryptography", "mpc", "oprf"]
 publish = true
 
 [dependencies]
+aes-gcm = { workspace = true, features = ["zeroize"] }
 alloy = { workspace = true }
 ark-serialize = { workspace = true }
 backon = { workspace = true, features = ["std"], optional = true }
@@ -26,6 +27,7 @@ sqlx = { workspace = true, features = [
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["time"], optional = true }
 tracing = { workspace = true, optional = true }
+uuid = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
