@@ -83,6 +83,9 @@ async fn fixture() -> eyre::Result<HandlerFixture> {
         None,
     )
     .await?;
+    postgres_db
+        .prepare_storage(crate::postgres::tests::aad_context())
+        .await?;
     let secret_manager = Arc::new(postgres_db);
 
     let sm_service: crate::secret_manager::SecretManagerService = secret_manager.clone();

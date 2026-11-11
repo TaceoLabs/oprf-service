@@ -13,12 +13,11 @@
 //! during [`PostgresDb::init`].
 
 use std::{
-    num::{NonZeroU16, NonZeroUsize},
+    num::NonZeroUsize,
     sync::{Arc, OnceLock},
     time::Duration,
 };
 
-use alloy::primitives::Address;
 use async_trait::async_trait;
 use backon::ConstantBackoff;
 use eyre::Context;
@@ -31,13 +30,10 @@ use oprf_store::{
     DekWrapper, EnvelopeError, StorageCrypto,
     aad::{AadContext, Kind, RowId},
     codec,
+    data_keys::{self, DataKeyError},
     format::StorageFormat,
 };
-use oprf_types::{
-    OprfKeyId, ShareEpoch,
-    crypto::{OprfPublicKey, PartyId},
-    service::NodeInformation,
-};
+use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey, service::NodeInformation};
 use sqlx::{Acquire, PgExecutor, PgPool, Row as _};
 use tracing::instrument;
 use uuid::Uuid;
@@ -45,7 +41,9 @@ use zeroize::Zeroizing;
 
 use crate::{
     metrics,
-    secret_manager::{self, KeyGenIntermediateValues, SecretManager, SecretManagerError},
+    secret_manager::{
+        self, KeyGenIntermediateValues, SecretManager, SecretManagerError, StorageReport,
+    },
     services::event_cursor_store::ChainCursorStorage,
 };
 
@@ -111,6 +109,8 @@ pub(crate) enum PostgresDbError {
     Store(oprf_store::StoreError),
     #[error(transparent)]
     Envelope(EnvelopeError),
+    #[error(transparent)]
+    DataKey(#[from] DataKeyError),
     #[error("internal error: {0:?}")]
     Internal(#[from] eyre::Report),
 }
@@ -137,7 +137,8 @@ impl PostgresDb {
     /// Initializes a [`PostgresDb`] by building the connection pool, ensuring the configured schema exists, and running all pending migrations.
     ///
     /// `storage` names the formats secret columns are read and written in; `wrapper` wraps the
-    /// data keys of `envelopeV1`.
+    /// data keys of `envelopeV1` and is required if `envelopeV1` is allowed or written. Every
+    /// operation on secret columns fails until [`SecretManager::prepare_storage`] was called.
     ///
     /// # Errors
     /// Returns an error if creating the database pool fails, or if running the migrations fails.
@@ -158,24 +159,11 @@ impl PostgresDb {
             .await
             .context("while running migrations")?;
 
-        // Temporary until startup prepares the storage policy (`prepare_storage`): direct-only
-        // settings need no data keys, so their policy is ready here. With `envelopeV1` the
-        // policy stays unset and secret operations fail with "storage not prepared".
-        let crypto = if storage.is_direct_only() {
-            let direct =
-                StorageCrypto::new(&[StorageFormat::Direct], placeholder_aad_context(), vec![])
-                    .with_write(StorageFormat::Direct, None)
-                    .context("while building the direct storage policy")?;
-            OnceLock::from(direct)
-        } else {
-            OnceLock::new()
-        };
-
         Ok(Self {
             pool,
             max_retries: db_config.max_retries,
             retry_delay: db_config.retry_delay,
-            crypto: Arc::new(crypto),
+            crypto: Arc::new(OnceLock::new()),
             wrapper,
             storage,
         })
@@ -191,6 +179,61 @@ impl PostgresDb {
             self.crypto.set(crypto).is_ok(),
             "storage policy is already set"
         );
+    }
+
+    /// Returns the storage policy, building and installing it first if it is not set yet.
+    ///
+    /// An already installed policy is kept as it is.
+    async fn ensure_crypto(&self, ctx: AadContext) -> Result<&StorageCrypto> {
+        if self.crypto.get().is_none() {
+            let crypto = self.build_crypto(ctx).await?;
+            if self.crypto.set(crypto).is_err() {
+                tracing::debug!("storage was prepared concurrently - keeping that policy");
+            }
+        }
+        self.crypto()
+    }
+
+    /// Builds the storage policy from the settings, creating the first data key if
+    /// `envelopeV1` is written and none exists.
+    async fn build_crypto(&self, ctx: AadContext) -> Result<StorageCrypto> {
+        let StorageSettings { allowed, write } = &self.storage;
+        if self.storage.is_direct_only() {
+            return Ok(StorageCrypto::new(allowed, ctx, vec![]).with_write(*write, None)?);
+        }
+        let wrapper = self.wrapper.as_deref().ok_or_else(|| {
+            eyre::eyre!("envelopeV1 is configured, but no data key wrapper (KMS key) is given")
+        })?;
+        let writes_envelope = *write == StorageFormat::EnvelopeV1;
+        if writes_envelope {
+            self.create_first_data_key(wrapper).await?;
+        }
+        // Every data key, including one a concurrently starting instance created.
+        let deks = data_keys::load_all(&self.pool, wrapper).await?;
+        let current = if writes_envelope {
+            data_keys::current_id(&self.pool).await?
+        } else {
+            None
+        };
+        tracing::info!(data_keys = deks.len(), ?current, "loaded data keys");
+        Ok(StorageCrypto::new(allowed, ctx, deks).with_write(*write, current)?)
+    }
+
+    /// Creates a data key unless one exists, serialized across instances by an advisory lock.
+    async fn create_first_data_key(&self, wrapper: &dyn DekWrapper) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SELECT pg_advisory_xact_lock($1)")
+            .bind(data_keys::CREATE_LOCK_KEY)
+            .execute(&mut *tx)
+            .await?;
+        if data_keys::current_id(&mut *tx).await?.is_none() {
+            // The KMS call runs while the advisory lock and a pooled connection are held. This
+            // only happens once at startup, so blocking concurrent starts for it is acceptable.
+            let dek = data_keys::create(&mut *tx, wrapper).await?;
+            tracing::info!(data_key_id = %dek.id(), "created the first data key");
+        }
+        tx.commit().await?;
+        Ok(())
     }
 
     /// Returns the storage policy, or an internal error if it is not prepared yet.
@@ -296,6 +339,7 @@ impl From<PostgresDbError> for SecretManagerError {
             }
             PostgresDbError::Store(error) => Self::Internal(eyre::Report::from(error)),
             PostgresDbError::Envelope(error) => Self::StorageFormat(error),
+            PostgresDbError::DataKey(error) => Self::Internal(eyre::Report::from(error)),
             PostgresDbError::Internal(report) => Self::Internal(report),
         }
     }
@@ -303,6 +347,45 @@ impl From<PostgresDbError> for SecretManagerError {
 
 #[async_trait]
 impl SecretManager for PostgresDb {
+    #[instrument(level = "info", skip_all)]
+    async fn prepare_storage(&self, ctx: AadContext) -> secret_manager::Result<StorageReport> {
+        let crypto = self.ensure_crypto(ctx).await?;
+        // Only rows key-gen may read are upgraded: if `direct` is not allowed, a `direct` row may
+        // have been planted, and sealing it would make it readable. Such rows stay as they are
+        // and are counted as disallowed below.
+        let runs_upgrade =
+            self.storage.write == StorageFormat::EnvelopeV1 && crypto.allows(StorageFormat::Direct);
+        let upgraded = if runs_upgrade {
+            upgrade::upgrade_all(&self.pool, crypto).await?
+        } else {
+            0
+        };
+        metrics::storage::inc_upgraded(upgraded);
+        let counts = upgrade::count_formats(&self.pool, crypto).await?;
+        metrics::storage::set_row_counts(counts.direct, counts.envelope_v1, counts.disallowed);
+        let report = StorageReport::new(upgraded, counts.direct, counts.disallowed);
+        tracing::info!(
+            upgraded,
+            remaining_direct = counts.direct,
+            envelope_v1 = counts.envelope_v1,
+            disallowed = counts.disallowed,
+            "storage prepared"
+        );
+        if runs_upgrade && counts.direct > 0 {
+            tracing::warn!(
+                remaining_direct = counts.direct,
+                "direct rows were not upgraded because they changed concurrently - a restart retries them"
+            );
+        }
+        if counts.disallowed > 0 {
+            tracing::warn!(
+                disallowed = counts.disallowed,
+                "rows are stored in a format that is not allowed - reading them fails"
+            );
+        }
+        Ok(report)
+    }
+
     #[instrument(level = "info", skip(self))]
     async fn store_node_information(
         &self,
@@ -745,16 +828,6 @@ impl PostgresDb {
     }
 }
 
-/// The AAD context of the direct-only storage policy, which never builds an AAD.
-fn placeholder_aad_context() -> AadContext {
-    AadContext {
-        chain_id: 0,
-        registry: Address::ZERO,
-        party_id: PartyId(0),
-        threshold: NonZeroU16::MIN,
-    }
-}
-
 #[inline]
 fn is_retryable_error(e: &PostgresDbError) -> bool {
     match e {
@@ -765,3 +838,4 @@ fn is_retryable_error(e: &PostgresDbError) -> bool {
 
 #[cfg(test)]
 pub(crate) mod tests;
+mod upgrade;

@@ -88,6 +88,24 @@ fn key_from_plaintext(plaintext: Vec<u8>) -> Result<Zeroizing<[u8; 32]>, KmsErro
     Ok(key)
 }
 
+/// Timeout of a whole KMS operation, including retries.
+#[cfg(feature = "aws-kms")]
+const OPERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Timeout of a single attempt of a KMS operation.
+#[cfg(feature = "aws-kms")]
+const OPERATION_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Wraps an AWS SDK error into [`KmsError::Call`], keeping its full error chain in the message.
+#[cfg(feature = "aws-kms")]
+fn call_error<E: std::error::Error>(error: E) -> KmsError {
+    KmsError::Call(
+        aws_sdk_kms::error::DisplayErrorContext(error)
+            .to_string()
+            .into(),
+    )
+}
+
 /// A [`DekWrapper`] backed by AWS KMS.
 #[cfg(feature = "aws-kms")]
 #[derive(Debug, Clone)]
@@ -105,8 +123,16 @@ impl AwsKmsWrapper {
     ///
     /// Region and credentials come from the default AWS configuration of the environment.
     /// `endpoint` overrides the KMS endpoint URL if set.
+    ///
+    /// Every KMS operation times out after 30 s and each attempt after 10 s, so an endpoint that
+    /// accepts the connection but never answers fails instead of hanging.
     pub async fn new(key_arn: String, endpoint: Option<String>) -> Self {
-        let mut loader = aws_config::defaults(aws_config::BehaviorVersion::latest());
+        let timeouts = aws_sdk_kms::config::timeout::TimeoutConfig::builder()
+            .operation_timeout(OPERATION_TIMEOUT)
+            .operation_attempt_timeout(OPERATION_ATTEMPT_TIMEOUT)
+            .build();
+        let mut loader =
+            aws_config::defaults(aws_config::BehaviorVersion::latest()).timeout_config(timeouts);
         if let Some(endpoint) = endpoint {
             loader = loader.endpoint_url(endpoint);
         }
@@ -149,7 +175,7 @@ impl DekWrapper for AwsKmsWrapper {
         for (k, v) in encryption_context(data_key_id) {
             request = request.encryption_context(k, v);
         }
-        let mut output = request.send().await.map_err(|e| KmsError::Call(e.into()))?;
+        let mut output = request.send().await.map_err(call_error)?;
         self.check_key_id(output.key_id.take())?;
         let plaintext = output
             .plaintext
@@ -177,7 +203,7 @@ impl DekWrapper for AwsKmsWrapper {
         for (k, v) in encryption_context(data_key_id) {
             request = request.encryption_context(k, v);
         }
-        let mut output = request.send().await.map_err(|e| KmsError::Call(e.into()))?;
+        let mut output = request.send().await.map_err(call_error)?;
         self.check_key_id(output.key_id.take())?;
         let plaintext = output
             .plaintext
