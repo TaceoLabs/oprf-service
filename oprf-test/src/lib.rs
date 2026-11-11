@@ -2,7 +2,6 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ark_serialize::CanonicalSerialize;
 use nodes_common::StartedServices;
 use nodes_common::postgres::PostgresConfig;
 use nodes_common::test_utils::SharedPostgres;
@@ -16,13 +15,6 @@ pub const TEST_TIMEOUT: Duration = if option_env!("CI").is_some() {
 } else {
     Duration::from_secs(20)
 };
-
-#[inline]
-pub(crate) fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: &T) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(t.uncompressed_size());
-    t.serialize_uncompressed(&mut bytes).expect("Can serialize");
-    bytes
-}
 
 /// Postgres config pointing at the process-shared testcontainer, with a fresh
 /// schema and max_connections = 1 (many parallel tests share one container).

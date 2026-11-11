@@ -31,6 +31,9 @@ moka.workspace = true
 nodes-common = { workspace = true, features = ["api", "serde"] }
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.10" }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
+oprf-store = { package = "taceo-oprf-store", path = "../oprf-store", version = "0.1", features = [
+  "postgres",
+], optional = true }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16", features = [
   "service"
 ] }
@@ -87,7 +90,7 @@ url = { workspace = true }
 
 [features]
 default = ["postgres"]
-postgres = ["dep:sqlx", "nodes-common/postgres"]
+postgres = ["dep:oprf-store", "dep:sqlx", "nodes-common/postgres"]
 
 [lints]
 workspace = true
