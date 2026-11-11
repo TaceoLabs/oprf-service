@@ -2,7 +2,6 @@ use std::num::NonZeroU16;
 use std::sync::Arc;
 
 use crate::secret_manager::{SecretManager, SecretManagerError, postgres::PostgresSecretManager};
-use ark_serialize::CanonicalSerialize;
 use nodes_common::postgres::{PostgresConfig, SanitizedSchema};
 use nodes_common::test_utils::SharedPostgres;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
@@ -15,22 +14,13 @@ use ruint::aliases::U160;
 use secrecy::SecretString;
 use sqlx::PgConnection;
 
-#[inline]
-fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(t: &T) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(t.uncompressed_size());
-    t.serialize_uncompressed(&mut bytes).expect("Can serialize");
-    bytes
-}
-
 async fn postgres_secret_manager()
 -> eyre::Result<(PostgresSecretManager, Arc<SharedPostgres>, SanitizedSchema)> {
     let pg = nodes_common::test_utils::shared_postgres_testcontainer().await?;
     let schema = nodes_common::test_utils::next_test_schema();
     let mut pg_connection =
         nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
-    sqlx::migrate!("../oprf-key-gen/migrations")
-        .run(&mut pg_connection)
-        .await?;
+    oprf_store::MIGRATOR.run(&mut pg_connection).await?;
     let mgr = PostgresSecretManager::init(&PostgresConfig::with_default_values(
         SecretString::from(pg.connection_string.clone()),
         schema.clone(),
@@ -46,18 +36,8 @@ async fn insert_row(
     public_key: OprfPublicKey,
     connection: &mut PgConnection,
 ) -> eyre::Result<()> {
-    sqlx::query(
-        "
-            INSERT INTO shares (id, share, epoch, public_key)
-            VALUES ($1, $2, $3, $4)
-        ",
-    )
-    .bind(oprf_key_id.to_le_bytes())
-    .bind(to_db_ark_serialize_uncompressed(&share))
-    .bind(i64::from(epoch.into_inner()))
-    .bind(to_db_ark_serialize_uncompressed(&public_key))
-    .execute(connection)
-    .await?;
+    oprf_store::test_utils::insert_share(connection, oprf_key_id, epoch, &share, &public_key)
+        .await?;
     Ok(())
 }
 

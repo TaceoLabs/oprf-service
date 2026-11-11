@@ -17,11 +17,9 @@ ignored = ["humantime-serde"]
 [dependencies]
 ark-babyjubjub = { workspace = true }
 ark-ec.workspace = true
-ark-serialize.workspace = true
 async-trait = { workspace = true }
 axum = { workspace = true, features = ["ws"] }
 axum-extra = { workspace = true, features = ["typed-header"] }
-backon = { workspace = true, features = ["std", "tokio-sleep"] }
 ciborium = { workspace = true }
 eyre.workspace = true
 http = { workspace = true }
@@ -31,6 +29,9 @@ moka.workspace = true
 nodes-common = { workspace = true, features = ["api", "serde"] }
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.10" }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
+oprf-store = { package = "taceo-oprf-store", path = "../oprf-store", version = "0.1", features = [
+  "postgres",
+], optional = true }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16", features = [
   "service"
 ] }
@@ -64,7 +65,6 @@ tower-http = { workspace = true, features = [
 tracing.workspace = true
 tungstenite = { workspace = true }
 uuid = { workspace = true, features = ["serde", "v4"] }
-zeroize.workspace = true
 
 [dev-dependencies]
 ark-ff = { workspace = true }
@@ -79,6 +79,9 @@ nodes-common = { workspace = true, features = [
   "web3-asserter"
 ] }
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.10" }
+oprf-store = { package = "taceo-oprf-store", path = "../oprf-store", version = "0.1", features = [
+  "test-utils",
+] }
 reqwest = { workspace = true, features = ["json"] }
 ruint = { workspace = true, features = ["rand"] }
 rustls = { workspace = true }
@@ -87,7 +90,7 @@ url = { workspace = true }
 
 [features]
 default = ["postgres"]
-postgres = ["dep:sqlx", "nodes-common/postgres"]
+postgres = ["dep:oprf-store", "dep:sqlx", "nodes-common/postgres"]
 
 [lints]
 workspace = true

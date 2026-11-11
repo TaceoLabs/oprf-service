@@ -4,20 +4,12 @@
 
 use std::{num::NonZeroUsize, time::Duration};
 
-use ark_serialize::CanonicalDeserialize;
 use async_trait::async_trait;
-use backon::{BackoffBuilder as _, ConstantBackoff, ConstantBuilder, Retryable as _};
 use eyre::Context as _;
 use nodes_common::postgres::{CreateSchema, PostgresConfig};
-use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_types::{
-    OprfKeyId, ShareEpoch,
-    crypto::{OprfKeyMaterial, OprfPublicKey},
-    service::NodeInformation,
-};
+use oprf_types::{OprfKeyId, crypto::OprfKeyMaterial, service::NodeInformation};
 use sqlx::PgPool;
 use tracing::instrument;
-use zeroize::ZeroizeOnDrop;
 
 use crate::secret_manager::{SecretManager, SecretManagerError};
 
@@ -27,15 +19,6 @@ pub struct PostgresSecretManager {
     pool: PgPool,
     max_retries: NonZeroUsize,
     retry_delay: Duration,
-}
-
-#[derive(Debug, sqlx::FromRow, ZeroizeOnDrop)]
-struct ShareRow {
-    id: Vec<u8>,
-    share: Option<Vec<u8>>,
-    epoch: i64,
-    public_key: Vec<u8>,
-    deleted: bool,
 }
 
 impl PostgresSecretManager {
@@ -63,26 +46,38 @@ impl PostgresSecretManager {
             retry_delay: config.retry_delay,
         })
     }
+
+    /// Runs `op`, retrying transient database errors with the configured backoff.
+    async fn with_retry<T, Fut, F>(&self, op_name: &str, op: F) -> Result<T, sqlx::Error>
+    where
+        F: Fn() -> Fut,
+        Fut: Future<Output = Result<T, sqlx::Error>>,
+    {
+        oprf_store::retry::with_retry(
+            op_name,
+            oprf_store::retry::backoff(self.max_retries, self.retry_delay),
+            oprf_store::retry::is_transient,
+            op,
+        )
+        .await
+    }
 }
 
 #[async_trait]
 impl SecretManager for PostgresSecretManager {
     #[instrument(level = "debug", skip_all)]
     async fn load_node_information(&self) -> eyre::Result<NodeInformation> {
-        let node_information: NodeInformation = (|| {
-            sqlx::query_as(
-                "SELECT eth_address,party_id,threshold FROM node_information WHERE id = TRUE",
-            )
-            .fetch_optional(&self.pool)
-        })
-        .retry(self.backoff_strategy())
-        .sleep(tokio::time::sleep)
-        .when(is_retryable_error)
-        .notify(|err, duration| tracing::warn!(%err, "retrying load address after {duration:?}"))
-        .await?
-        .ok_or_else(|| {
-            eyre::eyre!("Cannot get node information from DB, maybe key-gen needs to start")
-        })?;
+        let node_information: NodeInformation = self
+            .with_retry("load address", || {
+                sqlx::query_as(
+                    "SELECT eth_address,party_id,threshold FROM node_information WHERE id = TRUE",
+                )
+                .fetch_optional(&self.pool)
+            })
+            .await?
+            .ok_or_else(|| {
+                eyre::eyre!("Cannot get node information from DB, maybe key-gen needs to start")
+            })?;
         Ok(node_information)
     }
 
@@ -91,95 +86,30 @@ impl SecretManager for PostgresSecretManager {
         &self,
         oprf_key_id: OprfKeyId,
     ) -> Result<OprfKeyMaterial, SecretManagerError> {
-        let maybe_row: Option<ShareRow> = (|| {
-            sqlx::query_as(
-                "
-                    SELECT
-                        id,
-                        share,
-                        epoch,
-                        deleted,
-                        public_key
-                    FROM shares
-                    WHERE id = $1
-                ",
-            )
-            .bind(oprf_key_id.to_le_bytes())
-            .fetch_optional(&self.pool)
-        })
-        .retry(self.backoff_strategy())
-        .sleep(tokio::time::sleep)
-        .when(is_retryable_error)
-        .notify(|err, duration| {
-            tracing::warn!(%err, "retrying get_oprf_key_material for {oprf_key_id} after {duration:?}");
-        })
-        .await
-        .context("while fetching previous share")?;
-        if let Some(row) = maybe_row {
-            if row.deleted {
-                tracing::trace!("requested deleted key-material");
-                Err(SecretManagerError::DeletedOprfKeyId(oprf_key_id))
-            } else {
-                tracing::trace!("found key-material");
-                let (_, key_material) = db_row_into_key_material(&row)?;
-                Ok(key_material)
-            }
-        } else {
+        let maybe_row = self
+            .with_retry(&format!("get_oprf_key_material for {oprf_key_id}"), || {
+                oprf_store::shares::fetch(&self.pool, oprf_key_id)
+            })
+            .await
+            .context("while fetching previous share")?;
+        let Some(row) = maybe_row else {
             tracing::trace!("Cannot find share for requested key and epoch");
-            Err(SecretManagerError::UnknownOprfKeyId(oprf_key_id))
+            return Err(SecretManagerError::UnknownOprfKeyId(oprf_key_id));
+        };
+        if row.is_deleted() {
+            tracing::trace!("requested deleted key-material");
+            return Err(SecretManagerError::DeletedOprfKeyId(oprf_key_id));
         }
+        tracing::trace!("found key-material");
+        let stored = row
+            .decode()
+            .map_err(|err| SecretManagerError::Internal(eyre::Report::from(err)))?;
+        Ok(OprfKeyMaterial::new(
+            stored.share,
+            stored.public_key,
+            stored.epoch,
+        ))
     }
-}
-
-impl PostgresSecretManager {
-    #[inline]
-    fn backoff_strategy(&self) -> ConstantBackoff {
-        ConstantBuilder::new()
-            .with_delay(self.retry_delay)
-            .with_max_times(self.max_retries.get())
-            .build()
-    }
-}
-
-#[inline]
-fn is_retryable_error(e: &sqlx::Error) -> bool {
-    matches!(
-        e,
-        sqlx::Error::PoolTimedOut
-            | sqlx::Error::Io(_)
-            | sqlx::Error::Tls(_)
-            | sqlx::Error::Protocol(_)
-            | sqlx::Error::AnyDriverError(_)
-            | sqlx::Error::WorkerCrashed
-    )
-}
-
-#[inline]
-pub(crate) fn from_db_ark_deserialize_uncompressed<T: CanonicalDeserialize>(
-    b: impl AsRef<[u8]>,
-) -> T {
-    T::deserialize_uncompressed_unchecked(b.as_ref()).expect("DB is sane")
-}
-
-/// Converts a row from the DB to an [`OprfKeyId`] and an associated [`OprfKeyMaterial`].
-///
-/// This method assumes that the shares column is populated, otherwise it will return an error.
-fn db_row_into_key_material(
-    row: &ShareRow,
-) -> Result<(OprfKeyId, OprfKeyMaterial), SecretManagerError> {
-    let id = OprfKeyId::from_le_slice(&row.id);
-    let share = from_db_ark_deserialize_uncompressed::<DLogShareShamir>(
-        &row.share.as_ref().ok_or_else(|| {
-            SecretManagerError::Internal(eyre::eyre!("share column is NONE for non deleted row"))
-        })?,
-    );
-    let epoch = ShareEpoch::new(
-        row.epoch
-            .try_into()
-            .expect("DB epoch value out of valid u32 range"),
-    );
-    let oprf_public_key = from_db_ark_deserialize_uncompressed::<OprfPublicKey>(&row.public_key);
-    Ok((id, OprfKeyMaterial::new(share, oprf_public_key, epoch)))
 }
 
 #[cfg(test)]

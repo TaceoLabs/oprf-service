@@ -42,6 +42,10 @@ http = { workspace = true }
 itertools.workspace = true
 nodes-common = { workspace = true, features = ["postgres", "test-utils"] }
 oprf-key-gen = { package = "taceo-oprf-key-gen", path = "../oprf-key-gen/", version = "0.12" }
+oprf-store = { package = "taceo-oprf-store", path = "../oprf-store", version = "0.1", features = [
+  "postgres",
+  "test-utils",
+] }
 rand.workspace = true
 rand_chacha = { workspace = true, optional = true }
 serde.workspace = true

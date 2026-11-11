@@ -9,14 +9,13 @@
 //! - [`ChainCursorStorage`]: persists the `(block, log_index)` cursor used by the
 //!   `key_event_watcher` service to resume event-log backfill after a restart.
 //!
-//! The schema is managed by the embedded migrations in `./migrations`, applied automatically
+//! The schema is managed by the embedded migrations of [`oprf_store::MIGRATOR`], applied automatically
 //! during [`PostgresDb::init`].
 
 use std::{num::NonZeroUsize, time::Duration};
 
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use async_trait::async_trait;
-use backon::{BackoffBuilder, ConstantBackoff, ConstantBuilder, Retryable};
+use backon::ConstantBackoff;
 use eyre::Context;
 use nodes_common::{
     postgres::{CreateSchema, PostgresConfig},
@@ -51,8 +50,21 @@ pub(crate) enum PostgresDbError {
     RefusingToRollbackEpoch,
     #[error(transparent)]
     DbError(#[from] sqlx::Error),
+    #[error(transparent)]
+    Store(oprf_store::StoreError),
     #[error("internal error: {0:?}")]
     Internal(#[from] eyre::Report),
+}
+
+impl From<oprf_store::StoreError> for PostgresDbError {
+    fn from(value: oprf_store::StoreError) -> Self {
+        match value {
+            // Keep database errors on the `DbError` path so that transient errors are retried
+            // and constraint violations are mapped.
+            oprf_store::StoreError::Db(error) => Self::DbError(error),
+            other => Self::Store(other),
+        }
+    }
 }
 
 impl PostgresDb {
@@ -68,7 +80,7 @@ impl PostgresDb {
             .context("while creating pool")?;
         // We create the pool eagerly, so running migrations here should not hit pool-acquire retries.
         tracing::trace!("potentially running migrations..");
-        sqlx::migrate!("./migrations")
+        oprf_store::MIGRATOR
             .run(&pool)
             .await
             .context("while running migrations")?;
@@ -82,10 +94,7 @@ impl PostgresDb {
 
     #[inline]
     fn backoff_strategy(&self) -> ConstantBackoff {
-        ConstantBuilder::new()
-            .with_delay(self.retry_delay)
-            .with_max_times(self.max_retries.get())
-            .build()
+        oprf_store::retry::backoff(self.max_retries, self.retry_delay)
     }
 
     async fn with_retry<F, Fut, T>(&self, op_name: &str, f: F) -> Result<T>
@@ -93,13 +102,7 @@ impl PostgresDb {
         F: Fn() -> Fut,
         Fut: Future<Output = Result<T>>,
     {
-        f.retry(self.backoff_strategy())
-            .sleep(tokio::time::sleep)
-            .when(is_retryable_error)
-            .notify(|err, duration| {
-                tracing::warn!(%err, "Retrying {op_name} in db after {duration:?}");
-            })
-            .await
+        oprf_store::retry::with_retry(op_name, self.backoff_strategy(), is_retryable_error, f).await
     }
 }
 
@@ -182,6 +185,7 @@ impl From<PostgresDbError> for SecretManagerError {
                     Self::Internal(eyre::Report::from(error))
                 }
             }
+            PostgresDbError::Store(error) => Self::Internal(eyre::Report::from(error)),
             PostgresDbError::Internal(report) => Self::Internal(report),
         }
     }
@@ -280,10 +284,11 @@ impl SecretManager for PostgresDb {
             .bind(oprf_key_id.to_le_bytes())
             // Postgres lacks u32; cast to i64 to satisfy SQLx type mapping
             .bind(i64::from(pending_epoch))
-            .bind(to_db_ark_serialize_uncompressed(&intermediate).as_slice())
+            .bind(oprf_store::codec::to_bytes(&intermediate).as_slice())
             .fetch_one(&self.pool)
             .await
-            .map(from_db_ark_serialize_uncompressed)?
+            .map(oprf_store::codec::from_vec)?
+            .map_err(PostgresDbError::from)
         };
 
         Ok(self
@@ -313,8 +318,9 @@ impl SecretManager for PostgresDb {
             .bind(i64::from(pending_epoch))
             .fetch_optional(&self.pool)
             .await?
-            .map(from_db_ark_serialize_uncompressed)
+            .map(oprf_store::codec::from_vec)
             .transpose()
+            .map_err(PostgresDbError::from)
         };
 
         Ok(self
@@ -354,7 +360,7 @@ impl SecretManager for PostgresDb {
             .bind(oprf_key_id.to_le_bytes())
             // Postgres lacks u32; cast to i64 to satisfy SQLx type mapping
             .bind(i64::from(pending_epoch))
-            .bind(to_db_ark_serialize_uncompressed(&share).as_slice())
+            .bind(oprf_store::codec::to_bytes(&share).as_slice())
             .execute(&self.pool)
             .await?
             .rows_affected())
@@ -436,20 +442,13 @@ impl PostgresDb {
         epoch: ShareEpoch,
         conn: impl PgExecutor<'_>,
     ) -> Result<Option<DLogShareShamir>> {
-        sqlx::query_scalar(
-            "
-                SELECT share
-                FROM shares
-                WHERE id = $1 AND epoch = $2 AND deleted = false
-            ",
-        )
-        .bind(oprf_key_id.to_le_bytes())
-        // Postgres lacks u32; cast to i64 to satisfy SQLx type mapping
-        .bind(i64::from(epoch))
-        .fetch_optional(conn)
-        .await?
-        .map(from_db_ark_serialize_uncompressed)
-        .transpose()
+        let Some(row) = oprf_store::shares::fetch(conn, oprf_key_id).await? else {
+            return Ok(None);
+        };
+        if row.is_deleted() || row.epoch()? != epoch {
+            return Ok(None);
+        }
+        Ok(Some(row.decode()?.share))
     }
 
     async fn soft_delete_shares_inner(
@@ -490,8 +489,9 @@ impl PostgresDb {
         .fetch_optional(conn)
         .await?
         .flatten()
-        .map(from_db_ark_serialize_uncompressed)
+        .map(oprf_store::codec::from_vec)
         .transpose()
+        .map_err(PostgresDbError::from)
     }
 
     async fn store_confirmed_dlog_share_inner(
@@ -515,10 +515,10 @@ impl PostgresDb {
             ",
         )
         .bind(oprf_key_id.to_le_bytes())
-        .bind(to_db_ark_serialize_uncompressed(share).as_slice())
+        .bind(oprf_store::codec::to_bytes(share).as_slice())
         // Postgres lacks u32; cast to i64 to satisfy SQLx type mapping
         .bind(i64::from(pending_epoch))
-        .bind(to_db_ark_serialize_uncompressed(public_key).as_slice())
+        .bind(oprf_store::codec::to_bytes(public_key).as_slice())
         .execute(conn)
         .await?
         .rows_affected())
@@ -542,42 +542,9 @@ impl PostgresDb {
 }
 
 #[inline]
-pub(crate) fn to_db_ark_serialize_uncompressed<T: CanonicalSerialize>(
-    t: &T,
-) -> zeroize::Zeroizing<Vec<u8>> {
-    let mut bytes = Vec::with_capacity(t.uncompressed_size());
-    t.serialize_uncompressed(&mut bytes).expect("Can serialize");
-    zeroize::Zeroizing::from(bytes)
-}
-
-#[inline]
-pub(crate) fn from_db_ark_serialize_uncompressed<T: CanonicalDeserialize>(b: Vec<u8>) -> Result<T> {
-    T::deserialize_uncompressed(zeroize::Zeroizing::from(b).as_slice()).map_err(|e| {
-        PostgresDbError::from(eyre::eyre!("Cannot deserialize bytes: DB not sane: {e}"))
-    })
-}
-
-#[inline]
 fn is_retryable_error(e: &PostgresDbError) -> bool {
     match e {
-        PostgresDbError::DbError(err) => match err {
-            // structural / driver-level errors
-            sqlx::Error::PoolTimedOut
-            | sqlx::Error::Io(_)
-            | sqlx::Error::Tls(_)
-            | sqlx::Error::Protocol(_)
-            | sqlx::Error::AnyDriverError(_)
-            | sqlx::Error::WorkerCrashed
-            | sqlx::Error::BeginFailed => true,
-
-            // serialization_failure and deadlock detected for transactions
-            sqlx::Error::Database(db_err) => {
-                matches!(db_err.code().as_deref(), Some("40001" | "40P01"))
-            }
-
-            _ => false,
-        },
-
+        PostgresDbError::DbError(err) => oprf_store::retry::is_transient_or_conflict(err),
         _ => false,
     }
 }

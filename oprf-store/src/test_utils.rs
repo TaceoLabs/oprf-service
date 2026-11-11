@@ -1,0 +1,34 @@
+//! Helpers to seed the database in tests.
+
+use oprf_core::ddlog_equality::shamir::DLogShareShamir;
+use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
+use sqlx::PgExecutor;
+
+use crate::codec;
+
+/// Inserts a live share row for `oprf_key_id`.
+///
+/// # Errors
+/// Returns an error if the insert fails, e.g., because a row for the key already exists.
+pub async fn insert_share(
+    exec: impl PgExecutor<'_>,
+    oprf_key_id: OprfKeyId,
+    epoch: ShareEpoch,
+    share: &DLogShareShamir,
+    public_key: &OprfPublicKey,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "
+            INSERT INTO shares (id, share, epoch, public_key)
+            VALUES ($1, $2, $3, $4)
+        ",
+    )
+    .bind(oprf_key_id.to_le_bytes())
+    .bind(codec::to_bytes(share).as_slice())
+    // Postgres lacks u32; widen to i64
+    .bind(i64::from(epoch.into_inner()))
+    .bind(codec::to_bytes(public_key).as_slice())
+    .execute(exec)
+    .await?;
+    Ok(())
+}

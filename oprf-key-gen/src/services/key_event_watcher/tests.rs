@@ -28,7 +28,7 @@ use rand::{CryptoRng, Rng};
 use sqlx::PgPool;
 
 use crate::{
-    postgres::{PostgresDb, to_db_ark_serialize_uncompressed},
+    postgres::PostgresDb,
     secret_manager::{SecretManager, SecretManagerError},
     services::{
         key_event_watcher::{KeyRegistryEventError, handler::KeyRegistryEventHandler},
@@ -126,9 +126,9 @@ impl HandlerFixture {
         let public_key = OprfPublicKey::new(rng.r#gen());
         sqlx::query("INSERT INTO shares (id, share, epoch, public_key) VALUES ($1, $2, $3, $4)")
             .bind(key_id.to_le_bytes())
-            .bind(to_db_ark_serialize_uncompressed(&share).as_slice())
+            .bind(oprf_store::codec::to_bytes(&share).as_slice())
             .bind(i64::from(epoch))
-            .bind(to_db_ark_serialize_uncompressed(&public_key).as_slice())
+            .bind(oprf_store::codec::to_bytes(&public_key).as_slice())
             .execute(&self.pool)
             .await?;
         Ok(())

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::event_cursor_store::ChainCursorStorage;
-use crate::postgres::{PostgresDb, to_db_ark_serialize_uncompressed};
+use crate::postgres::{PostgresDb, PostgresDbError};
 use crate::secret_manager::{SecretManager as _, SecretManagerError};
 use crate::services::secret_gen::DLogSecretGenService;
 use alloy::{primitives::U160, signers::local::PrivateKeySigner, sol_types::SolValue as _};
@@ -227,7 +227,7 @@ async fn key_gen_round1_is_idempotent() -> eyre::Result<()> {
         .fetch_keygen_intermediates(oprf_key_id, epoch)
         .await?;
 
-    let serialized_intermediates = super::to_db_ark_serialize_uncompressed(&intermediates);
+    let serialized_intermediates = oprf_store::codec::to_bytes(&intermediates);
 
     let retried_contribution = dlog_secret_gen
         .key_gen_round1(
@@ -244,7 +244,7 @@ async fn key_gen_round1_is_idempotent() -> eyre::Result<()> {
 
     assert_eq!(
         serialized_intermediates,
-        to_db_ark_serialize_uncompressed(&stored_after_retry)
+        oprf_store::codec::to_bytes(&stored_after_retry)
     );
     assert_eq!(
         first_contribution.abi_encode(),
@@ -877,4 +877,30 @@ async fn test_insert_chain_cursor_refusing_rollback() -> eyre::Result<()> {
         "Should have refused insertions of older cursor"
     );
     Ok(())
+}
+
+#[test]
+fn store_error_mapping_keeps_db_errors_retryable() {
+    let err = PostgresDbError::from(oprf_store::StoreError::Db(sqlx::Error::PoolTimedOut));
+    assert!(
+        matches!(err, PostgresDbError::DbError(sqlx::Error::PoolTimedOut)),
+        "StoreError::Db must map to DbError, got {err:?}"
+    );
+    assert!(
+        super::is_retryable_error(&err),
+        "a transient database error wrapped in StoreError must be retried"
+    );
+
+    let err = PostgresDbError::from(oprf_store::StoreError::Corrupt("bad".to_owned()));
+    assert!(
+        matches!(
+            err,
+            PostgresDbError::Store(oprf_store::StoreError::Corrupt(_))
+        ),
+        "other StoreError variants must map to Store, got {err:?}"
+    );
+    assert!(
+        !super::is_retryable_error(&err),
+        "corrupt data is not retried"
+    );
 }
