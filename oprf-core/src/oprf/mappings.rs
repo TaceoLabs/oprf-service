@@ -1,3 +1,5 @@
+//! Hash-to-curve and encode-to-curve mappings from the base field onto the `BabyJubJub` curve, based on [RFC9380](https://www.rfc-editor.org/rfc/rfc9380.html).
+
 use crate::oprf::{Affine, BaseField};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{BigInt, BigInteger, Field, One, PrimeField, Zero};
@@ -48,6 +50,7 @@ fn ct_is_square<F: PrimeField>(x: F) -> Choice {
 /// A curve encoding function that maps a field element to a point on the curve, based on [RFC9380, Section 3](https://www.rfc-editor.org/rfc/rfc9380.html#name-encoding-byte-strings-to-el).
 ///
 /// As mentioned in the RFC, this encoding is non uniformly random in E, as this can only hit about half of the of the curve points.
+#[must_use]
 pub fn encode_to_curve(input: BaseField) -> Affine {
     // Map the input to a point on the curve using Elligator2
     let u = hash_to_field(input);
@@ -58,10 +61,7 @@ pub fn encode_to_curve(input: BaseField) -> Affine {
 /// A curve encoding function that maps a field element to a point on the curve, based on [RFC9380, Section 3](https://www.rfc-editor.org/rfc/rfc9380.html#name-encoding-byte-strings-to-el).
 ///
 /// In contrast to `encode_to_curve`, this function uses a two-step mapping to ensure that the output is uniformly random over the curve.
-#[allow(
-    dead_code,
-    reason = "currently not used but maybe relevant in the future"
-)]
+#[must_use]
 pub fn hash_to_curve(input: BaseField) -> Affine {
     // Map the input to a point on the curve using Elligator2
     let [u0, u1] = hash_to_field2(input);
