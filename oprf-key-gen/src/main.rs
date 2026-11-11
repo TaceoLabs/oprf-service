@@ -16,6 +16,7 @@ use std::{net::SocketAddr, process::ExitCode, sync::Arc, time::Duration};
 use config::Config;
 use eyre::Context;
 use nodes_common::{StartedServices, postgres::PostgresConfig};
+use oprf_store::{AwsKmsWrapper, DekWrapper};
 use serde::Deserialize;
 use taceo_oprf_key_gen::{
     config::OprfKeyGenServiceConfig,
@@ -85,6 +86,7 @@ async fn run(config: OprfKeyGenConfig) -> eyre::Result<()> {
     taceo_oprf_key_gen::metrics::describe_metrics();
     tracing::info!("{}", nodes_common::version_info!());
 
+    // `start` validates again; validating here fails before the database is opened.
     config
         .key_gen_config
         .validate_storage()
@@ -96,8 +98,18 @@ async fn run(config: OprfKeyGenConfig) -> eyre::Result<()> {
         allowed: config.key_gen_config.allowed_storage_formats.clone(),
         write: config.key_gen_config.storage_write_format,
     };
-    // No data key wrapper yet: nothing can use `envelopeV1` until storage is prepared at startup.
-    let postgres = PostgresDb::init(&config.postgres_config, storage, None)
+    // Only a deployment with a KMS key touches AWS; direct-only needs no wrapper.
+    let wrapper: Option<Arc<dyn DekWrapper>> = match &config.key_gen_config.kms_key_arn {
+        Some(key_arn) => {
+            tracing::info!("using KMS key {key_arn} to wrap data keys");
+            let wrapper =
+                AwsKmsWrapper::new(key_arn.clone(), config.key_gen_config.kms_endpoint.clone())
+                    .await;
+            Some(Arc::new(wrapper))
+        }
+        None => None,
+    };
+    let postgres = PostgresDb::init(&config.postgres_config, storage, wrapper)
         .await
         .context("while starting postgres secret-manager")?;
 

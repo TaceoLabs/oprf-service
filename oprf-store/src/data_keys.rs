@@ -9,6 +9,13 @@ use uuid::Uuid;
 
 use crate::{Dek, DekWrapper, KmsError};
 
+/// The `pg_advisory_xact_lock` key that serializes data key creation.
+///
+/// Key-gen takes this transaction-level advisory lock before it checks for a current data key
+/// and creates one, so instances starting together create exactly one. The value is arbitrary
+/// but fixed; it only has to differ from every other advisory lock key used on the database.
+pub const CREATE_LOCK_KEY: i64 = 0x4f50_5246_4445_4b31; // "OPRFDEK1"
+
 /// The only supported value of the `wrapping` column.
 const WRAPPING_AWS_KMS: &str = "awsKms";
 
