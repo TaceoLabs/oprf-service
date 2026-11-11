@@ -15,7 +15,7 @@
 use std::{num::NonZeroUsize, time::Duration};
 
 use async_trait::async_trait;
-use backon::{ConstantBackoff, Retryable};
+use backon::ConstantBackoff;
 use eyre::Context;
 use nodes_common::{
     postgres::{CreateSchema, PostgresConfig},
@@ -91,13 +91,7 @@ impl PostgresDb {
         F: Fn() -> Fut,
         Fut: Future<Output = Result<T>>,
     {
-        f.retry(self.backoff_strategy())
-            .sleep(tokio::time::sleep)
-            .when(is_retryable_error)
-            .notify(|err, duration| {
-                tracing::warn!(%err, "Retrying {op_name} in db after {duration:?}");
-            })
-            .await
+        oprf_store::retry::with_retry(op_name, self.backoff_strategy(), is_retryable_error, f).await
     }
 }
 

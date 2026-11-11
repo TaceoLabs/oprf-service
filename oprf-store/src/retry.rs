@@ -2,7 +2,7 @@
 
 use std::{num::NonZeroUsize, time::Duration};
 
-use backon::{BackoffBuilder as _, ConstantBackoff, ConstantBuilder};
+use backon::{BackoffBuilder as _, ConstantBackoff, ConstantBuilder, Retryable as _};
 
 /// Returns `true` if `e` is a structural or driver-level error that is worth retrying.
 #[inline]
@@ -42,4 +42,33 @@ pub fn backoff(max_retries: NonZeroUsize, delay: Duration) -> ConstantBackoff {
         .with_delay(delay)
         .with_max_times(max_retries.get())
         .build()
+}
+
+/// Runs `op` and retries it with `backoff` while `retryable` returns `true` for its error.
+///
+/// Sleeps with [`tokio::time::sleep`] between attempts and logs a warning with the error,
+/// `op_name` and the delay before each retry. Once the backoff is exhausted, or on an error
+/// `retryable` rejects, the last error is returned.
+///
+/// # Errors
+/// Returns the error of the last attempt if no attempt succeeded.
+pub async fn with_retry<T, E, Fut, F, P>(
+    op_name: &str,
+    backoff: ConstantBackoff,
+    retryable: P,
+    op: F,
+) -> Result<T, E>
+where
+    F: Fn() -> Fut,
+    Fut: Future<Output = Result<T, E>>,
+    P: Fn(&E) -> bool,
+    E: std::fmt::Display,
+{
+    op.retry(backoff)
+        .sleep(tokio::time::sleep)
+        .when(retryable)
+        .notify(|err, duration| {
+            tracing::warn!(%err, "Retrying {op_name} in db after {duration:?}");
+        })
+        .await
 }

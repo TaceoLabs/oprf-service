@@ -111,6 +111,60 @@ fn codec_from_vec() {
 mod postgres {
     use crate::{MIGRATOR, retry};
 
+    mod with_retry {
+        use std::{
+            num::NonZeroUsize,
+            sync::atomic::{AtomicUsize, Ordering},
+            time::Duration,
+        };
+
+        use crate::retry;
+
+        fn backoff(max_retries: usize) -> backon::ConstantBackoff {
+            retry::backoff(
+                NonZeroUsize::new(max_retries).expect("nonzero"),
+                Duration::ZERO,
+            )
+        }
+
+        #[tokio::test]
+        async fn retries_up_to_max_and_returns_last_error() {
+            let calls = AtomicUsize::new(0);
+            let res: Result<(), String> = retry::with_retry(
+                "test-op",
+                backoff(3),
+                |_| true,
+                || async {
+                    let n = calls.fetch_add(1, Ordering::SeqCst) + 1;
+                    Err(format!("attempt {n}"))
+                },
+            )
+            .await;
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                4,
+                "one attempt plus three retries"
+            );
+            assert_eq!(res, Err("attempt 4".to_owned()), "last error is returned");
+        }
+
+        #[tokio::test]
+        async fn does_not_retry_when_predicate_is_false() {
+            let calls = AtomicUsize::new(0);
+            let res: Result<(), sqlx::Error> =
+                retry::with_retry("test-op", backoff(3), retry::is_transient, || async {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Err(sqlx::Error::RowNotFound)
+                })
+                .await;
+            assert_eq!(calls.load(Ordering::SeqCst), 1, "no retry");
+            assert!(
+                matches!(res, Err(sqlx::Error::RowNotFound)),
+                "error is returned"
+            );
+        }
+    }
+
     #[test]
     fn retry_classification() {
         assert!(retry::is_transient(&sqlx::Error::PoolTimedOut));

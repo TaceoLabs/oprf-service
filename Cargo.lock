@@ -6512,7 +6512,6 @@ dependencies = [
  "axum",
  "axum-extra",
  "axum-test",
- "backon",
  "ciborium",
  "config",
  "eyre",
@@ -6565,6 +6564,7 @@ dependencies = [
  "taceo-oprf-types",
  "thiserror 2.0.21",
  "tokio",
+ "tracing",
  "zeroize",
 ]
 
