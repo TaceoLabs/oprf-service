@@ -36,6 +36,16 @@ pub enum KmsError {
     },
 }
 
+/// Whether `arn` has the shape of a full KMS key ARN (`arn:...:key/...`), as opposed to an
+/// alias, an alias ARN or a bare key id.
+///
+/// [`DekWrapper`] implementations compare the key reported by the KMS with the configured
+/// one, so only the full key ARN works; configurations are checked with this up front.
+#[must_use]
+pub fn is_key_arn(arn: &str) -> bool {
+    arn.starts_with("arn:") && arn.contains(":key/")
+}
+
 /// Wraps and unwraps data encryption keys with a KMS key.
 #[async_trait]
 pub trait DekWrapper: Send + Sync {
