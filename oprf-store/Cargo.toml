@@ -12,9 +12,12 @@ keywords = ["cryptography", "mpc", "oprf"]
 publish = true
 
 [dependencies]
+async-trait = { workspace = true }
 aes-gcm = { workspace = true, features = ["zeroize"] }
 alloy = { workspace = true }
 ark-serialize = { workspace = true }
+aws-config = { workspace = true, optional = true }
+aws-sdk-kms = { workspace = true, optional = true }
 backon = { workspace = true, features = ["std"], optional = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6", optional = true }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16" }
@@ -44,6 +47,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 [features]
 default = []
 postgres = ["dep:backon", "dep:oprf-core", "dep:sqlx", "dep:tokio", "dep:tracing"]
+aws-kms = ["dep:aws-config", "dep:aws-sdk-kms"]
 test-utils = ["postgres"]
 
 [lints]

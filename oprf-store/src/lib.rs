@@ -5,6 +5,7 @@
 //!
 //! - [`mod@format`] and [`aad`]: the per-row storage format and the AAD binding ciphertexts to rows.
 //! - [`codec`]: the canonical byte encoding of key material in the database.
+//! - [`kms`]: wrapping of data encryption keys with a KMS key.
 //! - `retry` (feature `postgres`): classification of transient database errors and the
 //!   shared backoff strategy.
 //! - `shares` (feature `postgres`): reading rows of the `shares` table.
@@ -16,6 +17,7 @@ pub mod aad;
 mod cipher;
 pub mod codec;
 pub mod format;
+pub mod kms;
 #[cfg(feature = "postgres")]
 pub mod retry;
 #[cfg(feature = "postgres")]
@@ -24,6 +26,11 @@ pub mod shares;
 pub mod test_utils;
 
 pub use cipher::Dek;
+#[cfg(feature = "aws-kms")]
+pub use kms::AwsKmsWrapper;
+#[cfg(feature = "test-utils")]
+pub use kms::InMemoryWrapper;
+pub use kms::{DekWrapper, KmsError};
 
 #[cfg(test)]
 mod tests;

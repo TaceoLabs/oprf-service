@@ -32,8 +32,8 @@ ark-groth16 = "0.6"
 ark-serde-compat = { package = "taceo-ark-serde-compat", version = "0.6.2", default-features = false }
 ark-serialize = "0.6"
 async-trait = "0.1"
-aws-config = "1"
-aws-sdk-kms = "1"
+aws-config = { version = "1", default-features = false, features = ["behavior-version-latest", "default-https-client", "rt-tokio"] }
+aws-sdk-kms = { version = "1", default-features = false, features = ["behavior-version-latest", "default-https-client", "rt-tokio"] }
 axum = "0.8"
 axum-extra = "0.12"
 axum-test = "20"
