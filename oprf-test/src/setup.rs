@@ -38,18 +38,7 @@ pub(crate) async fn insert_key_material(
     share: DLogShareShamir,
     public_key: OprfPublicKey,
 ) -> eyre::Result<()> {
-    sqlx::query(
-        "
-        INSERT INTO shares (id, share, epoch, public_key)
-        VALUES ($1, $2, $3, $4)
-    ",
-    )
-    .bind(key_id.to_le_bytes())
-    .bind(oprf_store::codec::to_bytes(&share).as_slice())
-    .bind(i64::from(epoch))
-    .bind(oprf_store::codec::to_bytes(&public_key).as_slice())
-    .execute(pool)
-    .await?;
+    oprf_store::test_utils::insert_share(pool, key_id, epoch, &share, &public_key).await?;
     Ok(())
 }
 

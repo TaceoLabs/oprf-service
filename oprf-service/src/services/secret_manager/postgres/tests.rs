@@ -36,18 +36,8 @@ async fn insert_row(
     public_key: OprfPublicKey,
     connection: &mut PgConnection,
 ) -> eyre::Result<()> {
-    sqlx::query(
-        "
-            INSERT INTO shares (id, share, epoch, public_key)
-            VALUES ($1, $2, $3, $4)
-        ",
-    )
-    .bind(oprf_key_id.to_le_bytes())
-    .bind(oprf_store::codec::to_bytes(&share).as_slice())
-    .bind(i64::from(epoch.into_inner()))
-    .bind(oprf_store::codec::to_bytes(&public_key).as_slice())
-    .execute(connection)
-    .await?;
+    oprf_store::test_utils::insert_share(connection, oprf_key_id, epoch, &share, &public_key)
+        .await?;
     Ok(())
 }
 

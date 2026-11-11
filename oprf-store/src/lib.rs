@@ -6,12 +6,18 @@
 //! - [`codec`]: the canonical byte encoding of key material in the database.
 //! - `retry` (feature `postgres`): classification of transient database errors and the
 //!   shared backoff strategy.
+//! - `shares` (feature `postgres`): reading rows of the `shares` table.
+//! - `test_utils` (feature `test-utils`): helpers to seed the database in tests.
 //! - `MIGRATOR` (feature `postgres`): the embedded database migrations.
 #![deny(missing_docs)]
 
 pub mod codec;
 #[cfg(feature = "postgres")]
 pub mod retry;
+#[cfg(feature = "postgres")]
+pub mod shares;
+#[cfg(feature = "test-utils")]
+pub mod test_utils;
 
 #[cfg(test)]
 mod tests;
