@@ -879,6 +879,38 @@ async fn test_insert_chain_cursor_refusing_rollback() -> eyre::Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+async fn check_violation_on_other_constraint_is_not_store_on_deleted_share() -> eyre::Result<()> {
+    let (_secret_manager, pg, schema) = postgres_secret_manager().await?;
+    let mut conn =
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
+
+    // violates `shares_storage_format_check`, not `deleted_share_null`
+    let sqlx_err = sqlx::query(
+        "INSERT INTO shares (id, share, epoch, public_key, storage_format)
+         VALUES ($1, $2, 1, $3, 'bogus')",
+    )
+    .bind(&[1_u8; 20][..])
+    .bind(&[2_u8; 3][..])
+    .bind(&[3_u8; 3][..])
+    .execute(&mut conn)
+    .await
+    .expect_err("unknown storage format must be rejected");
+    assert!(
+        sqlx_err
+            .as_database_error()
+            .is_some_and(sqlx::error::DatabaseError::is_check_violation),
+        "expected a check violation, got {sqlx_err:?}"
+    );
+
+    let err = SecretManagerError::from(PostgresDbError::DbError(sqlx_err));
+    assert!(
+        matches!(err, SecretManagerError::Internal(_)),
+        "unrelated check violation must map to Internal, got {err:?}"
+    );
+    Ok(())
+}
+
 #[test]
 fn store_error_mapping_keeps_db_errors_retryable() {
     let err = PostgresDbError::from(oprf_store::StoreError::Db(sqlx::Error::PoolTimedOut));
