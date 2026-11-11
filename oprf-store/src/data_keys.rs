@@ -4,7 +4,7 @@
 //! with [`create`]; key-gen and the node load and unwrap DEKs with [`load_all`] and [`load_one`].
 //! None of these functions retry; callers decide.
 
-use sqlx::PgPool;
+use sqlx::PgExecutor;
 use uuid::Uuid;
 
 use crate::{Dek, DekWrapper, KmsError};
@@ -71,10 +71,13 @@ impl DataKeyRow {
 ///
 /// Returns an error if the query fails, a row has an unknown wrapping or was wrapped with
 /// another KMS key than `wrapper`'s, or unwrapping a key fails. No row is skipped.
-pub async fn load_all(pool: &PgPool, wrapper: &dyn DekWrapper) -> Result<Vec<Dek>, DataKeyError> {
+pub async fn load_all(
+    exec: impl PgExecutor<'_>,
+    wrapper: &dyn DekWrapper,
+) -> Result<Vec<Dek>, DataKeyError> {
     let rows: Vec<DataKeyRow> =
         sqlx::query_as("SELECT id, wrapped_key, wrapping, kms_key_arn FROM data_keys")
-            .fetch_all(pool)
+            .fetch_all(exec)
             .await?;
     let mut deks = Vec::with_capacity(rows.len());
     for row in rows {
@@ -89,7 +92,7 @@ pub async fn load_all(pool: &PgPool, wrapper: &dyn DekWrapper) -> Result<Vec<Dek
 ///
 /// Same as [`load_all`].
 pub async fn load_one(
-    pool: &PgPool,
+    exec: impl PgExecutor<'_>,
     wrapper: &dyn DekWrapper,
     id: Uuid,
 ) -> Result<Option<Dek>, DataKeyError> {
@@ -97,7 +100,7 @@ pub async fn load_one(
         "SELECT id, wrapped_key, wrapping, kms_key_arn FROM data_keys WHERE id = $1",
     )
     .bind(id)
-    .fetch_optional(pool)
+    .fetch_optional(exec)
     .await?;
     match row {
         Some(row) => Ok(Some(row.unwrap(wrapper).await?)),
@@ -110,10 +113,10 @@ pub async fn load_one(
 /// # Errors
 ///
 /// Returns an error if the query fails.
-pub async fn current_id(pool: &PgPool) -> Result<Option<Uuid>, DataKeyError> {
+pub async fn current_id(exec: impl PgExecutor<'_>) -> Result<Option<Uuid>, DataKeyError> {
     let id =
         sqlx::query_scalar("SELECT id FROM data_keys ORDER BY created_at DESC, id DESC LIMIT 1")
-            .fetch_optional(pool)
+            .fetch_optional(exec)
             .await?;
     Ok(id)
 }
@@ -125,7 +128,10 @@ pub async fn current_id(pool: &PgPool) -> Result<Option<Uuid>, DataKeyError> {
 /// # Errors
 ///
 /// Returns an error if the KMS call or the insert fails.
-pub async fn create(pool: &PgPool, wrapper: &dyn DekWrapper) -> Result<Dek, DataKeyError> {
+pub async fn create(
+    exec: impl PgExecutor<'_>,
+    wrapper: &dyn DekWrapper,
+) -> Result<Dek, DataKeyError> {
     let id = Uuid::new_v4();
     let (key, wrapped_key) = wrapper.generate(id).await?;
     sqlx::query(
@@ -135,7 +141,7 @@ pub async fn create(pool: &PgPool, wrapper: &dyn DekWrapper) -> Result<Dek, Data
     .bind(&wrapped_key)
     .bind(WRAPPING_AWS_KMS)
     .bind(wrapper.key_arn())
-    .execute(pool)
+    .execute(exec)
     .await?;
     Ok(Dek::new(id, key))
 }
