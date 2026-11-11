@@ -8,6 +8,7 @@
 //! - [`kms`]: wrapping of data encryption keys with a KMS key.
 //! - `retry` (feature `postgres`): classification of transient database errors and the
 //!   shared backoff strategy.
+//! - `data_keys` (feature `postgres`): persistence of wrapped data encryption keys.
 //! - `shares` (feature `postgres`): reading rows of the `shares` table.
 //! - `test_utils` (feature `test-utils`): helpers to seed the database in tests.
 //! - `MIGRATOR` (feature `postgres`): the embedded database migrations.
@@ -17,6 +18,8 @@ pub mod aad;
 mod cipher;
 pub mod codec;
 mod crypto;
+#[cfg(feature = "postgres")]
+pub mod data_keys;
 pub mod format;
 pub mod kms;
 #[cfg(feature = "postgres")]
