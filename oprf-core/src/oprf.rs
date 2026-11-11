@@ -19,7 +19,7 @@ pub(crate) type Projective = ark_babyjubjub::EdwardsProjective;
 pub(crate) type ScalarField = <Curve as PrimeGroup>::ScalarField;
 
 pub mod client;
-mod mappings;
+pub mod mappings;
 #[cfg(feature = "server")]
 pub mod server;
 

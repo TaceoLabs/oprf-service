@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.16.3](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.16.2...taceo-oprf-types-v0.16.3)
+
+### 🐛 Bug Fixes
+
+
+- *(types)* Fully qualify SecretGenCiphertext in sol! library struct - ([16646e4](https://github.com/TaceoLabs/oprf-service/commit/16646e4e5d11e60110141c97965a049ebdec38e5))
+
+
 ## [0.16.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.16.1...taceo-oprf-types-v0.16.2)
 
 ### ⚙️ Miscellaneous Tasks
