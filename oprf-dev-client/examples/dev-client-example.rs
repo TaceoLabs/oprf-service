@@ -62,10 +62,9 @@ impl DevClient for ExampleDevClient {
     ) -> eyre::Result<Self::Setup> {
         let (oprf_key_id, oprf_public_key) = if let Some(oprf_key_id) = self.oprf_key_id {
             let oprf_key_id = OprfKeyId::new(oprf_key_id);
-            let share_epoch = ShareEpoch::from(config.share_epoch);
             let oprf_public_key = health_checks::oprf_public_key_from_services(
                 oprf_key_id,
-                share_epoch,
+                None,
                 &config.nodes,
                 config.max_wait_time,
             )
