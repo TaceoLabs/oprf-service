@@ -37,4 +37,7 @@ pub enum StoreError {
     /// Data read from the database is corrupt and could not be decoded.
     #[error("corrupt data in database: {0}")]
     Corrupt(String),
+    /// The row is stored in a storage format this code path cannot read.
+    #[error("unsupported storage format: {0}")]
+    UnsupportedStorageFormat(String),
 }

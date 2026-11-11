@@ -17,6 +17,7 @@ pub struct ShareRow {
     epoch: i64,
     public_key: Vec<u8>,
     deleted: bool,
+    storage_format: String,
 }
 
 impl std::fmt::Debug for ShareRow {
@@ -24,6 +25,7 @@ impl std::fmt::Debug for ShareRow {
         f.debug_struct("ShareRow")
             .field("deleted", &self.deleted)
             .field("epoch", &self.epoch)
+            .field("storage_format", &self.storage_format)
             .field("has_share", &self.share.is_some())
             .finish_non_exhaustive()
     }
@@ -67,7 +69,8 @@ pub async fn fetch(
                 share,
                 epoch,
                 deleted,
-                public_key
+                public_key,
+                storage_format
             FROM shares
             WHERE id = $1
         ",
@@ -96,12 +99,21 @@ impl ShareRow {
 
     /// Decodes the row into a [`StoredShare`].
     ///
+    /// Only rows in the `direct` storage format are decoded; the format is checked before any
+    /// stored byte is deserialized.
+    ///
     /// # Errors
-    /// Returns [`StoreError::Corrupt`] if the row is deleted, the share is NULL, or any
-    /// stored bytes are invalid.
+    /// - [`StoreError::Corrupt`] if the row is deleted, the share is NULL, or any stored bytes
+    ///   are invalid.
+    /// - [`StoreError::UnsupportedStorageFormat`] if the row is not stored as `direct`.
     pub fn decode(&self) -> Result<StoredShare, StoreError> {
         if self.deleted {
             return Err(StoreError::Corrupt("row is deleted".to_owned()));
+        }
+        if self.storage_format != "direct" {
+            return Err(StoreError::UnsupportedStorageFormat(
+                self.storage_format.clone(),
+            ));
         }
         let share_bytes = self
             .share

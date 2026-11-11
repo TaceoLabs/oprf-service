@@ -195,3 +195,41 @@ async fn test_get_deleted_secret() -> eyre::Result<()> {
     );
     Ok(())
 }
+
+#[tokio::test]
+async fn non_direct_row_is_internal_error() -> eyre::Result<()> {
+    let (secret_manager, pg, schema) = postgres_secret_manager().await?;
+    let oprf_key_id = OprfKeyId::new(U160::from(42));
+    let public_key = OprfPublicKey::new(rand::random());
+    let epoch = ShareEpoch::new(42);
+    let share = DLogShareShamir::from(rand::random::<ark_babyjubjub::Fr>());
+
+    let mut conn =
+        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
+    insert_row(oprf_key_id, share, epoch, public_key, &mut conn).await?;
+    let data_key_id: String = sqlx::query_scalar(
+        "INSERT INTO data_keys (id, wrapped_key, wrapping, kms_key_arn) \
+         VALUES (md5(random()::text)::uuid, $1, 'awsKms', 'arn:test:key') RETURNING id::text",
+    )
+    .bind(&[9_u8, 9, 9][..])
+    .fetch_one(&mut conn)
+    .await?;
+    let updated = sqlx::query(
+        "UPDATE shares SET storage_format = 'envelopeV1', data_key_id = $2::uuid WHERE id = $1",
+    )
+    .bind(oprf_key_id.to_le_bytes())
+    .bind(&data_key_id)
+    .execute(&mut conn)
+    .await?;
+    assert_eq!(updated.rows_affected(), 1, "share row is now envelopeV1");
+
+    let err = secret_manager
+        .get_oprf_key_material(oprf_key_id)
+        .await
+        .expect_err("an envelopeV1 row must not be readable yet");
+    assert!(
+        matches!(err, SecretManagerError::Internal(_)),
+        "should be Err(Internal(_)), not unknown or deleted, but is {err}"
+    );
+    Ok(())
+}
