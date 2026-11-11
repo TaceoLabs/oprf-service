@@ -23,7 +23,10 @@ use taceo_oprf::core::{
 use taceo_oprf::service::{
     OprfServiceBuilder,
     config::OprfNodeServiceConfig,
-    secret_manager::{SecretManager as _, postgres::PostgresSecretManager},
+    secret_manager::{
+        SecretManager as _,
+        postgres::{NodeStorageConfig, PostgresSecretManager},
+    },
 };
 use taceo_oprf::types::{
     OprfKeyId, ShareEpoch,
@@ -145,7 +148,10 @@ impl TestNode {
         assert!(party_id < 5, "can only spawn 5 nodes");
 
         let (postgres_config, pg) = crate::test_postgres_config().await?;
-        let secret_manager = Arc::new(PostgresSecretManager::init(&postgres_config).await?);
+        let secret_manager = Arc::new(
+            PostgresSecretManager::init(&postgres_config, &NodeStorageConfig::direct_only())
+                .await?,
+        );
         // need to create the schema and run migrations here, normally key-gen would do it.
         let pool = nodes_common::postgres::pg_pool_with_schema(&postgres_config, CreateSchema::Yes)
             .await?;

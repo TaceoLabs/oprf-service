@@ -1182,20 +1182,12 @@ fn store_error_mapping_keeps_db_errors_retryable() {
         !super::is_retryable_error(&err),
         "corrupt data is not retried"
     );
-
-    let err = PostgresDbError::from(oprf_store::StoreError::UnsupportedStorageFormat(
-        "envelopeV1".to_owned(),
-    ));
-    assert!(
-        !super::is_retryable_error(&err),
-        "unsupported storage format is not retried"
-    );
     assert!(
         matches!(
             SecretManagerError::from(err),
             SecretManagerError::Internal(_)
         ),
-        "unsupported storage format must be an internal error"
+        "corrupt data must be an internal error"
     );
 }
 

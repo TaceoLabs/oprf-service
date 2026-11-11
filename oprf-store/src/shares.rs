@@ -156,34 +156,4 @@ impl ShareRow {
             share: codec::from_bytes(&plaintext)?,
         })
     }
-
-    /// Decodes the row into a [`StoredShare`].
-    ///
-    /// Only rows in the `direct` storage format are decoded; the format is checked before any
-    /// stored byte is deserialized.
-    ///
-    /// # Errors
-    /// - [`StoreError::Corrupt`] if the row is deleted, the share is NULL, or any stored bytes
-    ///   are invalid.
-    /// - [`StoreError::UnsupportedStorageFormat`] if the row is not stored as `direct`.
-    pub fn decode(&self) -> Result<StoredShare, StoreError> {
-        if self.deleted {
-            return Err(StoreError::Corrupt("row is deleted".to_owned()));
-        }
-        if self.storage_format != "direct" {
-            return Err(StoreError::UnsupportedStorageFormat(
-                self.storage_format.clone(),
-            ));
-        }
-        let share_bytes = self
-            .share
-            .as_deref()
-            .ok_or_else(|| StoreError::Corrupt("share column is NULL for live row".to_owned()))?;
-        Ok(StoredShare {
-            oprf_key_id: OprfKeyId::from_le_slice(&self.id),
-            epoch: self.epoch()?,
-            public_key: codec::from_bytes(&self.public_key)?,
-            share: codec::from_bytes(share_bytes)?,
-        })
-    }
 }

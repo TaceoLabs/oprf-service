@@ -197,27 +197,7 @@ mod postgres {
         }
 
         #[tokio::test]
-        async fn fetch_and_decode_live_share() -> eyre::Result<()> {
-            let (_pg, mut connection) = migrated_connection().await?;
-            let (id, share, public_key) = random_key();
-            let epoch = ShareEpoch::new(7);
-            test_utils::insert_share(&mut connection, id, epoch, &share, &public_key).await?;
-
-            let row = shares::fetch(&mut connection, id)
-                .await?
-                .expect("row exists");
-            assert!(!row.is_deleted(), "row must be live");
-            assert_eq!(row.epoch()?, epoch, "epoch must match");
-            let stored = row.decode()?;
-            assert_eq!(stored.oprf_key_id, id, "id must match");
-            assert_eq!(stored.epoch, epoch, "epoch must match");
-            assert_eq!(stored.public_key, public_key, "public key must match");
-            assert_eq!(Fr::from(stored.share), Fr::from(share), "share must match");
-            Ok(())
-        }
-
-        #[tokio::test]
-        async fn deleted_row_is_flagged_and_does_not_decode() -> eyre::Result<()> {
+        async fn deleted_row_is_flagged_and_does_not_open() -> eyre::Result<()> {
             let (_pg, mut connection) = migrated_connection().await?;
             let (id, share, public_key) = random_key();
             test_utils::insert_share(&mut connection, id, ShareEpoch::new(1), &share, &public_key)
@@ -232,8 +212,8 @@ mod postgres {
                 .expect("row exists");
             assert!(row.is_deleted(), "row must be flagged deleted");
             assert!(
-                matches!(row.decode(), Err(StoreError::Corrupt(_))),
-                "deleted row must not decode"
+                matches!(row.open(&direct_only()), Err(StoreError::Corrupt(_))),
+                "deleted row must not open"
             );
             Ok(())
         }
@@ -275,7 +255,7 @@ mod postgres {
                 .await?
                 .expect("row exists");
             assert!(
-                matches!(row.decode(), Err(StoreError::Corrupt(_))),
+                matches!(row.open(&direct_only()), Err(StoreError::Corrupt(_))),
                 "invalid share bytes must be corrupt"
             );
             Ok(())
@@ -292,6 +272,11 @@ mod postgres {
                 },
                 deks,
             )
+        }
+
+        /// A read-only policy that only allows `direct`.
+        fn direct_only() -> StorageCrypto {
+            crypto(&[StorageFormat::Direct], vec![])
         }
 
         fn assert_opens_to(
@@ -324,8 +309,10 @@ mod postgres {
             let row = shares::fetch(&mut connection, id)
                 .await?
                 .expect("row exists");
+            assert!(!row.is_deleted(), "row must be live");
+            assert_eq!(row.epoch()?, epoch, "epoch must match");
             assert_eq!(row.data_key_id(), None, "direct row has no data key");
-            let crypto = crypto(&[StorageFormat::Direct], vec![]);
+            let crypto = direct_only();
             assert_opens_to(&row, &crypto, id, epoch, &share, &public_key)
         }
 
@@ -353,10 +340,6 @@ mod postgres {
                 .await?
                 .expect("row exists");
             assert_eq!(row.data_key_id(), Some(dek_id), "row names its data key");
-            assert!(
-                matches!(row.decode(), Err(StoreError::UnsupportedStorageFormat(_))),
-                "the stored bytes are not plaintext"
-            );
             assert_opens_to(&row, &crypto, id, epoch, &share, &public_key)
         }
 
@@ -384,7 +367,7 @@ mod postgres {
         }
 
         #[tokio::test]
-        async fn non_direct_row_does_not_decode() -> eyre::Result<()> {
+        async fn envelope_row_is_refused_by_direct_only_policy() -> eyre::Result<()> {
             let (_pg, mut connection) = migrated_connection().await?;
             let (envelope_id, share, public_key) = random_key();
             test_utils::insert_share(
@@ -414,10 +397,17 @@ mod postgres {
             let row = shares::fetch(&mut connection, envelope_id)
                 .await?
                 .expect("row exists");
-            let err = row.decode().expect_err("envelopeV1 row must not decode");
+            let err = row
+                .open(&direct_only())
+                .expect_err("envelopeV1 row must not open with a direct-only policy");
             assert!(
-                matches!(&err, StoreError::UnsupportedStorageFormat(format) if format == "envelopeV1"),
-                "expected UnsupportedStorageFormat(\"envelopeV1\"), got {err:?}"
+                matches!(
+                    err,
+                    StoreError::Envelope(EnvelopeError::FormatNotAllowed(
+                        StorageFormat::EnvelopeV1
+                    ))
+                ),
+                "expected FormatNotAllowed(EnvelopeV1), got {err:?}"
             );
             Ok(())
         }
