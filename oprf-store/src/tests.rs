@@ -288,5 +288,44 @@ mod postgres {
             );
             Ok(())
         }
+
+        #[tokio::test]
+        async fn non_direct_row_does_not_decode() -> eyre::Result<()> {
+            let (_pg, mut connection) = migrated_connection().await?;
+            let (envelope_id, share, public_key) = random_key();
+            test_utils::insert_share(
+                &mut connection,
+                envelope_id,
+                ShareEpoch::new(1),
+                &share,
+                &public_key,
+            )
+            .await?;
+            // The share bytes stay a valid plaintext share; only the format column changes.
+            let data_key_id: String = sqlx::query_scalar(
+                "INSERT INTO data_keys (id, wrapped_key, wrapping, kms_key_arn) \
+                 VALUES (md5(random()::text)::uuid, $1, 'awsKms', 'arn:test:key') RETURNING id::text",
+            )
+            .bind(&[9_u8, 9, 9][..])
+            .fetch_one(&mut connection)
+            .await?;
+            sqlx::query(
+                "UPDATE shares SET storage_format = 'envelopeV1', data_key_id = $2::uuid WHERE id = $1",
+            )
+            .bind(envelope_id.to_le_bytes())
+            .bind(&data_key_id)
+            .execute(&mut connection)
+            .await?;
+
+            let row = shares::fetch(&mut connection, envelope_id)
+                .await?
+                .expect("row exists");
+            let err = row.decode().expect_err("envelopeV1 row must not decode");
+            assert!(
+                matches!(&err, StoreError::UnsupportedStorageFormat(format) if format == "envelopeV1"),
+                "expected UnsupportedStorageFormat(\"envelopeV1\"), got {err:?}"
+            );
+            Ok(())
+        }
     }
 }
