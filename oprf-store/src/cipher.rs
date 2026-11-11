@@ -171,6 +171,36 @@ mod tests {
         flipped(len - 1);
     }
 
+    /// Known-answer test of the stored layout `nonce || ciphertext || tag`.
+    ///
+    /// Produced with OpenSSL's `EVP_aes_256_gcm` (libcrypto 4.1, called from Python via
+    /// `ctypes`), not with this crate; the same harness reproduces test case 16
+    /// of the original GCM specification (AES-256 with AAD).
+    #[test]
+    fn open_known_answer() {
+        let mut key = Zeroizing::new([0u8; 32]);
+        for (i, b) in key.iter_mut().enumerate() {
+            *b = u8::try_from(i).expect("index fits into u8");
+        }
+        let d = Dek::new(Uuid::from_u128(1), key);
+        let aad = b"taceo-oprf-store kat aad";
+        let stored = [
+            // nonce
+            0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xab,
+            // ciphertext
+            0x92, 0x79, 0x1f, 0x48, 0x2a, 0xe6, 0x6d, 0xcf, 0x10, 0x03, 0xaa, 0xa0, 0x73, 0x15,
+            0xb2, 0xbb, 0x50, 0xc7, 0x37, 0x7f, 0xe5, 0xd9, 0x62, 0x0d, 0xf2, 0x7d, 0x51, 0xe3,
+            0x0d, // tag
+            0xa7, 0x92, 0xb9, 0x2e, 0x30, 0xfa, 0x78, 0x1e, 0xcd, 0x2d, 0x2b, 0x87, 0xc0, 0x21,
+            0xaf, 0x09,
+        ];
+        assert_eq!(
+            d.open(aad, &stored).expect("open must succeed").as_slice(),
+            b"taceo-oprf-store known answer",
+            "known answer"
+        );
+    }
+
     #[test]
     fn short_input_fails() {
         let d = dek(7);
