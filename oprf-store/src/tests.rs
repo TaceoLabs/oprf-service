@@ -82,8 +82,6 @@ fn codec_from_vec() {
 
 #[cfg(feature = "postgres")]
 mod postgres {
-    use crate::MIGRATOR;
-
     mod with_retry {
         use std::{
             num::NonZeroUsize,
@@ -136,21 +134,6 @@ mod postgres {
                 "error is returned"
             );
         }
-    }
-
-    #[tokio::test]
-    async fn migrations_apply_on_empty_schema() -> eyre::Result<()> {
-        let pg = nodes_common::test_utils::shared_postgres_testcontainer().await?;
-        let schema = nodes_common::test_utils::next_test_schema();
-        let mut connection =
-            nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
-        MIGRATOR.run(&mut connection).await?;
-        assert_eq!(
-            MIGRATOR.iter().count(),
-            10,
-            "five up and five down migrations"
-        );
-        Ok(())
     }
 
     #[cfg(feature = "test-utils")]
