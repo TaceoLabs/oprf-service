@@ -42,6 +42,7 @@ circom-types = { workspace = true, features = [
   "public-input"
 ] }
 criterion = { workspace = true }
+rand_chacha = { workspace = true }
 serde_json = { workspace = true }
 
 [features]

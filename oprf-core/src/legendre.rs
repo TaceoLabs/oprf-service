@@ -2,11 +2,13 @@
 //!
 //! The PRF is `F_k(h) = (chi(k + h + j))_{j < n}` over the `BabyJubJub` scalar field, where `chi` is the quadratic character. Unlike `TwoHashDH`, no public value determines the key even for an unbounded adversary: the key is only ever published inside a perfectly hiding Pedersen commitment, and every group element the nodes send is perfectly hiding as well. Soundness of the evaluation proof rests on the discrete logarithm assumption (classical), privacy of the key on the Legendre PRF.
 //!
+//! - [`circuit`]: witness generation for verifying the proof inside a circuit.
 //! - [`params`]: generators and constants.
 //! - [`proof`]: the PRF, the evaluation proof and its verifier.
 //! - [`threshold`]: threshold evaluation with a jointly produced proof.
 //! - [`transcript`]: Fiat-Shamir challenges.
 
+pub mod circuit;
 pub mod params;
 pub mod proof;
 pub mod threshold;
