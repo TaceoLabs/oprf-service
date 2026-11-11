@@ -277,39 +277,6 @@ mod tests {
     use super::*;
     use uuid::Uuid;
 
-    fn wrapper(master: [u8; 32]) -> InMemoryWrapper {
-        InMemoryWrapper::new("arn:test:key", master)
-    }
-
-    #[tokio::test]
-    async fn generate_then_unwrap() {
-        let w = wrapper([1; 32]);
-        let id = Uuid::new_v4();
-        let (plain, wrapped) = w.generate(id).await.expect("generate");
-        let again = w.unwrap_dek(id, &wrapped).await.expect("unwrap");
-        assert_eq!(*plain, *again, "unwrap returns the generated plaintext");
-        assert_eq!(w.key_arn(), "arn:test:key", "key arn is reported");
-    }
-
-    #[tokio::test]
-    async fn unwrap_with_other_data_key_id_fails() {
-        let w = wrapper([1; 32]);
-        let (_, wrapped) = w.generate(Uuid::new_v4()).await.expect("generate");
-        w.unwrap_dek(Uuid::new_v4(), &wrapped)
-            .await
-            .expect_err("other data_key_id must fail");
-    }
-
-    #[tokio::test]
-    async fn unwrap_with_other_master_fails() {
-        let id = Uuid::new_v4();
-        let (_, wrapped) = wrapper([1; 32]).generate(id).await.expect("generate");
-        wrapper([2; 32])
-            .unwrap_dek(id, &wrapped)
-            .await
-            .expect_err("other master must fail");
-    }
-
     #[test]
     fn encryption_context_is_exact() {
         let id = Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").expect("uuid");

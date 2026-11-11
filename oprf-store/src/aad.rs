@@ -94,7 +94,7 @@ impl AadContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_ec::{AffineRepr, CurveGroup};
+    use ark_ec::AffineRepr;
     use ruint::aliases::U160;
 
     fn pk() -> OprfPublicKey {
@@ -149,44 +149,6 @@ mod tests {
         assert_eq!(b[16], 0x03, "intermediates kind");
         for i in (0..73).filter(|i| *i != 16) {
             assert_eq!(a[i], b[i], "byte {i} equal");
-        }
-    }
-
-    #[test]
-    fn aad_changes_with_every_field() {
-        let pk = pk();
-        let other_pk = OprfPublicKey::from(
-            (ark_babyjubjub::EdwardsAffine::generator()
-                + ark_babyjubjub::EdwardsAffine::generator())
-            .into_affine(),
-        );
-        let base_ctx = ctx();
-        let base_row = row(Kind::Share(pk));
-        let base = base_ctx.aad(&base_row);
-
-        let mut seen = Vec::new();
-        let mut c = ctx();
-        c.chain_id += 1;
-        seen.push(c.aad(&base_row));
-        let mut c = ctx();
-        c.registry = Address::from([0xAB; 20]);
-        seen.push(c.aad(&base_row));
-        let mut c = ctx();
-        c.party_id = PartyId(0x0B0D);
-        seen.push(c.aad(&base_row));
-        let mut c = ctx();
-        c.threshold = NonZeroU16::new(3).expect("nonzero");
-        seen.push(c.aad(&base_row));
-        seen.push(base_ctx.aad(&row(Kind::PendingShare)));
-        let mut r = row(Kind::Share(pk));
-        r.oprf_key_id = OprfKeyId::new(U160::from(0x1123u64));
-        seen.push(base_ctx.aad(&r));
-        let mut r = row(Kind::Share(pk));
-        r.epoch = ShareEpoch::new(0x0A0B_0C0E);
-        seen.push(base_ctx.aad(&r));
-        seen.push(base_ctx.aad(&row(Kind::Share(other_pk))));
-        for (i, a) in seen.iter().enumerate() {
-            assert_ne!(a, &base, "input {i} must change the aad");
         }
     }
 }

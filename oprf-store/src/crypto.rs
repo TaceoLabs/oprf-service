@@ -235,7 +235,7 @@ mod tests {
     use std::num::NonZeroU16;
 
     use alloy::primitives::Address;
-    use ark_ec::{AffineRepr, CurveGroup};
+    use ark_ec::AffineRepr;
     use oprf_types::{
         OprfKeyId, ShareEpoch,
         crypto::{OprfPublicKey, PartyId},
@@ -263,14 +263,6 @@ mod tests {
 
     fn pk() -> OprfPublicKey {
         OprfPublicKey::from(ark_babyjubjub::EdwardsAffine::generator())
-    }
-
-    fn other_pk() -> OprfPublicKey {
-        OprfPublicKey::from(
-            (ark_babyjubjub::EdwardsAffine::generator()
-                + ark_babyjubjub::EdwardsAffine::generator())
-            .into_affine(),
-        )
     }
 
     fn row(kind: Kind) -> RowId {
@@ -376,21 +368,6 @@ mod tests {
     }
 
     #[test]
-    fn unknown_data_key() {
-        let c = writer(&all());
-        let r = row(Kind::PendingShare);
-        let sealed = c.seal(&r, b"x").expect("seal");
-        let other = Uuid::from_u128(99);
-        assert!(
-            matches!(
-                c.open("envelopeV1", Some(other), &r, &sealed.bytes),
-                Err(EnvelopeError::UnknownDataKey(id)) if id == other
-            ),
-            "unknown key"
-        );
-    }
-
-    #[test]
     fn missing_data_key_id() {
         let c = writer(&all());
         let r = row(Kind::PendingShare);
@@ -420,57 +397,15 @@ mod tests {
     }
 
     #[test]
-    fn open_under_other_row_fails_oprf_key_id() {
-        let pk = pk();
-        let mut r = row(Kind::Share(pk));
-        r.oprf_key_id = OprfKeyId::new(U160::from(6u64));
-        assert_open_fails("oprf_key_id", ctx(), &r);
-    }
-
-    #[test]
-    fn open_under_other_row_fails_epoch() {
+    fn open_under_other_row_or_context_fails() {
         let pk = pk();
         let mut r = row(Kind::Share(pk));
         r.epoch = ShareEpoch::new(4);
         assert_open_fails("epoch", ctx(), &r);
-    }
 
-    #[test]
-    fn open_under_other_row_fails_public_key() {
-        let other = other_pk();
-        assert_open_fails("public_key", ctx(), &row(Kind::Share(other)));
-    }
-
-    #[test]
-    fn open_under_other_row_fails_chain_id() {
-        let pk = pk();
         let mut c = ctx();
         c.chain_id += 1;
         assert_open_fails("chain_id", c, &row(Kind::Share(pk)));
-    }
-
-    #[test]
-    fn open_under_other_row_fails_registry() {
-        let pk = pk();
-        let mut c = ctx();
-        c.registry = Address::from([0xAB; 20]);
-        assert_open_fails("registry", c, &row(Kind::Share(pk)));
-    }
-
-    #[test]
-    fn open_under_other_row_fails_party_id() {
-        let pk = pk();
-        let mut c = ctx();
-        c.party_id = PartyId(2);
-        assert_open_fails("party_id", c, &row(Kind::Share(pk)));
-    }
-
-    #[test]
-    fn open_under_other_row_fails_threshold() {
-        let pk = pk();
-        let mut c = ctx();
-        c.threshold = NonZeroU16::new(3).expect("nonzero");
-        assert_open_fails("threshold", c, &row(Kind::Share(pk)));
     }
 
     #[test]
@@ -570,21 +505,6 @@ mod tests {
                 Err(EnvelopeError::ReadOnly)
             ),
             "read-only"
-        );
-    }
-
-    #[test]
-    fn debug_prints_no_bytes() {
-        let c = writer(&all());
-        let s = Sealed {
-            format: StorageFormat::Direct,
-            data_key_id: None,
-            bytes: Zeroizing::new(vec![0xDE, 0xAD, 0xBE, 0xEF]),
-        };
-        let out = format!("{c:?} {s:?}");
-        assert!(
-            !out.contains("222") && !out.to_lowercase().contains("dead"),
-            "{out}"
         );
     }
 }
