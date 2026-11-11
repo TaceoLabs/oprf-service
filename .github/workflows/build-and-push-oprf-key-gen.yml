@@ -17,6 +17,7 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      attestations: write
     uses: ./.github/workflows/build-and-push.yml
     with:
       image-name: oprf-key-gen
