@@ -6630,6 +6630,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "url",
+ "uuid",
  "webpki-roots 1.0.12",
 ]
 
@@ -6696,6 +6697,7 @@ dependencies = [
  "sqlx-core",
  "thiserror 2.0.21",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -6730,6 +6732,7 @@ dependencies = [
  "stringprep",
  "thiserror 2.0.21",
  "tracing",
+ "uuid",
  "whoami",
 ]
 
@@ -6755,6 +6758,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]
@@ -7250,6 +7254,7 @@ dependencies = [
  "aws-sdk-kms",
  "backon",
  "eyre",
+ "futures",
  "rand 0.8.6",
  "ruint",
  "serde",
