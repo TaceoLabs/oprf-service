@@ -6,11 +6,12 @@ use std::time::Duration;
 use crate::TEST_TIMEOUT;
 use crate::setup::TestSetup;
 use crate::setup::{DeploySetup, MineStrategy};
+use alloy::primitives::Address;
 use ark_ff::UniformRand as _;
 use ark_serialize::CanonicalDeserialize as _;
 use axum_test::TestServer;
 use eyre::Context as _;
-use nodes_common::postgres::CreateSchema;
+use nodes_common::postgres::{CreateSchema, PostgresConfig};
 use nodes_common::test_utils::SharedPostgres;
 use nodes_common::web3::HttpRpcProviderConfig;
 use nodes_common::web3::event_stream::SkipBackfill;
@@ -28,6 +29,10 @@ use tokio_util::sync::CancellationToken;
 pub struct TestKeyGenConfig {
     pub party_id: usize,
     pub explicit_backfill_block: Option<NonZeroU64>,
+    /// The storage formats key-gen reads and writes; defaults to `direct` only.
+    storage: StorageSettings,
+    /// The party whose in-memory KMS key-gen uses; `None` uses its own party's.
+    kms_party: Option<usize>,
     /// Database of a previously shut down key-gen, reused on restart.
     db: Option<KeyGenDb>,
 }
@@ -37,8 +42,33 @@ impl TestKeyGenConfig {
         Self {
             party_id,
             explicit_backfill_block: None,
+            storage: direct_only(),
+            kms_party: None,
             db: None,
         }
+    }
+
+    /// Uses the in-memory KMS of party `kms_party` (same ARN and master key) instead of the own
+    /// party's, so that several parties can share one KMS key.
+    #[must_use]
+    pub fn with_kms_of(mut self, kms_party: usize) -> Self {
+        self.kms_party = Some(kms_party);
+        self
+    }
+
+    /// Reads rows stored in `allowed` and writes new values as `write`.
+    ///
+    /// If `envelopeV1` is involved, the key-gen gets the in-memory KMS of its party
+    /// ([`crate::party_dek_wrapper`]), or of the party set by [`TestKeyGenConfig::with_kms_of`]. Applied to the config returned by
+    /// [`TestKeyGen::shutdown`], the next start builds a new [`PostgresDb`] with these settings on
+    /// the same schema, which runs the storage upgrade of key-gen's startup again.
+    #[must_use]
+    pub fn with_storage(mut self, allowed: &[StorageFormat], write: StorageFormat) -> Self {
+        self.storage = StorageSettings {
+            allowed: allowed.to_vec(),
+            write,
+        };
+        self
     }
 
     #[must_use]
@@ -48,27 +78,65 @@ impl TestKeyGenConfig {
     }
 }
 
+fn direct_only() -> StorageSettings {
+    StorageSettings {
+        allowed: vec![StorageFormat::Direct],
+        write: StorageFormat::Direct,
+    }
+}
+
+fn involves_envelope(storage: &StorageSettings) -> bool {
+    storage.write == StorageFormat::EnvelopeV1
+        || storage.allowed.contains(&StorageFormat::EnvelopeV1)
+}
+
 struct KeyGenDb {
     secret_manager: PostgresDb,
+    /// The settings `secret_manager` was built with.
+    storage: StorageSettings,
+    postgres_config: PostgresConfig,
     pool: PgPool,
     pg: Arc<SharedPostgres>,
 }
 
 impl KeyGenDb {
-    async fn new() -> eyre::Result<Self> {
+    async fn new(kms_party: usize, storage: StorageSettings) -> eyre::Result<Self> {
         let (postgres_config, pg) = crate::test_postgres_config().await?;
-        let storage = StorageSettings {
-            allowed: vec![StorageFormat::Direct],
-            write: StorageFormat::Direct,
-        };
-        let secret_manager = PostgresDb::init(&postgres_config, storage, None).await?;
+        let secret_manager =
+            Self::secret_manager(&postgres_config, kms_party, storage.clone()).await?;
         let pool =
             nodes_common::postgres::pg_pool_with_schema(&postgres_config, CreateSchema::No).await?;
         Ok(Self {
             secret_manager,
+            storage,
+            postgres_config,
             pool,
             pg,
         })
+    }
+
+    async fn secret_manager(
+        postgres_config: &PostgresConfig,
+        kms_party: usize,
+        storage: StorageSettings,
+    ) -> eyre::Result<PostgresDb> {
+        let wrapper = involves_envelope(&storage).then(|| crate::party_dek_wrapper(kms_party));
+        PostgresDb::init(postgres_config, storage, wrapper).await
+    }
+
+    /// Keeps the database, but builds a new [`PostgresDb`] if `storage` changed: the storage
+    /// policy of a prepared instance is fixed.
+    async fn with_storage(
+        mut self,
+        kms_party: usize,
+        storage: StorageSettings,
+    ) -> eyre::Result<Self> {
+        if self.storage != storage {
+            self.secret_manager =
+                Self::secret_manager(&self.postgres_config, kms_party, storage.clone()).await?;
+            self.storage = storage;
+        }
+        Ok(self)
     }
 }
 
@@ -80,7 +148,14 @@ pub struct TestKeyGen {
     pub started_services: StartedServices,
     pub cancellation_token: CancellationToken,
     pub pool: PgPool,
-    pg: Arc<SharedPostgres>,
+    /// The database config of this key-gen (its own schema).
+    pub postgres_config: PostgresConfig,
+    /// The `OprfKeyRegistry` contract this key-gen watches.
+    pub oprf_key_registry: Address,
+    storage: StorageSettings,
+    /// The party whose in-memory KMS this key-gen uses.
+    pub(crate) kms_party: usize,
+    pub(crate) pg: Arc<SharedPostgres>,
 }
 
 impl fmt::Debug for TestKeyGen {
@@ -96,15 +171,20 @@ impl TestKeyGen {
         let TestKeyGenConfig {
             party_id,
             explicit_backfill_block,
+            storage,
+            kms_party,
             db,
         } = config;
+        let kms_party = kms_party.unwrap_or(party_id);
         let KeyGenDb {
             secret_manager,
+            storage,
+            postgres_config,
             pool,
             pg,
         } = match db {
-            Some(db) => db,
-            None => KeyGenDb::new().await?,
+            Some(db) => db.with_storage(kms_party, storage).await?,
+            None => KeyGenDb::new(kms_party, storage).await?,
         };
         let TestSetup {
             anvil,
@@ -140,7 +220,13 @@ impl TestKeyGen {
             });
 
         config.confirmations_for_transaction = 0;
-        config.rpc_provider_config.chain_id = Some(31_337);
+        config.rpc_provider_config.chain_id = Some(crate::TEST_CHAIN_ID);
+        config.allowed_storage_formats.clone_from(&storage.allowed);
+        config.storage_write_format = storage.write;
+        if involves_envelope(&storage) {
+            config.kms_key_arn = Some(crate::party_kms_key_arn(kms_party));
+        }
+        config.validate_storage()?;
         config.event_stream_config.confirmations_after_sync_block =
             NonZeroUsize::new(2).expect("2 is non-zero");
         // backfill only works with interval mining
@@ -175,6 +261,10 @@ impl TestKeyGen {
             started_services,
             cancellation_token: child_token,
             pool,
+            postgres_config,
+            oprf_key_registry: *oprf_key_registry,
+            storage,
+            kms_party,
             pg,
         })
     }
@@ -206,8 +296,12 @@ impl TestKeyGen {
             Ok(TestKeyGenConfig {
                 party_id: self.party_id,
                 explicit_backfill_block: None,
+                storage: self.storage.clone(),
+                kms_party: Some(self.kms_party),
                 db: Some(KeyGenDb {
                     secret_manager: self.secret_manager,
+                    storage: self.storage,
+                    postgres_config: self.postgres_config,
                     pool: self.pool,
                     pg: self.pg,
                 }),

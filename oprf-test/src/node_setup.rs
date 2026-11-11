@@ -10,7 +10,9 @@ use async_trait::async_trait;
 use axum_test::{TestServer, TestWebSocket, http};
 use http::{StatusCode, Uri};
 use nodes_common::{
-    Environment, StartedServices, postgres::CreateSchema, test_utils::SharedPostgres,
+    Environment, StartedServices,
+    postgres::{CreateSchema, PostgresConfig},
+    test_utils::SharedPostgres,
 };
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -25,7 +27,7 @@ use taceo_oprf::service::{
     config::OprfNodeServiceConfig,
     secret_manager::{
         SecretManager as _,
-        postgres::{NodeStorageConfig, PostgresSecretManager},
+        postgres::{NodeStorageConfig, PostgresSecretManager, StorageFormat},
     },
 };
 use taceo_oprf::types::{
@@ -42,6 +44,7 @@ use tungstenite::protocol::CloseFrame;
 use uuid::Uuid;
 
 use crate::TEST_TIMEOUT;
+use crate::key_gen_setup::TestKeyGen;
 use crate::setup::DeploySetup;
 
 pub const OPRF_KEY_ID: u32 = 42;
@@ -62,7 +65,8 @@ pub enum WireFormat {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ConfigurableTestRequestAuth(pub OprfKeyId);
 
-pub struct ConfigurableTestAuthenticator;
+/// Accepts requests for the contained OPRF key ids.
+pub struct ConfigurableTestAuthenticator(pub Vec<OprfKeyId>);
 
 #[async_trait]
 impl OprfRequestAuthenticator for ConfigurableTestAuthenticator {
@@ -73,7 +77,7 @@ impl OprfRequestAuthenticator for ConfigurableTestAuthenticator {
         request: &OprfRequest<Self::RequestAuth>,
     ) -> Result<OprfKeyId, OprfRequestAuthenticatorError> {
         let ConfigurableTestRequestAuth(oprf_key_id) = &request.auth;
-        if *oprf_key_id == OprfKeyId::from(OPRF_KEY_ID) {
+        if self.0.contains(oprf_key_id) {
             Ok(*oprf_key_id)
         } else {
             Err(OprfRequestAuthenticatorError::with_message(
@@ -92,6 +96,24 @@ pub struct TestNodeConfig {
     pub services: Option<Vec<Uri>>,
     pub session_lifetime: Duration,
     pub threshold: NonZeroU16,
+    /// OPRF key ids the test authenticator accepts; defaults to [`OPRF_KEY_ID`].
+    pub accepted_oprf_key_ids: Vec<OprfKeyId>,
+    /// Time-to-live of the node's key material cache; `None` keeps the service default.
+    pub store_ttl: Option<Duration>,
+    /// The storage formats the node reads; defaults to `direct` only.
+    pub allowed_storage_formats: Vec<StorageFormat>,
+    /// The party whose in-memory KMS the node uses for `envelopeV1`; `None` uses its own
+    /// party's.
+    pub kms_party: Option<usize>,
+    /// The database of a key-gen the node reads from; `None` creates a fresh, migrated schema.
+    pub database: Option<NodeDatabase>,
+}
+
+/// The database of a [`TestKeyGen`], shared with a node of the same party.
+pub struct NodeDatabase {
+    postgres_config: PostgresConfig,
+    oprf_key_registry: Address,
+    pg: Arc<SharedPostgres>,
 }
 
 impl Default for TestNodeConfig {
@@ -102,7 +124,41 @@ impl Default for TestNodeConfig {
             services: None,
             session_lifetime: Duration::from_secs(10),
             threshold: NonZeroU16::new(2).expect("2 is non-zero"),
+            accepted_oprf_key_ids: vec![OprfKeyId::from(OPRF_KEY_ID)],
+            store_ttl: None,
+            allowed_storage_formats: vec![StorageFormat::Direct],
+            kms_party: None,
+            database: None,
         }
+    }
+}
+
+impl TestNodeConfig {
+    /// A node of `key_gen`'s party that reads the shares `key_gen` writes, from its schema, with
+    /// the in-memory KMS `key_gen` uses.
+    #[must_use]
+    pub fn for_key_gen(key_gen: &TestKeyGen) -> Self {
+        Self {
+            party_id: key_gen.party_id,
+            kms_party: Some(key_gen.kms_party),
+            database: Some(NodeDatabase {
+                postgres_config: key_gen.postgres_config.clone(),
+                oprf_key_registry: key_gen.oprf_key_registry,
+                pg: Arc::clone(&key_gen.pg),
+            }),
+            ..Self::default()
+        }
+    }
+
+    /// Reads rows stored in `allowed`.
+    ///
+    /// If `envelopeV1` is allowed, the node gets the in-memory KMS of its party
+    /// ([`crate::party_dek_wrapper`]), or of [`TestNodeConfig::kms_party`], and binds the chain id and registry of the key-gen's
+    /// deployment; this needs a database from [`TestNodeConfig::for_key_gen`].
+    #[must_use]
+    pub fn with_storage(mut self, allowed: &[StorageFormat]) -> Self {
+        self.allowed_storage_formats = allowed.to_vec();
+        self
     }
 }
 
@@ -144,18 +200,60 @@ impl TestNode {
             services,
             session_lifetime,
             threshold,
+            accepted_oprf_key_ids,
+            store_ttl,
+            allowed_storage_formats,
+            kms_party,
+            database,
         } = config;
         assert!(party_id < 5, "can only spawn 5 nodes");
+        let kms_party = kms_party.unwrap_or(party_id);
 
-        let (postgres_config, pg) = crate::test_postgres_config().await?;
+        let mut storage = NodeStorageConfig::direct_only();
+        storage.allowed_storage_formats = allowed_storage_formats;
+        let wrapper = if storage
+            .allowed_storage_formats
+            .contains(&StorageFormat::EnvelopeV1)
+        {
+            let database = database.as_ref().ok_or_else(|| {
+                eyre::eyre!(
+                    "envelopeV1 needs the database of a key-gen (TestNodeConfig::for_key_gen)"
+                )
+            })?;
+            storage.kms_key_arn = Some(crate::party_kms_key_arn(kms_party));
+            storage.chain_id = Some(crate::TEST_CHAIN_ID);
+            storage.oprf_key_registry_contract = Some(database.oprf_key_registry);
+            Some(crate::party_dek_wrapper(kms_party))
+        } else {
+            None
+        };
+        let (postgres_config, pg, pool) = match database {
+            Some(NodeDatabase {
+                postgres_config,
+                oprf_key_registry: _,
+                pg,
+            }) => {
+                // key-gen created and migrated the schema
+                let pool =
+                    nodes_common::postgres::pg_pool_with_schema(&postgres_config, CreateSchema::No)
+                        .await?;
+                (postgres_config, pg, pool)
+            }
+            None => {
+                let (postgres_config, pg) = crate::test_postgres_config().await?;
+                // need to create the schema and run migrations here, normally key-gen would do it.
+                let pool = nodes_common::postgres::pg_pool_with_schema(
+                    &postgres_config,
+                    CreateSchema::Yes,
+                )
+                .await?;
+                oprf_store::MIGRATOR.run(&pool).await?;
+                (postgres_config, pg, pool)
+            }
+        };
         let secret_manager = Arc::new(
-            PostgresSecretManager::init(&postgres_config, &NodeStorageConfig::direct_only())
-                .await?,
+            PostgresSecretManager::init_with_wrapper(&postgres_config, &storage, wrapper).await?,
         );
-        // need to create the schema and run migrations here, normally key-gen would do it.
-        let pool = nodes_common::postgres::pg_pool_with_schema(&postgres_config, CreateSchema::Yes)
-            .await?;
-        oprf_store::MIGRATOR.run(&pool).await?;
         let bind_port = match bind_port {
             Some(port) => port,
             None => nodes_common::test_utils::random_port()?,
@@ -166,6 +264,9 @@ impl TestNode {
             taceo_oprf::client::VERSION.parse().expect("valid semver"),
         );
         config.session_lifetime = session_lifetime;
+        if let Some(store_ttl) = store_ttl {
+            config.store_ttl = store_ttl;
+        }
 
         let started_services = StartedServices::new();
         let service = OprfServiceBuilder::init(
@@ -181,7 +282,7 @@ impl TestNode {
         )
         .module_with_delegate(
             "/test",
-            Arc::new(ConfigurableTestAuthenticator),
+            Arc::new(ConfigurableTestAuthenticator(accepted_oprf_key_ids)),
             services.unwrap_or_default(), // we dont care about delegate if services is None
             Connector::Plain,
         )
