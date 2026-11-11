@@ -67,6 +67,9 @@ fn split_challenges(x: BaseField) -> [ScalarField; 2] {
 }
 
 /// Packs bits little-endian into field elements, [`PACK_BITS`] bits per element.
+///
+/// # Panics
+/// Never: [`PACK_BITS`] bits always fit into a field element.
 #[must_use]
 pub fn pack_bits(bits: &[bool]) -> Vec<BaseField> {
     bits.chunks(PACK_BITS)
@@ -78,6 +81,9 @@ pub fn pack_bits(bits: &[bool]) -> Vec<BaseField> {
 }
 
 /// Derives the batching challenges from the statement: key commitment, commitment to the witness vector, PRF input and claimed output bits.
+///
+/// # Panics
+/// If there are more output bits than [`super::params::MAX_BITS`].
 #[must_use]
 pub fn batch_challenges(
     c_k: Affine,

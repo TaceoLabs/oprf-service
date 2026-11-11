@@ -138,8 +138,8 @@ fn too_few_nodes_fail() {
     let h = ScalarField::rand(&mut rand::thread_rng());
     // 3t = 6 nodes cannot interpolate the degree-3t products
     assert_eq!(
-        evaluate(&setup, h, &[1, 2, 3, 4, 5, 6], |_| {}).unwrap_err(),
-        ThresholdError::InvalidProof
+        evaluate(&setup, h, &[1, 2, 3, 4, 5, 6], |_| {}).err(),
+        Some(ThresholdError::InvalidProof)
     );
 }
 
@@ -150,10 +150,10 @@ fn cheating_node_is_detected() {
     let ids = [1, 2, 3, 4, 5, 6, 7];
     // a wrong share of a masked value changes u_j, and with it possibly the bit: the proof must fail either way
     let wrong_u = evaluate(&setup, h, &ids, |msgs| {
-        msgs[3].u[5] += ScalarField::from(1u64)
+        msgs[3].u[5] += ScalarField::from(1u64);
     });
-    assert_eq!(wrong_u.unwrap_err(), ThresholdError::InvalidProof);
+    assert_eq!(wrong_u.err(), Some(ThresholdError::InvalidProof));
     // a wrong commitment share
     let wrong_commitment = evaluate(&setup, h, &ids, |msgs| msgs[0].t[1][2] = msgs[0].t[1][3]);
-    assert_eq!(wrong_commitment.unwrap_err(), ThresholdError::InvalidProof);
+    assert_eq!(wrong_commitment.err(), Some(ThresholdError::InvalidProof));
 }

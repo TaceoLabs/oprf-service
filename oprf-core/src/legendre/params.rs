@@ -35,6 +35,7 @@ pub fn is_square(x: ScalarField) -> bool {
 ///
 /// All generators are derived with [`hash_to_curve`] from fixed domain separators, so nobody knows a discrete-logarithm relation between them. This is what makes the Pedersen commitments binding.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::exhaustive_structs, reason = "Plain parameter data")]
 pub struct LegendreParams {
     /// Vector-commitment generators `G_0, ..., G_{n-1}`, one per output bit.
     pub gens: Vec<Affine>,
@@ -75,7 +76,6 @@ impl LegendreParams {
     }
 
     /// The generator `G` used for scalar commitments (the `BabyJubJub` subgroup generator).
-    #[must_use]
     pub fn g() -> Affine {
         Affine::generator()
     }

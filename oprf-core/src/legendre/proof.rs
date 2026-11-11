@@ -52,7 +52,6 @@ pub struct LegendreProof {
 }
 
 /// Pedersen commitment `k*G + rho*H` to a PRF key.
-#[must_use]
 pub fn commit_key(params: &LegendreParams, k: ScalarField, rho: ScalarField) -> Affine {
     (LegendreParams::g() * k + params.h * rho).into_affine()
 }
