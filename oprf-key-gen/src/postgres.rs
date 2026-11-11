@@ -51,9 +51,20 @@ pub(crate) enum PostgresDbError {
     #[error(transparent)]
     DbError(#[from] sqlx::Error),
     #[error(transparent)]
-    Store(#[from] oprf_store::StoreError),
+    Store(oprf_store::StoreError),
     #[error("internal error: {0:?}")]
     Internal(#[from] eyre::Report),
+}
+
+impl From<oprf_store::StoreError> for PostgresDbError {
+    fn from(value: oprf_store::StoreError) -> Self {
+        match value {
+            // Keep database errors on the `DbError` path so that transient errors are retried
+            // and constraint violations are mapped.
+            oprf_store::StoreError::Db(error) => Self::DbError(error),
+            other => Self::Store(other),
+        }
+    }
 }
 
 impl PostgresDb {
