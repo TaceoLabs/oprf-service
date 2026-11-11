@@ -147,8 +147,8 @@ mod postgres {
         MIGRATOR.run(&mut connection).await?;
         assert_eq!(
             MIGRATOR.iter().count(),
-            8,
-            "four up and four down migrations"
+            10,
+            "five up and five down migrations"
         );
         Ok(())
     }
