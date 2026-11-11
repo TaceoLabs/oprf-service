@@ -17,7 +17,6 @@ ignored = ["humantime-serde"]
 [dependencies]
 ark-babyjubjub = { workspace = true }
 ark-ec.workspace = true
-ark-serialize.workspace = true
 async-trait = { workspace = true }
 axum = { workspace = true, features = ["ws"] }
 axum-extra = { workspace = true, features = ["typed-header"] }
@@ -66,7 +65,6 @@ tower-http = { workspace = true, features = [
 tracing.workspace = true
 tungstenite = { workspace = true }
 uuid = { workspace = true, features = ["serde", "v4"] }
-zeroize.workspace = true
 
 [dev-dependencies]
 ark-ff = { workspace = true }
