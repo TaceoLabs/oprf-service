@@ -13,6 +13,7 @@
 #![deny(missing_docs)]
 
 pub mod aad;
+mod cipher;
 pub mod codec;
 pub mod format;
 #[cfg(feature = "postgres")]
@@ -21,6 +22,8 @@ pub mod retry;
 pub mod shares;
 #[cfg(feature = "test-utils")]
 pub mod test_utils;
+
+pub use cipher::Dek;
 
 #[cfg(test)]
 mod tests;
@@ -58,4 +61,10 @@ pub enum EnvelopeError {
     /// A public key was supplied for a row kind that has none, or is missing for one that has.
     #[error("public key does not match the row kind")]
     PublicKeyMismatch,
+    /// Authenticated decryption failed.
+    ///
+    /// Deliberately carries no detail: a short input, a wrong key, a wrong AAD and modified
+    /// bytes are indistinguishable.
+    #[error("decryption failed")]
+    Decrypt,
 }
