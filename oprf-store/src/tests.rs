@@ -70,6 +70,43 @@ fn codec_corrupt_bytes_are_an_error() {
     );
 }
 
+#[test]
+fn codec_trailing_bytes_are_an_error() {
+    let share = DLogShareShamir::from(rand::random::<Fr>());
+    let public_key = OprfPublicKey::new(rand::random());
+
+    let mut share_bytes = codec::to_bytes(&share).to_vec();
+    let mut public_key_bytes = codec::to_bytes(&public_key).to_vec();
+    share_bytes.push(0);
+    public_key_bytes.push(0);
+    assert!(
+        matches!(
+            codec::from_bytes::<DLogShareShamir>(&share_bytes),
+            Err(StoreError::Corrupt(_))
+        ),
+        "share with a trailing byte must be corrupt"
+    );
+    assert!(
+        matches!(
+            codec::from_bytes::<OprfPublicKey>(&public_key_bytes),
+            Err(StoreError::Corrupt(_))
+        ),
+        "public key with a trailing byte must be corrupt"
+    );
+}
+
+#[test]
+fn codec_from_vec() {
+    let share = DLogShareShamir::from(rand::random::<Fr>());
+    let share_back: DLogShareShamir =
+        codec::from_vec(codec::to_bytes(&share).to_vec()).expect("share decodes");
+    assert_eq!(
+        Fr::from(share_back),
+        Fr::from(share),
+        "share must survive round trip"
+    );
+}
+
 #[cfg(feature = "postgres")]
 mod postgres {
     use crate::{MIGRATOR, retry};
