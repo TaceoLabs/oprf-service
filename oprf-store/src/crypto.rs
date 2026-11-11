@@ -21,8 +21,8 @@ use crate::{
 
 /// A value prepared for storage, together with the columns that describe it.
 ///
-/// `bytes` holds ciphertext, or the plaintext itself for [`StorageFormat::Direct`].
-#[derive(Clone, PartialEq, Eq)]
+/// `bytes` holds ciphertext, or the plaintext itself for [`StorageFormat::Direct`]; it is
+/// zeroized on drop either way.
 #[allow(
     clippy::exhaustive_structs,
     reason = "plain data carrier, constructed and destructured by consumers"
@@ -33,7 +33,7 @@ pub struct Sealed {
     /// The data key id to write into the `data_key_id` column; `None` for `direct`.
     pub data_key_id: Option<Uuid>,
     /// The bytes to store.
-    pub bytes: Vec<u8>,
+    pub bytes: Zeroizing<Vec<u8>>,
 }
 
 impl std::fmt::Debug for Sealed {
@@ -214,7 +214,7 @@ impl StorageCrypto {
             WriteTarget::Direct => Ok(Sealed {
                 format: target.format(),
                 data_key_id: None,
-                bytes: plaintext.to_vec(),
+                bytes: Zeroizing::new(plaintext.to_vec()),
             }),
             WriteTarget::EnvelopeV1(id) => {
                 let deks = self.deks.read().unwrap_or_else(PoisonError::into_inner);
@@ -223,7 +223,7 @@ impl StorageCrypto {
                 Ok(Sealed {
                     format: target.format(),
                     data_key_id: Some(id),
-                    bytes: dek.seal(&aad, plaintext),
+                    bytes: Zeroizing::new(dek.seal(&aad, plaintext)),
                 })
             }
         }
@@ -308,7 +308,7 @@ mod tests {
         let sealed = c.seal(&r, b"secret").expect("seal");
         assert_eq!(sealed.format, StorageFormat::EnvelopeV1, "format");
         assert_eq!(sealed.data_key_id, Some(CURRENT), "data key id");
-        assert_ne!(sealed.bytes, b"secret", "must be encrypted");
+        assert_ne!(sealed.bytes.as_slice(), b"secret", "must be encrypted");
         let out = c
             .open(
                 sealed.format.as_str(),
@@ -329,7 +329,7 @@ mod tests {
         let s = c.seal(&row(Kind::Intermediates), b"x").expect("seal");
         assert_eq!(s.format, StorageFormat::Direct, "format");
         assert_eq!(s.data_key_id, None, "no key id");
-        assert_eq!(s.bytes, b"x", "plain bytes");
+        assert_eq!(s.bytes.as_slice(), b"x", "plain bytes");
     }
 
     #[test]
@@ -579,7 +579,7 @@ mod tests {
         let s = Sealed {
             format: StorageFormat::Direct,
             data_key_id: None,
-            bytes: vec![0xDE, 0xAD, 0xBE, 0xEF],
+            bytes: Zeroizing::new(vec![0xDE, 0xAD, 0xBE, 0xEF]),
         };
         let out = format!("{c:?} {s:?}");
         assert!(
