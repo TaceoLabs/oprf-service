@@ -12,6 +12,7 @@ keywords = ["cryptography", "mpc", "oprf"]
 publish = true
 
 [dependencies]
+alloy = { workspace = true, features = ["serde"], optional = true }
 ark-babyjubjub = { workspace = true }
 ark-ec.workspace = true
 async-trait = { workspace = true }
@@ -68,10 +69,13 @@ ruint = { workspace = true, features = ["rand"] }
 rustls = { workspace = true }
 telemetry-batteries = { workspace = true, features = ["metrics-statsd"] }
 url = { workspace = true }
+zeroize = { workspace = true }
 
 [features]
 default = ["postgres"]
-postgres = ["dep:oprf-store", "dep:sqlx", "nodes-common/postgres"]
+# Lets `PostgresSecretManager::init` unwrap data keys with AWS KMS; pulls in the AWS SDK.
+aws-kms = ["oprf-store/aws-kms", "postgres"]
+postgres = ["dep:alloy", "dep:oprf-store", "dep:sqlx", "nodes-common/postgres"]
 
 [lints]
 workspace = true

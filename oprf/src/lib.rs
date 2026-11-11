@@ -35,8 +35,8 @@
 //! ### Transitive sub-crate features
 //!
 //! The umbrella forwards each sub-crate feature as its own flag so consumers
-//! can opt in or out without importing the individual crates. `postgres` and
-//! `chain` use the weak-dependency syntax (`dep?/feature`) and therefore do
+//! can opt in or out without importing the individual crates. `postgres`,
+//! `aws-kms` and `chain` use the weak-dependency syntax (`dep?/feature`) and therefore do
 //! **not** activate the parent crate on their own: the corresponding
 //! crate-selection feature (`nodes-common`, `service`, `types`) must also be
 //! enabled. The `nodes-common-<feature>` flags enable `nodes-common` themselves.
@@ -44,6 +44,7 @@
 //! | Umbrella feature         | Forwarded to                                     | Notes                    |
 //! |--------------------------|--------------------------------------------------|--------------------------|
 //! | `postgres`               | `oprf-service/postgres`, `nodes-common/postgres` | On by default via `full` |
+//! | `aws-kms`                | `oprf-service/aws-kms`                           | On by default via `full` |
 //! | `chain`                  | `oprf-types/chain`                               | On by default via `full` |
 //! | `nodes-common-<feature>` | `nodes-common/<feature>`                         | Not enabled by `full`    |
 //!

@@ -50,10 +50,13 @@ nodes-common-unkey = ["nodes-common/unkey"]
 nodes-common-web3 = ["nodes-common/web3"]
 nodes-common-web3-asserter = ["nodes-common-web3", "nodes-common/web3-asserter"]
 # --- forwarded transitive features ---
+# oprf-service
+aws-kms = ["oprf-service?/aws-kms"]
 # oprf-service, nodes-common
 postgres = ["nodes-common?/postgres", "oprf-service?/postgres"]
 
 full = [
+  "aws-kms",
   "chain",
   "client",
   "core",

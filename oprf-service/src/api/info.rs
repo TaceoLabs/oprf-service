@@ -63,6 +63,11 @@ async fn oprf_key_available(
                 tracing::error!(err=?report, "internal error");
                 StatusCode::INTERNAL_SERVER_ERROR.into_response()
             }
+            #[cfg(feature = "postgres")]
+            SecretManagerError::StorageFormat(err) => {
+                tracing::error!(%err, "stored key material refused");
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
         },
     }
 }
