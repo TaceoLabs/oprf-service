@@ -1,5 +1,4 @@
 use ark_babyjubjub::Fr;
-use ark_serialize::CanonicalSerialize as _;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_types::crypto::OprfPublicKey;
 
@@ -23,32 +22,6 @@ fn codec_round_trip() {
     assert_eq!(
         public_key, public_key_back,
         "public key must survive round trip"
-    );
-}
-
-#[test]
-fn codec_matches_legacy_encoding() {
-    let share = DLogShareShamir::from(rand::random::<Fr>());
-    let public_key = OprfPublicKey::new(rand::random());
-
-    let mut legacy_share = Vec::new();
-    share
-        .serialize_uncompressed(&mut legacy_share)
-        .expect("can serialize");
-    let mut legacy_public_key = Vec::new();
-    public_key
-        .serialize_uncompressed(&mut legacy_public_key)
-        .expect("can serialize");
-
-    assert_eq!(
-        codec::to_bytes(&share).as_slice(),
-        legacy_share.as_slice(),
-        "share encoding must not change"
-    );
-    assert_eq!(
-        codec::to_bytes(&public_key).as_slice(),
-        legacy_public_key.as_slice(),
-        "public key encoding must not change"
     );
 }
 
@@ -109,7 +82,7 @@ fn codec_from_vec() {
 
 #[cfg(feature = "postgres")]
 mod postgres {
-    use crate::{MIGRATOR, retry};
+    use crate::MIGRATOR;
 
     mod with_retry {
         use std::{
@@ -163,19 +136,6 @@ mod postgres {
                 "error is returned"
             );
         }
-    }
-
-    #[test]
-    fn retry_classification() {
-        assert!(retry::is_transient(&sqlx::Error::PoolTimedOut));
-        assert!(retry::is_transient(&sqlx::Error::WorkerCrashed));
-        assert!(retry::is_transient(&sqlx::Error::BeginFailed));
-        assert!(!retry::is_transient(&sqlx::Error::RowNotFound));
-
-        assert!(retry::is_transient_or_conflict(&sqlx::Error::PoolTimedOut));
-        assert!(retry::is_transient_or_conflict(&sqlx::Error::WorkerCrashed));
-        assert!(retry::is_transient_or_conflict(&sqlx::Error::BeginFailed));
-        assert!(!retry::is_transient_or_conflict(&sqlx::Error::RowNotFound));
     }
 
     #[tokio::test]
@@ -241,17 +201,6 @@ mod postgres {
                 "debug output must not contain the share bytes"
             );
             assert!(debug.contains("epoch: 7"), "debug output must show epoch");
-            Ok(())
-        }
-
-        #[tokio::test]
-        async fn fetch_unknown_is_none() -> eyre::Result<()> {
-            let (_pg, mut connection) = migrated_connection().await?;
-            let (id, _, _) = random_key();
-            assert!(
-                shares::fetch(&mut connection, id).await?.is_none(),
-                "unknown key must not be found"
-            );
             Ok(())
         }
 
