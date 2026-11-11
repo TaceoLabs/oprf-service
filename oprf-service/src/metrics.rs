@@ -59,6 +59,8 @@ pub fn describe_metrics() {
     request::describe_metrics();
     sessions::describe_metrics();
     secrets::describe_metrics();
+    #[cfg(feature = "postgres")]
+    storage::describe_metrics();
 }
 
 pub(crate) mod request {
@@ -278,5 +280,52 @@ pub(crate) mod secrets {
 
     pub(crate) fn miss() {
         metrics::counter!(METRICS_ID_NODE_OPRF_SECRETS_MISSES).increment(1);
+    }
+}
+
+#[cfg(feature = "postgres")]
+pub(crate) mod storage {
+    /// Metrics key for counting stored key material refused by the storage policy.
+    const METRICS_ID_NODE_STORAGE_REJECTED: &str =
+        oprf_metrics_key_lib!("secret_manager.storage.rejected");
+
+    /// Why stored key material was refused; the value of the `reason` label.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(crate) enum Rejection {
+        /// The row's storage format is not allowed.
+        FormatNotAllowed,
+        /// Authenticated decryption failed.
+        Decrypt,
+        /// The row's storage format is not known.
+        UnknownFormat,
+        /// The row's data key does not exist.
+        UnknownDataKey,
+        /// The row's data key exists but could not be loaded or unwrapped (e.g. KMS outage).
+        DataKeyLoadFailed,
+    }
+
+    impl Rejection {
+        pub(crate) const fn as_str(self) -> &'static str {
+            match self {
+                Self::FormatNotAllowed => "format_not_allowed",
+                Self::Decrypt => "decrypt",
+                Self::UnknownFormat => "unknown_format",
+                Self::UnknownDataKey => "unknown_data_key",
+                Self::DataKeyLoadFailed => "data_key_load_failed",
+            }
+        }
+    }
+
+    pub(super) fn describe_metrics() {
+        metrics::describe_counter!(
+            METRICS_ID_NODE_STORAGE_REJECTED,
+            metrics::Unit::Count,
+            "Number of stored shares refused by the storage policy, labeled by reason: format_not_allowed, decrypt, unknown_format, unknown_data_key (the data key does not exist) or data_key_load_failed (loading or unwrapping the data key failed)"
+        );
+    }
+
+    pub(crate) fn inc_rejected(reason: Rejection) {
+        metrics::counter!(METRICS_ID_NODE_STORAGE_REJECTED, "reason" => reason.as_str())
+            .increment(1);
     }
 }
