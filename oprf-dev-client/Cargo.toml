@@ -26,9 +26,7 @@ eyre.workspace = true
 humantime.workspace = true
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.10" }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16", features = [
-  "chain"
-] }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16", features = ["chain"] }
 rand.workspace = true
 rand_chacha.workspace = true
 reqwest = { workspace = true }
@@ -57,3 +55,5 @@ rustls = { workspace = true }
 secrecy = { workspace = true }
 telemetry-batteries.workspace = true
 webpki-roots = { workspace = true }
+
+[lints]

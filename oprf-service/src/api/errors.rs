@@ -20,6 +20,8 @@ macro_rules! to_close_frame_bytes {
 pub(crate) enum Error {
     #[error("Session {0} already exists")]
     SessionReuse(Uuid),
+    #[error("request id in query does not match request id in message")]
+    RequestIdMismatch,
     #[error("Connection closed by client")]
     ConnectionClosed,
     #[error(transparent)]
@@ -79,6 +81,10 @@ impl Error {
             Error::SessionReuse(_) => Some(CloseFrame {
                 code: oprf_error_codes::SESSION_REUSE,
                 reason: to_close_frame_bytes!("session already in use"),
+            }),
+            Error::RequestIdMismatch => Some(CloseFrame {
+                code: oprf_error_codes::CORRUPTED_MESSAGE,
+                reason: to_close_frame_bytes!("request id mismatch"),
             }),
             Error::UnexpectedMessage => Some(CloseFrame {
                 code: close_code::UNSUPPORTED,

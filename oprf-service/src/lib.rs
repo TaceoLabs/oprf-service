@@ -32,19 +32,22 @@
 use std::fmt;
 use std::num::NonZeroU16;
 
-use crate::api::oprf::OprfModuleState;
+use crate::api::oprf::{OprfModuleState, RequestIdQuery};
 use crate::api::oprf_delegate::DelegateOprfState;
 use crate::services::open_sessions::OpenSessions;
 use crate::services::oprf_key_material_store::OprfKeyMaterialStore;
 use crate::{config::OprfNodeServiceConfig, services::secret_manager::SecretManagerService};
 use axum::Router;
-use axum::extract::{DefaultBodyLimit, MatchedPath};
+use axum::extract::{DefaultBodyLimit, MatchedPath, Query};
 use http::{HeaderMap, HeaderName, Method, StatusCode, Uri};
 use oprf_client::Connector;
 use oprf_types::api::OprfRequestAuthService;
 use oprf_types::crypto::PartyId;
 use oprf_types::service::NodeInformation;
 use serde::{Deserialize, Serialize};
+use telemetry_batteries::opentelemetry::trace::{SpanContext, TraceContextExt, TraceState};
+use telemetry_batteries::opentelemetry::{Context, SpanId, TraceFlags, TraceId};
+use telemetry_batteries::tracing_opentelemetry::OpenTelemetrySpanExt;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::{MakeSpan, TraceLayer};
@@ -274,15 +277,38 @@ impl<B> MakeSpan<B> for OprfAuthModulesMakeSpan {
             .extensions()
             .get::<MatchedPath>()
             .map_or_else(|| request.uri().path(), MatchedPath::as_str);
-        tracing::info_span!(
+        let span = tracing::info_span!(
             "oprf_request",
             request_id = tracing::field::Empty,
-            oprf_key_id = tracing::field::Empty,
             client_version = tracing::field::Empty,
             method = %request.method(),
             path = %matched_path,
             version = ?request.version(),
             headers = ?FilteredHeaders(request.headers()),
-        )
+        );
+        // Derive the trace from the request ID so all nodes share one trace. This must happen
+        // before the span is entered. Clients < v0.10.0 do not send the ID in the query.
+        if let Ok(Query(RequestIdQuery {
+            request_id: Some(request_id),
+        })) = Query::<RequestIdQuery>::try_from_uri(request.uri())
+        {
+            span.record("request_id", request_id.to_string());
+            // The Datadog exporter only transmits the lower 64 bits of the trace ID, so the trace ID is
+            // the lower half of the request ID. The upper half serves as the (never exported) parent span ID.
+            let (hi, lo) = request_id.as_u64_pair();
+            let span_context = SpanContext::new(
+                TraceId::from(u128::from(lo)),
+                SpanId::from(hi),
+                TraceFlags::SAMPLED,
+                true,
+                TraceState::default(),
+            );
+            let parent = Context::new().with_remote_span_context(span_context);
+            // Fails if no OpenTelemetry layer is installed (e.g. local preset), which is fine.
+            if let Err(err) = span.set_parent(parent) {
+                tracing::trace!(%err, "could not set parent span from request id");
+            }
+        }
+        span
     }
 }
