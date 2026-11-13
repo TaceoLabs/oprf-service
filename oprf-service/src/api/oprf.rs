@@ -35,6 +35,12 @@ use crate::{
     },
 };
 
+/// Optional `request_id` query parameter, sent by clients >= `taceo-oprf-client` v0.10.0.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct RequestIdQuery {
+    pub(crate) request_id: Option<Uuid>,
+}
+
 pub(crate) struct OprfModuleState<ReqAuth> {
     pub(crate) party_id: PartyId,
     pub(crate) threshold: NonZeroU16,
@@ -113,6 +119,9 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     websocket_upgrade: WebSocketUpgrade,
     header_version: Option<TypedHeader<ProtocolVersion>>,
     query_version: Query<ProtocolVersionQuery>,
+    Query(RequestIdQuery {
+        request_id: query_request_id,
+    }): Query<RequestIdQuery>,
 ) -> axum::response::Response {
     let Some(client_version) = parse_client_header(header_version, query_version) else {
         tracing::warn!(user_error = true, "missing client version");
@@ -127,7 +136,8 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
                 tracing::warn!(user_error=true, %err, "could not establish websocket connection");
             })
             .on_upgrade(move |ws| {
-                async move { partial_oprf(ws, state).await }.instrument(parent_span)
+                async move { partial_oprf(ws, state, query_request_id).await }
+                    .instrument(parent_span)
             })
     } else {
         let msg = format!(
@@ -143,11 +153,13 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
 async fn partial_oprf<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     mut socket: WebSocket,
     state: OprfModuleState<ReqAuth>,
+    query_request_id: Option<Uuid>,
 ) {
     let close_frame = match tokio::time::timeout(
         state.max_connection_lifetime,
         partial_oprf_inner::<ReqAuth>(
             &mut socket,
+            query_request_id,
             state.party_id,
             state.threshold,
             state.open_sessions,
@@ -227,9 +239,15 @@ async fn teardown_websocket(mut ws: WebSocket, close_frame: Option<CloseFrame>) 
 /// 6) Finalizes the proof share for the session and sends it back to the user (same serialization as the initial request of the user).
 ///
 /// Clients may and will close the connection at any point because they only need `threshold` amount of sessions, therefore it is very much expected that sane clients send a `Close` frame at any point (or simply drop the connection). This method handles this gracefully at any point.
-#[instrument(level = "info", skip_all, name = "partial_oprf")]
+#[instrument(
+    level = "info",
+    skip_all,
+    name = "partial_oprf",
+    fields(request_id = tracing::field::Empty, oprf_key_id = tracing::field::Empty)
+)]
 async fn partial_oprf_inner<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     socket: &mut WebSocket,
+    query_request_id: Option<Uuid>,
     party_id: PartyId,
     threshold: NonZeroU16,
     open_sessions: OpenSessions,
@@ -242,6 +260,9 @@ async fn partial_oprf_inner<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>
 
     // Some setup before we start processing - setup span and reserve the session ID
     let request_id = init_request.request_id;
+    if query_request_id.is_some_and(|query_request_id| query_request_id != request_id) {
+        return Err(Error::RequestIdMismatch);
+    }
     tracing::trace!("starting with request id: {request_id}");
     let oprf_span = tracing::Span::current();
     oprf_span.record("request_id", request_id.to_string());
@@ -419,4 +440,24 @@ pub fn routes<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     Router::new()
         .route("/oprf", any(oprf_ws_handler))
         .with_state(args)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_id_query_is_optional() -> Result<(), Box<dyn std::error::Error>> {
+        let parse = |uri: &str| -> Result<Option<Uuid>, Box<dyn std::error::Error>> {
+            Ok(Query::<RequestIdQuery>::try_from_uri(&uri.parse()?)?.request_id)
+        };
+        let id = Uuid::new_v4();
+        assert_eq!(
+            parse(&format!("/oprf?version=1.0.0&request_id={id}"))?,
+            Some(id)
+        );
+        assert_eq!(parse("/oprf?version=1.0.0")?, None);
+        assert_eq!(parse("/oprf?request_id=abc").ok(), None);
+        Ok(())
+    }
 }
