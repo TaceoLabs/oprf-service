@@ -16,15 +16,7 @@ path = "src/bin/generate-test-transcript.rs"
 required-features = ["generate-test-transcript"]
 
 [dependencies]
-alloy = { workspace = true, features = [
-  "contract",
-  "node-bindings",
-  "provider-http",
-  "provider-ws",
-  "rpc-types-eth",
-  "signer-local",
-  "sol-types"
-] }
+alloy = { workspace = true, features = ["contract", "node-bindings", "provider-http", "provider-ws", "rpc-types-eth", "signer-local", "sol-types"] }
 ark-babyjubjub = { workspace = true }
 ark-bn254 = { workspace = true, optional = true }
 ark-ec.workspace = true
@@ -50,10 +42,7 @@ sqlx = { workspace = true, features = [
   "postgres",
   "runtime-tokio",
 ] }
-taceo-oprf = { path = "../oprf", version = "0.19.0", features = [
-  "anvil",
-  "full"
-] }
+taceo-oprf = { path = "../oprf", version = "0.19.0", features = ["anvil", "full"] }
 tokio = { workspace = true, features = [
   "net",
   "rt-multi-thread",
@@ -72,13 +61,6 @@ reqwest.workspace = true
 ruint = { workspace = true, features = ["rand"] }
 
 [features]
-generate-test-transcript = [
-  "dep:ark-bn254",
-  "dep:askama",
-  "dep:clap",
-  "dep:groth16-material",
-  "dep:groth16-sol",
-  "dep:rand_chacha",
-  "groth16-material/circom",
-  "groth16-material/parallel"
-]
+generate-test-transcript = ["dep:ark-bn254", "dep:askama", "dep:clap", "dep:groth16-material", "dep:groth16-sol", "dep:rand_chacha", "groth16-material/circom", "groth16-material/parallel"]
+
+[lints]

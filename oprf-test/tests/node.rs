@@ -220,6 +220,55 @@ async fn client_version_accepted() -> eyre::Result<()> {
     Ok(())
 }
 
+/// The optional `request_id` query parameter must match the request ID of the first message.
+#[tokio::test]
+async fn query_request_id() -> eyre::Result<()> {
+    let node = start_node_with_key(TestNodeConfig::default()).await?;
+    let version = taceo_oprf::client::VERSION;
+    let request = node_setup::request(&mut rand::thread_rng());
+
+    let mut ws = node
+        .server
+        .get_websocket(&format!(
+            "/api/test/oprf?version={version}&request_id={}",
+            request.request_id
+        ))
+        .await
+        .into_websocket()
+        .await;
+    node_setup::ws_send(&mut ws, &request, WireFormat::Json).await;
+    let _response = node_setup::ws_recv::<OprfResponse>(&mut ws, WireFormat::Json).await;
+
+    let mut ws = node
+        .server
+        .get_websocket(&format!(
+            "/api/test/oprf?version={version}&request_id={}",
+            Uuid::new_v4()
+        ))
+        .await
+        .into_websocket()
+        .await;
+    node_setup::ws_send(
+        &mut ws,
+        &node_setup::request(&mut rand::thread_rng()),
+        WireFormat::Json,
+    )
+    .await;
+    let should_close_frame = CloseFrame {
+        code: oprf_error_codes::CORRUPTED_MESSAGE.into(),
+        reason: "request id mismatch".into(),
+    };
+    node_setup::assert_close_frame(ws.receive_message().await, &should_close_frame);
+
+    let response = node
+        .server
+        .get_websocket(&format!("/api/test/oprf?version={version}&request_id=abc"))
+        .await;
+    assert_eq!(response.status_code(), StatusCode::BAD_REQUEST);
+
+    Ok(())
+}
+
 #[tokio::test]
 async fn session_timeout_no_message() -> eyre::Result<()> {
     let node = start_node_with_key(TestNodeConfig {

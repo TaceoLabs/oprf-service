@@ -69,6 +69,18 @@ lint:
     cargo clippy --workspace --tests --examples --benches --bins -q --all-features -- -D warnings
     RUSTDOCFLAGS='-D warnings' cargo doc --workspace -q --no-deps --document-private-items
     cd contracts && forge fmt
+    just lint-subcrate oprf
+    just lint-subcrate oprf-client
+    just lint-subcrate oprf-core
+    just lint-subcrate oprf-dev-client
+    just lint-subcrate oprf-key-gen
+    just lint-subcrate oprf-service
+    just lint-subcrate oprf-test
+    just lint-subcrate oprf-types
+
+[group('ci')]
+lint-subcrate SUBCRATE:
+    cd {{ SUBCRATE }} && cargo clippy --tests --examples --benches --bins -q --all-features -- -D warnings
 
 [group('dev-client')]
 run-dev-client *args:
