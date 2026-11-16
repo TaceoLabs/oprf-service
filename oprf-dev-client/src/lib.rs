@@ -241,7 +241,7 @@ pub async fn init_key_gen(
     tracing::info!("waiting for key-gen to finish..");
     let oprf_public_key = health_checks::oprf_public_key_from_services(
         oprf_key_id,
-        ShareEpoch::default(),
+        Some(ShareEpoch::default()),
         nodes,
         max_wait_time,
     )
@@ -269,7 +269,7 @@ async fn stress_test_key_gen(
             async move {
                 health_checks::oprf_public_key_from_services(
                     oprf_key_id,
-                    ShareEpoch::default(),
+                    Some(ShareEpoch::default()),
                     &nodes,
                     max_wait_time,
                 )
@@ -292,7 +292,7 @@ async fn stress_test_key_gen(
             async move {
                 health_checks::oprf_public_key_from_services(
                     key_id,
-                    ShareEpoch::default().next(),
+                    Some(ShareEpoch::default().next()),
                     &nodes,
                     max_wait_time,
                 )

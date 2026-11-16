@@ -47,13 +47,13 @@ pub async fn services_health_check(
     Ok(())
 }
 
-pub async fn load_oprf_public_key(oprf_key_url: String, epoch: ShareEpoch) -> OprfPublicKey {
+async fn load_oprf_public_key(oprf_key_url: String, epoch: Option<ShareEpoch>) -> OprfPublicKey {
     loop {
         if let Ok(response) = reqwest::get(&oprf_key_url)
             .await
             .and_then(|response| response.error_for_status())
             && let Ok(material) = response.json::<OprfPublicKeyWithEpoch>().await
-            && material.epoch == epoch
+            && epoch.is_none_or(|epoch| material.epoch == epoch)
         {
             return material.key;
         }
@@ -61,9 +61,10 @@ pub async fn load_oprf_public_key(oprf_key_url: String, epoch: ShareEpoch) -> Op
     }
 }
 
+/// Waits until all `services` report the OPRF public key (at `epoch`, if given) and checks they agree.
 pub async fn oprf_public_key_from_services(
     oprf_key_id: OprfKeyId,
-    epoch: ShareEpoch,
+    epoch: Option<ShareEpoch>,
     services: &[String],
     max_wait_time: Duration,
 ) -> eyre::Result<OprfPublicKey> {
@@ -71,22 +72,20 @@ pub async fn oprf_public_key_from_services(
         .iter()
         .map(|service| load_oprf_public_key(format!("{service}/oprf_pub/{oprf_key_id}"), epoch))
         .collect::<JoinSet<_>>();
-    match tokio::time::timeout(max_wait_time, oprf_public_key_checks.join_all())
+    let mut keys = tokio::time::timeout(max_wait_time, oprf_public_key_checks.join_all())
         .await
         .map_err(|_| {
             eyre::eyre!("could not load OPRF material in provided time: {max_wait_time:?}")
-        }) {
-        Ok(mut keys) => {
-            let key = keys.pop().expect("at least one here");
-            if keys.into_iter().all(|other| key == other) {
-                Ok(key)
-            } else {
-                eyre::bail!("keys did not match for all services");
-            }
-        }
-        Err(_) => eyre::bail!("couldn't load OPRF material within time"),
+        })?;
+    let key = keys
+        .pop()
+        .ok_or_else(|| eyre::eyre!("no services provided"))?;
+    if keys.into_iter().any(|other| other != key) {
+        eyre::bail!("keys did not match for all services");
     }
+    Ok(key)
 }
+
 pub async fn oprf_public_key_not_known_check(health_url: String) {
     loop {
         if let Err(err) = reqwest::get(&health_url)
