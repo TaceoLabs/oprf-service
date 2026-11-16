@@ -24,10 +24,7 @@ use tracing::{Instrument, instrument};
 use uuid::Uuid;
 
 use crate::{
-    api::{
-        errors::Error,
-        version_header::{ProtocolVersion, ProtocolVersionQuery},
-    },
+    api::{errors::Error, version_header::ProtocolVersion},
     metrics,
     services::{
         open_sessions::OpenSessions,
@@ -39,6 +36,12 @@ use crate::{
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct RequestIdQuery {
     pub(crate) request_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct OprfQuery {
+    version: Option<ProtocolVersion>,
+    request_id: Option<Uuid>,
 }
 
 pub(crate) struct OprfModuleState<ReqAuth> {
@@ -118,10 +121,10 @@ async fn oprf_ws_handler<ReqAuth: for<'de> Deserialize<'de> + Send + 'static>(
     State(state): State<OprfModuleState<ReqAuth>>,
     websocket_upgrade: WebSocketUpgrade,
     header_version: Option<TypedHeader<ProtocolVersion>>,
-    query_version: Query<ProtocolVersionQuery>,
-    Query(RequestIdQuery {
+    Query(OprfQuery {
+        version: query_version,
         request_id: query_request_id,
-    }): Query<RequestIdQuery>,
+    }): Query<OprfQuery>,
 ) -> axum::response::Response {
     let Some(client_version) = parse_client_header(header_version, query_version) else {
         tracing::warn!(user_error = true, "missing client version");
@@ -415,10 +418,10 @@ async fn write_response<Msg: Serialize>(
 /// Returns `None` if none of those are present.
 fn parse_client_header(
     header_version: Option<TypedHeader<ProtocolVersion>>,
-    Query(query_version): Query<ProtocolVersionQuery>,
+    query_version: Option<ProtocolVersion>,
 ) -> Option<semver::Version> {
     // query has precedence
-    if let Some(ProtocolVersion(client_version)) = query_version.version {
+    if let Some(ProtocolVersion(client_version)) = query_version {
         metrics::request::params::inc_client_version_in_query();
         Some(client_version)
     } else if let Some(TypedHeader(ProtocolVersion(client_version))) = header_version {
