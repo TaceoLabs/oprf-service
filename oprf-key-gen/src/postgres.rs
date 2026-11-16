@@ -178,6 +178,7 @@ impl From<PostgresDbError> for SecretManagerError {
             PostgresDbError::DbError(error) => {
                 if let Some(error) = error.as_database_error()
                     && error.is_check_violation()
+                    && error.constraint() == Some("deleted_share_null")
                 {
                     // we tried to store on deleted share
                     Self::StoreOnDeletedShare
