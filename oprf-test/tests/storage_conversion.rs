@@ -51,7 +51,7 @@ fn with_epoch(key: OprfPublicKey, epoch: ShareEpoch) -> OprfPublicKeyWithEpoch {
     OprfPublicKeyWithEpoch { key, epoch }
 }
 
-/// Starts three key-gens with the given storage settings, all using the in-memory KMS of
+/// Starts three key-gens with the given storage settings, all using the master key of
 /// `kms_party`.
 async fn start_key_gens_sharing_kms(
     setup: &TestSetup,
@@ -274,8 +274,8 @@ async fn share_row(
     )
 }
 
-/// Copies the share row of `oprf_key_id` and the data key row it references (with its KMS key
-/// ARN) from the database `from` into `to`, replacing the row of `oprf_key_id` in `to`.
+/// Copies the share row of `oprf_key_id` and the data key row it references (with its wrapping key
+/// id) from the database `from` into `to`, replacing the row of `oprf_key_id` in `to`.
 async fn copy_share_row(from: &PgPool, to: &PgPool, oprf_key_id: OprfKeyId) -> eyre::Result<()> {
     let (share, epoch, public_key, storage_format, data_key_id): (
         Vec<u8>,
@@ -290,21 +290,22 @@ async fn copy_share_row(from: &PgPool, to: &PgPool, oprf_key_id: OprfKeyId) -> e
     .fetch_one(from)
     .await
     .context("while reading the share row to copy")?;
-    let (wrapped_key, wrapping, kms_key_arn): (Vec<u8>, String, String) =
-        sqlx::query_as("SELECT wrapped_key, wrapping, kms_key_arn FROM data_keys WHERE id = $1")
-            .bind(data_key_id)
-            .fetch_one(from)
-            .await
-            .context("while reading the data key to copy")?;
+    let (wrapped_key, wrapping, wrapping_key_id): (Vec<u8>, String, String) = sqlx::query_as(
+        "SELECT wrapped_key, wrapping, wrapping_key_id FROM data_keys WHERE id = $1",
+    )
+    .bind(data_key_id)
+    .fetch_one(from)
+    .await
+    .context("while reading the data key to copy")?;
 
     let mut tx = to.begin().await?;
     sqlx::query(
-        "INSERT INTO data_keys (id, wrapped_key, wrapping, kms_key_arn) VALUES ($1, $2, $3, $4)",
+        "INSERT INTO data_keys (id, wrapped_key, wrapping, wrapping_key_id) VALUES ($1, $2, $3, $4)",
     )
     .bind(data_key_id)
     .bind(wrapped_key)
     .bind(wrapping)
-    .bind(kms_key_arn)
+    .bind(wrapping_key_id)
     .execute(&mut *tx)
     .await
     .context("while inserting the copied data key")?;
@@ -468,9 +469,9 @@ async fn three_phase_conversion() -> eyre::Result<()> {
     Ok(())
 }
 
-/// All parties share one KMS key (one operator running several nodes). A share row copied
+/// All parties share one master key (one operator running several nodes). A share row copied
 /// from party 0's database into party 1's, together with the data key row it references, cannot
-/// be read by party 1: the copied data key unwraps under the shared KMS key, but the associated
+/// be read by party 1: the copied data key unwraps under the shared master key, but the associated
 /// data binds party 0's id, so decryption fails.
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 async fn second_party_cannot_read_copied_row() -> eyre::Result<()> {

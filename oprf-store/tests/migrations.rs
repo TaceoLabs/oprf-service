@@ -71,7 +71,7 @@ async fn insert_old_keygen(
 /// Inserts a data key and returns its id as text.
 async fn insert_data_key(connection: &mut PgConnection) -> eyre::Result<String> {
     let id: String = sqlx::query_scalar(
-        "INSERT INTO data_keys (id, wrapped_key, wrapping, kms_key_arn) \
+        "INSERT INTO data_keys (id, wrapped_key, wrapping, wrapping_key_id) \
          VALUES (md5(random()::text)::uuid, $1, 'awsKms', 'arn:aws:kms:test') RETURNING id::text",
     )
     .bind(&[9_u8, 9, 9][..])
@@ -301,6 +301,34 @@ async fn format_check_rejects_unknown_value() -> eyre::Result<()> {
         let (kind, name) = violation(result);
         assert_eq!(kind, ErrorKind::CheckViolation, "{table}: error kind");
         assert_eq!(name.as_deref(), Some(constraint), "{table}: constraint");
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn wrapping_check_accepts_known_values_only() -> eyre::Result<()> {
+    let (_pg, mut connection) = migrated_connection().await?;
+    let insert = "INSERT INTO data_keys (id, wrapped_key, wrapping, wrapping_key_id) \
+         VALUES (md5(random()::text)::uuid, '\\x09'::bytea, $1, 'key')";
+    for wrapping in ["awsKms", "localKeyV1"] {
+        sqlx::query(insert)
+            .bind(wrapping)
+            .execute(&mut connection)
+            .await?;
+    }
+    for wrapping in ["bogus", "localKey", "awskms"] {
+        let result = sqlx::query(insert)
+            .bind(wrapping)
+            .execute(&mut connection)
+            .await;
+        assert_eq!(
+            violation(result),
+            (
+                ErrorKind::CheckViolation,
+                Some("data_keys_wrapping_check".to_owned())
+            ),
+            "{wrapping} must be rejected"
+        );
     }
     Ok(())
 }

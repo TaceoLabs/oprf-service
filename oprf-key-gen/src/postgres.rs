@@ -71,7 +71,7 @@ impl std::fmt::Debug for Storage {
             Self::Envelope { mode, wrapper } => f
                 .debug_struct("Envelope")
                 .field("mode", mode)
-                .field("kms_key_arn", &wrapper.key_arn())
+                .field("wrapping_key_id", &wrapper.key_id())
                 .finish(),
         }
     }

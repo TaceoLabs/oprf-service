@@ -102,7 +102,7 @@ pub struct TestNodeConfig {
     pub store_ttl: Option<Duration>,
     /// The storage formats the node reads; defaults to `direct` only.
     pub allowed_storage_formats: Vec<StorageFormat>,
-    /// The party whose in-memory KMS the node uses for `envelopeV1`; `None` uses its own
+    /// The party whose master key the node uses for `envelopeV1`; `None` uses its own
     /// party's.
     pub kms_party: Option<usize>,
     /// The database of a key-gen the node reads from; `None` creates a fresh, migrated schema.
@@ -134,7 +134,7 @@ impl Default for TestNodeConfig {
 
 impl TestNodeConfig {
     /// A node of `key_gen`'s party that reads the shares `key_gen` writes, from its schema, with
-    /// the in-memory KMS `key_gen` uses.
+    /// the master key `key_gen` uses.
     #[must_use]
     pub fn for_key_gen(key_gen: &TestKeyGen) -> Self {
         Self {
@@ -150,7 +150,7 @@ impl TestNodeConfig {
 
     /// Reads rows stored in `allowed`.
     ///
-    /// If `envelopeV1` is allowed, the node gets the in-memory KMS of its party
+    /// If `envelopeV1` is allowed, the node gets the master key of its party
     /// ([`crate::party_dek_wrapper`]), or of [`TestNodeConfig::kms_party`]; this needs a database
     /// from [`TestNodeConfig::for_key_gen`].
     #[must_use]
