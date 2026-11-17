@@ -90,7 +90,7 @@ pub struct DevClientConfig {
     pub taceo_private_key: SecretString,
 
     /// max wait time for init key-gen/reshare to succeed.
-    #[clap(long, env = "OPRF_DEV_CLIENT_WAIT_TIME", default_value="2min", value_parser=humantime::parse_duration)]
+    #[clap(long, env = "OPRF_DEV_CLIENT_WAIT_TIME", default_value="2min", value_parser=oprf_types::duration::parse)]
     pub max_wait_time: Duration,
 
     /// Command

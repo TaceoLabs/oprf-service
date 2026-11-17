@@ -30,6 +30,9 @@ sqlx = { workspace = true, features = [
 ], optional = true }
 uuid = { workspace = true, features = ["serde", "v4"] }
 
+[dev-dependencies]
+serde_json = { workspace = true }
+
 [features]
 default = []
 chain = ["dep:alloy", "dep:circom-types", "dep:groth16-sol"]

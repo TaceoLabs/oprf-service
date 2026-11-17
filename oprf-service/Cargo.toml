@@ -11,9 +11,6 @@ license.workspace = true
 keywords = ["cryptography", "mpc", "oprf"]
 publish = true
 
-[package.metadata.cargo-machete]
-ignored = ["humantime-serde"]
-
 [dependencies]
 ark-babyjubjub = { workspace = true }
 ark-ec.workspace = true
@@ -23,7 +20,6 @@ axum-extra = { workspace = true, features = ["typed-header"] }
 ciborium = { workspace = true }
 eyre.workspace = true
 http = { workspace = true }
-humantime-serde = { workspace = true }
 metrics = { workspace = true }
 moka.workspace = true
 nodes-common = { workspace = true, features = ["api", "serde"] }

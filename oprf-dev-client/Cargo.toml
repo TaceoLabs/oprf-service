@@ -23,7 +23,6 @@ ark-babyjubjub.workspace = true
 ark-ff.workspace = true
 clap = { workspace = true, features = ["derive", "env"] }
 eyre.workspace = true
-humantime.workspace = true
 oprf-client = { package = "taceo-oprf-client", path = "../oprf-client", version = "0.10" }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16", features = ["chain"] }
@@ -49,7 +48,6 @@ webpki-roots = { workspace = true }
 ark-babyjubjub = { workspace = true }
 ark-ec.workspace = true
 ark-ff = { workspace = true }
-humantime.workspace = true
 rand_chacha = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }

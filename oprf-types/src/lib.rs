@@ -32,6 +32,7 @@ pub mod api;
 #[cfg(feature = "chain")]
 pub mod chain;
 pub mod crypto;
+pub mod duration;
 #[cfg(feature = "service")]
 pub mod service;
 
