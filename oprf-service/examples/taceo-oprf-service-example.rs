@@ -42,6 +42,12 @@ pub struct ExampleOprfNodeConfig {
     #[serde(rename = "postgres")]
     pub postgres_config: PostgresConfig,
 
+    /// The storage formats the node reads shares in, and what it needs to read `envelopeV1`.
+    ///
+    /// Defaults to `direct` only.
+    #[serde(rename = "storage", default)]
+    pub storage_config: StorageReadConfig,
+
     /// The http base urls of the other OPRF nodes to delegate requests to.
     pub node_urls: Vec<Url>,
 }
@@ -65,6 +71,7 @@ pub fn load_example_config() -> eyre::Result<ExampleOprfNodeConfig> {
             .list_separator(",")
             .with_list_parse_key("rpc.http_urls")
             .with_list_parse_key("node_urls")
+            .with_list_parse_key("storage.allowed_storage_formats")
             .try_parsing(true),
     );
 
@@ -88,7 +95,7 @@ async fn main() -> eyre::Result<ExitCode> {
 
     // Load the postgres secret manager.
     let secret_manager = Arc::new(
-        PostgresSecretManager::init(&config.postgres_config, &StorageReadConfig::Direct)
+        PostgresSecretManager::init(&config.postgres_config, &config.storage_config)
             .await
             .context("while starting postgres secret-manager")?,
     );
