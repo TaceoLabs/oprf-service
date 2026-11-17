@@ -35,7 +35,11 @@ backfill-monkey-test:
     @bash scripts/run-backfill-monkey-test.sh || { echo -e "\033[1;41m===== BACKFILL MONKEY TEST FAILED =====\033[0m" ; exit 1; }
 
 [group('test')]
-all-tests: rust-tests contract-tests e2e-test backfill-monkey-test
+storage-upgrade-test:
+    @bash scripts/run-storage-upgrade-test.sh || { echo -e "\033[1;41m===== STORAGE UPGRADE TEST FAILED =====\033[0m" ; exit 1; }
+
+[group('test')]
+all-tests: rust-tests contract-tests e2e-test backfill-monkey-test storage-upgrade-test
 
 [group('test')]
 generate-contract-kats:

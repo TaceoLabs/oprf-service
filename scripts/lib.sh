@@ -38,6 +38,14 @@ participant_addresses=(
 
 schemas=("oprf0" "oprf1" "oprf2")
 
+# Storage settings of the services. Empty keeps the defaults of the binaries (`direct` only).
+# If `envelopeV1` is among the allowed formats, party `i` wraps its data keys under
+# `storage_master_keys[i]` (64 hex characters), shared by its key-gen and its node.
+KEYGEN_ALLOWED_STORAGE_FORMATS="${KEYGEN_ALLOWED_STORAGE_FORMATS:-}"
+KEYGEN_STORAGE_WRITE_FORMAT="${KEYGEN_STORAGE_WRITE_FORMAT:-}"
+NODE_ALLOWED_STORAGE_FORMATS="${NODE_ALLOWED_STORAGE_FORMATS:-}"
+storage_master_keys=()
+
 DEPLOYED_ADDRESS=""
 ANVIL_LOG_PID=""
 keygen_pids=()
@@ -306,12 +314,25 @@ wait_for_health() {
     done
 }
 
+# Starts key-gen `i`, appending its output to `$LOG_DIR/<log file>` (default `key-gen<i>.log`).
 start_keygen_node() {
     local i=$1
+    local log_file=${2:-key-gen${i}.log}
     local port=$((20000 + i))
     local schema="${schemas[$i]}"
     local dd_env=()
+    local storage_env=()
     mkdir -p "$LOG_DIR"
+
+    if [[ -n "$KEYGEN_ALLOWED_STORAGE_FORMATS" ]]; then
+        storage_env+=("TACEO_OPRF_KEY_GEN__STORAGE__ALLOWED_STORAGE_FORMATS=${KEYGEN_ALLOWED_STORAGE_FORMATS}")
+    fi
+    if [[ -n "$KEYGEN_STORAGE_WRITE_FORMAT" ]]; then
+        storage_env+=("TACEO_OPRF_KEY_GEN__STORAGE__STORAGE_WRITE_FORMAT=${KEYGEN_STORAGE_WRITE_FORMAT}")
+    fi
+    if [[ "$KEYGEN_ALLOWED_STORAGE_FORMATS" == *envelopeV1* ]]; then
+        storage_env+=("TACEO_OPRF_KEY_GEN__STORAGE__STORAGE_MASTER_KEY=${storage_master_keys[$i]}")
+    fi
 
     if [[ -n "${DATADOG_ENABLE:-}" ]]; then
         dd_env=(
@@ -342,8 +363,9 @@ start_keygen_node() {
     TACEO_OPRF_KEY_GEN__SERVICE__BACKFILL__CHUNK_SIZE=2 \
     TACEO_OPRF_KEY_GEN__POSTGRES__CONNECTION_STRING="$POSTGRES_URL" \
     TACEO_OPRF_KEY_GEN__POSTGRES__SCHEMA="$schema" \
+    "${storage_env[@]+"${storage_env[@]}"}" \
     "${dd_env[@]+"${dd_env[@]}"}" \
-    ./target/${KEYGEN_BUILD_TARGET_DIR}/taceo-oprf-key-gen >>"$LOG_DIR/key-gen${i}.log" 2>&1 &
+    ./target/${KEYGEN_BUILD_TARGET_DIR}/taceo-oprf-key-gen >>"$LOG_DIR/${log_file}" 2>&1 &
     keygen_pids[$i]="$!"
     log "started key-gen${i} with PID ${keygen_pids[$i]}"
 }
@@ -369,50 +391,77 @@ shutdown_keygens() {
     keygen_pids=()
 }
 
-start_oprf_service_nodes() {
-    local oprf_key_registry=$1
-    local i
-    validate_peer_config
-    log "Starting OPRF service nodes"
+# Starts OPRF node `i`, appending its output to `$LOG_DIR/<log file>` (default `node<i>.log`).
+start_oprf_service_node() {
+    local i=$1
+    local log_file=${2:-node${i}.log}
+    local port=$((10000 + i))
+    local wallet="${participant_addresses[$i]}"
+    local dd_env=()
+    local storage_env=()
+    local all_node_urls=()
+    local j
     mkdir -p "$LOG_DIR"
 
-    local all_node_urls=()
-    for i in $(peer_indices); do
-        all_node_urls+=("http://127.0.0.1:$((10000 + i))")
+    for j in $(peer_indices); do
+        all_node_urls+=("http://127.0.0.1:$((10000 + j))")
     done
     local node_urls_csv
     node_urls_csv=$(IFS=,; echo "${all_node_urls[*]}")
 
+    if [[ -n "${DATADOG_ENABLE:-}" ]]; then
+        dd_env=(
+            TELEMETRY_PRESET=datadog
+            "TELEMETRY_SERVICE_NAME=taceo-oprf-service-${i}"
+            TELEMETRY_METRICS_BACKEND=statsd
+            TELEMETRY_LOG_FORMAT=datadog_json
+            TELEMETRY_EYRE_MODE=json
+        )
+    fi
+
+    if [[ -n "$NODE_ALLOWED_STORAGE_FORMATS" ]]; then
+        storage_env+=("TACEO_OPRF_NODE__STORAGE__ALLOWED_STORAGE_FORMATS=${NODE_ALLOWED_STORAGE_FORMATS}")
+    fi
+    if [[ "$NODE_ALLOWED_STORAGE_FORMATS" == *envelopeV1* ]]; then
+        storage_env+=("TACEO_OPRF_NODE__STORAGE__STORAGE_MASTER_KEY=${storage_master_keys[$i]}")
+    fi
+
+    env \
+    RUST_LOG="taceo=trace,warn" \
+    TACEO_OPRF_NODE__POSTGRES__CONNECTION_STRING="$POSTGRES_URL" \
+    TACEO_OPRF_NODE__POSTGRES__SCHEMA="${schemas[$i]}" \
+    TACEO_OPRF_NODE__SERVICE__ENVIRONMENT=dev \
+    TACEO_OPRF_NODE__SERVICE__VERSION_REQ=">=0.0.0" \
+    TACEO_OPRF_NODE__SERVICE__STORE_TTL=0s \
+    TACEO_OPRF_NODE__SERVICE__STORE_TTI=0s \
+    TACEO_OPRF_NODE__BIND_ADDR="0.0.0.0:${port}" \
+    TACEO_OPRF_NODE__NODE_URLS="$node_urls_csv" \
+    "${storage_env[@]+"${storage_env[@]}"}" \
+    "${dd_env[@]+"${dd_env[@]}"}" \
+    ./target/release/examples/taceo-oprf-service-example >>"$LOG_DIR/${log_file}" 2>&1 &
+    nodes_pids[$i]="$!"
+    log "started node${i} with PID ${nodes_pids[$i]} (wallet $wallet)"
+}
+
+# Starts all OPRF nodes; they read the registry address from `DEPLOYED_ADDRESS`.
+start_oprf_service_nodes() {
+    local i
+    validate_peer_config
+    log "Starting OPRF service nodes"
+
     for i in $(peer_indices); do
-        local port=$((10000 + i))
-        local wallet="${participant_addresses[$i]}"
-        local dd_env=()
-
-        if [[ -n "${DATADOG_ENABLE:-}" ]]; then
-            dd_env=(
-                TELEMETRY_PRESET=datadog
-                "TELEMETRY_SERVICE_NAME=taceo-oprf-service-${i}"
-                TELEMETRY_METRICS_BACKEND=statsd
-                TELEMETRY_LOG_FORMAT=datadog_json
-                TELEMETRY_EYRE_MODE=json
-            )
-        fi
-
-        env \
-        RUST_LOG="taceo=trace,warn" \
-        TACEO_OPRF_NODE__POSTGRES__CONNECTION_STRING="$POSTGRES_URL" \
-        TACEO_OPRF_NODE__POSTGRES__SCHEMA="${schemas[$i]}" \
-        TACEO_OPRF_NODE__SERVICE__ENVIRONMENT=dev \
-        TACEO_OPRF_NODE__SERVICE__VERSION_REQ=">=0.0.0" \
-        TACEO_OPRF_NODE__SERVICE__STORE_TTL=0s \
-        TACEO_OPRF_NODE__SERVICE__STORE_TTI=0s \
-        TACEO_OPRF_NODE__BIND_ADDR="0.0.0.0:${port}" \
-        TACEO_OPRF_NODE__NODE_URLS="$node_urls_csv" \
-        "${dd_env[@]+"${dd_env[@]}"}" \
-        ./target/release/examples/taceo-oprf-service-example >"$LOG_DIR/node${i}.log" 2>&1 &
-        nodes_pids[$i]="$!"
-        log "started node${i} with PID ${nodes_pids[$i]} (wallet $wallet)"
+        start_oprf_service_node "$i"
     done
+}
+
+shutdown_oprf_service_nodes() {
+    local i
+    log "Gracefully shutting down all OPRF service nodes"
+
+    for i in "${!nodes_pids[@]}"; do
+        terminate_pid_gracefully "node${i}" "${nodes_pids[$i]}"
+    done
+    nodes_pids=()
 }
 
 # -------------------------

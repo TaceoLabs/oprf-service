@@ -27,7 +27,7 @@ run_deploy() {
     wait_for_health 20000 "$NUM_PEERS" "key-gen" 300
 
     log "starting nodes"
-    start_oprf_service_nodes "$DEPLOYED_ADDRESS"
+    start_oprf_service_nodes
     wait_for_health 10000 "$NUM_PEERS" "oprf-service" 300
 }
 
