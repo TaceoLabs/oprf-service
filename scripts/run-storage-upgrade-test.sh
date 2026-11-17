@@ -334,13 +334,13 @@ expect_refuses_to_start() {
 }
 
 # Starts `start_fn party` with the master key of another party and expects it to fail because
-# the stored data key is wrapped under another master key. If `expected_message` is given, the
-# service must have logged it.
+# the stored data key is wrapped under another master key. The service must have logged
+# `expected_message`.
 expect_wrong_master_key_refused() {
     local label=$1
     local start_fn=$2
     local pids_var=$3
-    local expected_message=${4:-}
+    local expected_message=$4
     local party=1
     local log_file="${label}-wrong-master-key.log"
     local own_key="${storage_master_keys[$party]}"
@@ -352,7 +352,7 @@ expect_wrong_master_key_refused() {
     storage_master_keys[$party]="$own_key"
     eval "pid=\${${pids_var}[$party]}"
     expect_refuses_to_start "${label} with a wrong master key" "$pid"
-    if [[ -n "$expected_message" ]] && ! grep -q "$expected_message" "$LOG_DIR/$log_file"; then
+    if ! grep -q "$expected_message" "$LOG_DIR/$log_file"; then
         fail "${label} did not report '${expected_message}' (see ${LOG_DIR}/${log_file})"
     fi
 }
@@ -447,10 +447,7 @@ phase_lock_down() {
     # A party whose services are configured with another master key must not come up, and
     # key-gen must not create a second data key under that master key.
     expect_wrong_master_key_refused "node" start_oprf_service_node nodes_pids "is wrapped with key"
-    # Key-gen's log is not checked for the reason: with the `RUST_LOG` filter of these scripts
-    # the first event after a database query is dropped (tokio-rs/tracing#2519), and the line
-    # that reports why key-gen shut down is such an event.
-    expect_wrong_master_key_refused "key-gen" start_keygen_node keygen_pids
+    expect_wrong_master_key_refused "key-gen" start_keygen_node keygen_pids "is wrapped with key"
     assert_data_keys 1 "${phase}, after refusing a wrong master key"
 
     start_keygens
