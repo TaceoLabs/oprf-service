@@ -1,8 +1,10 @@
-//! Wrapping of data encryption keys (DEKs) with a key management service (KMS).
+//! Wrapping of data encryption keys (DEKs).
 //!
-//! A DEK is only ever persisted wrapped by a KMS key. [`DekWrapper`] is the abstraction over the
-//! wrap/unwrap step: `AwsKmsWrapper` (feature `aws-kms`) talks to AWS KMS and
-//! `InMemoryWrapper` (feature `test-utils`) behaves like it for tests.
+//! A DEK is only ever persisted wrapped. [`DekWrapper`] is the abstraction over the wrap/unwrap
+//! step: `AwsKmsWrapper` (feature `aws-kms`) wraps with a key held by AWS KMS and
+//! [`LocalKeyWrapper`] wraps under a locally configured master key.
+
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -23,6 +25,9 @@ pub enum KmsError {
     /// The wrapped data key could not be unwrapped.
     #[error("unwrapping the data key failed")]
     Unwrap,
+    /// The configured master key is not usable. Never contains the key.
+    #[error("invalid master key: {0}")]
+    InvalidMasterKey(&'static str),
     /// The KMS reported a different key than the configured one, e.g. because an alias or a bare
     /// key id is configured instead of the key ARN.
     #[error(
@@ -35,6 +40,12 @@ pub enum KmsError {
         returned: String,
     },
 }
+
+/// The `wrapping` of data keys wrapped by AWS KMS.
+pub const WRAPPING_AWS_KMS: &str = "awsKms";
+
+/// The `wrapping` of data keys wrapped by [`LocalKeyWrapper`].
+pub const WRAPPING_LOCAL_KEY_V1: &str = "localKeyV1";
 
 /// Whether `arn` has the shape of a full KMS key ARN (`arn:...:key/...`), as opposed to an
 /// alias, an alias ARN or a bare key id.
@@ -92,11 +103,110 @@ impl std::fmt::Display for KeyArn {
     }
 }
 
+/// Errors of a [`WrappingKeyConfig`]. Every message names the offending configuration field.
+///
+/// No variant carries key material.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum WrappingConfigError {
+    /// Both a KMS key and a master key are configured.
+    #[error("kms_key_arn and storage_master_key are mutually exclusive")]
+    BothKeys,
+    /// The KMS key is not given as a full key ARN.
+    #[error("kms_key_arn: {0}")]
+    InvalidKeyArn(#[from] InvalidKeyArn),
+    /// The master key is not usable.
+    #[error("storage_master_key: {0}")]
+    InvalidMasterKey(KmsError),
+    /// Neither a KMS key nor a master key is configured.
+    #[error(
+        "kms_key_arn or storage_master_key is required when envelopeV1 is an allowed storage format"
+    )]
+    MissingKey,
+    /// A KMS key is configured, but this build has no AWS KMS support.
+    #[error("kms_key_arn is configured, but the `aws-kms` feature is not enabled")]
+    AwsKmsDisabled,
+}
+
+/// The key that wraps the data keys of a deployment that reads `envelopeV1`.
+///
+/// Shared by the key-gen and the node, so that both accept exactly the same configurations
+/// and build the same [`DekWrapper`] from them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(
+    clippy::exhaustive_enums,
+    reason = "consumers must handle every kind of wrapping key"
+)]
+pub enum WrappingKeyConfig {
+    /// A key held by AWS KMS.
+    Kms(KmsConfig),
+    /// A locally configured master key.
+    Local(LocalKeyWrapper),
+}
+
+impl WrappingKeyConfig {
+    /// Parses the key from the ARN of the AWS KMS key (`kms_key_arn`), an endpoint overriding
+    /// the default AWS KMS endpoint (`kms_endpoint`) and the local master key as hex
+    /// (`storage_master_key`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `kms_key_arn` is not a full key ARN, the master key is not usable,
+    /// or both or none of them are set.
+    pub fn parse(
+        kms_key_arn: Option<String>,
+        kms_endpoint: Option<String>,
+        master_key_hex: Option<&str>,
+    ) -> Result<Self, WrappingConfigError> {
+        match (kms_key_arn, master_key_hex) {
+            (Some(_), Some(_)) => Err(WrappingConfigError::BothKeys),
+            (Some(key_arn), None) => Ok(Self::Kms(KmsConfig {
+                key_arn: KeyArn::try_from(key_arn)?,
+                endpoint: kms_endpoint,
+            })),
+            (None, Some(hex)) => LocalKeyWrapper::from_hex(hex)
+                .map(Self::Local)
+                .map_err(WrappingConfigError::InvalidMasterKey),
+            (None, None) => Err(WrappingConfigError::MissingKey),
+        }
+    }
+
+    /// Builds the wrapper of the configured key. Only a KMS key touches AWS.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WrappingConfigError::AwsKmsDisabled`] if a KMS key is configured and the
+    /// `aws-kms` feature is not enabled.
+    #[cfg_attr(
+        not(feature = "aws-kms"),
+        allow(
+            clippy::unused_async,
+            clippy::unused_async_trait_impl,
+            reason = "only awaits with the `aws-kms` feature; the signature must not depend on it"
+        )
+    )]
+    pub async fn wrapper(self) -> Result<Arc<dyn DekWrapper>, WrappingConfigError> {
+        match self {
+            Self::Local(local) => Ok(Arc::new(local)),
+            #[cfg(feature = "aws-kms")]
+            Self::Kms(kms) => Ok(Arc::new(
+                AwsKmsWrapper::new(kms.key_arn.into(), kms.endpoint).await,
+            )),
+            #[cfg(not(feature = "aws-kms"))]
+            Self::Kms(_) => Err(WrappingConfigError::AwsKmsDisabled),
+        }
+    }
+}
+
 /// Wraps and unwraps data encryption keys with a KMS key.
 #[async_trait]
 pub trait DekWrapper: Send + Sync {
-    /// The identifier (ARN) of the KMS key that wraps the data keys.
-    fn key_arn(&self) -> &str;
+    /// How this wrapper wraps data keys; stored in the `wrapping` column of every data key.
+    fn wrapping(&self) -> &'static str;
+
+    /// The identifier of the key that wraps the data keys: the key ARN for AWS KMS, a
+    /// fingerprint of the master key for [`LocalKeyWrapper`].
+    fn key_id(&self) -> &str;
 
     /// Generates a fresh 32-byte data key bound to `data_key_id`.
     ///
@@ -124,7 +234,7 @@ pub trait DekWrapper: Send + Sync {
 /// The KMS encryption context binding a wrapped data key to its identifier.
 ///
 /// Single source of the context for every [`DekWrapper`] implementation.
-#[cfg(any(feature = "aws-kms", feature = "test-utils"))]
+#[cfg(feature = "aws-kms")]
 pub(crate) fn encryption_context(data_key_id: Uuid) -> [(&'static str, String); 2] {
     [
         ("purpose", "taceo-oprf-db-dek".to_owned()),
@@ -215,7 +325,11 @@ impl AwsKmsWrapper {
 #[cfg(feature = "aws-kms")]
 #[async_trait]
 impl DekWrapper for AwsKmsWrapper {
-    fn key_arn(&self) -> &str {
+    fn wrapping(&self) -> &'static str {
+        WRAPPING_AWS_KMS
+    }
+
+    fn key_id(&self) -> &str {
         &self.key_arn
     }
 
@@ -272,55 +386,154 @@ impl DekWrapper for AwsKmsWrapper {
     }
 }
 
-/// A [`DekWrapper`] for tests that wraps data keys with AES-256-GCM under a master key.
-///
-/// Like KMS it binds the wrapped key to the encryption context, so unwrapping for another
-/// `data_key_id` or under another master key fails.
-#[cfg(feature = "test-utils")]
-#[derive(Clone)]
-pub struct InMemoryWrapper {
-    key_arn: String,
-    master: Zeroizing<[u8; 32]>,
+/// Lowercase hex encoding of `bytes`.
+pub(crate) fn to_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    let mut hex = String::with_capacity(2 * bytes.len());
+    for byte in bytes {
+        write!(hex, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    hex
 }
 
-#[cfg(feature = "test-utils")]
-impl std::fmt::Debug for InMemoryWrapper {
+/// The info string HKDF expands the master key with to get the key that wraps data keys.
+const LOCAL_WRAP_KEY_INFO: &[u8] = b"taceo-oprf-db-master-key/v1/wrap";
+
+/// The info string HKDF expands the master key with to get the public key identifier.
+const LOCAL_KEY_ID_INFO: &[u8] = b"taceo-oprf-db-master-key/v1/id";
+
+/// The domain separator of the AAD a wrapped data key is bound to.
+const LOCAL_WRAP_AAD_DOMAIN: &[u8] = b"taceo-oprf-db-dek-wrap-v1";
+
+/// A [`DekWrapper`] that wraps data keys under a locally configured 32-byte master key, without
+/// any KMS.
+///
+/// Two independent values are derived from the master key with HKDF-SHA256: the key that wraps
+/// the data keys, and a public identifier of the master key (`local:<32 hex characters>`) that
+/// is stored with every data key. A process configured with another master key therefore fails
+/// with a key mismatch instead of an opaque unwrap failure.
+///
+/// A wrapped data key is `nonce (12 bytes) || ciphertext (32 bytes) || tag (16 bytes)` of
+/// AES-256-GCM under the wrapping key, bound to the `data_key_id` through the AAD.
+///
+/// Compared to a KMS, the master key lives in the configuration of the process: whoever reads
+/// it together with the database reads every secret, and losing it loses every secret. Each
+/// party must use its own master key.
+#[derive(Clone)]
+pub struct LocalKeyWrapper {
+    key_id: String,
+    wrap_key: Zeroizing<[u8; 32]>,
+}
+
+impl std::fmt::Debug for LocalKeyWrapper {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("InMemoryWrapper")
-            .field("key_arn", &self.key_arn)
+        f.debug_struct("LocalKeyWrapper")
+            .field("key_id", &self.key_id)
             .finish_non_exhaustive()
     }
 }
 
-#[cfg(feature = "test-utils")]
-impl InMemoryWrapper {
-    /// Creates a wrapper reporting `key_arn` and wrapping under `master`.
-    #[must_use]
-    pub fn new(key_arn: &str, master: [u8; 32]) -> Self {
-        Self {
-            key_arn: key_arn.to_owned(),
-            master: Zeroizing::new(master),
-        }
-    }
-
-    fn master_dek(&self, data_key_id: Uuid) -> crate::Dek {
-        crate::Dek::new(data_key_id, &self.master)
-    }
-
-    /// The AAD derived deterministically from the encryption context.
-    fn aad(data_key_id: Uuid) -> Vec<u8> {
-        encryption_context(data_key_id)
-            .iter()
-            .flat_map(|(k, v)| format!("{k}={v};").into_bytes())
-            .collect()
+/// Two wrappers are equal if they have the same master key; compared by the public identifier.
+impl PartialEq for LocalKeyWrapper {
+    fn eq(&self, other: &Self) -> bool {
+        self.key_id == other.key_id
     }
 }
 
-#[cfg(feature = "test-utils")]
+impl Eq for LocalKeyWrapper {}
+
+impl LocalKeyWrapper {
+    /// Creates a wrapper for the master key `master`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KmsError::InvalidMasterKey`] if all bytes of `master` are equal: such a key is
+    /// a placeholder, not a random key.
+    ///
+    /// # Panics
+    ///
+    /// Never; the derived lengths are valid HKDF-SHA256 output lengths.
+    pub fn new(master: &[u8; 32]) -> Result<Self, KmsError> {
+        if master.iter().all(|b| *b == master[0]) {
+            return Err(KmsError::InvalidMasterKey(
+                "all bytes are equal; generate a random key, e.g. with `openssl rand -hex 32`",
+            ));
+        }
+        let hkdf = hkdf::Hkdf::<sha2::Sha256>::new(None, master);
+        let mut wrap_key = Zeroizing::new([0u8; 32]);
+        hkdf.expand(LOCAL_WRAP_KEY_INFO, wrap_key.as_mut_slice())
+            .expect("32 bytes is a valid HKDF-SHA256 output length");
+        let mut id = [0u8; 16];
+        hkdf.expand(LOCAL_KEY_ID_INFO, &mut id)
+            .expect("16 bytes is a valid HKDF-SHA256 output length");
+        Ok(Self {
+            key_id: format!("local:{}", to_hex(&id)),
+            wrap_key,
+        })
+    }
+
+    /// Creates a wrapper for a master key given as exactly 64 hex characters.
+    ///
+    /// Surrounding whitespace is ignored, so that a key read from a file with a trailing
+    /// newline (e.g. written by `openssl rand -hex 32 > file`) is accepted.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KmsError::InvalidMasterKey`] if `hex` is not exactly 64 hex characters after
+    /// trimming or the key is rejected by [`LocalKeyWrapper::new`]. The error never contains
+    /// the input.
+    ///
+    /// # Panics
+    ///
+    /// Never, like [`LocalKeyWrapper::new`].
+    pub fn from_hex(hex: &str) -> Result<Self, KmsError> {
+        fn nibble(c: u8) -> Option<u8> {
+            match c {
+                b'0'..=b'9' => Some(c - b'0'),
+                b'a'..=b'f' => Some(c - b'a' + 10),
+                b'A'..=b'F' => Some(c - b'A' + 10),
+                _ => None,
+            }
+        }
+        let hex = hex.trim().as_bytes();
+        let mut master = Zeroizing::new([0u8; 32]);
+        if hex.len() != 2 * master.len() {
+            return Err(KmsError::InvalidMasterKey(
+                "expected exactly 64 hex characters (32 bytes)",
+            ));
+        }
+        for (byte, pair) in master.iter_mut().zip(hex.as_chunks::<2>().0) {
+            let (Some(high), Some(low)) = (nibble(pair[0]), nibble(pair[1])) else {
+                return Err(KmsError::InvalidMasterKey(
+                    "expected exactly 64 hex characters (32 bytes)",
+                ));
+            };
+            *byte = (high << 4) | low;
+        }
+        Self::new(&master)
+    }
+
+    fn wrap_dek(&self, data_key_id: Uuid) -> crate::Dek {
+        crate::Dek::new(data_key_id, &self.wrap_key)
+    }
+
+    /// The AAD binding a wrapped data key to its identifier.
+    fn aad(data_key_id: Uuid) -> Vec<u8> {
+        let mut aad = Vec::with_capacity(LOCAL_WRAP_AAD_DOMAIN.len() + 16);
+        aad.extend_from_slice(LOCAL_WRAP_AAD_DOMAIN);
+        aad.extend_from_slice(data_key_id.as_bytes());
+        aad
+    }
+}
+
 #[async_trait]
-impl DekWrapper for InMemoryWrapper {
-    fn key_arn(&self) -> &str {
-        &self.key_arn
+impl DekWrapper for LocalKeyWrapper {
+    fn wrapping(&self) -> &'static str {
+        WRAPPING_LOCAL_KEY_V1
+    }
+
+    fn key_id(&self) -> &str {
+        &self.key_id
     }
 
     async fn generate(
@@ -332,7 +545,7 @@ impl DekWrapper for InMemoryWrapper {
         aes_gcm::aead::common::getrandom::fill(key.as_mut_slice())
             .expect("the operating system RNG must not fail");
         let wrapped = self
-            .master_dek(data_key_id)
+            .wrap_dek(data_key_id)
             .seal(&Self::aad(data_key_id), key.as_slice());
         Ok((key, wrapped))
     }
@@ -343,35 +556,175 @@ impl DekWrapper for InMemoryWrapper {
         wrapped: &[u8],
     ) -> Result<Zeroizing<[u8; 32]>, KmsError> {
         let plaintext = self
-            .master_dek(data_key_id)
+            .wrap_dek(data_key_id)
             .open(&Self::aad(data_key_id), wrapped)
             .map_err(|_| KmsError::Unwrap)?;
-        let key = plaintext
-            .as_slice()
-            .try_into()
-            .map_err(|_| KmsError::Unwrap)?;
-        Ok(Zeroizing::new(key))
+        let mut key = Zeroizing::new([0u8; 32]);
+        if plaintext.len() != key.len() {
+            return Err(KmsError::Unwrap);
+        }
+        key.copy_from_slice(&plaintext);
+        Ok(key)
     }
 }
 
-#[cfg(all(test, feature = "test-utils"))]
+#[cfg(test)]
 mod tests {
     use super::*;
-    use uuid::Uuid;
 
+    const MASTER_HEX: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+    const DATA_KEY_ID: &str = "67e55044-10b1-426f-9247-bb680e5fe0c8";
+
+    fn master() -> [u8; 32] {
+        std::array::from_fn(|i| u8::try_from(i).expect("fits"))
+    }
+
+    fn other_master() -> [u8; 32] {
+        std::array::from_fn(|i| u8::try_from(i + 1).expect("fits"))
+    }
+
+    fn data_key_id() -> Uuid {
+        Uuid::parse_str(DATA_KEY_ID).expect("uuid")
+    }
+
+    #[cfg(feature = "aws-kms")]
     #[test]
     fn encryption_context_is_exact() {
-        let id = Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").expect("uuid");
         assert_eq!(
-            encryption_context(id),
+            encryption_context(data_key_id()),
             [
                 ("purpose", "taceo-oprf-db-dek".to_owned()),
-                (
-                    "data_key_id",
-                    "67e55044-10b1-426f-9247-bb680e5fe0c8".to_owned()
-                ),
+                ("data_key_id", DATA_KEY_ID.to_owned()),
             ],
             "context must match exactly"
         );
+    }
+
+    #[tokio::test]
+    async fn local_key_round_trip() {
+        let wrapper = LocalKeyWrapper::new(&master()).expect("valid key");
+        let (key, blob) = wrapper.generate(data_key_id()).await.expect("generate");
+        assert_eq!(blob.len(), 12 + 32 + 16, "nonce + key + tag");
+        let unwrapped = wrapper
+            .unwrap_dek(data_key_id(), &blob)
+            .await
+            .expect("unwrap");
+        assert_eq!(
+            *unwrapped, *key,
+            "unwrapped key must equal the generated key"
+        );
+        let (other_key, _) = wrapper.generate(data_key_id()).await.expect("generate");
+        assert_ne!(*other_key, *key, "every generated key is fresh");
+    }
+
+    #[tokio::test]
+    async fn local_key_unwrap_rejects() {
+        let wrapper = LocalKeyWrapper::new(&master()).expect("valid key");
+        let (_, blob) = wrapper.generate(data_key_id()).await.expect("generate");
+
+        let other_id = Uuid::from_u128(1);
+        let other = LocalKeyWrapper::new(&other_master()).expect("valid key");
+        let mut modified = blob.clone();
+        *modified.last_mut().expect("not empty") ^= 1;
+        for (name, result) in [
+            (
+                "another data key id",
+                wrapper.unwrap_dek(other_id, &blob).await,
+            ),
+            (
+                "another master key",
+                other.unwrap_dek(data_key_id(), &blob).await,
+            ),
+            (
+                "modified bytes",
+                wrapper.unwrap_dek(data_key_id(), &modified).await,
+            ),
+            (
+                "truncated bytes",
+                wrapper.unwrap_dek(data_key_id(), &blob[..20]).await,
+            ),
+            ("empty bytes", wrapper.unwrap_dek(data_key_id(), &[]).await),
+        ] {
+            assert!(matches!(result, Err(KmsError::Unwrap)), "{name}");
+        }
+    }
+
+    /// Pins the stored format: key derivation, key id, AAD and layout of a blob key.
+    ///
+    /// The key id was also checked against an independent HKDF-SHA256 implementation. If this
+    /// test fails, existing `localKeyV1` data keys became unreadable.
+    #[tokio::test]
+    async fn local_key_known_answer() {
+        fn unhex(hex: &str) -> Vec<u8> {
+            (0..hex.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex"))
+                .collect()
+        }
+        let wrapper = LocalKeyWrapper::new(&master()).expect("valid key");
+        assert_eq!(wrapper.key_id(), "local:4afff713b8523626c3c923a845f88571");
+        let blob = unhex(
+            "e540e7b9b1941c9ae048c107d8ba13bad1f0e2c84d5a1c9fb5c012798e24e2d8\
+             00c2321d8b02bda36746d7759c9595fb016079ffee99bed612725019",
+        );
+        let key = wrapper
+            .unwrap_dek(data_key_id(), &blob)
+            .await
+            .expect("unwrap");
+        assert_eq!(
+            key.as_slice(),
+            unhex("64ee304b284710c6c231743a73439f0c7be3dc341c53a019d0524ba8d2e908fc"),
+        );
+    }
+
+    #[test]
+    fn local_key_id_depends_on_master_key_only() {
+        let a = LocalKeyWrapper::new(&master()).expect("valid key");
+        let b = LocalKeyWrapper::new(&master()).expect("valid key");
+        let other = LocalKeyWrapper::new(&other_master()).expect("valid key");
+        assert_eq!(a.key_id(), b.key_id(), "same master key, same id");
+        assert_ne!(a.key_id(), other.key_id(), "other master key, other id");
+        assert_eq!(a.wrapping(), "localKeyV1");
+    }
+
+    #[test]
+    fn local_key_from_hex() {
+        let from_hex = LocalKeyWrapper::from_hex(MASTER_HEX).expect("valid hex");
+        let upper = LocalKeyWrapper::from_hex(&MASTER_HEX.to_uppercase()).expect("valid hex");
+        let from_bytes = LocalKeyWrapper::new(&master()).expect("valid key");
+        assert_eq!(from_hex.key_id(), from_bytes.key_id());
+        assert_eq!(upper.key_id(), from_bytes.key_id());
+        for padded in [
+            format!("{MASTER_HEX}\n"),
+            format!("{MASTER_HEX}\r\n"),
+            format!("  {MASTER_HEX}\t"),
+        ] {
+            let trimmed = LocalKeyWrapper::from_hex(&padded).expect("whitespace is trimmed");
+            assert_eq!(trimmed.key_id(), from_bytes.key_id());
+        }
+        let inner_space = format!("{} {}", &MASTER_HEX[..32], &MASTER_HEX[32..]);
+        LocalKeyWrapper::from_hex(&inner_space).expect_err("inner whitespace is rejected");
+
+        let prefixed = format!("0x{MASTER_HEX}");
+        let not_hex = format!("{}zz", &MASTER_HEX[..62]);
+        let weak = "ab".repeat(32);
+        for bad in ["", &MASTER_HEX[..62], &prefixed, &not_hex, &weak] {
+            let err = LocalKeyWrapper::from_hex(bad).expect_err("must be rejected");
+            assert!(matches!(err, KmsError::InvalidMasterKey(_)), "{bad}");
+            if !bad.is_empty() {
+                assert!(
+                    !err.to_string().contains(bad),
+                    "error must not echo the key"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn local_key_debug_hides_key() {
+        let wrapper = LocalKeyWrapper::from_hex(MASTER_HEX).expect("valid hex");
+        let debug = format!("{wrapper:?}");
+        assert!(debug.contains(wrapper.key_id()), "{debug}");
+        assert!(!debug.contains("wrap_key"), "{debug}");
     }
 }

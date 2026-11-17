@@ -5,10 +5,38 @@ use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 use sqlx::PgExecutor;
 
 use crate::{
-    StorageCrypto, StoreError,
+    LocalKeyWrapper, StorageCrypto, StoreError,
     aad::{Kind, RowId},
     codec,
 };
+
+/// The 32-byte test master key number `seed`; different seeds give different keys.
+#[must_use]
+pub fn master_key(seed: u8) -> [u8; 32] {
+    let mut key = [0u8; 32];
+    let mut next = seed;
+    for byte in &mut key {
+        *byte = next;
+        next = next.wrapping_add(1);
+    }
+    key
+}
+
+/// [`master_key`]`(seed)` as the 64 hex characters accepted in configuration.
+#[must_use]
+pub fn master_key_hex(seed: u8) -> String {
+    crate::kms::to_hex(&master_key(seed))
+}
+
+/// A [`LocalKeyWrapper`] under [`master_key`]`(seed)`.
+///
+/// # Panics
+///
+/// Never; every test master key is accepted.
+#[must_use]
+pub fn local_wrapper(seed: u8) -> LocalKeyWrapper {
+    LocalKeyWrapper::new(&master_key(seed)).expect("test master keys are valid")
+}
 
 /// Inserts a live share row for `oprf_key_id`.
 ///

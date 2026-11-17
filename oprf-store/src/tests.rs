@@ -149,7 +149,7 @@ mod postgres {
         use ruint::aliases::U160;
 
         use crate::{
-            Dek, InMemoryWrapper, MIGRATOR, StorageCrypto, StoreError, aad::AadContext, data_keys,
+            Dek, MIGRATOR, StorageCrypto, StoreError, aad::AadContext, data_keys,
             format::StorageFormat, shares, test_utils,
         };
 
@@ -316,7 +316,7 @@ mod postgres {
         #[tokio::test]
         async fn open_envelope_row() -> eyre::Result<()> {
             let (_pg, mut connection) = migrated_connection().await?;
-            let wrapper = InMemoryWrapper::new("arn:test:key", [1; 32]);
+            let wrapper = crate::test_utils::local_wrapper(1);
             let dek = data_keys::create(&mut connection, &wrapper).await?;
             let dek_id = dek.id();
             let crypto = crypto(&[StorageFormat::EnvelopeV1], vec![dek])
@@ -347,11 +347,10 @@ mod postgres {
         use uuid::Uuid;
 
         use crate::{
-            Dek, InMemoryWrapper, MIGRATOR,
+            Dek, DekWrapper, MIGRATOR,
             data_keys::{self, DataKeyError},
+            test_utils::local_wrapper,
         };
-
-        const ARN: &str = "arn:test:key";
 
         /// Returns the container handle too; the container stops once the last handle is dropped.
         async fn migrated_pool() -> eyre::Result<(
@@ -384,7 +383,7 @@ mod postgres {
         #[tokio::test]
         async fn created_keys_are_loaded() -> eyre::Result<()> {
             let (_pg, pool) = migrated_pool().await?;
-            let wrapper = InMemoryWrapper::new(ARN, [1; 32]);
+            let wrapper = local_wrapper(1);
             let a = data_keys::create(&pool, &wrapper).await?;
             let b = data_keys::create(&pool, &wrapper).await?;
             let c = data_keys::create(&pool, &wrapper).await?;
@@ -415,7 +414,7 @@ mod postgres {
         #[tokio::test]
         async fn current_id_is_newest() -> eyre::Result<()> {
             let (_pg, pool) = migrated_pool().await?;
-            let wrapper = InMemoryWrapper::new(ARN, [1; 32]);
+            let wrapper = local_wrapper(1);
             let old = data_keys::create(&pool, &wrapper).await?;
             let newest = data_keys::create(&pool, &wrapper).await?;
             let middle = data_keys::create(&pool, &wrapper).await?;
@@ -439,49 +438,110 @@ mod postgres {
         }
 
         #[tokio::test]
-        async fn key_arn_mismatch_is_error() -> eyre::Result<()> {
+        async fn key_id_mismatch_is_error() -> eyre::Result<()> {
             let (_pg, pool) = migrated_pool().await?;
-            let created = data_keys::create(&pool, &InMemoryWrapper::new("arn:a", [1; 32])).await?;
-            let other = InMemoryWrapper::new("arn:b", [1; 32]);
+            let wrapper = local_wrapper(1);
+            let created = data_keys::create(&pool, &wrapper).await?;
+            let other = local_wrapper(2);
 
             let err = data_keys::load_all(&pool, &other)
                 .await
-                .expect_err("ARN differs");
+                .expect_err("master key differs");
             assert!(
-                matches!(&err, DataKeyError::KeyArnMismatch { id, stored, configured }
-                    if *id == created.id() && stored == "arn:a" && configured == "arn:b"),
-                "expected KeyArnMismatch, got {err:?}"
+                matches!(&err, DataKeyError::KeyIdMismatch { id, stored, configured }
+                    if *id == created.id()
+                        && stored == wrapper.key_id()
+                        && configured == other.key_id()),
+                "expected KeyIdMismatch, got {err:?}"
             );
             let message = err.to_string();
-            assert!(message.contains("arn:a"), "message names stored ARN");
-            assert!(message.contains("arn:b"), "message names configured ARN");
+            assert!(
+                message.contains(wrapper.key_id()),
+                "message names stored key"
+            );
+            assert!(
+                message.contains(other.key_id()),
+                "message names configured key"
+            );
 
             let err = data_keys::load_one(&pool, &other, created.id())
                 .await
-                .expect_err("ARN differs");
+                .expect_err("master key differs");
             assert!(
-                matches!(err, DataKeyError::KeyArnMismatch { .. }),
-                "load_one must also check the ARN"
+                matches!(err, DataKeyError::KeyIdMismatch { .. }),
+                "load_one must also check the key id"
             );
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn wrapping_mismatch_is_error() -> eyre::Result<()> {
+            let (_pg, pool) = migrated_pool().await?;
+            let wrapper = local_wrapper(1);
+            let created = data_keys::create(&pool, &wrapper).await?;
+            sqlx::query("UPDATE data_keys SET wrapping = 'awsKms' WHERE id = $1")
+                .bind(created.id())
+                .execute(&pool)
+                .await?;
+
+            let err = data_keys::load_all(&pool, &wrapper)
+                .await
+                .expect_err("wrapping differs");
+            assert!(
+                matches!(&err, DataKeyError::WrappingMismatch { id, stored, configured }
+                    if *id == created.id() && stored == "awsKms" && *configured == "localKeyV1"),
+                "expected WrappingMismatch, got {err:?}"
+            );
+            assert!(
+                matches!(
+                    data_keys::load_one(&pool, &wrapper, created.id()).await,
+                    Err(DataKeyError::WrappingMismatch { .. })
+                ),
+                "load_one must also check the wrapping"
+            );
+            Ok(())
+        }
+
+        #[tokio::test]
+        async fn created_row_names_wrapping_and_key() -> eyre::Result<()> {
+            let (_pg, pool) = migrated_pool().await?;
+            let wrapper = local_wrapper(1);
+            let created = data_keys::create(&pool, &wrapper).await?;
+            let (wrapping, key_id, blob): (String, String, Vec<u8>) = sqlx::query_as(
+                "SELECT wrapping, wrapping_key_id, wrapped_key FROM data_keys WHERE id = $1",
+            )
+            .bind(created.id())
+            .fetch_one(&pool)
+            .await?;
+            assert_eq!(wrapping, "localKeyV1");
+            assert_eq!(key_id, wrapper.key_id());
+            assert_eq!(blob.len(), 60, "nonce + key + tag");
             Ok(())
         }
 
         #[tokio::test]
         async fn unwrap_failure_is_error() -> eyre::Result<()> {
             let (_pg, pool) = migrated_pool().await?;
-            let created = data_keys::create(&pool, &InMemoryWrapper::new(ARN, [1; 32])).await?;
-            let other_master = InMemoryWrapper::new(ARN, [2; 32]);
+            let wrapper = local_wrapper(1);
+            let created = data_keys::create(&pool, &wrapper).await?;
+            // The key id still matches, so only unwrapping can notice the modified key.
+            sqlx::query(
+                "UPDATE data_keys SET wrapped_key = set_byte(wrapped_key, 0, get_byte(wrapped_key, 0) # 1) WHERE id = $1",
+            )
+            .bind(created.id())
+            .execute(&pool)
+            .await?;
 
             assert!(
                 matches!(
-                    data_keys::load_all(&pool, &other_master).await,
+                    data_keys::load_all(&pool, &wrapper).await,
                     Err(DataKeyError::Kms(_))
                 ),
                 "load_all must surface the unwrap failure"
             );
             assert!(
                 matches!(
-                    data_keys::load_one(&pool, &other_master, created.id()).await,
+                    data_keys::load_one(&pool, &wrapper, created.id()).await,
                     Err(DataKeyError::Kms(_))
                 ),
                 "load_one must surface the unwrap failure"

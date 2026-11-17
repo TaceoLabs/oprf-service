@@ -41,9 +41,9 @@ use nodes_common::{
     Environment,
     web3::{self},
 };
-pub use oprf_store::KmsConfig;
-use oprf_store::{KeyArn, format::StorageFormat};
-use secrecy::SecretString;
+use oprf_store::format::StorageFormat;
+pub use oprf_store::{KmsConfig, WrappingKeyConfig};
+use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 
 /// The configuration for TACEO:OPRF key-gen functionality.
@@ -303,8 +303,14 @@ impl OprfKeyGenServiceConfig {
 /// |---------------------------|------------|---------------------------------------------------|
 /// | `allowed_storage_formats` | `[direct]` | Formats accepted when reading; must not be empty. |
 /// | `storage_write_format`    | `direct`   | Format written; must be allowed.                  |
-/// | `kms_key_arn`             | none       | Full ARN of the AWS KMS key wrapping the data keys; required if `envelopeV1` is allowed. |
+/// | `kms_key_arn`             | none       | Full ARN of the AWS KMS key wrapping the data keys. |
 /// | `kms_endpoint`            | none       | Custom AWS KMS endpoint (e.g. for local testing). |
+/// | `storage_master_key`      | none       | Master key wrapping the data keys locally, without AWS KMS: exactly 64 hex characters (32 random bytes, e.g. from `openssl rand -hex 32`). |
+///
+/// If `envelopeV1` is allowed, exactly one of `kms_key_arn` and `storage_master_key` is required.
+/// The key-gen and the node of a party must use the same master key, and every party its own.
+/// Whoever reads the master key and the database reads every secret, and without it the stored
+/// secrets are lost for good: keep a backup.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(try_from = "RawStorageConfig")]
 #[allow(
@@ -312,15 +318,15 @@ impl OprfKeyGenServiceConfig {
     reason = "consumers must handle every way secrets are stored"
 )]
 pub enum StorageConfig {
-    /// Reads and writes `direct` only; the KMS is never used.
+    /// Reads and writes `direct` only; no wrapping key is used.
     #[default]
     Direct,
     /// Reads `envelopeV1`; what else is read and what is written depends on `mode`.
     Envelope {
         /// The formats read and written.
         mode: EnvelopeMode,
-        /// The KMS key wrapping the data keys.
-        kms: KmsConfig,
+        /// The key wrapping the data keys.
+        key: WrappingKeyConfig,
     },
 }
 
@@ -369,6 +375,8 @@ struct RawStorageConfig {
     kms_key_arn: Option<String>,
     #[serde(default)]
     kms_endpoint: Option<String>,
+    #[serde(default)]
+    storage_master_key: Option<SecretString>,
 }
 
 fn default_allowed_storage_formats() -> Vec<StorageFormat> {
@@ -399,17 +407,14 @@ impl TryFrom<RawStorageConfig> for StorageConfig {
                 bail!("storage_write_format {write:?} must be contained in allowed_storage_formats")
             }
         };
-        let Some(key_arn) = raw.kms_key_arn else {
-            bail!("kms_key_arn is required when envelopeV1 is an allowed storage format");
-        };
-        Ok(Self::Envelope {
-            mode,
-            kms: KmsConfig {
-                key_arn: KeyArn::try_from(key_arn)
-                    .map_err(|err| eyre::eyre!("kms_key_arn: {err}"))?,
-                endpoint: raw.kms_endpoint,
-            },
-        })
+        let key = WrappingKeyConfig::parse(
+            raw.kms_key_arn,
+            raw.kms_endpoint,
+            raw.storage_master_key
+                .as_ref()
+                .map(ExposeSecret::expose_secret),
+        )?;
+        Ok(Self::Envelope { mode, key })
     }
 }
 
@@ -426,22 +431,25 @@ mod tests {
         serde_json::from_value(value).map_err(|err| err.to_string())
     }
 
+    const MASTER_KEY: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+
     fn envelope(mode: EnvelopeMode) -> StorageConfig {
         StorageConfig::Envelope {
             mode,
-            kms: KmsConfig {
-                key_arn: KeyArn::try_from(KEY_ARN.to_owned()).expect("valid ARN"),
-                endpoint: None,
-            },
+            key: WrappingKeyConfig::parse(Some(KEY_ARN.to_owned()), None, None).expect("valid ARN"),
         }
     }
 
     #[test]
     fn parses_every_valid_combination() {
         assert_eq!(parse(json!({})), Ok(StorageConfig::Direct));
-        // A KMS key that is not needed is ignored.
+        // A wrapping key that is not needed is ignored.
         assert_eq!(
             parse(json!({ "kms_key_arn": KEY_ARN })),
+            Ok(StorageConfig::Direct)
+        );
+        assert_eq!(
+            parse(json!({ "storage_master_key": MASTER_KEY })),
             Ok(StorageConfig::Direct)
         );
         for (allowed, write, mode) in [
@@ -487,7 +495,18 @@ mod tests {
                 json!({ "allowed_storage_formats": ["envelopeV1"], "kms_key_arn": KEY_ARN }),
                 "storage_write_format",
             ),
-            (json!({ "allowed_storage_formats": both }), "kms_key_arn"),
+            (
+                json!({ "allowed_storage_formats": both }),
+                "kms_key_arn or storage_master_key",
+            ),
+            (
+                json!({
+                    "allowed_storage_formats": both,
+                    "kms_key_arn": KEY_ARN,
+                    "storage_master_key": MASTER_KEY,
+                }),
+                "mutually exclusive",
+            ),
             (
                 json!({ "allowed_storage_formats": both, "kms_key_arn": "alias/oprf" }),
                 "full key ARN",
@@ -505,6 +524,34 @@ mod tests {
                 err.contains(field),
                 "{config}: the error must name {field}: {err}"
             );
+        }
+    }
+
+    #[test]
+    fn accepts_master_key_instead_of_kms_key_arn() {
+        let parsed = parse(json!({
+            "allowed_storage_formats": ["envelopeV1"],
+            "storage_write_format": "envelopeV1",
+            "storage_master_key": MASTER_KEY,
+        }))
+        .expect("master key is enough");
+        let StorageConfig::Envelope { mode, key } = parsed else {
+            panic!("expected an envelope config, got {parsed:?}");
+        };
+        assert_eq!(mode, EnvelopeMode::EnvelopeOnly);
+        assert!(matches!(key, WrappingKeyConfig::Local(_)), "{key:?}");
+    }
+
+    #[test]
+    fn rejects_invalid_master_key_without_echoing_it() {
+        for bad in ["abcd", &MASTER_KEY.replace('0', "g"), &"11".repeat(32)] {
+            let err = parse(json!({
+                "allowed_storage_formats": ["direct", "envelopeV1"],
+                "storage_master_key": bad,
+            }))
+            .expect_err("rejected");
+            assert!(err.contains("storage_master_key"), "{err}");
+            assert!(!err.contains(bad), "the error must not contain the key");
         }
     }
 }

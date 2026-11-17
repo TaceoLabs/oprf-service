@@ -16,7 +16,6 @@ use std::{net::SocketAddr, process::ExitCode, sync::Arc, time::Duration};
 use config::Config;
 use eyre::Context;
 use nodes_common::{StartedServices, postgres::PostgresConfig};
-use oprf_store::AwsKmsWrapper;
 use serde::Deserialize;
 use taceo_oprf_key_gen::{
     config::{OprfKeyGenServiceConfig, StorageConfig},
@@ -99,16 +98,21 @@ async fn run(config: OprfKeyGenConfig) -> eyre::Result<()> {
 
     tracing::info!("connecting to postgres DB...");
 
-    // Only a deployment that uses `envelopeV1` touches AWS.
+    // Only a deployment that uses `envelopeV1` gets a wrapper; with a KMS key it is the only one
+    // that touches AWS.
     let storage = match config.storage {
         StorageConfig::Direct => Storage::Direct,
-        StorageConfig::Envelope { mode, kms } => {
-            tracing::info!("using KMS key {} to wrap data keys", kms.key_arn);
-            let wrapper = AwsKmsWrapper::new(kms.key_arn.into(), kms.endpoint).await;
-            Storage::Envelope {
-                mode,
-                wrapper: Arc::new(wrapper),
-            }
+        StorageConfig::Envelope { mode, key } => {
+            let wrapper = key
+                .wrapper()
+                .await
+                .context("invalid storage configuration")?;
+            tracing::info!(
+                wrapping = wrapper.wrapping(),
+                key_id = wrapper.key_id(),
+                "wrapping data keys"
+            );
+            Storage::Envelope { mode, wrapper }
         }
     };
     let postgres = PostgresDb::init(&config.postgres_config, storage, node_information)
@@ -224,6 +228,8 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+    use taceo_oprf_key_gen::config::WrappingKeyConfig;
+
     use super::*;
 
     #[derive(Deserialize)]
@@ -263,8 +269,12 @@ mod tests {
             ("KMS_KEY_ARN", KEY_ARN),
         ])
         .expect("valid envelope config");
-        let StorageConfig::Envelope { mode, kms } = envelope else {
-            panic!("expected an envelope config, got {envelope:?}");
+        let StorageConfig::Envelope {
+            mode,
+            key: WrappingKeyConfig::Kms(kms),
+        } = envelope
+        else {
+            panic!("expected an envelope config with a KMS key, got {envelope:?}");
         };
         assert_eq!(
             mode,

@@ -71,11 +71,14 @@ impl WriteTarget {
 ///
 /// Holds the set of formats this process is allowed to read, the [`AadContext`] of the
 /// deployment, the known data keys and, optionally, the format new values are written in.
+/// A policy built with [`StorageCrypto::direct_only`] has no [`AadContext`] and never reads or
+/// writes `envelopeV1`.
 /// Instances built with [`StorageCrypto::new`] are read-only until [`StorageCrypto::with_write`]
 /// is applied. Shareable between threads; data keys can be added through a shared reference.
 pub struct StorageCrypto {
     allowed: Vec<StorageFormat>,
-    ctx: AadContext,
+    /// `None` exactly for [`StorageCrypto::direct_only`], which never allows `envelopeV1`.
+    ctx: Option<AadContext>,
     deks: RwLock<HashMap<Uuid, Dek>>,
     write: Option<WriteTarget>,
 }
@@ -100,10 +103,35 @@ impl StorageCrypto {
     pub fn new(allowed: &[StorageFormat], ctx: AadContext, deks: Vec<Dek>) -> Self {
         Self {
             allowed: allowed.to_vec(),
-            ctx,
+            ctx: Some(ctx),
             deks: RwLock::new(deks.into_iter().map(|d| (d.id(), d)).collect()),
             write: None,
         }
+    }
+
+    /// Creates a read-only policy that allows reading `direct` only.
+    ///
+    /// Needs no [`AadContext`] and no data keys, since `direct` values are not bound to
+    /// anything. `envelopeV1` is refused with [`EnvelopeError::FormatNotAllowed`], for reads
+    /// and writes alike.
+    #[must_use]
+    pub fn direct_only() -> Self {
+        Self {
+            allowed: vec![StorageFormat::Direct],
+            ctx: None,
+            deks: RwLock::new(HashMap::new()),
+            write: None,
+        }
+    }
+
+    /// The AAD context for `envelopeV1`.
+    ///
+    /// Only a [`StorageCrypto::direct_only`] policy has none, and it does not allow
+    /// `envelopeV1`, so callers that checked the allowed set never see this error.
+    fn envelope_ctx(&self) -> Result<&AadContext, EnvelopeError> {
+        self.ctx
+            .as_ref()
+            .ok_or(EnvelopeError::FormatNotAllowed(StorageFormat::EnvelopeV1))
     }
 
     /// Makes this policy write new values to `target`.
@@ -197,10 +225,11 @@ impl StorageCrypto {
                 Ok(Zeroizing::new(stored.to_vec()))
             }
             StorageFormat::EnvelopeV1 => {
+                let ctx = self.envelope_ctx()?;
                 let id = data_key_id.ok_or(EnvelopeError::MissingDataKeyId)?;
                 let deks = self.deks.read().unwrap_or_else(PoisonError::into_inner);
                 let dek = deks.get(&id).ok_or(EnvelopeError::UnknownDataKey(id))?;
-                let aad = self.ctx.aad(row);
+                let aad = ctx.aad(row);
                 dek.open(&aad, stored)
             }
         }
@@ -261,10 +290,11 @@ impl StorageCrypto {
                 })
             }
             StorageFormat::EnvelopeV1 => {
+                let ctx = self.envelope_ctx()?;
                 let id = data_key_id.ok_or(EnvelopeError::MissingDataKeyId)?;
                 let deks = self.deks.read().unwrap_or_else(PoisonError::into_inner);
                 let dek = deks.get(&id).ok_or(EnvelopeError::UnknownDataKey(id))?;
-                let aad = self.ctx.aad(row);
+                let aad = ctx.aad(row);
                 Ok(Sealed {
                     format,
                     data_key_id: Some(id),
@@ -332,6 +362,33 @@ mod tests {
             .open("direct", None, &row(Kind::PendingShare), b"plain")
             .expect("open");
         assert_eq!(out.as_slice(), b"plain", "bytes unchanged");
+    }
+
+    #[test]
+    fn direct_only_reads_direct_and_refuses_envelope() {
+        let c = StorageCrypto::direct_only();
+        let r = row(Kind::PendingShare);
+        let out = c.open("direct", None, &r, b"plain").expect("open");
+        assert_eq!(out.as_slice(), b"plain", "bytes unchanged");
+
+        let sealed = writer(&all()).seal(&r, b"secret").expect("seal");
+        c.insert_dek(dek(CURRENT));
+        assert!(
+            matches!(
+                c.open("envelopeV1", sealed.data_key_id, &r, &sealed.bytes),
+                Err(EnvelopeError::FormatNotAllowed(StorageFormat::EnvelopeV1))
+            ),
+            "envelope rows are refused even if the data key is known"
+        );
+        assert!(
+            matches!(
+                c.with_write(WriteTarget::EnvelopeV1(CURRENT)),
+                Err(EnvelopeError::WriteFormatNotAllowed(
+                    StorageFormat::EnvelopeV1
+                ))
+            ),
+            "a direct-only policy cannot write envelope rows"
+        );
     }
 
     #[test]

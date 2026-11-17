@@ -7,17 +7,14 @@
 //! the node reads it. A row in a format that is not allowed is refused, never read in another
 //! format.
 
-use std::{
-    num::{NonZeroU16, NonZeroUsize},
-    sync::Arc,
-    time::Duration,
-};
+use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use eyre::{Context as _, bail};
+use eyre::Context as _;
 use nodes_common::postgres::{CreateSchema, PostgresConfig};
 use oprf_store::{StorageCrypto, StoreError, aad::AadContext, data_keys};
-use oprf_types::{OprfKeyId, crypto::OprfKeyMaterial, crypto::PartyId, service::NodeInformation};
+use oprf_types::{OprfKeyId, crypto::OprfKeyMaterial, service::NodeInformation};
+use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use sqlx::PgPool;
 use tracing::instrument;
@@ -28,7 +25,9 @@ use crate::{
     secret_manager::{SecretManager, SecretManagerError},
 };
 
-pub use oprf_store::{DekWrapper, EnvelopeError, KeyArn, KmsConfig, format::StorageFormat};
+pub use oprf_store::{
+    DekWrapper, EnvelopeError, KeyArn, KmsConfig, WrappingKeyConfig, format::StorageFormat,
+};
 
 /// Which storage formats the node reads shares in.
 ///
@@ -37,8 +36,12 @@ pub use oprf_store::{DekWrapper, EnvelopeError, KeyArn, KmsConfig, format::Stora
 /// | Field                     | Default    |                                              |
 /// |---------------------------|------------|----------------------------------------------|
 /// | `allowed_storage_formats` | `[direct]` | Formats shares are read in; must not be empty. |
-/// | `kms_key_arn`             | none       | Full ARN of the AWS KMS key wrapping the data keys; required if `envelopeV1` is allowed. |
+/// | `kms_key_arn`             | none       | Full ARN of the AWS KMS key wrapping the data keys. |
 /// | `kms_endpoint`            | none       | Custom AWS KMS endpoint (e.g. for local testing). |
+/// | `storage_master_key`      | none       | Master key wrapping the data keys locally, without AWS KMS: exactly 64 hex characters (32 bytes), the same key as configured for the key-gen of this party. |
+///
+/// If `envelopeV1` is allowed, exactly one of `kms_key_arn` and `storage_master_key` is required.
+/// Whoever reads the master key and the database reads every share.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(try_from = "RawNodeStorageConfig")]
 #[allow(
@@ -46,15 +49,15 @@ pub use oprf_store::{DekWrapper, EnvelopeError, KeyArn, KmsConfig, format::Stora
     reason = "consumers must handle every way shares are stored"
 )]
 pub enum NodeStorageConfig {
-    /// Reads `direct` only; the KMS is never used.
+    /// Reads `direct` only; no wrapping key is used.
     #[default]
     Direct,
     /// Reads `envelopeV1`, and `direct` too if `read_direct` is set.
     Envelope {
         /// Whether `direct` rows are read as well.
         read_direct: bool,
-        /// The KMS key wrapping the data keys.
-        kms: KmsConfig,
+        /// The key wrapping the data keys.
+        key: WrappingKeyConfig,
     },
 }
 
@@ -67,6 +70,8 @@ struct RawNodeStorageConfig {
     kms_key_arn: Option<String>,
     #[serde(default)]
     kms_endpoint: Option<String>,
+    #[serde(default)]
+    storage_master_key: Option<SecretString>,
 }
 
 fn default_allowed_storage_formats() -> Vec<StorageFormat> {
@@ -83,17 +88,14 @@ impl TryFrom<RawNodeStorageConfig> for NodeStorageConfig {
             eyre::ensure!(read_direct, "allowed_storage_formats must not be empty");
             return Ok(Self::Direct);
         }
-        let Some(key_arn) = raw.kms_key_arn else {
-            bail!("kms_key_arn is required when envelopeV1 is an allowed storage format");
-        };
-        Ok(Self::Envelope {
-            read_direct,
-            kms: KmsConfig {
-                key_arn: KeyArn::try_from(key_arn)
-                    .map_err(|err| eyre::eyre!("kms_key_arn: {err}"))?,
-                endpoint: raw.kms_endpoint,
-            },
-        })
+        let key = WrappingKeyConfig::parse(
+            raw.kms_key_arn,
+            raw.kms_endpoint,
+            raw.storage_master_key
+                .as_ref()
+                .map(ExposeSecret::expose_secret),
+        )?;
+        Ok(Self::Envelope { read_direct, key })
     }
 }
 
@@ -137,7 +139,10 @@ impl std::fmt::Debug for PostgresSecretManager {
             .field("max_retries", &self.max_retries)
             .field("retry_delay", &self.retry_delay)
             .field("crypto", &self.crypto)
-            .field("kms_key_arn", &self.wrapper.as_ref().map(|w| w.key_arn()))
+            .field(
+                "wrapping_key_id",
+                &self.wrapper.as_ref().map(|w| w.key_id()),
+            )
             .finish_non_exhaustive()
     }
 }
@@ -145,35 +150,34 @@ impl std::fmt::Debug for PostgresSecretManager {
 impl PostgresSecretManager {
     /// Initializes the `PostgresSecretManager`.
     ///
-    /// Only if `envelopeV1` is read, creates an AWS KMS wrapper for the configured key and
+    /// Only if `envelopeV1` is read, creates the data key wrapper for the configured key and
     /// continues as [`PostgresSecretManager::init_with_storage`]. A node that only reads `direct`
-    /// never touches AWS.
+    /// never touches AWS, and neither does one with a local master key.
     ///
-    /// The AWS KMS wrapper needs the `aws-kms` feature. Without it, use
+    /// The AWS KMS wrapper needs the `aws-kms` feature. Without it, use a local master key or
     /// [`PostgresSecretManager::init_with_storage`] to read `envelopeV1` rows.
     ///
     /// # Errors
-    /// Returns an error if `envelopeV1` is read and the `aws-kms` feature is not enabled.
-    /// Otherwise see [`PostgresSecretManager::init_with_storage`].
+    /// Returns an error if `envelopeV1` is read with a KMS key and the `aws-kms` feature is not
+    /// enabled. Otherwise see [`PostgresSecretManager::init_with_storage`].
     #[instrument(level = "debug", skip_all)]
     pub async fn init(config: &PostgresConfig, storage: &NodeStorageConfig) -> eyre::Result<Self> {
         let storage = match storage {
             NodeStorageConfig::Direct => NodeStorage::Direct,
-            #[cfg(not(feature = "aws-kms"))]
-            NodeStorageConfig::Envelope { .. } => bail!(
-                "envelopeV1 is an allowed storage format, but the `aws-kms` feature is not enabled"
-            ),
-            #[cfg(feature = "aws-kms")]
-            NodeStorageConfig::Envelope { read_direct, kms } => {
-                tracing::info!("using KMS key {} to unwrap data keys", kms.key_arn);
-                let wrapper = oprf_store::AwsKmsWrapper::new(
-                    kms.key_arn.clone().into(),
-                    kms.endpoint.clone(),
-                )
-                .await;
+            NodeStorageConfig::Envelope { read_direct, key } => {
+                let wrapper = key
+                    .clone()
+                    .wrapper()
+                    .await
+                    .context("invalid storage configuration")?;
+                tracing::info!(
+                    wrapping = wrapper.wrapping(),
+                    key_id = wrapper.key_id(),
+                    "unwrapping data keys"
+                );
                 NodeStorage::Envelope {
                     read_direct: *read_direct,
-                    wrapper: Arc::new(wrapper),
+                    wrapper,
                 }
             }
         };
@@ -195,7 +199,7 @@ impl PostgresSecretManager {
     /// # Errors
     /// Returns an error if the connection to the database fails, and, if `envelopeV1` is read,
     /// if `node_information` is missing or a data key cannot be loaded (e.g. the KMS call fails
-    /// or the key was wrapped under another KMS key).
+    /// or the key was wrapped under another key).
     #[instrument(level = "debug", skip_all)]
     pub async fn init_with_storage(
         config: &PostgresConfig,
@@ -207,46 +211,39 @@ impl PostgresSecretManager {
             .context("while connecting to postgres DB")?;
         // we don't run migrations, we just read
         // TODO do we need to check version of the DB to fast crash if migrations don't match?
-        let mut secret_manager = Self {
+        let (crypto, wrapper) = match storage {
+            // `direct` values are not bound to anything: no context, no data keys, no wrapper.
+            NodeStorage::Direct => (StorageCrypto::direct_only(), None),
+            NodeStorage::Envelope {
+                read_direct,
+                wrapper,
+            } => {
+                let allowed: &[StorageFormat] = if read_direct {
+                    &[StorageFormat::Direct, StorageFormat::EnvelopeV1]
+                } else {
+                    &[StorageFormat::EnvelopeV1]
+                };
+                let node_information =
+                    fetch_node_information(&pool, config.max_retries, config.retry_delay).await?;
+                let ctx = AadContext {
+                    party_id: node_information.party_id(),
+                    threshold: node_information.threshold(),
+                };
+                let deks = data_keys::load_all(&pool, wrapper.as_ref())
+                    .await
+                    .context("while loading the data keys")?;
+                tracing::info!(?allowed, data_keys = deks.len(), "loaded data keys");
+                (StorageCrypto::new(allowed, ctx, deks), Some(wrapper))
+            }
+        };
+        Ok(Self {
             pool,
             max_retries: config.max_retries,
             retry_delay: config.retry_delay,
-            // The associated data is only used for `envelopeV1`, never for `direct`, so this
-            // placeholder context is never bound into anything.
-            crypto: StorageCrypto::new(
-                &[StorageFormat::Direct],
-                AadContext {
-                    party_id: PartyId(0),
-                    threshold: NonZeroU16::MIN,
-                },
-                vec![],
-            ),
-            wrapper: None,
-            load_lock: tokio::sync::Mutex::new(()),
-        };
-        if let NodeStorage::Envelope {
-            read_direct,
+            crypto,
             wrapper,
-        } = storage
-        {
-            let allowed: &[StorageFormat] = if read_direct {
-                &[StorageFormat::Direct, StorageFormat::EnvelopeV1]
-            } else {
-                &[StorageFormat::EnvelopeV1]
-            };
-            let node_information = secret_manager.load_node_information().await?;
-            let ctx = AadContext {
-                party_id: node_information.party_id(),
-                threshold: node_information.threshold(),
-            };
-            let deks = data_keys::load_all(&secret_manager.pool, wrapper.as_ref())
-                .await
-                .context("while loading the data keys")?;
-            tracing::info!(?allowed, data_keys = deks.len(), "loaded data keys");
-            secret_manager.crypto = StorageCrypto::new(allowed, ctx, deks);
-            secret_manager.wrapper = Some(wrapper);
-        }
-        Ok(secret_manager)
+            load_lock: tokio::sync::Mutex::new(()),
+        })
     }
 
     /// Runs `op`, retrying transient database errors with the configured backoff.
@@ -315,22 +312,32 @@ fn rejection(err: &EnvelopeError) -> Option<Rejection> {
     }
 }
 
+/// Loads the node information, retrying transient database errors with the given backoff.
+async fn fetch_node_information(
+    pool: &PgPool,
+    max_retries: NonZeroUsize,
+    retry_delay: Duration,
+) -> eyre::Result<NodeInformation> {
+    oprf_store::retry::with_retry(
+        "load address",
+        oprf_store::retry::backoff(max_retries, retry_delay),
+        oprf_store::retry::is_transient,
+        || {
+            sqlx::query_as(
+                "SELECT eth_address,party_id,threshold FROM node_information WHERE id = TRUE",
+            )
+            .fetch_optional(pool)
+        },
+    )
+    .await?
+    .ok_or_else(|| eyre::eyre!("Cannot get node information from DB, maybe key-gen needs to start"))
+}
+
 #[async_trait]
 impl SecretManager for PostgresSecretManager {
     #[instrument(level = "debug", skip_all)]
     async fn load_node_information(&self) -> eyre::Result<NodeInformation> {
-        let node_information: NodeInformation = self
-            .with_retry("load address", || {
-                sqlx::query_as(
-                    "SELECT eth_address,party_id,threshold FROM node_information WHERE id = TRUE",
-                )
-                .fetch_optional(&self.pool)
-            })
-            .await?
-            .ok_or_else(|| {
-                eyre::eyre!("Cannot get node information from DB, maybe key-gen needs to start")
-            })?;
-        Ok(node_information)
+        fetch_node_information(&self.pool, self.max_retries, self.retry_delay).await
     }
 
     #[instrument(level = "debug", skip_all)]
