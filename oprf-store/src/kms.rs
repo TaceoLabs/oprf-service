@@ -46,6 +46,52 @@ pub fn is_key_arn(arn: &str) -> bool {
     arn.starts_with("arn:") && arn.contains(":key/")
 }
 
+/// A full KMS key ARN (`arn:...:key/...`); see [`is_key_arn`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyArn(String);
+
+/// The string is not a full KMS key ARN.
+#[derive(Debug, thiserror::Error)]
+#[error("`{0}` is not a full key ARN (`arn:...:key/...`); aliases and alias ARNs are not accepted")]
+pub struct InvalidKeyArn(String);
+
+impl TryFrom<String> for KeyArn {
+    type Error = InvalidKeyArn;
+
+    fn try_from(arn: String) -> Result<Self, Self::Error> {
+        if is_key_arn(&arn) {
+            Ok(Self(arn))
+        } else {
+            Err(InvalidKeyArn(arn))
+        }
+    }
+}
+
+impl From<KeyArn> for String {
+    fn from(arn: KeyArn) -> Self {
+        arn.0
+    }
+}
+
+/// The AWS KMS key that wraps the data keys.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(
+    clippy::exhaustive_structs,
+    reason = "constructed by consumers with struct literals"
+)]
+pub struct KmsConfig {
+    /// The full ARN of the key.
+    pub key_arn: KeyArn,
+    /// Custom AWS KMS endpoint (e.g. for local testing).
+    pub endpoint: Option<String>,
+}
+
+impl std::fmt::Display for KeyArn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
 /// Wraps and unwraps data encryption keys with a KMS key.
 #[async_trait]
 pub trait DekWrapper: Send + Sync {

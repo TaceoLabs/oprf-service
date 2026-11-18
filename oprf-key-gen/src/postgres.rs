@@ -12,11 +12,7 @@
 //! The schema is managed by the embedded migrations of [`oprf_store::MIGRATOR`], applied automatically
 //! during [`PostgresDb::init`].
 
-use std::{
-    num::NonZeroUsize,
-    sync::{Arc, OnceLock},
-    time::Duration,
-};
+use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use backon::ConstantBackoff;
@@ -40,6 +36,7 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 use crate::{
+    config::EnvelopeMode,
     metrics,
     secret_manager::{
         self, KeyGenIntermediateValues, SecretManager, SecretManagerError, StorageReport,
@@ -49,24 +46,34 @@ use crate::{
 
 type Result<T> = std::result::Result<T, PostgresDbError>;
 
-/// The storage formats key-gen reads and writes secret columns in.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// How secret columns are stored, with the wrapper of the data keys if `envelopeV1` is used.
+#[derive(Clone)]
 #[allow(
-    clippy::exhaustive_structs,
-    reason = "constructed by callers with a struct literal"
+    clippy::exhaustive_enums,
+    reason = "constructed by callers; mirrors `StorageConfig`"
 )]
-pub struct StorageSettings {
-    /// The formats rows may be stored in to be read.
-    pub allowed: Vec<StorageFormat>,
-    /// The format new values are written in.
-    pub write: StorageFormat,
+pub enum Storage {
+    /// Reads and writes `direct` only.
+    Direct,
+    /// Reads `envelopeV1`; what else is read and what is written depends on `mode`.
+    Envelope {
+        /// The formats read and written.
+        mode: EnvelopeMode,
+        /// Wraps the data keys.
+        wrapper: Arc<dyn DekWrapper>,
+    },
 }
 
-impl StorageSettings {
-    /// Whether only `direct` is allowed and written.
-    fn is_direct_only(&self) -> bool {
-        self.write == StorageFormat::Direct
-            && self.allowed.iter().all(|f| *f == StorageFormat::Direct)
+impl std::fmt::Debug for Storage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Direct => f.write_str("Direct"),
+            Self::Envelope { mode, wrapper } => f
+                .debug_struct("Envelope")
+                .field("mode", mode)
+                .field("kms_key_arn", &wrapper.key_arn())
+                .finish(),
+        }
     }
 }
 
@@ -76,12 +83,10 @@ pub struct PostgresDb {
     pool: PgPool,
     max_retries: NonZeroUsize,
     retry_delay: Duration,
-    /// The storage policy; operations on secret columns fail until it is set.
-    crypto: Arc<OnceLock<StorageCrypto>>,
-    /// Wraps data keys; used to prepare the storage policy.
-    wrapper: Option<Arc<dyn DekWrapper>>,
-    /// The configured storage formats; used to prepare the storage policy.
-    storage: StorageSettings,
+    /// The storage policy.
+    crypto: Arc<StorageCrypto>,
+    /// The configured storage.
+    storage: Storage,
 }
 
 impl std::fmt::Debug for PostgresDb {
@@ -90,8 +95,7 @@ impl std::fmt::Debug for PostgresDb {
             .field("pool", &self.pool)
             .field("max_retries", &self.max_retries)
             .field("retry_delay", &self.retry_delay)
-            .field("crypto", &self.crypto.get())
-            .field("kms_key_arn", &self.wrapper.as_ref().map(|w| w.key_arn()))
+            .field("crypto", &self.crypto)
             .field("storage", &self.storage)
             .finish()
     }
@@ -133,118 +137,116 @@ impl From<EnvelopeError> for PostgresDbError {
     }
 }
 
+/// Builds the connection pool, ensures the configured schema exists and runs all pending
+/// migrations.
+async fn connect(db_config: &PostgresConfig) -> eyre::Result<PgPool> {
+    tracing::info!("init PgPool with schema: {}", db_config.schema);
+    let pool = nodes_common::postgres::pg_pool_with_schema(db_config, CreateSchema::Yes)
+        .await
+        .context("while creating pool")?;
+    // We create the pool eagerly, so running migrations here should not hit pool-acquire retries.
+    tracing::trace!("potentially running migrations..");
+    oprf_store::MIGRATOR
+        .run(&pool)
+        .await
+        .context("while running migrations")?;
+    Ok(pool)
+}
+
+/// Builds the storage policy from the settings, creating the first data key if `envelopeV1` is
+/// written and none exists.
+async fn build_crypto(pool: &PgPool, storage: &Storage, ctx: AadContext) -> Result<StorageCrypto> {
+    let Storage::Envelope { mode, wrapper } = storage else {
+        return Ok(StorageCrypto::new(&[StorageFormat::Direct], ctx, vec![])
+            .with_write(oprf_store::WriteTarget::Direct)?);
+    };
+    let wrapper = wrapper.as_ref();
+    let writes_envelope = mode.write() == StorageFormat::EnvelopeV1;
+    if writes_envelope {
+        create_first_data_key(pool, wrapper).await?;
+    }
+    // Every data key, including one a concurrently starting instance created.
+    let deks = data_keys::load_all(pool, wrapper).await?;
+    let target = if writes_envelope {
+        let current = data_keys::current_id(pool)
+            .await?
+            .ok_or_else(|| eyre::eyre!("no data key exists to write envelopeV1 under"))?;
+        oprf_store::WriteTarget::EnvelopeV1(current)
+    } else {
+        oprf_store::WriteTarget::Direct
+    };
+    tracing::info!(data_keys = deks.len(), ?target, "loaded data keys");
+    Ok(StorageCrypto::new(mode.allowed(), ctx, deks).with_write(target)?)
+}
+
+/// Creates a data key unless one exists, serialized across instances by an advisory lock.
+async fn create_first_data_key(pool: &PgPool, wrapper: &dyn DekWrapper) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(data_keys::CREATE_LOCK_KEY)
+        .execute(&mut *tx)
+        .await?;
+    if data_keys::current_id(&mut *tx).await?.is_none() {
+        // The KMS call runs while the advisory lock and a pooled connection are held. This
+        // only happens once at startup, so blocking concurrent starts for it is acceptable.
+        let dek = data_keys::create(&mut *tx, wrapper).await?;
+        tracing::info!(data_key_id = %dek.id(), "created the first data key");
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
 impl PostgresDb {
-    /// Initializes a [`PostgresDb`] by building the connection pool, ensuring the configured schema exists, and running all pending migrations.
+    /// Initializes a [`PostgresDb`]: builds the connection pool, ensures the configured schema
+    /// exists, runs all pending migrations, stores `node_information` and prepares the storage
+    /// of secrets, bound to that node.
     ///
-    /// `storage` names the formats secret columns are read and written in; `wrapper` wraps the
-    /// data keys of `envelopeV1` and is required if `envelopeV1` is allowed or written. Every
-    /// operation on secret columns fails until [`SecretManager::prepare_storage`] was called.
+    /// `storage` names the formats secret columns are read and written in. Preparing loads (and
+    /// if needed creates) the data keys and upgrades `direct` rows if both formats are read and
+    /// `envelopeV1` is written.
     ///
     /// # Errors
-    /// Returns an error if creating the database pool fails, or if running the migrations fails.
+    /// Returns an error if creating the database pool or running the migrations fails, or if a
+    /// database or KMS operation fails or a data key cannot be loaded while preparing.
     #[instrument(level = "info", skip_all)]
     pub async fn init(
         db_config: &PostgresConfig,
-        storage: StorageSettings,
-        wrapper: Option<Arc<dyn DekWrapper>>,
+        storage: Storage,
+        node_information: NodeInformation,
     ) -> eyre::Result<Self> {
-        tracing::info!("init PgPool with schema: {}", db_config.schema);
-        let pool = nodes_common::postgres::pg_pool_with_schema(db_config, CreateSchema::Yes)
-            .await
-            .context("while creating pool")?;
-        // We create the pool eagerly, so running migrations here should not hit pool-acquire retries.
-        tracing::trace!("potentially running migrations..");
-        oprf_store::MIGRATOR
-            .run(&pool)
-            .await
-            .context("while running migrations")?;
+        let (db, _) = Self::init_with_report(db_config, storage, node_information).await?;
+        Ok(db)
+    }
 
-        Ok(Self {
+    /// [`PostgresDb::init`], also returning what preparing the storage found and did.
+    async fn init_with_report(
+        db_config: &PostgresConfig,
+        storage: Storage,
+        node_information: NodeInformation,
+    ) -> eyre::Result<(Self, StorageReport)> {
+        let pool = connect(db_config).await?;
+        let ctx = AadContext {
+            party_id: node_information.party_id(),
+            threshold: node_information.threshold(),
+        };
+        let crypto = build_crypto(&pool, &storage, ctx)
+            .await
+            .context("while loading the data keys")?;
+        let db = Self {
             pool,
             max_retries: db_config.max_retries,
             retry_delay: db_config.retry_delay,
-            crypto: Arc::new(OnceLock::new()),
-            wrapper,
+            crypto: Arc::new(crypto),
             storage,
-        })
-    }
-
-    /// Installs the storage policy in tests.
-    ///
-    /// # Panics
-    /// Panics if a policy is already set.
-    #[cfg(test)]
-    pub(crate) fn set_crypto_for_tests(&self, crypto: StorageCrypto) {
-        assert!(
-            self.crypto.set(crypto).is_ok(),
-            "storage policy is already set"
-        );
-    }
-
-    /// Returns the storage policy, building and installing it first if it is not set yet.
-    ///
-    /// An already installed policy is kept as it is.
-    async fn ensure_crypto(&self, ctx: AadContext) -> Result<&StorageCrypto> {
-        if self.crypto.get().is_none() {
-            let crypto = self.build_crypto(ctx).await?;
-            if self.crypto.set(crypto).is_err() {
-                tracing::debug!("storage was prepared concurrently - keeping that policy");
-            }
-        }
-        self.crypto()
-    }
-
-    /// Builds the storage policy from the settings, creating the first data key if
-    /// `envelopeV1` is written and none exists.
-    async fn build_crypto(&self, ctx: AadContext) -> Result<StorageCrypto> {
-        let StorageSettings { allowed, write } = &self.storage;
-        if self.storage.is_direct_only() {
-            return Ok(StorageCrypto::new(allowed, ctx, vec![])
-                .with_write(oprf_store::WriteTarget::Direct)?);
-        }
-        let wrapper = self.wrapper.as_deref().ok_or_else(|| {
-            eyre::eyre!("envelopeV1 is configured, but no data key wrapper (KMS key) is given")
-        })?;
-        let writes_envelope = *write == StorageFormat::EnvelopeV1;
-        if writes_envelope {
-            self.create_first_data_key(wrapper).await?;
-        }
-        // Every data key, including one a concurrently starting instance created.
-        let deks = data_keys::load_all(&self.pool, wrapper).await?;
-        let target = if writes_envelope {
-            let current = data_keys::current_id(&self.pool)
-                .await?
-                .ok_or_else(|| eyre::eyre!("no data key exists to write envelopeV1 under"))?;
-            oprf_store::WriteTarget::EnvelopeV1(current)
-        } else {
-            oprf_store::WriteTarget::Direct
         };
-        tracing::info!(data_keys = deks.len(), ?target, "loaded data keys");
-        Ok(StorageCrypto::new(allowed, ctx, deks).with_write(target)?)
-    }
-
-    /// Creates a data key unless one exists, serialized across instances by an advisory lock.
-    async fn create_first_data_key(&self, wrapper: &dyn DekWrapper) -> Result<()> {
-        let mut tx = self.pool.begin().await?;
-        sqlx::query("SELECT pg_advisory_xact_lock($1)")
-            .bind(data_keys::CREATE_LOCK_KEY)
-            .execute(&mut *tx)
-            .await?;
-        if data_keys::current_id(&mut *tx).await?.is_none() {
-            // The KMS call runs while the advisory lock and a pooled connection are held. This
-            // only happens once at startup, so blocking concurrent starts for it is acceptable.
-            let dek = data_keys::create(&mut *tx, wrapper).await?;
-            tracing::info!(data_key_id = %dek.id(), "created the first data key");
-        }
-        tx.commit().await?;
-        Ok(())
-    }
-
-    /// Returns the storage policy, or an internal error if it is not prepared yet.
-    fn crypto(&self) -> Result<&StorageCrypto> {
-        self.crypto
-            .get()
-            .ok_or_else(|| PostgresDbError::Internal(eyre::eyre!("storage not prepared")))
+        db.store_node_information(node_information)
+            .await
+            .context("while storing node information")?;
+        let report = db
+            .upgrade_and_report()
+            .await
+            .context("while upgrading stored rows")?;
+        Ok((db, report))
     }
 
     #[inline]
@@ -349,16 +351,21 @@ impl From<PostgresDbError> for SecretManagerError {
     }
 }
 
-#[async_trait]
-impl SecretManager for PostgresDb {
-    #[instrument(level = "info", skip_all)]
-    async fn prepare_storage(&self, ctx: AadContext) -> secret_manager::Result<StorageReport> {
-        let crypto = self.ensure_crypto(ctx).await?;
+impl PostgresDb {
+    /// Upgrades `direct` rows if both formats are read and `envelopeV1` is written, and reports
+    /// the stored formats.
+    async fn upgrade_and_report(&self) -> Result<StorageReport> {
+        let crypto = self.crypto.as_ref();
         // Only rows key-gen may read are upgraded: if `direct` is not allowed, a `direct` row may
         // have been planted, and sealing it would make it readable. Such rows stay as they are
         // and are counted as disallowed below.
-        let runs_upgrade =
-            self.storage.write == StorageFormat::EnvelopeV1 && crypto.allows(StorageFormat::Direct);
+        let runs_upgrade = matches!(
+            self.storage,
+            Storage::Envelope {
+                mode: EnvelopeMode::WriteEnvelope,
+                ..
+            }
+        );
         let upgraded = if runs_upgrade {
             upgrade::upgrade_all(&self.pool, crypto, upgrade::BATCH_SIZE).await?
         } else {
@@ -391,10 +398,7 @@ impl SecretManager for PostgresDb {
     }
 
     #[instrument(level = "info", skip(self))]
-    async fn store_node_information(
-        &self,
-        node_information: NodeInformation,
-    ) -> secret_manager::Result<()> {
+    async fn store_node_information(&self, node_information: NodeInformation) -> Result<()> {
         tracing::trace!("storing node information...");
         let store_address = || async {
             sqlx::query(
@@ -420,7 +424,10 @@ impl SecretManager for PostgresDb {
         tracing::debug!("successfully stored node-information");
         Ok(())
     }
+}
 
+#[async_trait]
+impl SecretManager for PostgresDb {
     #[instrument(level = "info", skip(self))]
     async fn get_share_by_epoch(
         &self,
@@ -428,7 +435,7 @@ impl SecretManager for PostgresDb {
         epoch: ShareEpoch,
     ) -> secret_manager::Result<Option<DLogShareShamir>> {
         tracing::trace!("loading share...");
-        let crypto = self.crypto()?;
+        let crypto = self.crypto.as_ref();
         let get_share = || Self::get_share_by_epoch_inner(crypto, oprf_key_id, epoch, &self.pool);
         Ok(self.with_retry("get-share-by-epoch", get_share).await?)
     }
@@ -469,7 +476,7 @@ impl SecretManager for PostgresDb {
         intermediate: KeyGenIntermediateValues,
     ) -> secret_manager::Result<KeyGenIntermediateValues> {
         tracing::trace!("trying to store intermediates...");
-        let crypto = self.crypto()?;
+        let crypto = self.crypto.as_ref();
         let row = RowId {
             kind: Kind::Intermediates,
             oprf_key_id,
@@ -515,7 +522,7 @@ impl SecretManager for PostgresDb {
         pending_epoch: ShareEpoch,
     ) -> secret_manager::Result<KeyGenIntermediateValues> {
         tracing::trace!("trying to fetch intermediates...");
-        let crypto = self.crypto()?;
+        let crypto = self.crypto.as_ref();
         let row = RowId {
             kind: Kind::Intermediates,
             oprf_key_id,
@@ -570,7 +577,7 @@ impl SecretManager for PostgresDb {
         share: DLogShareShamir,
     ) -> secret_manager::Result<()> {
         tracing::trace!("store pending dlog-share..");
-        let crypto = self.crypto()?;
+        let crypto = self.crypto.as_ref();
         let row = RowId {
             kind: Kind::PendingShare,
             oprf_key_id,
@@ -650,7 +657,7 @@ impl SecretManager for PostgresDb {
         public_key: OprfPublicKey,
     ) -> secret_manager::Result<()> {
         tracing::trace!("storing share...");
-        let crypto = self.crypto()?;
+        let crypto = self.crypto.as_ref();
 
         let confirm_dlog_share = || async {
             let mut tx = self.pool.begin().await?;

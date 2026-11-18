@@ -88,7 +88,7 @@ async fn main() -> eyre::Result<ExitCode> {
 
     // Load the postgres secret manager.
     let secret_manager = Arc::new(
-        PostgresSecretManager::init(&config.postgres_config, &NodeStorageConfig::direct_only())
+        PostgresSecretManager::init(&config.postgres_config, &NodeStorageConfig::Direct)
             .await
             .context("while starting postgres secret-manager")?,
     );

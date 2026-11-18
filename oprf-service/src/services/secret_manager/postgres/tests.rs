@@ -5,7 +5,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::secret_manager::{
     SecretManager, SecretManagerError,
     postgres::{
-        DekWrapper, EnvelopeError, NodeStorageConfig, PostgresSecretManager, StorageFormat,
+        DekWrapper, EnvelopeError, KeyArn, KmsConfig, NodeStorage, NodeStorageConfig,
+        PostgresSecretManager, StorageFormat,
     },
 };
 use async_trait::async_trait;
@@ -22,6 +23,7 @@ use oprf_types::{
 };
 use ruint::aliases::U160;
 use secrecy::SecretString;
+use serde_json::json;
 use sqlx::PgConnection;
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -30,8 +32,7 @@ const KEY_ARN: &str = "arn:aws:kms:eu-central-1:000000000000:key/test";
 const PARTY_ID: u16 = 1;
 const THRESHOLD: u16 = 2;
 
-/// The AAD context an envelope manager builds from [`envelope_storage`] and the seeded
-/// `node_information`.
+/// The AAD context an envelope manager builds from the seeded `node_information`.
 fn aad_context() -> AadContext {
     AadContext {
         party_id: PartyId(PARTY_ID),
@@ -43,12 +44,12 @@ fn wrapper() -> InMemoryWrapper {
     InMemoryWrapper::new(KEY_ARN, [1; 32])
 }
 
-/// A storage config allowing `allowed`, with every value `envelopeV1` needs.
-fn envelope_storage(allowed: &[StorageFormat]) -> NodeStorageConfig {
-    let mut storage = NodeStorageConfig::direct_only();
-    storage.allowed_storage_formats = allowed.to_vec();
-    storage.kms_key_arn = Some(KEY_ARN.to_owned());
-    storage
+/// A storage reading `envelopeV1` only, with data keys unwrapped by `wrapper`.
+fn envelope_only(wrapper: Arc<dyn DekWrapper>) -> NodeStorage {
+    NodeStorage::Envelope {
+        read_direct: false,
+        wrapper,
+    }
 }
 
 /// A wrapper that counts `unwrap` calls and fails every one of them.
@@ -92,16 +93,14 @@ async fn migrated_schema() -> eyre::Result<(Arc<SharedPostgres>, SanitizedSchema
 async fn init_manager(
     pg: &SharedPostgres,
     schema: &SanitizedSchema,
-    storage: &NodeStorageConfig,
-    wrapper: Option<Arc<dyn DekWrapper>>,
+    storage: NodeStorage,
 ) -> eyre::Result<PostgresSecretManager> {
-    PostgresSecretManager::init_with_wrapper(
+    PostgresSecretManager::init_with_storage(
         &PostgresConfig::with_default_values(
             SecretString::from(pg.connection_string.clone()),
             schema.clone(),
         ),
         storage,
-        wrapper,
     )
     .await
 }
@@ -114,7 +113,7 @@ async fn postgres_secret_manager()
             SecretString::from(pg.connection_string.clone()),
             schema.clone(),
         ),
-        &NodeStorageConfig::direct_only(),
+        &NodeStorageConfig::Direct,
     )
     .await?;
     Ok((mgr, pg, schema))
@@ -267,18 +266,11 @@ impl SealedRows {
         })
     }
 
-    /// Starts an envelope manager configured with `storage` and reads [`SealedRows::row`].
-    async fn read_with(
-        &self,
-        storage: &NodeStorageConfig,
-    ) -> eyre::Result<Result<OprfKeyMaterial, SecretManagerError>> {
-        let mgr = init_manager(&self.pg, &self.schema, storage, Some(Arc::new(wrapper()))).await?;
-        Ok(mgr.get_oprf_key_material(self.row.oprf_key_id).await)
-    }
-
+    /// Starts an envelope-only manager and reads [`SealedRows::row`].
     async fn read(&self) -> eyre::Result<Result<OprfKeyMaterial, SecretManagerError>> {
-        self.read_with(&envelope_storage(&[StorageFormat::EnvelopeV1]))
-            .await
+        let storage = envelope_only(Arc::new(wrapper()));
+        let mgr = init_manager(&self.pg, &self.schema, storage).await?;
+        Ok(mgr.get_oprf_key_material(self.row.oprf_key_id).await)
     }
 }
 
@@ -495,13 +487,7 @@ async fn row_under_other_context_fails_decrypt() -> eyre::Result<()> {
 async fn loads_data_key_created_after_startup() -> eyre::Result<()> {
     let (pg, schema, mut conn) = migrated_schema().await?;
     insert_test_node_information(&mut conn).await?;
-    let mgr = init_manager(
-        &pg,
-        &schema,
-        &envelope_storage(&[StorageFormat::EnvelopeV1]),
-        Some(Arc::new(wrapper())),
-    )
-    .await?;
+    let mgr = init_manager(&pg, &schema, envelope_only(Arc::new(wrapper()))).await?;
 
     let writer = envelope_writer(&mut conn).await?;
     let row = ShareValues::random(42);
@@ -518,13 +504,7 @@ async fn failed_data_key_load_backs_off() -> eyre::Result<()> {
     insert_test_node_information(&mut conn).await?;
     let failing = Arc::new(FailingWrapper::default());
     // Started with an empty `data_keys` table, so startup calls no `unwrap`.
-    let mgr = init_manager(
-        &pg,
-        &schema,
-        &envelope_storage(&[StorageFormat::EnvelopeV1]),
-        Some(failing.clone()),
-    )
-    .await?;
+    let mgr = init_manager(&pg, &schema, envelope_only(failing.clone())).await?;
     let writer = envelope_writer(&mut conn).await?;
     let row = ShareValues::random(42);
     row.insert_sealed(&mut conn, &writer).await?;
@@ -586,8 +566,7 @@ async fn init_fails_on_unwrap_error() -> eyre::Result<()> {
     let err = init_manager(
         &pg,
         &schema,
-        &envelope_storage(&[StorageFormat::EnvelopeV1]),
-        Some(Arc::new(InMemoryWrapper::new(KEY_ARN, [2; 32]))),
+        envelope_only(Arc::new(InMemoryWrapper::new(KEY_ARN, [2; 32]))),
     )
     .await
     .expect_err("a data key that cannot be unwrapped must fail startup");
@@ -608,14 +587,9 @@ async fn init_fails_on_key_arn_mismatch() -> eyre::Result<()> {
     )
     .await?;
 
-    let err = init_manager(
-        &pg,
-        &schema,
-        &envelope_storage(&[StorageFormat::EnvelopeV1]),
-        Some(Arc::new(wrapper())),
-    )
-    .await
-    .expect_err("a data key under another KMS key must fail startup");
+    let err = init_manager(&pg, &schema, envelope_only(Arc::new(wrapper())))
+        .await
+        .expect_err("a data key under another KMS key must fail startup");
     assert!(
         matches!(
             err.downcast_ref(),
@@ -627,29 +601,47 @@ async fn init_fails_on_key_arn_mismatch() -> eyre::Result<()> {
 }
 
 #[test]
-fn config_validation() {
-    let envelope = || envelope_storage(&[StorageFormat::Direct, StorageFormat::EnvelopeV1]);
-    NodeStorageConfig::direct_only()
-        .validate()
-        .expect("direct only is valid");
-    envelope().validate().expect("complete envelope is valid");
+fn config_parsing() {
+    let parse =
+        |value| serde_json::from_value::<NodeStorageConfig>(value).map_err(|err| err.to_string());
+    let envelope = |read_direct| NodeStorageConfig::Envelope {
+        read_direct,
+        kms: KmsConfig {
+            key_arn: KeyArn::try_from(KEY_ARN.to_owned()).expect("valid ARN"),
+            endpoint: None,
+        },
+    };
+    assert_eq!(parse(json!({})), Ok(NodeStorageConfig::Direct));
+    assert_eq!(
+        parse(
+            json!({ "allowed_storage_formats": ["direct", "envelopeV1"], "kms_key_arn": KEY_ARN })
+        ),
+        Ok(envelope(true))
+    );
+    assert_eq!(
+        parse(json!({ "allowed_storage_formats": ["envelopeV1"], "kms_key_arn": KEY_ARN })),
+        Ok(envelope(false))
+    );
 
-    let mut empty = NodeStorageConfig::direct_only();
-    empty.allowed_storage_formats.clear();
-    let mut no_arn = envelope();
-    no_arn.kms_key_arn = None;
-    let mut alias_arn = envelope();
-    alias_arn.kms_key_arn = Some("arn:aws:kms:eu-central-1:000000000000:alias/oprf".to_owned());
     for (config, field) in [
-        (empty, "allowed_storage_formats"),
-        (no_arn, "kms_key_arn"),
-        (alias_arn, "full key ARN"),
+        (
+            json!({ "allowed_storage_formats": [] }),
+            "allowed_storage_formats",
+        ),
+        (
+            json!({ "allowed_storage_formats": ["envelopeV1"] }),
+            "kms_key_arn",
+        ),
+        (
+            json!({
+                "allowed_storage_formats": ["envelopeV1"],
+                "kms_key_arn": "arn:aws:kms:eu-central-1:000000000000:alias/oprf",
+            }),
+            "full key ARN",
+        ),
     ] {
-        let err = config.validate().expect_err("invalid config");
-        assert!(
-            err.to_string().contains(field),
-            "the error must name {field}: {err}"
-        );
+        let err = parse(config).expect_err("invalid config");
+        assert!(err.contains(field), "the error must name {field}: {err}");
     }
 }
 
@@ -658,13 +650,7 @@ async fn deleted_row_needs_no_key() -> eyre::Result<()> {
     let (pg, schema, mut conn) = migrated_schema().await?;
     insert_test_node_information(&mut conn).await?;
     let failing = Arc::new(FailingWrapper::default());
-    let mgr = init_manager(
-        &pg,
-        &schema,
-        &envelope_storage(&[StorageFormat::EnvelopeV1]),
-        Some(failing.clone()),
-    )
-    .await?;
+    let mgr = init_manager(&pg, &schema, envelope_only(failing.clone())).await?;
     let writer = envelope_writer(&mut conn).await?;
     let row = ShareValues::random(42);
     row.insert_sealed(&mut conn, &writer).await?;

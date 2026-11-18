@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use axum::extract::ws::close_code;
 use eyre::Context as _;
+use oprf_key_gen::config::EnvelopeMode;
 use sqlx::PgPool;
 use taceo_oprf::core::ddlog_equality::shamir::DLogProofShareShamir;
 use taceo_oprf::service::secret_manager::{
@@ -54,15 +55,14 @@ fn with_epoch(key: OprfPublicKey, epoch: ShareEpoch) -> OprfPublicKeyWithEpoch {
 /// `kms_party`.
 async fn start_key_gens_sharing_kms(
     setup: &TestSetup,
-    allowed: &[StorageFormat],
-    write: StorageFormat,
+    mode: EnvelopeMode,
     kms_party: usize,
 ) -> eyre::Result<[TestKeyGen; 3]> {
     let start = |party_id| {
         TestKeyGen::start(
             setup,
             TestKeyGenConfig::new(party_id)
-                .with_storage(allowed, write)
+                .with_envelope(mode)
                 .with_kms_of(kms_party),
         )
     };
@@ -74,24 +74,22 @@ async fn start_key_gens_sharing_kms(
 async fn restart_with_storage(
     setup: &TestSetup,
     key_gen: TestKeyGen,
-    allowed: &[StorageFormat],
-    write: StorageFormat,
+    mode: EnvelopeMode,
 ) -> eyre::Result<TestKeyGen> {
-    let config = key_gen.shutdown().await?.with_storage(allowed, write);
+    let config = key_gen.shutdown().await?.with_envelope(mode);
     TestKeyGen::start(setup, config).await
 }
 
 async fn restart_key_gens(
     setup: &TestSetup,
     key_gens: [TestKeyGen; 3],
-    allowed: &[StorageFormat],
-    write: StorageFormat,
+    mode: EnvelopeMode,
 ) -> eyre::Result<[TestKeyGen; 3]> {
     let [k0, k1, k2] = key_gens;
     let (k0, k1, k2) = tokio::join!(
-        restart_with_storage(setup, k0, allowed, write),
-        restart_with_storage(setup, k1, allowed, write),
-        restart_with_storage(setup, k2, allowed, write),
+        restart_with_storage(setup, k0, mode),
+        restart_with_storage(setup, k1, mode),
+        restart_with_storage(setup, k2, mode),
     );
     Ok([k0?, k1?, k2?])
 }
@@ -361,7 +359,7 @@ async fn three_phase_conversion() -> eyre::Result<()> {
     // Phase 3: key-gen restarts writing `envelopeV1` and upgrades every row; the nodes keep
     // running. They started without any data key, so they load the new one on demand.
     let phase = "phase 3";
-    let key_gens = restart_key_gens(&setup, key_gens, &[Direct, EnvelopeV1], EnvelopeV1)
+    let key_gens = restart_key_gens(&setup, key_gens, EnvelopeMode::WriteEnvelope)
         .await
         .context("phase 3: restarting the key-gens with write = envelopeV1")?;
     assert_rows_stored_as(&key_gens, EnvelopeV1, "phase 3 after the upgrade").await?;
@@ -401,7 +399,7 @@ async fn three_phase_conversion() -> eyre::Result<()> {
 
     // Phase 4: lock down, `direct` is no longer allowed anywhere.
     let phase = "phase 4";
-    let key_gens = restart_key_gens(&setup, key_gens, &[EnvelopeV1], EnvelopeV1)
+    let key_gens = restart_key_gens(&setup, key_gens, EnvelopeMode::EnvelopeOnly)
         .await
         .context("phase 4: restarting the key-gens with allowed = [envelopeV1]")?;
     assert_rows_stored_as(&key_gens, EnvelopeV1, phase).await?;
@@ -478,7 +476,7 @@ async fn three_phase_conversion() -> eyre::Result<()> {
 async fn second_party_cannot_read_copied_row() -> eyre::Result<()> {
     let setup = TestSetup::new(DeploySetup::TwoThree).await?;
     let epoch0 = ShareEpoch::default();
-    let key_gens = start_key_gens_sharing_kms(&setup, &[EnvelopeV1], EnvelopeV1, 0).await?;
+    let key_gens = start_key_gens_sharing_kms(&setup, EnvelopeMode::EnvelopeOnly, 0).await?;
     setup.init_keygen(key(KEY_A)).await?;
     keygen_asserts::all_have_key(&key_gens, key(KEY_A), epoch0)
         .await

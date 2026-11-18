@@ -27,10 +27,8 @@
 //! | `max_tries_simulation`                   | 30          |
 //! | `sleep_between_simulation`               | 5 s         |
 //! | `cursor_checkpoint_interval`             | 1 day       |
-//! | `allowed_storage_formats`                | `[direct]`  |
-//! | `storage_write_format`                   | `direct`    |
-//! | `kms_key_arn`                            | none        |
-//! | `kms_endpoint`                           | none        |
+//!
+//! How secrets are stored is configured separately by [`StorageConfig`].
 
 use std::num::{NonZeroU16, NonZeroU64};
 use std::{path::PathBuf, time::Duration};
@@ -43,7 +41,8 @@ use nodes_common::{
     Environment,
     web3::{self},
 };
-use oprf_store::format::StorageFormat;
+pub use oprf_store::KmsConfig;
+use oprf_store::{KeyArn, format::StorageFormat};
 use secrecy::SecretString;
 use serde::Deserialize;
 
@@ -160,32 +159,6 @@ pub struct OprfKeyGenServiceConfig {
     /// Ignored if the chain cursor service loads a cursor at or after this block.
     #[serde(default)]
     pub explicit_backfill_block: Option<NonZeroU64>,
-
-    /// The storage formats key-gen accepts when reading secret database columns.
-    ///
-    /// Must not be empty and must contain `storage_write_format`.
-    ///
-    /// Defaults to `[direct]`.
-    #[serde(default = "OprfKeyGenServiceConfig::default_allowed_storage_formats")]
-    pub allowed_storage_formats: Vec<StorageFormat>,
-
-    /// The storage format key-gen uses when writing secret database columns.
-    ///
-    /// Must be contained in `allowed_storage_formats`.
-    ///
-    /// Defaults to `direct`.
-    #[serde(default = "OprfKeyGenServiceConfig::default_storage_write_format")]
-    pub storage_write_format: StorageFormat,
-
-    /// The full ARN of the AWS KMS key that wraps the data keys.
-    ///
-    /// Required if `envelopeV1` is allowed. Aliases are not accepted.
-    #[serde(default)]
-    pub kms_key_arn: Option<String>,
-
-    /// Optional custom endpoint for AWS KMS (e.g. for local testing).
-    #[serde(default)]
-    pub kms_endpoint: Option<String>,
 }
 
 /// Subset of [`OprfKeyGenServiceConfig`] containing all values that must be
@@ -282,52 +255,6 @@ impl OprfKeyGenServiceConfig {
         Duration::from_hours(24)
     }
 
-    /// Default allowed storage formats (`[direct]`).
-    fn default_allowed_storage_formats() -> Vec<StorageFormat> {
-        vec![StorageFormat::Direct]
-    }
-
-    /// Default storage write format (`direct`).
-    fn default_storage_write_format() -> StorageFormat {
-        StorageFormat::Direct
-    }
-
-    /// Validates the storage configuration.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming the offending field if `allowed_storage_formats` is empty, does
-    /// not contain `storage_write_format`, or if `envelopeV1` is allowed but `kms_key_arn` is
-    /// missing or not a full key ARN.
-    pub fn validate_storage(&self) -> eyre::Result<()> {
-        if self.allowed_storage_formats.is_empty() {
-            bail!("allowed_storage_formats must not be empty");
-        }
-        if !self
-            .allowed_storage_formats
-            .contains(&self.storage_write_format)
-        {
-            bail!(
-                "storage_write_format {:?} must be contained in allowed_storage_formats",
-                self.storage_write_format
-            );
-        }
-        if self
-            .allowed_storage_formats
-            .contains(&StorageFormat::EnvelopeV1)
-        {
-            let Some(arn) = &self.kms_key_arn else {
-                bail!("kms_key_arn is required when envelopeV1 is an allowed storage format");
-            };
-            if !oprf_store::kms::is_key_arn(arn) {
-                bail!(
-                    "kms_key_arn must be the full key ARN (`arn:...:key/...`), not an alias or alias ARN"
-                );
-            }
-        }
-        Ok(())
-    }
-
     /// Construct with all default values except required fields.
     #[must_use]
     pub fn with_default_values(args: OprfKeyGenServiceConfigMandatoryValues) -> Self {
@@ -364,97 +291,220 @@ impl OprfKeyGenServiceConfig {
             cursor_checkpoint_interval: Self::default_cursor_checkpoint_interval(),
             rpc_http_timeout: Self::default_rpc_http_timeout(),
             explicit_backfill_block: None,
-            allowed_storage_formats: Self::default_allowed_storage_formats(),
-            storage_write_format: Self::default_storage_write_format(),
-            kms_key_arn: None,
-            kms_endpoint: None,
         }
+    }
+}
+
+/// How key-gen stores secret database columns.
+///
+/// Deserialized from these fields; a combination that is not valid fails to deserialize:
+///
+/// | Field                     | Default    |                                                   |
+/// |---------------------------|------------|---------------------------------------------------|
+/// | `allowed_storage_formats` | `[direct]` | Formats accepted when reading; must not be empty. |
+/// | `storage_write_format`    | `direct`   | Format written; must be allowed.                  |
+/// | `kms_key_arn`             | none       | Full ARN of the AWS KMS key wrapping the data keys; required if `envelopeV1` is allowed. |
+/// | `kms_endpoint`            | none       | Custom AWS KMS endpoint (e.g. for local testing). |
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "RawStorageConfig")]
+#[allow(
+    clippy::exhaustive_enums,
+    reason = "consumers must handle every way secrets are stored"
+)]
+pub enum StorageConfig {
+    /// Reads and writes `direct` only; the KMS is never used.
+    #[default]
+    Direct,
+    /// Reads `envelopeV1`; what else is read and what is written depends on `mode`.
+    Envelope {
+        /// The formats read and written.
+        mode: EnvelopeMode,
+        /// The KMS key wrapping the data keys.
+        kms: KmsConfig,
+    },
+}
+
+/// The formats key-gen reads and writes when `envelopeV1` is allowed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::exhaustive_enums, reason = "consumers must handle every mode")]
+pub enum EnvelopeMode {
+    /// Reads `direct` and `envelopeV1`, writes `direct`.
+    WriteDirect,
+    /// Reads `direct` and `envelopeV1`, writes `envelopeV1`.
+    WriteEnvelope,
+    /// Reads and writes `envelopeV1` only.
+    EnvelopeOnly,
+}
+
+impl EnvelopeMode {
+    /// The formats accepted when reading.
+    #[must_use]
+    pub fn allowed(self) -> &'static [StorageFormat] {
+        match self {
+            Self::WriteDirect | Self::WriteEnvelope => {
+                &[StorageFormat::Direct, StorageFormat::EnvelopeV1]
+            }
+            Self::EnvelopeOnly => &[StorageFormat::EnvelopeV1],
+        }
+    }
+
+    /// The format written.
+    #[must_use]
+    pub fn write(self) -> StorageFormat {
+        match self {
+            Self::WriteDirect => StorageFormat::Direct,
+            Self::WriteEnvelope | Self::EnvelopeOnly => StorageFormat::EnvelopeV1,
+        }
+    }
+}
+
+/// The fields [`StorageConfig`] is deserialized from.
+#[derive(Deserialize)]
+struct RawStorageConfig {
+    #[serde(default = "default_allowed_storage_formats")]
+    allowed_storage_formats: Vec<StorageFormat>,
+    #[serde(default = "default_storage_write_format")]
+    storage_write_format: StorageFormat,
+    #[serde(default)]
+    kms_key_arn: Option<String>,
+    #[serde(default)]
+    kms_endpoint: Option<String>,
+}
+
+fn default_allowed_storage_formats() -> Vec<StorageFormat> {
+    vec![StorageFormat::Direct]
+}
+
+fn default_storage_write_format() -> StorageFormat {
+    StorageFormat::Direct
+}
+
+impl TryFrom<RawStorageConfig> for StorageConfig {
+    type Error = eyre::Report;
+
+    fn try_from(raw: RawStorageConfig) -> eyre::Result<Self> {
+        let allows = |format| raw.allowed_storage_formats.contains(&format);
+        let write = raw.storage_write_format;
+        let mode = match (
+            allows(StorageFormat::Direct),
+            allows(StorageFormat::EnvelopeV1),
+            write,
+        ) {
+            (false, false, _) => bail!("allowed_storage_formats must not be empty"),
+            (true, false, StorageFormat::Direct) => return Ok(Self::Direct),
+            (true, true, StorageFormat::Direct) => EnvelopeMode::WriteDirect,
+            (true, true, StorageFormat::EnvelopeV1) => EnvelopeMode::WriteEnvelope,
+            (false, true, StorageFormat::EnvelopeV1) => EnvelopeMode::EnvelopeOnly,
+            _ => {
+                bail!("storage_write_format {write:?} must be contained in allowed_storage_formats")
+            }
+        };
+        let Some(key_arn) = raw.kms_key_arn else {
+            bail!("kms_key_arn is required when envelopeV1 is an allowed storage format");
+        };
+        Ok(Self::Envelope {
+            mode,
+            kms: KmsConfig {
+                key_arn: KeyArn::try_from(key_arn)
+                    .map_err(|err| eyre::eyre!("kms_key_arn: {err}"))?,
+                endpoint: raw.kms_endpoint,
+            },
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use oprf_store::format::StorageFormat;
+    use serde_json::json;
 
     use super::*;
 
     const KEY_ARN: &str =
         "arn:aws:kms:eu-west-1:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab";
 
-    fn config() -> OprfKeyGenServiceConfig {
-        OprfKeyGenServiceConfig::with_default_values(OprfKeyGenServiceConfigMandatoryValues {
-            environment: Environment::Dev,
-            oprf_key_registry_contract: Address::ZERO,
-            wallet_private_key: SecretString::from("0x01"),
-            zkey_path: PathBuf::from("zkey"),
-            witness_graph_path: PathBuf::from("graph"),
-            expected_threshold: NonZeroU16::new(2).expect("non-zero"),
-            expected_num_peers: NonZeroU16::new(3).expect("non-zero"),
-            rpc_provider_config: HttpRpcProviderConfig::with_default_values([
-                "http://localhost:8545",
-            ])
-            .expect("valid url"),
-            ws_rpc_url: SecretString::from("ws://localhost:8546"),
-        })
+    fn parse(value: serde_json::Value) -> Result<StorageConfig, String> {
+        serde_json::from_value(value).map_err(|err| err.to_string())
     }
 
-    fn envelope_config() -> OprfKeyGenServiceConfig {
-        let mut config = config();
-        config.allowed_storage_formats = vec![StorageFormat::Direct, StorageFormat::EnvelopeV1];
-        config.storage_write_format = StorageFormat::EnvelopeV1;
-        config.kms_key_arn = Some(KEY_ARN.to_owned());
-        config
-    }
-
-    fn error_of(config: &OprfKeyGenServiceConfig) -> String {
-        config
-            .validate_storage()
-            .expect_err("config must be rejected")
-            .to_string()
-    }
-
-    #[test]
-    fn rejects_empty_allowed_formats() {
-        let mut config = config();
-        config.allowed_storage_formats.clear();
-        assert!(error_of(&config).contains("allowed_storage_formats"));
-    }
-
-    #[test]
-    fn rejects_write_format_not_allowed() {
-        let mut config = envelope_config();
-        config.allowed_storage_formats = vec![StorageFormat::Direct];
-        assert!(error_of(&config).contains("storage_write_format"));
-    }
-
-    #[test]
-    fn rejects_envelope_without_kms_key_arn() {
-        let mut config = envelope_config();
-        config.kms_key_arn = None;
-        assert!(error_of(&config).contains("kms_key_arn"));
-    }
-
-    #[test]
-    fn rejects_kms_alias_instead_of_key_arn() {
-        for alias in [
-            "alias/oprf",
-            "arn:aws:kms:eu-west-1:111122223333:alias/oprf",
-        ] {
-            let mut config = envelope_config();
-            config.kms_key_arn = Some(alias.to_owned());
-            let error = error_of(&config);
-            assert!(error.contains("kms_key_arn"), "{alias}: {error}");
-            assert!(error.contains("full key ARN"), "{alias}: {error}");
+    fn envelope(mode: EnvelopeMode) -> StorageConfig {
+        StorageConfig::Envelope {
+            mode,
+            kms: KmsConfig {
+                key_arn: KeyArn::try_from(KEY_ARN.to_owned()).expect("valid ARN"),
+                endpoint: None,
+            },
         }
     }
 
     #[test]
-    fn valid_configs_pass() {
-        config()
-            .validate_storage()
-            .expect("the default config is valid");
-        envelope_config()
-            .validate_storage()
-            .expect("envelope config is valid");
+    fn parses_every_valid_combination() {
+        assert_eq!(parse(json!({})), Ok(StorageConfig::Direct));
+        // A KMS key that is not needed is ignored.
+        assert_eq!(
+            parse(json!({ "kms_key_arn": KEY_ARN })),
+            Ok(StorageConfig::Direct)
+        );
+        for (allowed, write, mode) in [
+            (
+                json!(["direct", "envelopeV1"]),
+                "direct",
+                EnvelopeMode::WriteDirect,
+            ),
+            (
+                json!(["direct", "envelopeV1"]),
+                "envelopeV1",
+                EnvelopeMode::WriteEnvelope,
+            ),
+            (
+                json!(["envelopeV1"]),
+                "envelopeV1",
+                EnvelopeMode::EnvelopeOnly,
+            ),
+        ] {
+            let parsed = parse(json!({
+                "allowed_storage_formats": allowed,
+                "storage_write_format": write,
+                "kms_key_arn": KEY_ARN,
+            }));
+            assert_eq!(parsed, Ok(envelope(mode)));
+            assert_eq!(mode.write().as_str(), write);
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_combinations() {
+        let both = json!(["direct", "envelopeV1"]);
+        for (config, field) in [
+            (
+                json!({ "allowed_storage_formats": [] }),
+                "allowed_storage_formats",
+            ),
+            (
+                json!({ "storage_write_format": "envelopeV1" }),
+                "storage_write_format",
+            ),
+            (
+                json!({ "allowed_storage_formats": ["envelopeV1"], "kms_key_arn": KEY_ARN }),
+                "storage_write_format",
+            ),
+            (json!({ "allowed_storage_formats": both }), "kms_key_arn"),
+            (
+                json!({ "allowed_storage_formats": both, "kms_key_arn": "alias/oprf" }),
+                "full key ARN",
+            ),
+            (
+                json!({
+                    "allowed_storage_formats": both,
+                    "kms_key_arn": "arn:aws:kms:eu-west-1:111122223333:alias/oprf",
+                }),
+                "kms_key_arn",
+            ),
+        ] {
+            let err = parse(config.clone()).expect_err("invalid config");
+            assert!(
+                err.contains(field),
+                "{config}: the error must name {field}: {err}"
+            );
+        }
     }
 }

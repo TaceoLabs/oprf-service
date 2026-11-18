@@ -27,7 +27,7 @@ use taceo_oprf::service::{
     config::OprfNodeServiceConfig,
     secret_manager::{
         SecretManager as _,
-        postgres::{NodeStorageConfig, PostgresSecretManager, StorageFormat},
+        postgres::{NodeStorage, PostgresSecretManager, StorageFormat},
     },
 };
 use taceo_oprf::types::{
@@ -207,20 +207,17 @@ impl TestNode {
         assert!(party_id < 5, "can only spawn 5 nodes");
         let kms_party = kms_party.unwrap_or(party_id);
 
-        let mut storage = NodeStorageConfig::direct_only();
-        storage.allowed_storage_formats = allowed_storage_formats;
-        let wrapper = if storage
-            .allowed_storage_formats
-            .contains(&StorageFormat::EnvelopeV1)
-        {
+        let storage = if allowed_storage_formats.contains(&StorageFormat::EnvelopeV1) {
             eyre::ensure!(
                 database.is_some(),
                 "envelopeV1 needs the database of a key-gen (TestNodeConfig::for_key_gen)"
             );
-            storage.kms_key_arn = Some(crate::party_kms_key_arn(kms_party));
-            Some(crate::party_dek_wrapper(kms_party))
+            NodeStorage::Envelope {
+                read_direct: allowed_storage_formats.contains(&StorageFormat::Direct),
+                wrapper: crate::party_dek_wrapper(kms_party),
+            }
         } else {
-            None
+            NodeStorage::Direct
         };
         let (postgres_config, pg, pool) = match database {
             Some(NodeDatabase {
@@ -245,9 +242,8 @@ impl TestNode {
                 (postgres_config, pg, pool)
             }
         };
-        let secret_manager = Arc::new(
-            PostgresSecretManager::init_with_wrapper(&postgres_config, &storage, wrapper).await?,
-        );
+        let secret_manager =
+            Arc::new(PostgresSecretManager::init_with_storage(&postgres_config, storage).await?);
         let bind_port = match bind_port {
             Some(port) => port,
             None => nodes_common::test_utils::random_port()?,
