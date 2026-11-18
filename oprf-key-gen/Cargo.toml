@@ -11,9 +11,6 @@ license.workspace = true
 keywords = ["cryptography", "mpc", "oprf"]
 publish = false
 
-[package.metadata.cargo-machete]
-ignored = ["jiff"]
-
 [dependencies]
 alloy = { workspace = true, features = [
   "contract",
@@ -36,8 +33,8 @@ config = { workspace = true }
 eyre.workspace = true
 futures = { workspace = true }
 groth16-material = { workspace = true, features = ["circom", "parallel"] }
-jiff = { workspace = true, features = ["serde"] }
 itertools = { workspace = true }
+jiff = { workspace = true, features = ["serde"] }
 metrics = { workspace = true }
 nodes-common = { workspace = true, features = [
   "api",
@@ -49,10 +46,7 @@ oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6
 oprf-store = { package = "taceo-oprf-store", path = "../oprf-store", version = "0.1", features = [
   "postgres",
 ] }
-oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16", features = [
-  "chain",
-  "service"
-] }
+oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16", features = ["chain", "service"] }
 rand.workspace = true
 rustls = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
