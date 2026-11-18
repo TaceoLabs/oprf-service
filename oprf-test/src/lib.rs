@@ -27,9 +27,6 @@ pub async fn test_postgres_config() -> eyre::Result<(PostgresConfig, Arc<SharedP
     Ok((config, pg))
 }
 
-/// The chain id of the Anvil chain every [`setup::TestSetup`] runs on.
-pub const TEST_CHAIN_ID: u64 = 31_337;
-
 /// The KMS key ARN of party `party_id`, shared by its key-gen and its node.
 #[must_use]
 pub fn party_kms_key_arn(party_id: usize) -> String {

@@ -112,7 +112,6 @@ pub struct TestNodeConfig {
 /// The database of a [`TestKeyGen`], shared with a node of the same party.
 pub struct NodeDatabase {
     postgres_config: PostgresConfig,
-    oprf_key_registry: Address,
     pg: Arc<SharedPostgres>,
 }
 
@@ -143,7 +142,6 @@ impl TestNodeConfig {
             kms_party: Some(key_gen.kms_party),
             database: Some(NodeDatabase {
                 postgres_config: key_gen.postgres_config.clone(),
-                oprf_key_registry: key_gen.oprf_key_registry,
                 pg: Arc::clone(&key_gen.pg),
             }),
             ..Self::default()
@@ -153,8 +151,8 @@ impl TestNodeConfig {
     /// Reads rows stored in `allowed`.
     ///
     /// If `envelopeV1` is allowed, the node gets the in-memory KMS of its party
-    /// ([`crate::party_dek_wrapper`]), or of [`TestNodeConfig::kms_party`], and binds the chain id and registry of the key-gen's
-    /// deployment; this needs a database from [`TestNodeConfig::for_key_gen`].
+    /// ([`crate::party_dek_wrapper`]), or of [`TestNodeConfig::kms_party`]; this needs a database
+    /// from [`TestNodeConfig::for_key_gen`].
     #[must_use]
     pub fn with_storage(mut self, allowed: &[StorageFormat]) -> Self {
         self.allowed_storage_formats = allowed.to_vec();
@@ -215,14 +213,11 @@ impl TestNode {
             .allowed_storage_formats
             .contains(&StorageFormat::EnvelopeV1)
         {
-            let database = database.as_ref().ok_or_else(|| {
-                eyre::eyre!(
-                    "envelopeV1 needs the database of a key-gen (TestNodeConfig::for_key_gen)"
-                )
-            })?;
+            eyre::ensure!(
+                database.is_some(),
+                "envelopeV1 needs the database of a key-gen (TestNodeConfig::for_key_gen)"
+            );
             storage.kms_key_arn = Some(crate::party_kms_key_arn(kms_party));
-            storage.chain_id = Some(crate::TEST_CHAIN_ID);
-            storage.oprf_key_registry_contract = Some(database.oprf_key_registry);
             Some(crate::party_dek_wrapper(kms_party))
         } else {
             None
@@ -230,7 +225,6 @@ impl TestNode {
         let (postgres_config, pg, pool) = match database {
             Some(NodeDatabase {
                 postgres_config,
-                oprf_key_registry: _,
                 pg,
             }) => {
                 // key-gen created and migrated the schema

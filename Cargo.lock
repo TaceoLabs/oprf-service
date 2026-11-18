@@ -7204,7 +7204,6 @@ dependencies = [
 name = "taceo-oprf-service"
 version = "0.19.5"
 dependencies = [
- "alloy",
  "ark-ec",
  "ark-ff 0.6.0",
  "async-trait",
@@ -7252,7 +7251,6 @@ name = "taceo-oprf-store"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
- "alloy",
  "ark-ec",
  "ark-serialize 0.6.0",
  "async-trait",

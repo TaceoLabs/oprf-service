@@ -9,11 +9,7 @@ use crate::secret_manager::{
     KeyGenIntermediateValues, SecretManager as _, SecretManagerError, StorageReport,
 };
 use crate::services::secret_gen::DLogSecretGenService;
-use alloy::{
-    primitives::{Address, U160},
-    signers::local::PrivateKeySigner,
-    sol_types::SolValue as _,
-};
+use alloy::{primitives::U160, signers::local::PrivateKeySigner, sol_types::SolValue as _};
 use ark_serialize::CanonicalDeserialize;
 use eyre::Context;
 use groth16_material::circom::{CircomGroth16Material, CircomGroth16MaterialBuilder, Validate};
@@ -47,8 +43,6 @@ pub(crate) fn direct_settings() -> StorageSettings {
 /// The AAD context the tests prepare storage with.
 pub(crate) fn aad_context() -> AadContext {
     AadContext {
-        chain_id: 31337,
-        registry: Address::repeat_byte(0xAA),
         party_id: PartyId(1),
         threshold: NonZeroU16::new(2).expect("2 is non-zero"),
     }

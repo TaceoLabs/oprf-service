@@ -30,7 +30,7 @@ use alloy::{
 use eyre::Context as _;
 use groth16_material::circom::CircomGroth16MaterialBuilder;
 use nodes_common::web3::{self, event_stream::ChainCursor};
-use oprf_store::{aad::AadContext, format::StorageFormat};
+use oprf_store::aad::AadContext;
 use oprf_types::{chain::OprfKeyRegistry, crypto::PartyId, service::NodeInformation};
 use secrecy::ExposeSecret;
 use tokio_util::sync::CancellationToken;
@@ -150,33 +150,10 @@ async fn contract_sanity_checks(
     ))
 }
 
-/// Returns the chain id bound into stored ciphertexts: the one the RPC reports.
-///
-/// If `envelopeV1` is allowed, the configured `rpc.chain_id` must be set and equal to it, so
-/// that ciphertexts are never bound to the chain of a misconfigured RPC.
-fn storage_chain_id(config: &OprfKeyGenServiceConfig, rpc_chain_id: u64) -> eyre::Result<u64> {
-    if config
-        .allowed_storage_formats
-        .contains(&StorageFormat::EnvelopeV1)
-    {
-        let configured = config.rpc_provider_config.chain_id.ok_or_else(|| {
-            eyre::eyre!(
-                "rpc.chain_id must be configured when envelopeV1 is allowed (the RPC reports chain id {rpc_chain_id})"
-            )
-        })?;
-        eyre::ensure!(
-            configured == rpc_chain_id,
-            "configured rpc.chain_id {configured} does not match chain id {rpc_chain_id} reported by the RPC"
-        );
-    }
-    Ok(rpc_chain_id)
-}
-
 /// Stores the node information, then prepares the storage of secrets, bound to this deployment
-/// (chain, registry, party, threshold).
+/// (party, threshold).
 async fn init_storage(
     secret_manager: &SecretManagerService,
-    rpc_provider: &web3::HttpRpcProvider,
     config: &OprfKeyGenServiceConfig,
     node_information: NodeInformation,
 ) -> eyre::Result<()> {
@@ -186,13 +163,7 @@ async fn init_storage(
         .await
         .context("while storing node information in secret manager")?;
 
-    let rpc_chain_id = rpc_provider
-        .get_chain_id()
-        .await
-        .context("while loading chain id")?;
     let aad_context = AadContext {
-        chain_id: storage_chain_id(config, rpc_chain_id)?,
-        registry: config.oprf_key_registry_contract,
         party_id,
         threshold: config.expected_threshold,
     };
@@ -251,7 +222,6 @@ async fn init_storage(
 /// - the configured wallet private key cannot be parsed,
 /// - the RPC provider cannot be initialized,
 /// - the node is not registered in the `OprfKeyRegistry` contract,
-/// - the configured chain id does not match the RPC while `envelopeV1` is allowed,
 /// - preparing the storage fails,
 /// - the Groth16 proving material cannot be built.
 pub async fn start(
@@ -312,7 +282,7 @@ pub async fn start(
         .await
         .context("while doing sanity checks")?;
 
-    init_storage(&secret_manager, &http_rpc_provider, &config, node_info).await?;
+    init_storage(&secret_manager, &config, node_info).await?;
 
     let key_gen_material = tokio::task::spawn_blocking(move || {
         CircomGroth16MaterialBuilder::new()
@@ -421,69 +391,4 @@ async fn start_cursor_checkpoint_task(
         }
     }
     tracing::info!("shutting down cursor checkpoint task");
-}
-
-#[cfg(test)]
-mod tests {
-    use std::{num::NonZeroU16, path::PathBuf};
-
-    use alloy::primitives::Address;
-    use nodes_common::web3::HttpRpcProviderConfig;
-    use oprf_store::format::StorageFormat;
-    use secrecy::SecretString;
-
-    use crate::{
-        Environment,
-        config::{OprfKeyGenServiceConfig, OprfKeyGenServiceConfigMandatoryValues},
-    };
-
-    fn config(allowed: &[StorageFormat], chain_id: Option<u64>) -> OprfKeyGenServiceConfig {
-        let mut config =
-            OprfKeyGenServiceConfig::with_default_values(OprfKeyGenServiceConfigMandatoryValues {
-                environment: Environment::Dev,
-                oprf_key_registry_contract: Address::ZERO,
-                wallet_private_key: SecretString::from("0x01"),
-                zkey_path: PathBuf::from("zkey"),
-                witness_graph_path: PathBuf::from("graph"),
-                expected_threshold: NonZeroU16::new(2).expect("non-zero"),
-                expected_num_peers: NonZeroU16::new(3).expect("non-zero"),
-                rpc_provider_config: HttpRpcProviderConfig::with_default_values([
-                    "http://localhost:8545",
-                ])
-                .expect("valid url"),
-                ws_rpc_url: SecretString::from("ws://localhost:8546"),
-            });
-        config.allowed_storage_formats = allowed.to_vec();
-        config.rpc_provider_config.chain_id = chain_id;
-        config
-    }
-
-    #[test]
-    fn storage_chain_id() {
-        let envelope = [StorageFormat::Direct, StorageFormat::EnvelopeV1];
-
-        let err = super::storage_chain_id(&config(&envelope, None), 1)
-            .expect_err("envelopeV1 needs a configured chain id");
-        assert!(err.to_string().contains("rpc.chain_id"), "{err}");
-
-        let err = super::storage_chain_id(&config(&envelope, Some(1)), 2)
-            .expect_err("a mismatching chain id is refused");
-        let err = err.to_string();
-        assert!(
-            err.contains("rpc.chain_id 1") && err.contains("chain id 2"),
-            "the error must name both chain ids: {err}"
-        );
-
-        assert_eq!(
-            super::storage_chain_id(&config(&envelope, Some(1)), 1).expect("matching chain id"),
-            1,
-            "a matching chain id is used"
-        );
-        assert_eq!(
-            super::storage_chain_id(&config(&[StorageFormat::Direct], None), 7)
-                .expect("direct-only needs no configured chain id"),
-            7,
-            "direct-only uses the chain id of the RPC"
-        );
-    }
 }

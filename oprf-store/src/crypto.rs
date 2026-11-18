@@ -279,7 +279,6 @@ impl StorageCrypto {
 mod tests {
     use std::num::NonZeroU16;
 
-    use alloy::primitives::Address;
     use ark_ec::AffineRepr;
     use oprf_types::{
         OprfKeyId, ShareEpoch,
@@ -299,8 +298,6 @@ mod tests {
 
     fn ctx() -> AadContext {
         AadContext {
-            chain_id: 31337,
-            registry: Address::from([0xAA; 20]),
             party_id: PartyId(1),
             threshold: NonZeroU16::new(2).expect("nonzero"),
         }
@@ -461,8 +458,8 @@ mod tests {
         assert_open_fails("epoch", ctx(), &r);
 
         let mut c = ctx();
-        c.chain_id += 1;
-        assert_open_fails("chain_id", c, &row(Kind::Share(pk)));
+        c.party_id = PartyId(2);
+        assert_open_fails("party_id", c, &row(Kind::Share(pk)));
     }
 
     #[test]
