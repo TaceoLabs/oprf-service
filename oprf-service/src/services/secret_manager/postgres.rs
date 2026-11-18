@@ -29,7 +29,7 @@ use crate::{
     secret_manager::{SecretManager, SecretManagerError},
 };
 
-pub use oprf_store::{DekWrapper, EnvelopeError, format::StorageFormat};
+pub use oprf_store::{DekWrapper, EnvelopeError, KeyArn, KmsConfig, format::StorageFormat};
 
 /// How long after a failed on-demand load of a data key the next load of that key waits.
 ///
@@ -37,70 +37,90 @@ pub use oprf_store::{DekWrapper, EnvelopeError, format::StorageFormat};
 /// key that cannot be loaded does not turn every request into a KMS call.
 const LOAD_BACKOFF: Duration = Duration::from_secs(1);
 
-/// The storage configuration of the node: which storage formats it reads and what it needs to
-/// read `envelopeV1` rows.
-#[derive(Debug, Clone, Deserialize)]
-#[non_exhaustive]
-pub struct NodeStorageConfig {
-    /// The storage formats the node reads shares in.
-    ///
-    /// Must not be empty. Defaults to `[direct]`.
-    #[serde(default = "NodeStorageConfig::default_allowed_storage_formats")]
-    pub allowed_storage_formats: Vec<StorageFormat>,
-    /// The full ARN of the AWS KMS key that wraps the data keys.
-    ///
-    /// Required if `envelopeV1` is allowed. Aliases are not accepted.
-    #[serde(default)]
-    pub kms_key_arn: Option<String>,
-    /// Optional custom endpoint for AWS KMS (e.g. for local testing).
-    #[serde(default)]
-    pub kms_endpoint: Option<String>,
+/// Which storage formats the node reads shares in.
+///
+/// Deserialized from these fields; a combination that is not valid fails to deserialize:
+///
+/// | Field                     | Default    |                                              |
+/// |---------------------------|------------|----------------------------------------------|
+/// | `allowed_storage_formats` | `[direct]` | Formats shares are read in; must not be empty. |
+/// | `kms_key_arn`             | none       | Full ARN of the AWS KMS key wrapping the data keys; required if `envelopeV1` is allowed. |
+/// | `kms_endpoint`            | none       | Custom AWS KMS endpoint (e.g. for local testing). |
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "RawNodeStorageConfig")]
+#[allow(
+    clippy::exhaustive_enums,
+    reason = "consumers must handle every way shares are stored"
+)]
+pub enum NodeStorageConfig {
+    /// Reads `direct` only; the KMS is never used.
+    #[default]
+    Direct,
+    /// Reads `envelopeV1`, and `direct` too if `read_direct` is set.
+    Envelope {
+        /// Whether `direct` rows are read as well.
+        read_direct: bool,
+        /// The KMS key wrapping the data keys.
+        kms: KmsConfig,
+    },
 }
 
-impl NodeStorageConfig {
-    /// Default allowed storage formats (`[direct]`).
-    fn default_allowed_storage_formats() -> Vec<StorageFormat> {
-        vec![StorageFormat::Direct]
-    }
+/// The fields [`NodeStorageConfig`] is deserialized from.
+#[derive(Deserialize)]
+struct RawNodeStorageConfig {
+    #[serde(default = "default_allowed_storage_formats")]
+    allowed_storage_formats: Vec<StorageFormat>,
+    #[serde(default)]
+    kms_key_arn: Option<String>,
+    #[serde(default)]
+    kms_endpoint: Option<String>,
+}
 
-    /// A configuration that reads `direct` rows only and never touches KMS.
-    #[must_use]
-    pub fn direct_only() -> Self {
-        Self {
-            allowed_storage_formats: Self::default_allowed_storage_formats(),
-            kms_key_arn: None,
-            kms_endpoint: None,
-        }
-    }
+fn default_allowed_storage_formats() -> Vec<StorageFormat> {
+    vec![StorageFormat::Direct]
+}
 
-    /// Whether `envelopeV1` rows may be read.
-    fn allows_envelope(&self) -> bool {
-        self.allowed_storage_formats
-            .contains(&StorageFormat::EnvelopeV1)
-    }
+impl TryFrom<RawNodeStorageConfig> for NodeStorageConfig {
+    type Error = eyre::Report;
 
-    /// Validates the configuration.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error naming the offending field if `allowed_storage_formats` is empty, or if
-    /// `envelopeV1` is allowed but `kms_key_arn` is missing or not a full key ARN.
-    pub fn validate(&self) -> eyre::Result<()> {
-        if self.allowed_storage_formats.is_empty() {
-            bail!("allowed_storage_formats must not be empty");
+    fn try_from(raw: RawNodeStorageConfig) -> eyre::Result<Self> {
+        let allows = |format| raw.allowed_storage_formats.contains(&format);
+        let read_direct = allows(StorageFormat::Direct);
+        if !allows(StorageFormat::EnvelopeV1) {
+            eyre::ensure!(read_direct, "allowed_storage_formats must not be empty");
+            return Ok(Self::Direct);
         }
-        if self.allows_envelope() {
-            let Some(arn) = &self.kms_key_arn else {
-                bail!("kms_key_arn is required when envelopeV1 is an allowed storage format");
-            };
-            if !oprf_store::kms::is_key_arn(arn) {
-                bail!(
-                    "kms_key_arn must be the full key ARN (`arn:...:key/...`), not an alias or alias ARN"
-                );
-            }
-        }
-        Ok(())
+        let Some(key_arn) = raw.kms_key_arn else {
+            bail!("kms_key_arn is required when envelopeV1 is an allowed storage format");
+        };
+        Ok(Self::Envelope {
+            read_direct,
+            kms: KmsConfig {
+                key_arn: KeyArn::try_from(key_arn)
+                    .map_err(|err| eyre::eyre!("kms_key_arn: {err}"))?,
+                endpoint: raw.kms_endpoint,
+            },
+        })
     }
+}
+
+/// Which storage formats the node reads, with the wrapper of the data keys if `envelopeV1` is
+/// read.
+#[derive(Clone)]
+#[allow(
+    clippy::exhaustive_enums,
+    reason = "constructed by callers; mirrors `NodeStorageConfig`"
+)]
+pub enum NodeStorage {
+    /// Reads `direct` only.
+    Direct,
+    /// Reads `envelopeV1`, and `direct` too if `read_direct` is set.
+    Envelope {
+        /// Whether `direct` rows are read as well.
+        read_direct: bool,
+        /// Unwraps the data keys.
+        wrapper: Arc<dyn DekWrapper>,
+    },
 }
 
 /// The postgres secret manager wrapping a `PgPool`.
@@ -110,7 +130,7 @@ pub struct PostgresSecretManager {
     retry_delay: Duration,
     /// The read-only storage policy.
     crypto: StorageCrypto,
-    /// Unwraps data keys; set exactly if `envelopeV1` is allowed.
+    /// Unwraps data keys; set exactly if `envelopeV1` is read.
     wrapper: Option<Arc<dyn DekWrapper>>,
     /// Serializes on-demand loads of data keys, so that concurrent requests for rows under a
     /// key that is not loaded yet cause one KMS call, not one each. Holds the key and time of
@@ -133,39 +153,42 @@ impl std::fmt::Debug for PostgresSecretManager {
 impl PostgresSecretManager {
     /// Initializes the `PostgresSecretManager`.
     ///
-    /// Validates `storage`, then, only if `envelopeV1` is allowed, creates an AWS KMS wrapper
-    /// for `storage.kms_key_arn` (with `storage.kms_endpoint`) and continues as
-    /// [`PostgresSecretManager::init_with_wrapper`]. A node that only allows `direct` never
-    /// touches AWS.
+    /// Only if `envelopeV1` is read, creates an AWS KMS wrapper for the configured key and
+    /// continues as [`PostgresSecretManager::init_with_storage`]. A node that only reads `direct`
+    /// never touches AWS.
     ///
     /// The AWS KMS wrapper needs the `aws-kms` feature. Without it, use
-    /// [`PostgresSecretManager::init_with_wrapper`] to read `envelopeV1` rows.
+    /// [`PostgresSecretManager::init_with_storage`] to read `envelopeV1` rows.
     ///
     /// # Errors
-    /// Returns an error if `envelopeV1` is allowed and the `aws-kms` feature is not enabled.
-    /// Otherwise see [`PostgresSecretManager::init_with_wrapper`].
+    /// Returns an error if `envelopeV1` is read and the `aws-kms` feature is not enabled.
+    /// Otherwise see [`PostgresSecretManager::init_with_storage`].
     #[instrument(level = "debug", skip_all)]
     pub async fn init(config: &PostgresConfig, storage: &NodeStorageConfig) -> eyre::Result<Self> {
-        // `storage` is validated by `init_with_wrapper`.
-        let wrapper: Option<Arc<dyn DekWrapper>> = match &storage.kms_key_arn {
+        let storage = match storage {
+            NodeStorageConfig::Direct => NodeStorage::Direct,
             #[cfg(not(feature = "aws-kms"))]
-            Some(_) if storage.allows_envelope() => bail!(
+            NodeStorageConfig::Envelope { .. } => bail!(
                 "envelopeV1 is an allowed storage format, but the `aws-kms` feature is not enabled"
             ),
             #[cfg(feature = "aws-kms")]
-            Some(key_arn) if storage.allows_envelope() => {
-                tracing::info!("using KMS key {key_arn} to unwrap data keys");
-                let wrapper =
-                    oprf_store::AwsKmsWrapper::new(key_arn.clone(), storage.kms_endpoint.clone())
-                        .await;
-                Some(Arc::new(wrapper))
+            NodeStorageConfig::Envelope { read_direct, kms } => {
+                tracing::info!("using KMS key {} to unwrap data keys", kms.key_arn);
+                let wrapper = oprf_store::AwsKmsWrapper::new(
+                    kms.key_arn.clone().into(),
+                    kms.endpoint.clone(),
+                )
+                .await;
+                NodeStorage::Envelope {
+                    read_direct: *read_direct,
+                    wrapper: Arc::new(wrapper),
+                }
             }
-            _ => None,
         };
-        Self::init_with_wrapper(config, storage, wrapper).await
+        Self::init_with_storage(config, storage).await
     }
 
-    /// Initializes the `PostgresSecretManager` with the given data key wrapper.
+    /// Initializes the `PostgresSecretManager` with the given storage.
     ///
     /// Connects to the Postgres database using the provided configuration. This version does **not** run migrations;
     /// it assumes the database is already set up.
@@ -173,25 +196,19 @@ impl PostgresSecretManager {
     /// Stores the max retries and retry delay from the configuration for
     /// use in future database operations.
     ///
-    /// If `envelopeV1` is allowed, loads the party id and threshold from `node_information` and
-    /// every data key, unwrapped with `wrapper`. `storage.kms_key_arn` and
-    /// `storage.kms_endpoint` are not used here; `wrapper` decides which KMS key is used.
-    /// Otherwise neither `node_information` nor the KMS is touched and `wrapper` is ignored.
+    /// If `envelopeV1` is read, loads the party id and threshold from `node_information` and
+    /// every data key, unwrapped with the wrapper of `storage`. Otherwise neither
+    /// `node_information` nor the KMS is touched.
     ///
     /// # Errors
-    /// Returns an error if `storage` is invalid or the connection to the database fails, and,
-    /// if `envelopeV1` is allowed, if `wrapper` is `None`, `node_information` is missing, or a
-    /// data key cannot be loaded (e.g. the KMS call fails or the key was wrapped under another
-    /// KMS key).
+    /// Returns an error if the connection to the database fails, and, if `envelopeV1` is read,
+    /// if `node_information` is missing or a data key cannot be loaded (e.g. the KMS call fails
+    /// or the key was wrapped under another KMS key).
     #[instrument(level = "debug", skip_all)]
-    pub async fn init_with_wrapper(
+    pub async fn init_with_storage(
         config: &PostgresConfig,
-        storage: &NodeStorageConfig,
-        wrapper: Option<Arc<dyn DekWrapper>>,
+        storage: NodeStorage,
     ) -> eyre::Result<Self> {
-        storage
-            .validate()
-            .context("invalid storage configuration")?;
         tracing::debug!("init PgPool with schema: {}", config.schema);
         let pool = nodes_common::postgres::pg_pool_with_schema(config, CreateSchema::No)
             .await
@@ -215,12 +232,16 @@ impl PostgresSecretManager {
             wrapper: None,
             last_failed_load: tokio::sync::Mutex::new(None),
         };
-        if storage.allows_envelope() {
-            let wrapper = wrapper.ok_or_else(|| {
-                eyre::eyre!(
-                    "envelopeV1 is an allowed storage format, but no data key wrapper (KMS key) is given"
-                )
-            })?;
+        if let NodeStorage::Envelope {
+            read_direct,
+            wrapper,
+        } = storage
+        {
+            let allowed: &[StorageFormat] = if read_direct {
+                &[StorageFormat::Direct, StorageFormat::EnvelopeV1]
+            } else {
+                &[StorageFormat::EnvelopeV1]
+            };
             let node_information = secret_manager.load_node_information().await?;
             let ctx = AadContext {
                 party_id: node_information.party_id(),
@@ -229,12 +250,8 @@ impl PostgresSecretManager {
             let deks = data_keys::load_all(&secret_manager.pool, wrapper.as_ref())
                 .await
                 .context("while loading the data keys")?;
-            tracing::info!(
-                allowed = ?storage.allowed_storage_formats,
-                data_keys = deks.len(),
-                "loaded data keys"
-            );
-            secret_manager.crypto = StorageCrypto::new(&storage.allowed_storage_formats, ctx, deks);
+            tracing::info!(?allowed, data_keys = deks.len(), "loaded data keys");
+            secret_manager.crypto = StorageCrypto::new(allowed, ctx, deks);
             secret_manager.wrapper = Some(wrapper);
         }
         Ok(secret_manager)

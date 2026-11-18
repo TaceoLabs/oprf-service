@@ -30,7 +30,6 @@ use alloy::{
 use eyre::Context as _;
 use groth16_material::circom::CircomGroth16MaterialBuilder;
 use nodes_common::web3::{self, event_stream::ChainCursor};
-use oprf_store::aad::AadContext;
 use oprf_types::{chain::OprfKeyRegistry, crypto::PartyId, service::NodeInformation};
 use secrecy::ExposeSecret;
 use tokio_util::sync::CancellationToken;
@@ -104,6 +103,50 @@ impl PubSubConnect for NoReconnect {
     }
 }
 
+/// Builds the HTTP RPC provider with the configured wallet and returns it with the wallet
+/// address.
+fn http_rpc_provider(
+    config: &OprfKeyGenServiceConfig,
+) -> eyre::Result<(web3::HttpRpcProvider, Address)> {
+    let private_key = PrivateKeySigner::from_str(config.wallet_private_key.expose_secret())
+        .context("while loading wallet private key")?;
+    let address = private_key.address();
+    let reqwest_client = reqwest::ClientBuilder::new()
+        .timeout(config.rpc_http_timeout)
+        // set connection pool to zero to force a new connection on every HTTP request.
+        // This should prevent talking to stale/lagging nodes for a longer period
+        .pool_max_idle_per_host(0)
+        .build()
+        .context("while building reqwest Client")?;
+    let provider =
+        nodes_common::web3::HttpRpcProviderBuilder::with_config(&config.rpc_provider_config)
+            .environment(config.environment)
+            .reqwest_client(reqwest_client)
+            .wallet(EthereumWallet::from(private_key))
+            .build()
+            .context("while init blockchain connection")?;
+    Ok((provider, address))
+}
+
+/// Loads the [`NodeInformation`] of this node from the `OprfKeyRegistry` contract.
+///
+/// Verifies that the configured wallet is registered as a participant and that the threshold
+/// and number of peers of the contract match the configuration. The secret manager passed to
+/// [`start`] is initialized with the result.
+///
+/// # Errors
+/// Returns an error if the configured wallet private key cannot be parsed, the RPC provider
+/// cannot be initialized, the node is not registered in the contract, or the threshold or
+/// number of peers do not match.
+pub async fn load_node_information(
+    config: &OprfKeyGenServiceConfig,
+) -> eyre::Result<NodeInformation> {
+    let (http_rpc_provider, address) = http_rpc_provider(config)?;
+    contract_sanity_checks(&http_rpc_provider, address, config)
+        .await
+        .context("while doing sanity checks")
+}
+
 async fn contract_sanity_checks(
     rpc_provider: &web3::HttpRpcProvider,
     key_gen_wallet_address: Address,
@@ -150,30 +193,6 @@ async fn contract_sanity_checks(
     ))
 }
 
-/// Stores the node information, then prepares the storage of secrets, bound to this deployment
-/// (party, threshold).
-async fn init_storage(
-    secret_manager: &SecretManagerService,
-    config: &OprfKeyGenServiceConfig,
-    node_information: NodeInformation,
-) -> eyre::Result<()> {
-    let party_id = node_information.party_id();
-    secret_manager
-        .store_node_information(node_information)
-        .await
-        .context("while storing node information in secret manager")?;
-
-    let aad_context = AadContext {
-        party_id,
-        threshold: config.expected_threshold,
-    };
-    secret_manager
-        .prepare_storage(aad_context)
-        .await
-        .context("while preparing storage")?;
-    Ok(())
-}
-
 /// Starts the OPRF key generation service and spawns all required background tasks.
 /// Additionally, returns an `axum::Router` exposing basic service endpoints.
 ///
@@ -185,22 +204,16 @@ async fn init_storage(
 ///
 /// # Initialization
 /// During startup the service performs several initialization steps:
-/// - Validates the storage configuration (`OprfKeyGenServiceConfig::validate_storage`).
 /// - Initializes the Ethereum wallet from the configured private key.
 /// - Initializes the RPC provider used to interact with the configured blockchain.
 /// - Fetches and logs the wallet balance.
-/// - Loads the party ID from the `OprfKeyRegistry` contract to verify that this
-///   node is registered as a participant.
-/// - Stores the node information (wallet address, party ID, threshold) in the configured
-///   secret manager.
-/// - Prepares the storage of secrets (`SecretManager::prepare_storage`): loads or creates the
-///   data keys and upgrades `direct` rows to the configured write format.
 /// - Builds the Groth16 proving material required for the key generation protocol.
 /// - Initializes the `DLogSecretGenService`, which uses the secret manager to persist in-progress key-gen state between rounds.
 /// - Creates a `TransactionHandler` used for submitting and confirming on-chain transactions.
 ///
 /// # Parameters
-/// - `secret_manager` – Postgres-backed store for key shares and in-progress state.
+/// - `secret_manager` – Postgres-backed store for key shares and in-progress state,
+///   initialized with the node information from [`load_node_information`].
 /// - `chain_cursor_service` – Postgres-backed cursor store; the `key_event_watcher` loads
 ///   the persisted `(block, log_index)` on startup so backfill resumes from where the
 ///   previous run left off rather than from the chain head.
@@ -218,11 +231,8 @@ async fn init_storage(
 ///
 /// # Errors
 /// Returns an error if:
-/// - the storage configuration is invalid,
 /// - the configured wallet private key cannot be parsed,
 /// - the RPC provider cannot be initialized,
-/// - the node is not registered in the `OprfKeyRegistry` contract,
-/// - preparing the storage fails,
 /// - the Groth16 proving material cannot be built.
 pub async fn start(
     config: OprfKeyGenServiceConfig,
@@ -232,31 +242,8 @@ pub async fn start(
     cancellation_token: CancellationToken,
 ) -> eyre::Result<(axum::Router, KeyGenTasks)> {
     tracing::info!("init oprf key-gen service..");
-    config
-        .validate_storage()
-        .context("invalid storage configuration")?;
-
-    let private_key = PrivateKeySigner::from_str(config.wallet_private_key.expose_secret())
-        .context("while loading wallet private key")?;
-    let address = private_key.address();
+    let (http_rpc_provider, address) = http_rpc_provider(&config)?;
     tracing::info!("my wallet address: {address}");
-    let wallet = EthereumWallet::from(private_key);
-
-    let reqwest_client = reqwest::ClientBuilder::new()
-        .timeout(config.rpc_http_timeout)
-        // set connection pool to zero to force a new connection on every HTTP request.
-        // This should prevent talking to stale/lagging nodes for a longer period
-        .pool_max_idle_per_host(0)
-        .build()
-        .context("while building reqwest Client")?;
-
-    let http_rpc_provider =
-        nodes_common::web3::HttpRpcProviderBuilder::with_config(&config.rpc_provider_config)
-            .environment(config.environment)
-            .reqwest_client(reqwest_client)
-            .wallet(wallet)
-            .build()
-            .context("while init blockchain connection")?;
 
     // NoReconnect refuses reconnects so that on WS connection errors the pubsub service shuts
     // down, the event stream ends, and the supervisor can restart the process to backfill
@@ -277,12 +264,6 @@ pub async fn start(
 
     tracing::info!("wallet balance: {balance} ETH");
     metrics::wallet::set_wallet_balance(&balance);
-
-    let node_info = contract_sanity_checks(&http_rpc_provider, address, &config)
-        .await
-        .context("while doing sanity checks")?;
-
-    init_storage(&secret_manager, &config, node_info).await?;
 
     let key_gen_material = tokio::task::spawn_blocking(move || {
         CircomGroth16MaterialBuilder::new()

@@ -38,7 +38,7 @@ pub use crypto::{Sealed, StorageCrypto, WriteTarget};
 pub use kms::AwsKmsWrapper;
 #[cfg(feature = "test-utils")]
 pub use kms::InMemoryWrapper;
-pub use kms::{DekWrapper, KmsError};
+pub use kms::{DekWrapper, InvalidKeyArn, KeyArn, KmsConfig, KmsError};
 
 #[cfg(test)]
 mod tests;

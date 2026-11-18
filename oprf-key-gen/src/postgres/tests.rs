@@ -3,8 +3,9 @@ use std::num::NonZeroU16;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::config::EnvelopeMode;
 use crate::event_cursor_store::ChainCursorStorage;
-use crate::postgres::{PostgresDb, PostgresDbError, StorageSettings, upgrade};
+use crate::postgres::{PostgresDb, PostgresDbError, Storage, upgrade};
 use crate::secret_manager::{
     KeyGenIntermediateValues, SecretManager as _, SecretManagerError, StorageReport,
 };
@@ -33,15 +34,22 @@ use uuid::Uuid;
 type Fixture = (PostgresDb, Arc<SharedPostgres>, SanitizedSchema);
 
 /// Settings that read and write `direct` only.
-pub(crate) fn direct_settings() -> StorageSettings {
-    StorageSettings {
-        allowed: vec![StorageFormat::Direct],
-        write: StorageFormat::Direct,
-    }
+pub(crate) fn direct_settings() -> Storage {
+    Storage::Direct
 }
 
-/// The AAD context the tests prepare storage with.
-pub(crate) fn aad_context() -> AadContext {
+/// The node the tests prepare storage for; matches [`aad_context`].
+pub(crate) fn node_information() -> NodeInformation {
+    let ctx = aad_context();
+    NodeInformation::new(
+        ctx.party_id,
+        alloy::primitives::Address::ZERO.to_string(),
+        ctx.threshold,
+    )
+}
+
+/// The AAD context of [`node_information`].
+fn aad_context() -> AadContext {
     AadContext {
         party_id: PartyId(1),
         threshold: NonZeroU16::new(2).expect("2 is non-zero"),
@@ -52,66 +60,95 @@ fn wrapper() -> InMemoryWrapper {
     InMemoryWrapper::new("arn:aws:kms:eu-central-1:000000000000:key/test", [1; 32])
 }
 
-/// Settings that read `direct` and `envelopeV1` and write `envelopeV1`.
-fn envelope_settings() -> StorageSettings {
-    StorageSettings {
-        allowed: vec![StorageFormat::Direct, StorageFormat::EnvelopeV1],
-        write: StorageFormat::EnvelopeV1,
+/// Envelope settings in `mode` with the test wrapper.
+fn envelope_settings(mode: EnvelopeMode) -> Storage {
+    Storage::Envelope {
+        mode,
+        wrapper: Arc::new(wrapper()),
+    }
+}
+
+/// A migrated schema no [`PostgresDb`] is initialized on yet.
+struct Unprepared {
+    config: PostgresConfig,
+    pool: sqlx::PgPool,
+    storage: Storage,
+}
+
+impl Unprepared {
+    /// Initializes a [`PostgresDb`] the way key-gen does at startup.
+    async fn prepare(
+        &self,
+        node_information: NodeInformation,
+    ) -> eyre::Result<(PostgresDb, StorageReport)> {
+        PostgresDb::init_with_report(&self.config, self.storage.clone(), node_information).await
+    }
+
+    /// The storage policy startup would build, without upgrading any row.
+    async fn build_crypto(&self, ctx: AadContext) -> Result<StorageCrypto, PostgresDbError> {
+        super::build_crypto(&self.pool, &self.storage, ctx).await
+    }
+
+    /// A [`PostgresDb`] with the given storage policy; nothing is prepared.
+    fn with_crypto(&self, crypto: StorageCrypto) -> PostgresDb {
+        PostgresDb {
+            pool: self.pool.clone(),
+            max_retries: self.config.max_retries,
+            retry_delay: self.config.retry_delay,
+            crypto: Arc::new(crypto),
+            storage: self.storage.clone(),
+        }
     }
 }
 
 async fn init_db(
     pg: &SharedPostgres,
     schema: SanitizedSchema,
-    storage: StorageSettings,
-    wrapper: Option<Arc<dyn DekWrapper>>,
-) -> eyre::Result<PostgresDb> {
-    PostgresDb::init(
-        &PostgresConfig::with_default_values(
-            SecretString::from(pg.connection_string.clone()),
-            schema,
-        ),
+    storage: Storage,
+) -> eyre::Result<Unprepared> {
+    let config = PostgresConfig::with_default_values(
+        SecretString::from(pg.connection_string.clone()),
+        schema,
+    );
+    let pool = super::connect(&config).await?;
+    Ok(Unprepared {
+        config,
+        pool,
         storage,
-        wrapper,
-    )
-    .await
+    })
 }
 
-/// A database with envelope settings and the test wrapper; storage is not prepared yet.
+/// A database reading both formats and writing `envelopeV1`; storage is not prepared yet.
 async fn unprepared_envelope_db(
     pg: &SharedPostgres,
     schema: SanitizedSchema,
-) -> eyre::Result<PostgresDb> {
-    init_db(pg, schema, envelope_settings(), Some(Arc::new(wrapper()))).await
+) -> eyre::Result<Unprepared> {
+    init_db(pg, schema, envelope_settings(EnvelopeMode::WriteEnvelope)).await
 }
 
 /// A database writing in `format`; with `envelopeV1` it also reads `direct`.
 async fn postgres_db_with(format: StorageFormat) -> eyre::Result<Fixture> {
     if format == StorageFormat::EnvelopeV1 {
-        return envelope_db(&[StorageFormat::Direct, StorageFormat::EnvelopeV1]).await;
+        return envelope_db(EnvelopeMode::WriteEnvelope).await;
     }
     let pg = nodes_common::test_utils::shared_postgres_testcontainer().await?;
     let schema = nodes_common::test_utils::next_test_schema();
-    let db = init_db(&pg, schema.clone(), direct_settings(), None).await?;
-    db.prepare_storage(aad_context()).await?;
+    let db = init_db(&pg, schema.clone(), direct_settings()).await?;
+    let (db, _) = db.prepare(node_information()).await?;
     Ok((db, pg, schema))
 }
 
-/// A database writing `envelopeV1` under a freshly created data key and reading `allowed`.
-async fn envelope_db(allowed: &[StorageFormat]) -> eyre::Result<Fixture> {
+/// A database in `mode`, writing `envelopeV1` under a freshly created data key.
+async fn envelope_db(mode: EnvelopeMode) -> eyre::Result<Fixture> {
     let pg = nodes_common::test_utils::shared_postgres_testcontainer().await?;
     let schema = nodes_common::test_utils::next_test_schema();
-    let storage = StorageSettings {
-        allowed: allowed.to_vec(),
-        write: StorageFormat::EnvelopeV1,
-    };
-    let db = init_db(&pg, schema.clone(), storage, None).await?;
+    let db = init_db(&pg, schema.clone(), envelope_settings(mode)).await?;
     let mut conn =
         nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
     let dek = oprf_store::data_keys::create(&mut conn, &wrapper()).await?;
     let dek_id = dek.id();
-    db.set_crypto_for_tests(
-        StorageCrypto::new(allowed, aad_context(), vec![dek])
+    let db = db.with_crypto(
+        StorageCrypto::new(mode.allowed(), aad_context(), vec![dek])
             .with_write(oprf_store::WriteTarget::EnvelopeV1(dek_id))?,
     );
     Ok((db, pg, schema))
@@ -127,17 +164,15 @@ pub(crate) async fn postgres_secret_manager_with_schema(
     connection_string: &str,
     schema: SanitizedSchema,
 ) -> eyre::Result<PostgresDb> {
-    let db = PostgresDb::init(
+    PostgresDb::init(
         &PostgresConfig::with_default_values(
             SecretString::from(connection_string.to_owned()),
             schema,
         ),
         direct_settings(),
-        None,
+        node_information(),
     )
-    .await?;
-    db.prepare_storage(aad_context()).await?;
-    Ok(db)
+    .await
 }
 
 /// Runs each listed `async fn name(format: StorageFormat)` as a test in module `$module`,
@@ -187,7 +222,9 @@ tests_with_write_format!(
 
 #[tokio::test]
 async fn load_node_information_success() -> eyre::Result<()> {
-    let (secret_manager, pg, schema) = postgres_db_with(StorageFormat::Direct).await?;
+    let pg = nodes_common::test_utils::shared_postgres_testcontainer().await?;
+    let schema = nodes_common::test_utils::next_test_schema();
+    let db = init_db(&pg, schema.clone(), direct_settings()).await?;
 
     let key = PrivateKeySigner::random();
     let address = key.address();
@@ -195,9 +232,7 @@ async fn load_node_information_success() -> eyre::Result<()> {
     let should_threshold = NonZeroU16::new(2).expect("2 is non-zero");
     let should_node_information =
         NodeInformation::new(should_party_id, address.to_string(), should_threshold);
-    secret_manager
-        .store_node_information(should_node_information.clone())
-        .await?;
+    db.prepare(should_node_information.clone()).await?;
 
     // check that the address is stored in the DB
     let mut pg_connection =
@@ -284,9 +319,7 @@ async fn setup_pending_share(
         oprf_key_id,
         epoch: pending_epoch,
     };
-    let sealed = db
-        .crypto()?
-        .seal(&row, &oprf_store::codec::to_bytes(share))?;
+    let sealed = db.crypto.seal(&row, &oprf_store::codec::to_bytes(share))?;
     sqlx::query(
         "INSERT INTO in_progress_keygens
              (id, pending_epoch, pending_share, intermediates, storage_format, data_key_id)
@@ -346,8 +379,7 @@ fn assert_row_matches(
     };
     let is_share = is_share.map(|is_share| {
         let plaintext = db
-            .crypto()
-            .expect("crypto is set")
+            .crypto
             .open(&storage_format, data_key_id, &row_id, &is_share)
             .expect("Can open");
         ark_babyjubjub::Fr::deserialize_uncompressed(plaintext.as_slice()).expect("Can deserialize")
@@ -1395,15 +1427,11 @@ async fn pending_share_follows_row_data_key() -> eyre::Result<()> {
     let db2 = init_db(
         &pg,
         schema.clone(),
-        StorageSettings {
-            allowed: both.to_vec(),
-            write: StorageFormat::EnvelopeV1,
-        },
-        None,
+        envelope_settings(EnvelopeMode::WriteEnvelope),
     )
     .await?;
     let all_keys = oprf_store::data_keys::load_all(&mut conn, &wrapper()).await?;
-    db2.set_crypto_for_tests(
+    let db2 = db2.with_crypto(
         StorageCrypto::new(&both, aad_context(), all_keys)
             .with_write(oprf_store::WriteTarget::EnvelopeV1(current_key))?,
     );
@@ -1568,7 +1596,7 @@ async fn assert_seeded_values(db: &PostgresDb, seeded: &Seeded) -> eyre::Result<
             "intermediates of {oprf_key_id} must read back"
         );
         let read_pending =
-            PostgresDb::fetch_pending_share_inner(db.crypto()?, *oprf_key_id, *epoch, &db.pool)
+            PostgresDb::fetch_pending_share_inner(&db.crypto, *oprf_key_id, *epoch, &db.pool)
                 .await?;
         assert_eq!(
             read_pending.map(ark_babyjubjub::Fr::from),
@@ -1584,7 +1612,7 @@ async fn upgrade_converts_all_direct_rows() -> eyre::Result<()> {
     let (pg, schema, mut conn, seeded) = seeded_direct_schema().await?;
 
     let db = unprepared_envelope_db(&pg, schema).await?;
-    let report = db.prepare_storage(aad_context()).await?;
+    let (db, report) = db.prepare(node_information()).await?;
     assert_eq!(
         report,
         StorageReport::new(5, 0, 0),
@@ -1615,10 +1643,10 @@ async fn upgrade_is_idempotent() -> eyre::Result<()> {
     let (pg, schema, mut conn, _) = seeded_direct_schema().await?;
 
     let db = unprepared_envelope_db(&pg, schema).await?;
-    db.prepare_storage(aad_context()).await?;
+    db.prepare(node_information()).await?;
     let before = snapshot(&mut conn).await?;
 
-    let report = db.prepare_storage(aad_context()).await?;
+    let (_, report) = db.prepare(node_information()).await?;
     assert_eq!(report.upgraded, 0, "nothing is left to upgrade");
     assert_eq!(
         snapshot(&mut conn).await?,
@@ -1633,7 +1661,7 @@ async fn upgrade_resumes_after_partial_run() -> eyre::Result<()> {
     let (pg, schema, mut conn, seeded) = seeded_direct_schema().await?;
 
     let db = unprepared_envelope_db(&pg, schema).await?;
-    let crypto = db.ensure_crypto(aad_context()).await?;
+    let crypto = &db.build_crypto(aad_context()).await?;
     // An interrupted run: only the first share row (by primary key) is upgraded.
     let (upgraded, last) = upgrade::upgrade_shares_batch(&db.pool, crypto, None, 1).await?;
     assert_eq!(upgraded, 1, "one row is upgraded by hand");
@@ -1647,7 +1675,7 @@ async fn upgrade_resumes_after_partial_run() -> eyre::Result<()> {
     let before = first_row().fetch_one(&mut conn).await?;
     assert_eq!(before.1, "envelopeV1", "the first row is upgraded");
 
-    let report = db.prepare_storage(aad_context()).await?;
+    let (db, report) = db.prepare(node_information()).await?;
     assert_eq!(
         report,
         StorageReport::new(4, 0, 0),
@@ -1669,11 +1697,7 @@ async fn upgrade_skips_direct_rows_when_direct_not_allowed() -> eyre::Result<()>
     let db = init_db(
         &pg,
         schema.clone(),
-        StorageSettings {
-            allowed: vec![StorageFormat::EnvelopeV1],
-            write: StorageFormat::EnvelopeV1,
-        },
-        Some(Arc::new(wrapper())),
+        envelope_settings(EnvelopeMode::EnvelopeOnly),
     )
     .await?;
     let mut conn =
@@ -1697,7 +1721,7 @@ async fn upgrade_skips_direct_rows_when_direct_not_allowed() -> eyre::Result<()>
     .await?;
     let before = snapshot(&mut conn).await?;
 
-    let report = db.prepare_storage(aad_context()).await?;
+    let (_, report) = db.prepare(node_information()).await?;
     assert_eq!(report.upgraded, 0, "no direct row is upgraded");
     assert_eq!(report.disallowed, 2, "both direct rows are disallowed");
     assert_eq!(snapshot(&mut conn).await?, before, "no row changed");
@@ -1761,8 +1785,8 @@ async fn upgrade_spans_multiple_batches() -> eyre::Result<()> {
         in_progress.push((in_progress_key, epoch, intermediates, Some(pending)));
     }
 
-    let crypto = db.ensure_crypto(aad_context()).await?;
-    let upgraded = upgrade::upgrade_all(&db.pool, crypto, BATCH_SIZE).await?;
+    let db = db.with_crypto(db.build_crypto(aad_context()).await?);
+    let upgraded = upgrade::upgrade_all(&db.pool, &db.crypto, BATCH_SIZE).await?;
     let rows = share_rows + u64::try_from(in_progress.len())?;
     assert_eq!(upgraded, rows, "every direct row is upgraded");
     assert!(
@@ -1792,12 +1816,12 @@ async fn prepare_creates_exactly_one_data_key() -> eyre::Result<()> {
     let mut conn =
         nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
 
-    db.prepare_storage(aad_context()).await?;
-    db.prepare_storage(aad_context()).await?;
+    db.prepare(node_information()).await?;
+    db.prepare(node_information()).await?;
     // A restarted process prepares again on the same database.
     unprepared_envelope_db(&pg, schema)
         .await?
-        .prepare_storage(aad_context())
+        .prepare(node_information())
         .await?;
     assert_eq!(data_key_count(&mut conn).await?, 1, "one data key");
     Ok(())
@@ -1813,11 +1837,11 @@ async fn concurrent_prepare_creates_one_data_key() -> eyre::Result<()> {
         nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
 
     let (r1, r2) = tokio::join!(
-        db1.prepare_storage(aad_context()),
-        db2.prepare_storage(aad_context())
+        db1.prepare(node_information()),
+        db2.prepare(node_information())
     );
-    r1?;
-    r2?;
+    let (db1, _) = r1?;
+    let (db2, _) = r2?;
     assert_eq!(data_key_count(&mut conn).await?, 1, "one data key");
 
     let epoch = ShareEpoch::new(1);
@@ -1837,8 +1861,8 @@ async fn prepare_direct_only_touches_nothing() -> eyre::Result<()> {
     let (pg, schema, mut conn, _) = seeded_direct_schema().await?;
     let before = snapshot(&mut conn).await?;
 
-    let db = init_db(&pg, schema, direct_settings(), None).await?;
-    let report = db.prepare_storage(aad_context()).await?;
+    let db = init_db(&pg, schema, direct_settings()).await?;
+    let (_, report) = db.prepare(node_information()).await?;
     assert_eq!(
         report,
         StorageReport::new(0, 5, 0),
@@ -1863,8 +1887,8 @@ async fn report_counts_disallowed_rows() -> eyre::Result<()> {
     )
     .await?;
 
-    let direct_db = init_db(&pg, schema, direct_settings(), None).await?;
-    let report = direct_db.prepare_storage(aad_context()).await?;
+    let direct_db = init_db(&pg, schema, direct_settings()).await?;
+    let (_, report) = direct_db.prepare(node_information()).await?;
     assert_eq!(report.disallowed, 1, "the envelope row is not allowed");
     Ok(())
 }
@@ -1880,31 +1904,13 @@ async fn prepare_fails_on_key_arn_mismatch() -> eyre::Result<()> {
     oprf_store::data_keys::create(&mut conn, &InMemoryWrapper::new(other_arn, [2; 32])).await?;
 
     let err = db
-        .prepare_storage(aad_context())
+        .prepare(node_information())
         .await
-        .expect_err("a data key under another KMS key must be refused")
-        .to_string();
+        .expect_err("a data key under another KMS key must be refused");
+    let err = format!("{err:#}");
     assert!(
         err.contains(other_arn) && err.contains(wrapper().key_arn()),
         "the error must name both ARNs: {err}"
-    );
-    Ok(())
-}
-
-#[tokio::test]
-async fn operations_before_prepare_fail() -> eyre::Result<()> {
-    let pg = nodes_common::test_utils::shared_postgres_testcontainer().await?;
-    let schema = nodes_common::test_utils::next_test_schema();
-    let db = init_db(&pg, schema, direct_settings(), None).await?;
-
-    let err = db
-        .get_share_by_epoch(OprfKeyId::new(U160::from(42)), ShareEpoch::new(1))
-        .await
-        .map(drop)
-        .expect_err("storage is not prepared");
-    assert!(
-        matches!(err, SecretManagerError::Internal(_)),
-        "expected Internal, got {err:?}"
     );
     Ok(())
 }

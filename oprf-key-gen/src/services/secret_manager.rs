@@ -10,8 +10,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
-use oprf_store::aad::AadContext;
-use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey, service::NodeInformation};
+use oprf_types::{OprfKeyId, ShareEpoch, crypto::OprfPublicKey};
 
 pub use crate::services::secret_gen::KeyGenIntermediateValues;
 
@@ -50,7 +49,7 @@ pub enum SecretManagerError {
     Internal(#[from] eyre::Report),
 }
 
-/// What [`SecretManager::prepare_storage`] found and did.
+/// What preparing the storage of secrets found and did.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct StorageReport {
@@ -80,18 +79,6 @@ impl StorageReport {
 /// Handles persistence of `OprfKeyMaterial`.
 #[async_trait]
 pub trait SecretManager {
-    /// Prepares the storage of secret columns; must be called once at startup before any other
-    /// method that reads or writes secrets, which fail until then.
-    ///
-    /// Loads (and if needed creates) the data keys, binds every sealed value to `ctx`, upgrades
-    /// `direct` rows to the configured write format and reports the stored formats. Calling it
-    /// again keeps the prepared storage (and ignores `ctx`) and only repeats the upgrade and the
-    /// report.
-    async fn prepare_storage(&self, ctx: AadContext) -> Result<StorageReport>;
-
-    /// Stores the [`NodeInformation`] for the node in the secret manager.
-    async fn store_node_information(&self, node_information: NodeInformation) -> Result<()>;
-
     /// Returns the share of a given [`OprfKeyId`] and a given [`ShareEpoch`].
     ///
     /// Returns `Ok(None)` if there is no confirmed share for the given key/epoch pair.

@@ -16,11 +16,11 @@ use std::{net::SocketAddr, process::ExitCode, sync::Arc, time::Duration};
 use config::Config;
 use eyre::Context;
 use nodes_common::{StartedServices, postgres::PostgresConfig};
-use oprf_store::{AwsKmsWrapper, DekWrapper};
+use oprf_store::AwsKmsWrapper;
 use serde::Deserialize;
 use taceo_oprf_key_gen::{
-    config::OprfKeyGenServiceConfig,
-    postgres::{PostgresDb, StorageSettings},
+    config::{OprfKeyGenServiceConfig, StorageConfig},
+    postgres::{PostgresDb, Storage},
 };
 
 /// The top-level configuration for the OPRF key-gen binary.
@@ -44,6 +44,10 @@ struct OprfKeyGenConfig {
     /// Postgres config used by the shared [`PostgresDb`] backend (secret manager and chain cursor store).
     #[serde(rename = "postgres")]
     pub postgres_config: PostgresConfig,
+
+    /// How secrets are stored in the database; defaults to `direct` only.
+    #[serde(default)]
+    pub storage: StorageConfig,
 }
 
 fn default_bind_addr() -> SocketAddr {
@@ -54,17 +58,19 @@ fn default_max_wait_shutdown() -> Duration {
     Duration::from_secs(10)
 }
 
+fn env_source() -> config::Environment {
+    config::Environment::with_prefix("TACEO_OPRF_KEY_GEN")
+        .separator("__")
+        .list_separator(",")
+        .with_list_parse_key("service.rpc.http_urls")
+        .with_list_parse_key("storage.allowed_storage_formats")
+        .try_parsing(true)
+}
+
 // we are not allowed to build an eyre::Report yet because telemetry-batteries expects to install
 // the color-eyre hook
 fn load_key_gen_config() -> Result<OprfKeyGenConfig, config::ConfigError> {
-    let cfg = Config::builder().add_source(
-        config::Environment::with_prefix("TACEO_OPRF_KEY_GEN")
-            .separator("__")
-            .list_separator(",")
-            .with_list_parse_key("service.rpc.http_urls")
-            .with_list_parse_key("service.allowed_storage_formats")
-            .try_parsing(true),
-    );
+    let cfg = Config::builder().add_source(env_source());
 
     let key_gen_config = cfg.build()?.try_deserialize()?;
 
@@ -86,30 +92,26 @@ async fn run(config: OprfKeyGenConfig) -> eyre::Result<()> {
     taceo_oprf_key_gen::metrics::describe_metrics();
     tracing::info!("{}", nodes_common::version_info!());
 
-    // `start` validates again; validating here fails before the database is opened.
-    config
-        .key_gen_config
-        .validate_storage()
-        .context("invalid storage configuration")?;
+    // The stored secrets are bound to the party id, so it is loaded before the database is opened.
+    let node_information = taceo_oprf_key_gen::load_node_information(&config.key_gen_config)
+        .await
+        .context("while loading node information")?;
 
     tracing::info!("connecting to postgres DB...");
 
-    let storage = StorageSettings {
-        allowed: config.key_gen_config.allowed_storage_formats.clone(),
-        write: config.key_gen_config.storage_write_format,
-    };
-    // Only a deployment with a KMS key touches AWS; direct-only needs no wrapper.
-    let wrapper: Option<Arc<dyn DekWrapper>> = match &config.key_gen_config.kms_key_arn {
-        Some(key_arn) => {
-            tracing::info!("using KMS key {key_arn} to wrap data keys");
-            let wrapper =
-                AwsKmsWrapper::new(key_arn.clone(), config.key_gen_config.kms_endpoint.clone())
-                    .await;
-            Some(Arc::new(wrapper))
+    // Only a deployment that uses `envelopeV1` touches AWS.
+    let storage = match config.storage {
+        StorageConfig::Direct => Storage::Direct,
+        StorageConfig::Envelope { mode, kms } => {
+            tracing::info!("using KMS key {} to wrap data keys", kms.key_arn);
+            let wrapper = AwsKmsWrapper::new(kms.key_arn.into(), kms.endpoint).await;
+            Storage::Envelope {
+                mode,
+                wrapper: Arc::new(wrapper),
+            }
         }
-        None => None,
     };
-    let postgres = PostgresDb::init(&config.postgres_config, storage, wrapper)
+    let postgres = PostgresDb::init(&config.postgres_config, storage, node_information)
         .await
         .context("while starting postgres secret-manager")?;
 
@@ -218,4 +220,60 @@ fn main() -> ExitCode {
             }
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Deserialize)]
+    struct OnlyStorage {
+        #[serde(default)]
+        storage: StorageConfig,
+    }
+
+    fn storage_from_env(vars: &[(&str, &str)]) -> Result<StorageConfig, config::ConfigError> {
+        let vars = vars
+            .iter()
+            .map(|(key, value)| {
+                (
+                    format!("TACEO_OPRF_KEY_GEN__STORAGE__{key}"),
+                    (*value).to_owned(),
+                )
+            })
+            .collect();
+        let config: OnlyStorage = Config::builder()
+            .add_source(env_source().source(Some(vars)))
+            .build()?
+            .try_deserialize()?;
+        Ok(config.storage)
+    }
+
+    #[test]
+    fn storage_is_parsed_from_env() {
+        const KEY_ARN: &str = "arn:aws:kms:eu-west-1:111122223333:key/1234abcd";
+        assert_eq!(
+            storage_from_env(&[]).expect("default"),
+            StorageConfig::Direct
+        );
+
+        let envelope = storage_from_env(&[
+            ("ALLOWED_STORAGE_FORMATS", "direct,envelopeV1"),
+            ("STORAGE_WRITE_FORMAT", "envelopeV1"),
+            ("KMS_KEY_ARN", KEY_ARN),
+        ])
+        .expect("valid envelope config");
+        let StorageConfig::Envelope { mode, kms } = envelope else {
+            panic!("expected an envelope config, got {envelope:?}");
+        };
+        assert_eq!(
+            mode,
+            taceo_oprf_key_gen::config::EnvelopeMode::WriteEnvelope
+        );
+        assert_eq!(kms.key_arn.to_string(), KEY_ARN);
+
+        let err = storage_from_env(&[("ALLOWED_STORAGE_FORMATS", "envelopeV1")])
+            .expect_err("write format direct is not allowed");
+        assert!(err.to_string().contains("storage_write_format"), "{err}");
+    }
 }
