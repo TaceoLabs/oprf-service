@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+## [0.19.5](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.19.4...taceo-oprf-service-v0.19.5)
+
+### ⛰️ Features
+
+
+- *(service)* Derive shared trace id from request id [TAC-1736] ([#813](https://github.com/TaceoLabs/oprf-service/pull/813)) - ([b5cae70](https://github.com/TaceoLabs/oprf-service/commit/b5cae70be83fa24b454e7c118954e08329554813))
+- *(store)* Add storage format column and data_keys table ([#808](https://github.com/TaceoLabs/oprf-service/pull/808)) - ([a100b06](https://github.com/TaceoLabs/oprf-service/commit/a100b061cc87afe55cb150ac995336f773beae52))
+
+### 🚜 Refactor
+
+
+- Use jiff over humantime - ([766c68c](https://github.com/TaceoLabs/oprf-service/commit/766c68c7b4936604c1d7d6f19dba0229792f1733))
+- Share the database retry helper between key-gen and the node - ([c77af48](https://github.com/TaceoLabs/oprf-service/commit/c77af4801f20180d6eaef23a09ff6b7081ceec7b))
+- Read shares through oprf-store - ([780972e](https://github.com/TaceoLabs/oprf-service/commit/780972ec9433c6f69c92a273dc87a0f5416501e9))
+- Move migrations, codec and retry helpers into oprf-store - ([65838d2](https://github.com/TaceoLabs/oprf-service/commit/65838d268f1edeb56cdf01c3d335c0f6439c7297))
+
+### 🏗️ Build
+
+
+- *(service)* Drop unused dependencies - ([a182800](https://github.com/TaceoLabs/oprf-service/commit/a182800a8738e8d9bec26b3dca32e8e237e12068))
+
+### 📚 Documentation
+
+
+- Highlight that jiff doesn't support formats larger than hour - ([4aecff0](https://github.com/TaceoLabs/oprf-service/commit/4aecff098d69678ee2f4971051c3ea8a20c0c735))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Remove cargo-machete info in Cargo.toml - ([ea1d4bb](https://github.com/TaceoLabs/oprf-service/commit/ea1d4bba50e8a1f78102685edcf54473c1fc3f3e))
+
+
 ## [0.19.4](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.19.3...taceo-oprf-service-v0.19.4)
 
 ### ⚙️ Miscellaneous Tasks
