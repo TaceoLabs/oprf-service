@@ -11,6 +11,8 @@
 //! - [`core`] – core OPRF primitives and cryptography (requires the `core` feature).
 //! - [`dev_client`] – developer-focused client utilities for testing and mocking
 //!   (requires the `dev-client` feature, implies `client`).
+//! - [`nodes_common`] – shared node building blocks such as config, web3, signers
+//!   and postgres helpers (requires the `nodes-common` feature).
 //! - [`service`] – OPRF service nodes, background tasks, and orchestration
 //!   (requires the `service` feature).
 //! - [`types`] – shared types and structs across OPRF crates
@@ -33,15 +35,21 @@
 //! ### Transitive sub-crate features
 //!
 //! The umbrella forwards each sub-crate feature as its own flag so consumers
-//! can opt in or out without importing the individual crates. All of these use
-//! the weak-dependency syntax (`dep?/feature`) and therefore do **not** activate
-//! the parent crate on their own — the corresponding crate-selection feature
-//! (`core`, `service`, `types`) must also be enabled.
+//! can opt in or out without importing the individual crates. `postgres` and
+//! `chain` use the weak-dependency syntax (`dep?/feature`) and therefore do
+//! **not** activate the parent crate on their own: the corresponding
+//! crate-selection feature (`nodes-common`, `service`, `types`) must also be
+//! enabled. The `nodes-common-<feature>` flags enable `nodes-common` themselves.
 //!
-//! | Umbrella feature | Forwarded to            | Notes                               |
-//! |------------------|-------------------------|-------------------------------------|
-//! | `postgres`       | `oprf-service/postgres` | On by default via `full`            |
-//! | `chain`          | `oprf-types/chain`      | On by default via `full`            |
+//! | Umbrella feature         | Forwarded to                                     | Notes                    |
+//! |--------------------------|--------------------------------------------------|--------------------------|
+//! | `postgres`               | `oprf-service/postgres`, `nodes-common/postgres` | On by default via `full` |
+//! | `chain`                  | `oprf-types/chain`                               | On by default via `full` |
+//! | `nodes-common-<feature>` | `nodes-common/<feature>`                         | Not enabled by `full`    |
+//!
+//! `<feature>` is one of `api`, `axum-test`, `middleware`, `postgres`, `serde`,
+//! `signer-aws`, `signer-gcp`, `signer-local`, `test-utils`, `unkey`, `web3`,
+//! `web3-asserter`.
 //!
 //! The `anvil` feature is not forwarded from a sub-crate; it enables the
 //! [`anvil`] module directly and pulls in `alloy`, `eyre`, and `serde_json`.
@@ -65,6 +73,12 @@ pub mod core {
 /// Requires the `client` feature.
 pub mod dev_client {
     pub use oprf_dev_client::*;
+}
+
+#[cfg(feature = "nodes-common")]
+/// Re-export of the `taceo-nodes-common` crate.
+pub mod nodes_common {
+    pub use ::nodes_common::*;
 }
 
 #[cfg(feature = "service")]
