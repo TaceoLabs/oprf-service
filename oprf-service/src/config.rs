@@ -6,7 +6,7 @@
 //! The struct supports:
 //! - Required fields: `environment` and `version_req`.
 //! - Optional fields with sensible defaults (see below).
-//! - Serde deserialization (with [`humantime_serde`] for durations).
+//! - Serde deserialization (with [`jiff`]'s friendly duration format for durations).
 //!
 //! # Defaults
 //!
@@ -49,7 +49,7 @@ pub struct OprfNodeServiceConfig {
     ///
     /// Defaults to `30 s`.
     #[serde(default = "OprfNodeServiceConfig::default_session_lifetime")]
-    #[serde(with = "humantime_serde")]
+    #[serde(with = "jiff::fmt::serde::unsigned_duration::friendly::compact::required")]
     pub session_lifetime: Duration,
 
     /// Max time to wait for a graceful shutdown of the web-socket connection.
@@ -58,7 +58,7 @@ pub struct OprfNodeServiceConfig {
     ///
     /// Defaults to `10 s`.
     #[serde(default = "OprfNodeServiceConfig::default_websocket_shutdown_timeout")]
-    #[serde(with = "humantime_serde")]
+    #[serde(with = "jiff::fmt::serde::unsigned_duration::friendly::compact::required")]
     pub websocket_shutdown_timeout: Duration,
 
     /// Max time for HTTP requests.
@@ -67,7 +67,7 @@ pub struct OprfNodeServiceConfig {
     ///
     /// Defaults to `20 s`.
     #[serde(default = "OprfNodeServiceConfig::default_http_request_timeout")]
-    #[serde(with = "humantime_serde")]
+    #[serde(with = "jiff::fmt::serde::unsigned_duration::friendly::compact::required")]
     pub http_request_timeout: Duration,
 
     /// Max capacity for the key-material store.
@@ -78,14 +78,14 @@ pub struct OprfNodeServiceConfig {
     ///
     /// Exceeding this limit will evict share.
     #[serde(default = "OprfNodeServiceConfig::default_store_ttl")]
-    #[serde(with = "humantime_serde")]
+    #[serde(with = "jiff::fmt::serde::unsigned_duration::friendly::compact::required")]
     pub store_ttl: Duration,
 
     /// Time-to-idle for shares.
     ///
     /// If share not requested for this time, will be removed from store.
     #[serde(default = "OprfNodeServiceConfig::default_store_tti")]
-    #[serde(with = "humantime_serde")]
+    #[serde(with = "jiff::fmt::serde::unsigned_duration::friendly::compact::required")]
     pub store_tti: Duration,
 }
 

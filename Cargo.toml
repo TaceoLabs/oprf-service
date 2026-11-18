@@ -45,9 +45,8 @@ futures = "0.3"
 groth16-material = { package = "taceo-groth16-material", version = "0.4.4", default-features = false }
 groth16-sol = { package = "taceo-groth16-sol", version = "0.4.5", default-features = false }
 http = "1"
-humantime = "2"
-humantime-serde = "1.1.1"
 itertools = "0.15"
+jiff = { version = "1", default-features = false, features = ["std"] }
 metrics = "0.24"
 moka = { version = "0.12", features = ["future"] }
 nodes-common = { package = "taceo-nodes-common", version = "0.10.4", default-features = false }

@@ -7,7 +7,7 @@
 //! - Required fields: `environment`, `oprf_key_registry_contract`,
 //!   `zkey_path`, and `witness_graph_path`.
 //! - Optional fields with sensible defaults (see below).
-//! - Serde deserialization (with [`humantime_serde`] for durations).
+//! - Serde deserialization (with [`jiff`]'s friendly duration format for durations).
 //!
 //! HTTP RPC connectivity is configured via `nodes_common::web3::HttpRpcProviderConfig`.
 //! The WebSocket URL for event subscriptions is a separate top-level field (`ws_rpc_url`).
@@ -75,7 +75,7 @@ pub struct OprfKeyGenServiceConfig {
 
     /// The timeout for HTTP requests to the RPC.
     #[serde(default = "OprfKeyGenServiceConfig::default_rpc_http_timeout")]
-    #[serde(with = "humantime_serde")]
+    #[serde(with = "jiff::fmt::serde::unsigned_duration::friendly::compact::required")]
     pub rpc_http_timeout: Duration,
 
     /// Max time we wait for a submitted transaction receipt to reach the required
@@ -83,7 +83,7 @@ pub struct OprfKeyGenServiceConfig {
     ///
     /// Defaults to `300 s`.
     #[serde(default = "OprfKeyGenServiceConfig::default_max_wait_time_transaction_confirmation")]
-    #[serde(with = "humantime_serde")]
+    #[serde(with = "jiff::fmt::serde::unsigned_duration::friendly::compact::required")]
     pub max_wait_time_transaction_confirmation: Duration,
 
     /// Additional config for backfill.
@@ -117,7 +117,7 @@ pub struct OprfKeyGenServiceConfig {
     ///
     /// Defaults to `5s`.
     #[serde(default = "OprfKeyGenServiceConfig::default_sleep_between_get_receipt")]
-    #[serde(with = "humantime_serde")]
+    #[serde(with = "jiff::fmt::serde::unsigned_duration::friendly::compact::required")]
     pub sleep_between_get_receipt: Duration,
 
     /// Number of times we retry a pinned call that fails without revert data.
@@ -135,7 +135,7 @@ pub struct OprfKeyGenServiceConfig {
     ///
     /// Defaults to `5s`.
     #[serde(default = "OprfKeyGenServiceConfig::default_sleep_between_simulation")]
-    #[serde(with = "humantime_serde")]
+    #[serde(with = "jiff::fmt::serde::unsigned_duration::friendly::compact::required")]
     pub sleep_between_simulation: Duration,
 
     /// Interval in which we persist a [`ChainCursor`](nodes_common::web3::event_stream::ChainCursor) checkpoint.
@@ -144,9 +144,9 @@ pub struct OprfKeyGenServiceConfig {
     ///
     /// This should not be smaller than 12 hours. The implementation expect that the block fetched in this interval is for sure already handled. Setting this to a small value (like 5 seconds) might result in loss of events.
     ///
-    /// Defaults to `1 day`.
+    /// Defaults to `24h`.
     #[serde(default = "OprfKeyGenServiceConfig::default_cursor_checkpoint_interval")]
-    #[serde(with = "humantime_serde")]
+    #[serde(with = "jiff::fmt::serde::unsigned_duration::friendly::compact::required")]
     pub cursor_checkpoint_interval: Duration,
 
     /// If set, the binary will backfill from this block number inclusively.
