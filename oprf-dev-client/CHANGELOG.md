@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.12.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.11.2...taceo-oprf-dev-client-v0.12.0)
+
+### ⛰️ Features
+
+
+- *(service)* Derive shared trace id from request id [TAC-1736] ([#813](https://github.com/TaceoLabs/oprf-service/pull/813)) - ([b5cae70](https://github.com/TaceoLabs/oprf-service/commit/b5cae70be83fa24b454e7c118954e08329554813))
+
+### 🚜 Refactor
+
+
+- *(dev-client)* [**breaking**] Remove share-epoch flag from dev-client ([#775](https://github.com/TaceoLabs/oprf-service/pull/775)) - ([5a5a7b5](https://github.com/TaceoLabs/oprf-service/commit/5a5a7b519b0bc319c76b3db622f65d8500a320d1))
+- Use jiff over humantime - ([766c68c](https://github.com/TaceoLabs/oprf-service/commit/766c68c7b4936604c1d7d6f19dba0229792f1733))
+
+
 ## [0.11.2](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-dev-client-v0.11.1...taceo-oprf-dev-client-v0.11.2)
 
 ### ⚙️ Miscellaneous Tasks

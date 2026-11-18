@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.20.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.19.0...taceo-oprf-v0.20.0)
+
+### ⛰️ Features
+
+
+- *(oprf)* Add nodes-common to umbrella crate - ([a92f069](https://github.com/TaceoLabs/oprf-service/commit/a92f069a8fc877ed039ccbb3a22f7f42b6fa6e84))
+
+### 🏗️ Build
+
+
+- Also enable nodes-common-web3 if nodes-common-web3 asserter is enabled - ([865ef3f](https://github.com/TaceoLabs/oprf-service/commit/865ef3f7b004d980909c282ee8539d3290a71c27))
+
+### ⚙️ Miscellaneous Tasks
+
+
+- Regenerate contract JSON ABI files - ([1a6c4ee](https://github.com/TaceoLabs/oprf-service/commit/1a6c4ee2ba4356d7c930990f35826f9f9e5dd66c))
+
+
 ## [0.19.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.18.3...taceo-oprf-v0.19.0)
 
 ### ⚙️ Miscellaneous Tasks

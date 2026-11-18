@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.6.4](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-core-v0.6.3...taceo-oprf-core-v0.6.4)
+
+### ⛰️ Features
+
+
+- Expose hash_to_curve for BJJ ([#805](https://github.com/TaceoLabs/oprf-service/pull/805)) - ([53597a7](https://github.com/TaceoLabs/oprf-service/commit/53597a76b8c24ee9227087e58e1b0d4b0f4ffdd6))
+
+
 ## [0.6.3](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-core-v0.6.2...taceo-oprf-core-v0.6.3)
 
 ### ⚙️ Miscellaneous Tasks
