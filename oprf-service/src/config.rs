@@ -7,6 +7,7 @@
 //! - Required fields: `environment` and `version_req`.
 //! - Optional fields with sensible defaults (see below).
 //! - Serde deserialization (with [`jiff`]'s friendly duration format for durations).
+//!   `jiff` only supports formats up to hour, so 1 day is `24 h`.
 //!
 //! # Defaults
 //!
@@ -15,8 +16,8 @@
 //! | `ws_max_message_size`            | 1024 bytes |
 //! | `session_lifetime`               | 30 s       |
 //! | `store_max_capacity`             | 10_000     |
-//! | `store_ttl`                      | 1 day      |
-//! | `store_tti`                      | 1 h        |
+//! | `store_ttl`                      | 24 h       |
+//! | `store_tti`                      | 1  h       |
 
 use std::time::Duration;
 
