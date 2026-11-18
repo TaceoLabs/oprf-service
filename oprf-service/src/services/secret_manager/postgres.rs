@@ -20,7 +20,6 @@ use oprf_store::{StorageCrypto, StoreError, aad::AadContext, data_keys};
 use oprf_types::{OprfKeyId, crypto::OprfKeyMaterial, crypto::PartyId, service::NodeInformation};
 use serde::Deserialize;
 use sqlx::PgPool;
-use tokio::time::Instant;
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -30,12 +29,6 @@ use crate::{
 };
 
 pub use oprf_store::{DekWrapper, EnvelopeError, KeyArn, KmsConfig, format::StorageFormat};
-
-/// How long after a failed on-demand load of a data key the next load of that key waits.
-///
-/// Short, so that a transient database or KMS error is retried quickly, but long enough that a
-/// key that cannot be loaded does not turn every request into a KMS call.
-const LOAD_BACKOFF: Duration = Duration::from_secs(1);
 
 /// Which storage formats the node reads shares in.
 ///
@@ -133,9 +126,8 @@ pub struct PostgresSecretManager {
     /// Unwraps data keys; set exactly if `envelopeV1` is read.
     wrapper: Option<Arc<dyn DekWrapper>>,
     /// Serializes on-demand loads of data keys, so that concurrent requests for rows under a
-    /// key that is not loaded yet cause one KMS call, not one each. Holds the key and time of
-    /// the last failed load, which is not repeated within [`LOAD_BACKOFF`].
-    last_failed_load: tokio::sync::Mutex<Option<(Uuid, Instant)>>,
+    /// key that is not loaded yet cause one KMS call, not one each.
+    load_lock: tokio::sync::Mutex<()>,
 }
 
 impl std::fmt::Debug for PostgresSecretManager {
@@ -230,7 +222,7 @@ impl PostgresSecretManager {
                 vec![],
             ),
             wrapper: None,
-            last_failed_load: tokio::sync::Mutex::new(None),
+            load_lock: tokio::sync::Mutex::new(()),
         };
         if let NodeStorage::Envelope {
             read_direct,
@@ -273,35 +265,17 @@ impl PostgresSecretManager {
     }
 
     /// Loads the data key `data_key_id` into the storage policy, unless a concurrent call
-    /// already did.
-    ///
-    /// Not retried. After a failed load, further loads of the same key fail without calling
-    /// the database or the KMS until [`LOAD_BACKOFF`] has passed.
+    /// already did. Not retried.
     async fn load_data_key(&self, data_key_id: Uuid) -> Result<(), SecretManagerError> {
-        let mut last_failed = self.last_failed_load.lock().await;
+        let _guard = self.load_lock.lock().await;
         if self.crypto.has_dek(data_key_id) {
             return Ok(());
-        }
-        if let Some((failed_id, failed_at)) = *last_failed
-            && failed_id == data_key_id
-            && failed_at.elapsed() < LOAD_BACKOFF
-        {
-            return Err(SecretManagerError::Internal(eyre::eyre!(
-                "loading data key {data_key_id} failed recently, not trying again yet"
-            )));
         }
         let wrapper = self
             .wrapper
             .as_deref()
             .ok_or_else(|| eyre::eyre!("no data key wrapper configured"))?;
-        let loaded = data_keys::load_one(&self.pool, wrapper, data_key_id).await;
-        // The backoff starts when the load has failed, not when it started: a failing KMS call
-        // can take much longer than the backoff.
-        *last_failed = match &loaded {
-            Ok(Some(_)) => None,
-            _ => Some((data_key_id, Instant::now())),
-        };
-        match loaded {
+        match data_keys::load_one(&self.pool, wrapper, data_key_id).await {
             Ok(Some(dek)) => {
                 self.crypto.insert_dek(dek);
                 tracing::info!(%data_key_id, "loaded data key");

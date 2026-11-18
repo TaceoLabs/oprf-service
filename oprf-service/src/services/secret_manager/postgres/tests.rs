@@ -499,7 +499,7 @@ async fn loads_data_key_created_after_startup() -> eyre::Result<()> {
 }
 
 #[tokio::test]
-async fn failed_data_key_load_backs_off() -> eyre::Result<()> {
+async fn failed_data_key_load_is_retried() -> eyre::Result<()> {
     let (pg, schema, mut conn) = migrated_schema().await?;
     insert_test_node_information(&mut conn).await?;
     let failing = Arc::new(FailingWrapper::default());
@@ -519,17 +519,7 @@ async fn failed_data_key_load_backs_off() -> eyre::Result<()> {
             "attempt {attempt}: expected Internal, got {err:?}"
         );
     }
-    assert_eq!(failing.unwraps(), 1, "the second load is held back");
-
-    tokio::time::sleep(super::LOAD_BACKOFF).await;
-    mgr.get_oprf_key_material(row.oprf_key_id)
-        .await
-        .expect_err("the data key still cannot be unwrapped");
-    assert_eq!(
-        failing.unwraps(),
-        2,
-        "after the backoff the key is loaded again"
-    );
+    assert_eq!(failing.unwraps(), 2, "every request tries the load again");
     Ok(())
 }
 
