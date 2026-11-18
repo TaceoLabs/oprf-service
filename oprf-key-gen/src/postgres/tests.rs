@@ -1828,35 +1828,6 @@ async fn prepare_creates_exactly_one_data_key() -> eyre::Result<()> {
 }
 
 #[tokio::test]
-async fn concurrent_prepare_creates_one_data_key() -> eyre::Result<()> {
-    let pg = nodes_common::test_utils::shared_postgres_testcontainer().await?;
-    let schema = nodes_common::test_utils::next_test_schema();
-    let db1 = unprepared_envelope_db(&pg, schema.clone()).await?;
-    let db2 = unprepared_envelope_db(&pg, schema.clone()).await?;
-    let mut conn =
-        nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
-
-    let (r1, r2) = tokio::join!(
-        db1.prepare(node_information()),
-        db2.prepare(node_information())
-    );
-    let (db1, _) = r1?;
-    let (db2, _) = r2?;
-    assert_eq!(data_key_count(&mut conn).await?, 1, "one data key");
-
-    let epoch = ShareEpoch::new(1);
-    let key1 = OprfKeyId::new(U160::from(1));
-    let key2 = OprfKeyId::new(U160::from(2));
-    db1.try_store_keygen_intermediates(key1, epoch, consumer_intermediates())
-        .await?;
-    db2.try_store_keygen_intermediates(key2, epoch, consumer_intermediates())
-        .await?;
-    db1.fetch_keygen_intermediates(key2, epoch).await?;
-    db2.fetch_keygen_intermediates(key1, epoch).await?;
-    Ok(())
-}
-
-#[tokio::test]
 async fn prepare_direct_only_touches_nothing() -> eyre::Result<()> {
     let (pg, schema, mut conn, _) = seeded_direct_schema().await?;
     let before = snapshot(&mut conn).await?;

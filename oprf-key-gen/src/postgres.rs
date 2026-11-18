@@ -162,10 +162,10 @@ async fn build_crypto(pool: &PgPool, storage: &Storage, ctx: AadContext) -> Resu
     };
     let wrapper = wrapper.as_ref();
     let writes_envelope = mode.write() == StorageFormat::EnvelopeV1;
-    if writes_envelope {
-        create_first_data_key(pool, wrapper).await?;
+    if writes_envelope && data_keys::current_id(pool).await?.is_none() {
+        let dek = data_keys::create(pool, wrapper).await?;
+        tracing::info!(data_key_id = %dek.id(), "created the first data key");
     }
-    // Every data key, including one a concurrently starting instance created.
     let deks = data_keys::load_all(pool, wrapper).await?;
     let target = if writes_envelope {
         let current = data_keys::current_id(pool)
@@ -177,23 +177,6 @@ async fn build_crypto(pool: &PgPool, storage: &Storage, ctx: AadContext) -> Resu
     };
     tracing::info!(data_keys = deks.len(), ?target, "loaded data keys");
     Ok(StorageCrypto::new(mode.allowed(), ctx, deks).with_write(target)?)
-}
-
-/// Creates a data key unless one exists, serialized across instances by an advisory lock.
-async fn create_first_data_key(pool: &PgPool, wrapper: &dyn DekWrapper) -> Result<()> {
-    let mut tx = pool.begin().await?;
-    sqlx::query("SELECT pg_advisory_xact_lock($1)")
-        .bind(data_keys::CREATE_LOCK_KEY)
-        .execute(&mut *tx)
-        .await?;
-    if data_keys::current_id(&mut *tx).await?.is_none() {
-        // The KMS call runs while the advisory lock and a pooled connection are held. This
-        // only happens once at startup, so blocking concurrent starts for it is acceptable.
-        let dek = data_keys::create(&mut *tx, wrapper).await?;
-        tracing::info!(data_key_id = %dek.id(), "created the first data key");
-    }
-    tx.commit().await?;
-    Ok(())
 }
 
 impl PostgresDb {
