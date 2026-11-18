@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::secret_manager::{
     SecretManager, SecretManagerError,
     postgres::{
-        Address, DekWrapper, EnvelopeError, NodeStorageConfig, PostgresSecretManager, StorageFormat,
+        DekWrapper, EnvelopeError, NodeStorageConfig, PostgresSecretManager, StorageFormat,
     },
 };
 use async_trait::async_trait;
@@ -27,20 +27,13 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 const KEY_ARN: &str = "arn:aws:kms:eu-central-1:000000000000:key/test";
-const CHAIN_ID: u64 = 31337;
 const PARTY_ID: u16 = 1;
 const THRESHOLD: u16 = 2;
-
-fn registry() -> Address {
-    Address::repeat_byte(0xAA)
-}
 
 /// The AAD context an envelope manager builds from [`envelope_storage`] and the seeded
 /// `node_information`.
 fn aad_context() -> AadContext {
     AadContext {
-        chain_id: CHAIN_ID,
-        registry: registry(),
         party_id: PartyId(PARTY_ID),
         threshold: NonZeroU16::new(THRESHOLD).expect("non-zero"),
     }
@@ -55,8 +48,6 @@ fn envelope_storage(allowed: &[StorageFormat]) -> NodeStorageConfig {
     let mut storage = NodeStorageConfig::direct_only();
     storage.allowed_storage_formats = allowed.to_vec();
     storage.kms_key_arn = Some(KEY_ARN.to_owned());
-    storage.chain_id = Some(CHAIN_ID);
-    storage.oprf_key_registry_contract = Some(registry());
     storage
 }
 
@@ -473,19 +464,11 @@ async fn share_moved_to_other_key_id_fails_decrypt() -> eyre::Result<()> {
     Ok(())
 }
 
-/// The node binds its whole context into the associated data: chain id and registry from the
-/// configuration, party id and threshold from `node_information`.
+/// The node binds its context into the associated data: party id and threshold from
+/// `node_information`.
 #[tokio::test]
 async fn row_under_other_context_fails_decrypt() -> eyre::Result<()> {
     let mut rows = SealedRows::new().await?;
-
-    let mut storage = envelope_storage(&[StorageFormat::EnvelopeV1]);
-    storage.chain_id = Some(CHAIN_ID + 1);
-    assert_decrypt_fails(rows.read_with(&storage).await?, "chain_id");
-
-    let mut storage = envelope_storage(&[StorageFormat::EnvelopeV1]);
-    storage.oprf_key_registry_contract = Some(Address::repeat_byte(0xBB));
-    assert_decrypt_fails(rows.read_with(&storage).await?, "registry");
 
     for (column, change, undo) in [
         (
@@ -657,16 +640,10 @@ fn config_validation() {
     no_arn.kms_key_arn = None;
     let mut alias_arn = envelope();
     alias_arn.kms_key_arn = Some("arn:aws:kms:eu-central-1:000000000000:alias/oprf".to_owned());
-    let mut no_chain_id = envelope();
-    no_chain_id.chain_id = None;
-    let mut no_registry = envelope();
-    no_registry.oprf_key_registry_contract = None;
     for (config, field) in [
         (empty, "allowed_storage_formats"),
         (no_arn, "kms_key_arn"),
         (alias_arn, "full key ARN"),
-        (no_chain_id, "chain_id"),
-        (no_registry, "oprf_key_registry_contract"),
     ] {
         let err = config.validate().expect_err("invalid config");
         assert!(

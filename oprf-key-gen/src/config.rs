@@ -297,8 +297,8 @@ impl OprfKeyGenServiceConfig {
     /// # Errors
     ///
     /// Returns an error naming the offending field if `allowed_storage_formats` is empty, does
-    /// not contain `storage_write_format`, or if `envelopeV1` is allowed but `kms_key_arn` or
-    /// `rpc.chain_id` is missing or `kms_key_arn` is not a full key ARN.
+    /// not contain `storage_write_format`, or if `envelopeV1` is allowed but `kms_key_arn` is
+    /// missing or not a full key ARN.
     pub fn validate_storage(&self) -> eyre::Result<()> {
         if self.allowed_storage_formats.is_empty() {
             bail!("allowed_storage_formats must not be empty");
@@ -323,9 +323,6 @@ impl OprfKeyGenServiceConfig {
                 bail!(
                     "kms_key_arn must be the full key ARN (`arn:...:key/...`), not an alias or alias ARN"
                 );
-            }
-            if self.rpc_provider_config.chain_id.is_none() {
-                bail!("rpc.chain_id is required when envelopeV1 is an allowed storage format");
             }
         }
         Ok(())
@@ -406,7 +403,6 @@ mod tests {
         config.allowed_storage_formats = vec![StorageFormat::Direct, StorageFormat::EnvelopeV1];
         config.storage_write_format = StorageFormat::EnvelopeV1;
         config.kms_key_arn = Some(KEY_ARN.to_owned());
-        config.rpc_provider_config.chain_id = Some(1);
         config
     }
 
@@ -450,13 +446,6 @@ mod tests {
             assert!(error.contains("kms_key_arn"), "{alias}: {error}");
             assert!(error.contains("full key ARN"), "{alias}: {error}");
         }
-    }
-
-    #[test]
-    fn rejects_envelope_without_chain_id() {
-        let mut config = envelope_config();
-        config.rpc_provider_config.chain_id = None;
-        assert!(error_of(&config).contains("chain_id"));
     }
 
     #[test]

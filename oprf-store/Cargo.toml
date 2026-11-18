@@ -14,7 +14,6 @@ publish = true
 [dependencies]
 async-trait = { workspace = true }
 aes-gcm = { workspace = true, features = ["zeroize"] }
-alloy = { workspace = true }
 ark-serialize = { workspace = true }
 aws-config = { workspace = true, optional = true }
 aws-sdk-kms = { workspace = true, optional = true }

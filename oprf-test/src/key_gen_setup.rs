@@ -6,7 +6,6 @@ use std::time::Duration;
 use crate::TEST_TIMEOUT;
 use crate::setup::TestSetup;
 use crate::setup::{DeploySetup, MineStrategy};
-use alloy::primitives::Address;
 use ark_ff::UniformRand as _;
 use ark_serialize::CanonicalDeserialize as _;
 use axum_test::TestServer;
@@ -150,8 +149,6 @@ pub struct TestKeyGen {
     pub pool: PgPool,
     /// The database config of this key-gen (its own schema).
     pub postgres_config: PostgresConfig,
-    /// The `OprfKeyRegistry` contract this key-gen watches.
-    pub oprf_key_registry: Address,
     storage: StorageSettings,
     /// The party whose in-memory KMS this key-gen uses.
     pub(crate) kms_party: usize,
@@ -220,7 +217,6 @@ impl TestKeyGen {
             });
 
         config.confirmations_for_transaction = 0;
-        config.rpc_provider_config.chain_id = Some(crate::TEST_CHAIN_ID);
         config.allowed_storage_formats.clone_from(&storage.allowed);
         config.storage_write_format = storage.write;
         if involves_envelope(&storage) {
@@ -262,7 +258,6 @@ impl TestKeyGen {
             cancellation_token: child_token,
             pool,
             postgres_config,
-            oprf_key_registry: *oprf_key_registry,
             storage,
             kms_party,
             pg,

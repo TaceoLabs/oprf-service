@@ -140,7 +140,6 @@ mod postgres {
     mod shares_table {
         use std::num::NonZeroU16;
 
-        use alloy::primitives::Address;
         use ark_babyjubjub::Fr;
         use oprf_core::ddlog_equality::shamir::DLogShareShamir;
         use oprf_types::{
@@ -265,8 +264,6 @@ mod postgres {
             StorageCrypto::new(
                 allowed,
                 AadContext {
-                    chain_id: 31337,
-                    registry: Address::from([0xAA; 20]),
                     party_id: PartyId(1),
                     threshold: NonZeroU16::new(2).expect("nonzero"),
                 },

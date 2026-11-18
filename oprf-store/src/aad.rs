@@ -2,7 +2,6 @@
 
 use std::num::NonZeroU16;
 
-use alloy::primitives::Address;
 use oprf_types::{
     OprfKeyId, ShareEpoch,
     crypto::{OprfPublicKey, PartyId},
@@ -37,16 +36,14 @@ impl Kind {
 }
 
 /// The deployment-wide values bound into every AAD.
+///
+/// Nothing here identifies the deployment itself: deployments must not share a KMS key.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(
     clippy::exhaustive_structs,
     reason = "constructed by consumers with struct literals"
 )]
 pub struct AadContext {
-    /// Chain id of the chain the registry lives on.
-    pub chain_id: u64,
-    /// Address of the OPRF key registry contract.
-    pub registry: Address,
     /// Id of this party.
     pub party_id: PartyId,
     /// Threshold of the key-gen.
@@ -72,10 +69,10 @@ impl AadContext {
     /// Builds the AAD for the given row.
     ///
     /// Layout: domain (16) || kind (1) || key id (20, BE) || epoch (4, BE) || party id (2, BE)
-    /// || threshold (2, BE) || public key (64, `Share` only) || chain id (8, BE) || registry (20).
+    /// || threshold (2, BE) || public key (64, `Share` only).
     #[must_use]
     pub fn aad(&self, row: &RowId) -> Vec<u8> {
-        let mut aad = Vec::with_capacity(137);
+        let mut aad = Vec::with_capacity(109);
         aad.extend_from_slice(DOMAIN);
         aad.push(row.kind.discriminant());
         aad.extend_from_slice(&row.oprf_key_id.into_inner().to_be_bytes::<20>());
@@ -85,8 +82,6 @@ impl AadContext {
         if let Kind::Share(pk) = &row.kind {
             aad.extend_from_slice(&codec::to_bytes(pk));
         }
-        aad.extend_from_slice(&self.chain_id.to_be_bytes());
-        aad.extend_from_slice(self.registry.as_slice());
         aad
     }
 }
@@ -103,8 +98,6 @@ mod tests {
 
     fn ctx() -> AadContext {
         AadContext {
-            chain_id: 0x0102_0304_0506_0708,
-            registry: Address::from([0xAA; 20]),
             party_id: PartyId(0x0B0C),
             threshold: NonZeroU16::new(2).expect("nonzero"),
         }
@@ -124,7 +117,7 @@ mod tests {
         let aad = ctx().aad(&row(Kind::Share(pk)));
         let pk_bytes = crate::codec::to_bytes(&pk);
         assert_eq!(pk_bytes.len(), 64, "public key serialization is 64 bytes");
-        assert_eq!(aad.len(), 137, "total length");
+        assert_eq!(aad.len(), 109, "total length");
         assert_eq!(&aad[0..16], b"TACEO-OPRF-DB-v1", "domain");
         assert_eq!(aad[16], 0x02, "kind");
         let mut id = [0u8; 20];
@@ -135,19 +128,17 @@ mod tests {
         assert_eq!(&aad[41..43], &[0x0B, 0x0C], "party id");
         assert_eq!(&aad[43..45], &[0x00, 0x02], "threshold");
         assert_eq!(&aad[45..109], pk_bytes.as_slice(), "public key");
-        assert_eq!(&aad[109..117], &[1, 2, 3, 4, 5, 6, 7, 8], "chain id");
-        assert_eq!(&aad[117..137], &[0xAA; 20], "registry");
     }
 
     #[test]
     fn aad_layout_without_public_key() {
         let a = ctx().aad(&row(Kind::PendingShare));
         let b = ctx().aad(&row(Kind::Intermediates));
-        assert_eq!(a.len(), 73, "pending length");
-        assert_eq!(b.len(), 73, "intermediates length");
+        assert_eq!(a.len(), 45, "pending length");
+        assert_eq!(b.len(), 45, "intermediates length");
         assert_eq!(a[16], 0x01, "pending kind");
         assert_eq!(b[16], 0x03, "intermediates kind");
-        for i in (0..73).filter(|i| *i != 16) {
+        for i in (0..45).filter(|i| *i != 16) {
             assert_eq!(a[i], b[i], "byte {i} equal");
         }
     }

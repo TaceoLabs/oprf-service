@@ -29,7 +29,6 @@ use crate::{
     secret_manager::{SecretManager, SecretManagerError},
 };
 
-pub use alloy::primitives::Address;
 pub use oprf_store::{DekWrapper, EnvelopeError, format::StorageFormat};
 
 /// How long after a failed on-demand load of a data key the next load of that key waits.
@@ -56,16 +55,6 @@ pub struct NodeStorageConfig {
     /// Optional custom endpoint for AWS KMS (e.g. for local testing).
     #[serde(default)]
     pub kms_endpoint: Option<String>,
-    /// The chain id of the chain the `OprfKeyRegistry` contract lives on.
-    ///
-    /// Required if `envelopeV1` is allowed; bound into the associated data of every share.
-    #[serde(default)]
-    pub chain_id: Option<u64>,
-    /// The address of the `OprfKeyRegistry` contract.
-    ///
-    /// Required if `envelopeV1` is allowed; bound into the associated data of every share.
-    #[serde(default)]
-    pub oprf_key_registry_contract: Option<Address>,
 }
 
 impl NodeStorageConfig {
@@ -81,8 +70,6 @@ impl NodeStorageConfig {
             allowed_storage_formats: Self::default_allowed_storage_formats(),
             kms_key_arn: None,
             kms_endpoint: None,
-            chain_id: None,
-            oprf_key_registry_contract: None,
         }
     }
 
@@ -97,8 +84,7 @@ impl NodeStorageConfig {
     /// # Errors
     ///
     /// Returns an error naming the offending field if `allowed_storage_formats` is empty, or if
-    /// `envelopeV1` is allowed but `kms_key_arn`, `chain_id` or `oprf_key_registry_contract` is
-    /// missing or `kms_key_arn` is not a full key ARN.
+    /// `envelopeV1` is allowed but `kms_key_arn` is missing or not a full key ARN.
     pub fn validate(&self) -> eyre::Result<()> {
         if self.allowed_storage_formats.is_empty() {
             bail!("allowed_storage_formats must not be empty");
@@ -110,14 +96,6 @@ impl NodeStorageConfig {
             if !oprf_store::kms::is_key_arn(arn) {
                 bail!(
                     "kms_key_arn must be the full key ARN (`arn:...:key/...`), not an alias or alias ARN"
-                );
-            }
-            if self.chain_id.is_none() {
-                bail!("chain_id is required when envelopeV1 is an allowed storage format");
-            }
-            if self.oprf_key_registry_contract.is_none() {
-                bail!(
-                    "oprf_key_registry_contract is required when envelopeV1 is an allowed storage format"
                 );
             }
         }
@@ -229,8 +207,6 @@ impl PostgresSecretManager {
             crypto: StorageCrypto::new(
                 &[StorageFormat::Direct],
                 AadContext {
-                    chain_id: 0,
-                    registry: Address::ZERO,
                     party_id: PartyId(0),
                     threshold: NonZeroU16::MIN,
                 },
@@ -245,15 +221,8 @@ impl PostgresSecretManager {
                     "envelopeV1 is an allowed storage format, but no data key wrapper (KMS key) is given"
                 )
             })?;
-            let (Some(chain_id), Some(registry)) =
-                (storage.chain_id, storage.oprf_key_registry_contract)
-            else {
-                bail!("chain_id and oprf_key_registry_contract are required for envelopeV1");
-            };
             let node_information = secret_manager.load_node_information().await?;
             let ctx = AadContext {
-                chain_id,
-                registry,
                 party_id: node_information.party_id(),
                 threshold: node_information.threshold(),
             };
