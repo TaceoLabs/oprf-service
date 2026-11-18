@@ -354,9 +354,7 @@ impl PostgresDb {
         } else {
             0
         };
-        metrics::storage::inc_upgraded(upgraded);
         let counts = upgrade::count_formats(&self.pool, crypto).await?;
-        metrics::storage::set_row_counts(counts.direct, counts.envelope_v1, counts.disallowed);
         let report = StorageReport::new(upgraded, counts.direct, counts.disallowed);
         tracing::info!(
             upgraded,
