@@ -30,7 +30,7 @@ struct OprfKeyGenConfig {
 
     /// Max wait time the service waits for its workers during shutdown.
     #[serde(default = "default_max_wait_shutdown")]
-    #[serde(with = "humantime_serde")]
+    #[serde(with = "jiff::fmt::serde::unsigned_duration::friendly::compact::required")]
     pub max_wait_time_shutdown: Duration,
 
     /// The OPRF key-gen service config
