@@ -75,12 +75,6 @@ pub mod dev_client {
     pub use oprf_dev_client::*;
 }
 
-#[cfg(feature = "nodes-common")]
-/// Re-export of the `taceo-nodes-common` crate.
-pub mod nodes_common {
-    pub use ::nodes_common::*;
-}
-
 #[cfg(feature = "service")]
 /// Re-export of the `taceo-oprf-service` crate.
 pub mod service {
@@ -95,3 +89,7 @@ pub mod types {
 
 #[cfg(feature = "anvil")]
 pub mod anvil;
+
+#[cfg(feature = "nodes-common")]
+/// Re-export of the `taceo-nodes-common` crate.
+pub use ::nodes_common::*;
