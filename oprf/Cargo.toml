@@ -18,16 +18,9 @@ oprf-dev-client = { package = "taceo-oprf-dev-client", path = "../oprf-dev-clien
 oprf-service = { package = "taceo-oprf-service", path = "../oprf-service", version = "0.19.4", default-features = false, optional = true }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16.3", default-features = false, optional = true }
 
-alloy = { workspace = true, features = [
-  "contract",
-  "node-bindings",
-  "provider-http",
-  "provider-ws",
-  "rpc-types-eth",
-  "signer-local",
-  "sol-types"
-], optional = true }
+alloy = { workspace = true, features = ["contract", "node-bindings", "provider-http", "provider-ws", "rpc-types-eth", "signer-local", "sol-types"], optional = true }
 eyre = { workspace = true, optional = true }
+nodes-common = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 
 [features]
@@ -37,20 +30,35 @@ anvil = ["chain", "dep:alloy", "dep:eyre", "dep:serde_json", "types"]
 client = ["dep:oprf-client"]
 core = ["dep:oprf-core"]
 dev-client = ["client", "dep:oprf-dev-client"]
+nodes-common = ["dep:nodes-common"]
 service = ["dep:oprf-service"]
 types = ["dep:oprf-types"]
 
 # oprf-types
 chain = ["oprf-types?/chain"]
+# nodes-common
+nodes-common-api = ["nodes-common/api"]
+nodes-common-axum-test = ["nodes-common/axum-test"]
+nodes-common-middleware = ["nodes-common/middleware"]
+nodes-common-postgres = ["nodes-common/postgres"]
+nodes-common-serde = ["nodes-common/serde"]
+nodes-common-signer-aws = ["nodes-common/signer-aws"]
+nodes-common-signer-gcp = ["nodes-common/signer-gcp"]
+nodes-common-signer-local = ["nodes-common/signer-local"]
+nodes-common-test-utils = ["nodes-common/test-utils"]
+nodes-common-unkey = ["nodes-common/unkey"]
+nodes-common-web3 = ["nodes-common/web3"]
+nodes-common-web3-asserter = ["nodes-common/web3-asserter"]
 # --- forwarded transitive features ---
-# oprf-service
-postgres = ["oprf-service?/postgres"]
+# oprf-service, nodes-common
+postgres = ["nodes-common?/postgres", "oprf-service?/postgres"]
 
 full = [
   "chain",
   "client",
   "core",
   "dev-client",
+  "nodes-common",
   "postgres",
   "service",
   "types",
