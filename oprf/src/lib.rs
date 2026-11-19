@@ -92,4 +92,4 @@ pub mod anvil;
 
 #[cfg(feature = "nodes-common")]
 /// Re-export of the `taceo-nodes-common` crate.
-pub use ::nodes_common::*;
+pub use ::nodes_common;
