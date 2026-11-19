@@ -43,7 +43,7 @@ nodes-common = { workspace = true, features = [
   "web3",
 ] }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6" }
-oprf-store = { package = "taceo-oprf-store", path = "../oprf-store", version = "0.1", features = [
+oprf-store = { package = "taceo-oprf-store", path = "../oprf-store", version = "0.2", features = [
   "aws-kms",
   "postgres",
 ] }
@@ -78,7 +78,7 @@ zeroize = { workspace = true, features = ["derive"] }
 alloy = { workspace = true, features = ["node-bindings"] }
 axum-test = { workspace = true, features = ["ws"] }
 nodes-common = { workspace = true, features = ["test-utils", "web3-asserter"] }
-oprf-store = { package = "taceo-oprf-store", path = "../oprf-store", version = "0.1", features = [
+oprf-store = { package = "taceo-oprf-store", path = "../oprf-store", version = "0.2", features = [
   "test-utils",
 ] }
 parking_lot = { workspace = true }
