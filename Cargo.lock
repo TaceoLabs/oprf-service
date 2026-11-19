@@ -7065,7 +7065,7 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf"
-version = "0.21.0"
+version = "0.22.0"
 dependencies = [
  "alloy",
  "eyre",
@@ -7202,7 +7202,7 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf-service"
-version = "0.19.5"
+version = "0.20.0"
 dependencies = [
  "ark-ec",
  "ark-ff 0.6.0",
@@ -7248,7 +7248,7 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf-store"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aes-gcm",
  "ark-ec",
