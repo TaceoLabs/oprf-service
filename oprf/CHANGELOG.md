@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.21.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.20.0...taceo-oprf-v0.21.0)
+
+### 🚜 Refactor
+
+
+- [**breaking**] Re-export nodes-common under the submodule ([#821](https://github.com/TaceoLabs/oprf-service/pull/821)) - ([bf288c4](https://github.com/TaceoLabs/oprf-service/commit/bf288c48471d416ad9f46cbc0877539e12b86b6d))
+
+
 ## [0.20.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.19.0...taceo-oprf-v0.20.0)
 
 ### ⛰️ Features

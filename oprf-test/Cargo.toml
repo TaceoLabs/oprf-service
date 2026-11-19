@@ -46,7 +46,7 @@ sqlx = { workspace = true, features = [
   "postgres",
   "runtime-tokio",
 ] }
-taceo-oprf = { path = "../oprf", version = "0.20.0", features = ["anvil", "full"] }
+taceo-oprf = { path = "../oprf", version = "0.21.0", features = ["anvil", "full"] }
 tokio = { workspace = true, features = [
   "net",
   "rt-multi-thread",

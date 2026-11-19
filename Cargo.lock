@@ -6936,7 +6936,7 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "alloy",
  "eyre",
