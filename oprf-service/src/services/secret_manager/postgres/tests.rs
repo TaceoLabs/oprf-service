@@ -5,8 +5,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::secret_manager::{
     SecretManager, SecretManagerError,
     postgres::{
-        DekWrapper, EnvelopeError, KeyArn, KmsConfig, NodeStorage, NodeStorageConfig,
-        PostgresSecretManager, StorageFormat,
+        DekWrapper, EnvelopeError, NodeStorage, PostgresSecretManager, StorageFormat,
+        StorageReadConfig,
     },
 };
 use async_trait::async_trait;
@@ -14,7 +14,7 @@ use nodes_common::postgres::{PostgresConfig, SanitizedSchema};
 use nodes_common::test_utils::SharedPostgres;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_store::{
-    InMemoryWrapper, KmsError, StorageCrypto, aad::AadContext, data_keys::DataKeyError,
+    KmsError, LocalKeyWrapper, StorageCrypto, aad::AadContext, data_keys::DataKeyError,
 };
 use oprf_types::{
     OprfKeyId, ShareEpoch,
@@ -23,12 +23,13 @@ use oprf_types::{
 };
 use ruint::aliases::U160;
 use secrecy::SecretString;
-use serde_json::json;
 use sqlx::PgConnection;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
-const KEY_ARN: &str = "arn:aws:kms:eu-central-1:000000000000:key/test";
+/// The key id of [`wrapper`], reported by [`FailingWrapper`] too.
+static KEY_ID: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| wrapper().key_id().to_owned());
 const PARTY_ID: u16 = 1;
 const THRESHOLD: u16 = 2;
 
@@ -40,8 +41,8 @@ fn aad_context() -> AadContext {
     }
 }
 
-fn wrapper() -> InMemoryWrapper {
-    InMemoryWrapper::new(KEY_ARN, [1; 32])
+fn wrapper() -> LocalKeyWrapper {
+    oprf_store::test_utils::local_wrapper(1)
 }
 
 /// A storage reading `envelopeV1` only, with data keys unwrapped by `wrapper`.
@@ -66,8 +67,12 @@ impl FailingWrapper {
 
 #[async_trait]
 impl DekWrapper for FailingWrapper {
-    fn key_arn(&self) -> &str {
-        KEY_ARN
+    fn wrapping(&self) -> &'static str {
+        oprf_store::kms::WRAPPING_LOCAL_KEY_V1
+    }
+
+    fn key_id(&self) -> &str {
+        &KEY_ID
     }
 
     async fn generate(&self, _: Uuid) -> Result<(Zeroizing<[u8; 32]>, Vec<u8>), KmsError> {
@@ -113,7 +118,7 @@ async fn postgres_secret_manager()
             SecretString::from(pg.connection_string.clone()),
             schema.clone(),
         ),
-        &NodeStorageConfig::Direct,
+        &StorageReadConfig::Direct,
     )
     .await?;
     Ok((mgr, pg, schema))
@@ -552,14 +557,16 @@ async fn init_fails_on_unwrap_error() -> eyre::Result<()> {
     let (pg, schema, mut conn) = migrated_schema().await?;
     insert_test_node_information(&mut conn).await?;
     oprf_store::data_keys::create(&mut conn, &wrapper()).await?;
-
-    let err = init_manager(
-        &pg,
-        &schema,
-        envelope_only(Arc::new(InMemoryWrapper::new(KEY_ARN, [2; 32]))),
+    // The key id still matches, so only unwrapping can notice the modified key.
+    sqlx::query(
+        "UPDATE data_keys SET wrapped_key = set_byte(wrapped_key, 0, get_byte(wrapped_key, 0) # 1)",
     )
-    .await
-    .expect_err("a data key that cannot be unwrapped must fail startup");
+    .execute(&mut conn)
+    .await?;
+
+    let err = init_manager(&pg, &schema, envelope_only(Arc::new(wrapper())))
+        .await
+        .expect_err("a data key that cannot be unwrapped must fail startup");
     assert!(
         matches!(err.downcast_ref(), Some(DataKeyError::Kms(_))),
         "expected a KMS error, got {err:?}"
@@ -568,71 +575,19 @@ async fn init_fails_on_unwrap_error() -> eyre::Result<()> {
 }
 
 #[tokio::test]
-async fn init_fails_on_key_arn_mismatch() -> eyre::Result<()> {
+async fn init_fails_on_key_id_mismatch() -> eyre::Result<()> {
     let (pg, schema, mut conn) = migrated_schema().await?;
     insert_test_node_information(&mut conn).await?;
-    oprf_store::data_keys::create(
-        &mut conn,
-        &InMemoryWrapper::new("arn:aws:kms:eu-central-1:000000000000:key/other", [1; 32]),
-    )
-    .await?;
+    oprf_store::data_keys::create(&mut conn, &oprf_store::test_utils::local_wrapper(2)).await?;
 
     let err = init_manager(&pg, &schema, envelope_only(Arc::new(wrapper())))
         .await
-        .expect_err("a data key under another KMS key must fail startup");
+        .expect_err("a data key under another master key must fail startup");
     assert!(
-        matches!(
-            err.downcast_ref(),
-            Some(DataKeyError::KeyArnMismatch { .. })
-        ),
-        "expected KeyArnMismatch, got {err:?}"
+        matches!(err.downcast_ref(), Some(DataKeyError::KeyIdMismatch { .. })),
+        "expected KeyIdMismatch, got {err:?}"
     );
     Ok(())
-}
-
-#[test]
-fn config_parsing() {
-    let parse =
-        |value| serde_json::from_value::<NodeStorageConfig>(value).map_err(|err| err.to_string());
-    let envelope = |read_direct| NodeStorageConfig::Envelope {
-        read_direct,
-        kms: KmsConfig {
-            key_arn: KeyArn::try_from(KEY_ARN.to_owned()).expect("valid ARN"),
-            endpoint: None,
-        },
-    };
-    assert_eq!(parse(json!({})), Ok(NodeStorageConfig::Direct));
-    assert_eq!(
-        parse(
-            json!({ "allowed_storage_formats": ["direct", "envelopeV1"], "kms_key_arn": KEY_ARN })
-        ),
-        Ok(envelope(true))
-    );
-    assert_eq!(
-        parse(json!({ "allowed_storage_formats": ["envelopeV1"], "kms_key_arn": KEY_ARN })),
-        Ok(envelope(false))
-    );
-
-    for (config, field) in [
-        (
-            json!({ "allowed_storage_formats": [] }),
-            "allowed_storage_formats",
-        ),
-        (
-            json!({ "allowed_storage_formats": ["envelopeV1"] }),
-            "kms_key_arn",
-        ),
-        (
-            json!({
-                "allowed_storage_formats": ["envelopeV1"],
-                "kms_key_arn": "arn:aws:kms:eu-central-1:000000000000:alias/oprf",
-            }),
-            "full key ARN",
-        ),
-    ] {
-        let err = parse(config).expect_err("invalid config");
-        assert!(err.contains(field), "the error must name {field}: {err}");
-    }
 }
 
 #[tokio::test]

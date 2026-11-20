@@ -47,6 +47,7 @@ eyre = { version = "0.6" }
 futures = "0.3"
 groth16-material = { package = "taceo-groth16-material", version = "0.4.4", default-features = false }
 groth16-sol = { package = "taceo-groth16-sol", version = "0.4.5", default-features = false }
+hkdf = "0.13"
 http = "1"
 itertools = "0.15"
 jiff = { version = "1", default-features = false, features = ["std"] }
@@ -67,6 +68,7 @@ rustls = "0.23"
 secrecy = "0.10"
 semver = "1"
 serde = { version = "1" }
+sha2 = "0.11"
 serde_json = { version = "1" }
 sqlx = "0.9"
 telemetry-batteries = { version = "0.4.0", default-features = false }

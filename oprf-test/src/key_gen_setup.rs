@@ -30,7 +30,7 @@ pub struct TestKeyGenConfig {
     pub explicit_backfill_block: Option<NonZeroU64>,
     /// The envelope mode key-gen stores secrets in; `None` is `direct` only.
     envelope: Option<EnvelopeMode>,
-    /// The party whose in-memory KMS key-gen uses; `None` uses its own party's.
+    /// The party whose master key key-gen uses; `None` uses its own party's.
     kms_party: Option<usize>,
     /// Database of a previously shut down key-gen, reused on restart.
     db: Option<KeyGenDb>,
@@ -47,8 +47,8 @@ impl TestKeyGenConfig {
         }
     }
 
-    /// Uses the in-memory KMS of party `kms_party` (same ARN and master key) instead of the own
-    /// party's, so that several parties can share one KMS key.
+    /// Uses the master key of party `kms_party` instead of the own
+    /// party's, so that several parties can share one master key.
     #[must_use]
     pub fn with_kms_of(mut self, kms_party: usize) -> Self {
         self.kms_party = Some(kms_party);
@@ -57,7 +57,7 @@ impl TestKeyGenConfig {
 
     /// Stores secrets in the envelope `mode`.
     ///
-    /// The key-gen gets the in-memory KMS of its party
+    /// The key-gen gets the data key wrapper of its party
     /// ([`crate::party_dek_wrapper`]), or of the party set by [`TestKeyGenConfig::with_kms_of`]. Applied to the config returned by
     /// [`TestKeyGen::shutdown`], the next start builds a new [`PostgresDb`] with these settings on
     /// the same schema, which runs the storage upgrade of key-gen's startup again.
@@ -91,7 +91,7 @@ pub struct TestKeyGen {
     /// The database config of this key-gen (its own schema).
     pub postgres_config: PostgresConfig,
     envelope: Option<EnvelopeMode>,
-    /// The party whose in-memory KMS this key-gen uses.
+    /// The party whose master key this key-gen uses.
     pub(crate) kms_party: usize,
     pub(crate) pg: Arc<SharedPostgres>,
 }

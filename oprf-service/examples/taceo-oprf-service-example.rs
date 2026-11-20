@@ -10,7 +10,7 @@ use taceo_oprf_service::{
     config::OprfNodeServiceConfig,
     secret_manager::{
         SecretManagerService,
-        postgres::{NodeStorageConfig, PostgresSecretManager},
+        postgres::{PostgresSecretManager, StorageReadConfig},
     },
 };
 use url::Url;
@@ -88,7 +88,7 @@ async fn main() -> eyre::Result<ExitCode> {
 
     // Load the postgres secret manager.
     let secret_manager = Arc::new(
-        PostgresSecretManager::init(&config.postgres_config, &NodeStorageConfig::Direct)
+        PostgresSecretManager::init(&config.postgres_config, &StorageReadConfig::Direct)
             .await
             .context("while starting postgres secret-manager")?,
     );

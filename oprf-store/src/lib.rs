@@ -5,7 +5,7 @@
 //!
 //! - [`mod@format`] and [`aad`]: the per-row storage format and the AAD binding ciphertexts to rows.
 //! - [`codec`]: the canonical byte encoding of key material in the database.
-//! - [`kms`]: wrapping of data encryption keys with a KMS key.
+//! - [`kms`]: wrapping of data encryption keys with a KMS key or a local master key.
 //! - `retry` (feature `postgres`): classification of transient database errors and the
 //!   shared backoff strategy.
 //! - `data_keys` (feature `postgres`): persistence of wrapped data encryption keys.
@@ -17,6 +17,7 @@
 pub mod aad;
 mod cipher;
 pub mod codec;
+mod config;
 mod crypto;
 #[cfg(feature = "postgres")]
 pub mod data_keys;
@@ -33,12 +34,14 @@ use format::StorageFormat;
 use uuid::Uuid;
 
 pub use cipher::Dek;
+pub use config::StorageReadConfig;
 pub use crypto::{Sealed, StorageCrypto, WriteTarget};
 #[cfg(feature = "aws-kms")]
 pub use kms::AwsKmsWrapper;
-#[cfg(feature = "test-utils")]
-pub use kms::InMemoryWrapper;
-pub use kms::{DekWrapper, InvalidKeyArn, KeyArn, KmsConfig, KmsError};
+pub use kms::{
+    DekWrapper, InvalidKeyArn, KeyArn, KmsConfig, KmsError, LocalKeyWrapper, WrappingConfigError,
+    WrappingKeyConfig,
+};
 
 #[cfg(test)]
 mod tests;

@@ -19,9 +19,12 @@ aws-config = { workspace = true, optional = true }
 aws-sdk-kms = { workspace = true, optional = true }
 backon = { workspace = true, features = ["std"], optional = true }
 futures = { workspace = true, optional = true }
+hkdf = { workspace = true }
 oprf-core = { package = "taceo-oprf-core", path = "../oprf-core", version = "0.6", optional = true }
 oprf-types = { package = "taceo-oprf-types", path = "../oprf-types", version = "0.16" }
+secrecy = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
+sha2 = { workspace = true }
 sqlx = { workspace = true, features = [
   "migrate",
   "postgres",

@@ -19,7 +19,7 @@ use nodes_common::test_utils::SharedPostgres;
 use nodes_common::web3::event_stream::ChainCursor;
 use oprf_core::ddlog_equality::shamir::DLogShareShamir;
 use oprf_store::{
-    DekWrapper, EnvelopeError, InMemoryWrapper, StorageCrypto,
+    DekWrapper, EnvelopeError, LocalKeyWrapper, StorageCrypto,
     aad::{AadContext, Kind, RowId},
     format::StorageFormat,
 };
@@ -56,8 +56,8 @@ fn aad_context() -> AadContext {
     }
 }
 
-fn wrapper() -> InMemoryWrapper {
-    InMemoryWrapper::new("arn:aws:kms:eu-central-1:000000000000:key/test", [1; 32])
+fn wrapper() -> LocalKeyWrapper {
+    oprf_store::test_utils::local_wrapper(1)
 }
 
 /// Envelope settings in `mode` with the test wrapper.
@@ -1865,23 +1865,23 @@ async fn report_counts_disallowed_rows() -> eyre::Result<()> {
 }
 
 #[tokio::test]
-async fn prepare_fails_on_key_arn_mismatch() -> eyre::Result<()> {
+async fn prepare_fails_on_key_id_mismatch() -> eyre::Result<()> {
     let pg = nodes_common::test_utils::shared_postgres_testcontainer().await?;
     let schema = nodes_common::test_utils::next_test_schema();
     let db = unprepared_envelope_db(&pg, schema.clone()).await?;
     let mut conn =
         nodes_common::test_utils::open_pg_connection(&pg.connection_string, &schema).await?;
-    let other_arn = "arn:aws:kms:eu-central-1:000000000000:key/other";
-    oprf_store::data_keys::create(&mut conn, &InMemoryWrapper::new(other_arn, [2; 32])).await?;
+    let other = oprf_store::test_utils::local_wrapper(2);
+    oprf_store::data_keys::create(&mut conn, &other).await?;
 
     let err = db
         .prepare(node_information())
         .await
-        .expect_err("a data key under another KMS key must be refused");
+        .expect_err("a data key under another master key must be refused");
     let err = format!("{err:#}");
     assert!(
-        err.contains(other_arn) && err.contains(wrapper().key_arn()),
-        "the error must name both ARNs: {err}"
+        err.contains(other.key_id()) && err.contains(wrapper().key_id()),
+        "the error must name both keys: {err}"
     );
     Ok(())
 }
