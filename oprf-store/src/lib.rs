@@ -17,6 +17,7 @@
 pub mod aad;
 mod cipher;
 pub mod codec;
+mod config;
 mod crypto;
 #[cfg(feature = "postgres")]
 pub mod data_keys;
@@ -33,6 +34,7 @@ use format::StorageFormat;
 use uuid::Uuid;
 
 pub use cipher::Dek;
+pub use config::StorageReadConfig;
 pub use crypto::{Sealed, StorageCrypto, WriteTarget};
 #[cfg(feature = "aws-kms")]
 pub use kms::AwsKmsWrapper;

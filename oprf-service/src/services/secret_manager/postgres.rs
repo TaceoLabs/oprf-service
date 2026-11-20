@@ -2,7 +2,7 @@
 //!
 //! Additionally, fetches the node-provider's Ethereum address from the DB.
 //!
-//! Shares are read in the storage formats allowed by [`NodeStorageConfig`]. The
+//! Shares are read in the storage formats allowed by [`StorageReadConfig`]. The
 //! `storage_format` column of a row only describes the row; the configuration decides whether
 //! the node reads it. A row in a format that is not allowed is refused, never read in another
 //! format.
@@ -14,8 +14,6 @@ use eyre::Context as _;
 use nodes_common::postgres::{CreateSchema, PostgresConfig};
 use oprf_store::{StorageCrypto, StoreError, aad::AadContext, data_keys};
 use oprf_types::{OprfKeyId, crypto::OprfKeyMaterial, service::NodeInformation};
-use secrecy::{ExposeSecret, SecretString};
-use serde::Deserialize;
 use sqlx::PgPool;
 use tracing::instrument;
 use uuid::Uuid;
@@ -26,85 +24,16 @@ use crate::{
 };
 
 pub use oprf_store::{
-    DekWrapper, EnvelopeError, KeyArn, KmsConfig, WrappingKeyConfig, format::StorageFormat,
+    DekWrapper, EnvelopeError, KeyArn, KmsConfig, StorageReadConfig, WrappingKeyConfig,
+    format::StorageFormat,
 };
-
-/// Which storage formats the node reads shares in.
-///
-/// Deserialized from these fields; a combination that is not valid fails to deserialize:
-///
-/// | Field                     | Default    |                                              |
-/// |---------------------------|------------|----------------------------------------------|
-/// | `allowed_storage_formats` | `[direct]` | Formats shares are read in; must not be empty. |
-/// | `kms_key_arn`             | none       | Full ARN of the AWS KMS key wrapping the data keys. |
-/// | `kms_endpoint`            | none       | Custom AWS KMS endpoint (e.g. for local testing). |
-/// | `storage_master_key`      | none       | Master key wrapping the data keys locally, without AWS KMS: exactly 64 hex characters (32 bytes), the same key as configured for the key-gen of this party. |
-///
-/// If `envelopeV1` is allowed, exactly one of `kms_key_arn` and `storage_master_key` is required.
-/// Whoever reads the master key and the database reads every share.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-#[serde(try_from = "RawNodeStorageConfig")]
-#[allow(
-    clippy::exhaustive_enums,
-    reason = "consumers must handle every way shares are stored"
-)]
-pub enum NodeStorageConfig {
-    /// Reads `direct` only; no wrapping key is used.
-    #[default]
-    Direct,
-    /// Reads `envelopeV1`, and `direct` too if `read_direct` is set.
-    Envelope {
-        /// Whether `direct` rows are read as well.
-        read_direct: bool,
-        /// The key wrapping the data keys.
-        key: WrappingKeyConfig,
-    },
-}
-
-/// The fields [`NodeStorageConfig`] is deserialized from.
-#[derive(Deserialize)]
-struct RawNodeStorageConfig {
-    #[serde(default = "default_allowed_storage_formats")]
-    allowed_storage_formats: Vec<StorageFormat>,
-    #[serde(default)]
-    kms_key_arn: Option<String>,
-    #[serde(default)]
-    kms_endpoint: Option<String>,
-    #[serde(default)]
-    storage_master_key: Option<SecretString>,
-}
-
-fn default_allowed_storage_formats() -> Vec<StorageFormat> {
-    vec![StorageFormat::Direct]
-}
-
-impl TryFrom<RawNodeStorageConfig> for NodeStorageConfig {
-    type Error = eyre::Report;
-
-    fn try_from(raw: RawNodeStorageConfig) -> eyre::Result<Self> {
-        let allows = |format| raw.allowed_storage_formats.contains(&format);
-        let read_direct = allows(StorageFormat::Direct);
-        if !allows(StorageFormat::EnvelopeV1) {
-            eyre::ensure!(read_direct, "allowed_storage_formats must not be empty");
-            return Ok(Self::Direct);
-        }
-        let key = WrappingKeyConfig::parse(
-            raw.kms_key_arn,
-            raw.kms_endpoint,
-            raw.storage_master_key
-                .as_ref()
-                .map(ExposeSecret::expose_secret),
-        )?;
-        Ok(Self::Envelope { read_direct, key })
-    }
-}
 
 /// Which storage formats the node reads, with the wrapper of the data keys if `envelopeV1` is
 /// read.
 #[derive(Clone)]
 #[allow(
     clippy::exhaustive_enums,
-    reason = "constructed by callers; mirrors `NodeStorageConfig`"
+    reason = "constructed by callers; mirrors `StorageReadConfig`"
 )]
 pub enum NodeStorage {
     /// Reads `direct` only.
@@ -161,10 +90,10 @@ impl PostgresSecretManager {
     /// Returns an error if `envelopeV1` is read with a KMS key and the `aws-kms` feature is not
     /// enabled. Otherwise see [`PostgresSecretManager::init_with_storage`].
     #[instrument(level = "debug", skip_all)]
-    pub async fn init(config: &PostgresConfig, storage: &NodeStorageConfig) -> eyre::Result<Self> {
+    pub async fn init(config: &PostgresConfig, storage: &StorageReadConfig) -> eyre::Result<Self> {
         let storage = match storage {
-            NodeStorageConfig::Direct => NodeStorage::Direct,
-            NodeStorageConfig::Envelope { read_direct, key } => {
+            StorageReadConfig::Direct => NodeStorage::Direct,
+            StorageReadConfig::Envelope { read_direct, key } => {
                 let wrapper = key
                     .clone()
                     .wrapper()
