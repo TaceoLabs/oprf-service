@@ -5,8 +5,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::secret_manager::{
     SecretManager, SecretManagerError,
     postgres::{
-        DekWrapper, EnvelopeError, KeyArn, KmsConfig, NodeStorage, NodeStorageConfig,
-        PostgresSecretManager, StorageFormat, WrappingKeyConfig,
+        DekWrapper, EnvelopeError, NodeStorage, PostgresSecretManager, StorageFormat,
+        StorageReadConfig,
     },
 };
 use async_trait::async_trait;
@@ -23,12 +23,9 @@ use oprf_types::{
 };
 use ruint::aliases::U160;
 use secrecy::SecretString;
-use serde_json::json;
 use sqlx::PgConnection;
 use uuid::Uuid;
 use zeroize::Zeroizing;
-
-const KEY_ARN: &str = "arn:aws:kms:eu-central-1:000000000000:key/test";
 
 /// The key id of [`wrapper`], reported by [`FailingWrapper`] too.
 static KEY_ID: std::sync::LazyLock<String> =
@@ -121,7 +118,7 @@ async fn postgres_secret_manager()
             SecretString::from(pg.connection_string.clone()),
             schema.clone(),
         ),
-        &NodeStorageConfig::Direct,
+        &StorageReadConfig::Direct,
     )
     .await?;
     Ok((mgr, pg, schema))
@@ -591,73 +588,6 @@ async fn init_fails_on_key_id_mismatch() -> eyre::Result<()> {
         "expected KeyIdMismatch, got {err:?}"
     );
     Ok(())
-}
-
-#[test]
-fn config_parsing() {
-    let parse =
-        |value| serde_json::from_value::<NodeStorageConfig>(value).map_err(|err| err.to_string());
-    let envelope = |read_direct| NodeStorageConfig::Envelope {
-        read_direct,
-        key: WrappingKeyConfig::Kms(KmsConfig {
-            key_arn: KeyArn::try_from(KEY_ARN.to_owned()).expect("valid ARN"),
-            endpoint: None,
-        }),
-    };
-    assert_eq!(parse(json!({})), Ok(NodeStorageConfig::Direct));
-    assert_eq!(
-        parse(
-            json!({ "allowed_storage_formats": ["direct", "envelopeV1"], "kms_key_arn": KEY_ARN })
-        ),
-        Ok(envelope(true))
-    );
-    assert_eq!(
-        parse(json!({ "allowed_storage_formats": ["envelopeV1"], "kms_key_arn": KEY_ARN })),
-        Ok(envelope(false))
-    );
-    let master_key = oprf_store::test_utils::master_key_hex(1);
-    assert_eq!(
-        parse(
-            json!({ "allowed_storage_formats": ["envelopeV1"], "storage_master_key": master_key })
-        ),
-        Ok(NodeStorageConfig::Envelope {
-            read_direct: false,
-            key: WrappingKeyConfig::Local(wrapper()),
-        })
-    );
-
-    for (config, field) in [
-        (
-            json!({ "allowed_storage_formats": [] }),
-            "allowed_storage_formats",
-        ),
-        (
-            json!({ "allowed_storage_formats": ["envelopeV1"] }),
-            "kms_key_arn or storage_master_key",
-        ),
-        (
-            json!({
-                "allowed_storage_formats": ["envelopeV1"],
-                "kms_key_arn": KEY_ARN,
-                "storage_master_key": master_key,
-            }),
-            "mutually exclusive",
-        ),
-        (
-            json!({ "allowed_storage_formats": ["envelopeV1"], "storage_master_key": "abcd" }),
-            "storage_master_key",
-        ),
-        (
-            json!({
-                "allowed_storage_formats": ["envelopeV1"],
-                "kms_key_arn": "arn:aws:kms:eu-central-1:000000000000:alias/oprf",
-            }),
-            "full key ARN",
-        ),
-    ] {
-        let err = parse(config).expect_err("invalid config");
-        assert!(err.contains(field), "the error must name {field}: {err}");
-    }
 }
 
 #[tokio::test]

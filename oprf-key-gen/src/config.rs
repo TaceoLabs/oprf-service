@@ -41,9 +41,10 @@ use nodes_common::{
     Environment,
     web3::{self},
 };
+use oprf_store::StorageReadConfig;
 use oprf_store::format::StorageFormat;
 pub use oprf_store::{KmsConfig, WrappingKeyConfig};
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::SecretString;
 use serde::Deserialize;
 
 /// The configuration for TACEO:OPRF key-gen functionality.
@@ -297,20 +298,8 @@ impl OprfKeyGenServiceConfig {
 
 /// How key-gen stores secret database columns.
 ///
-/// Deserialized from these fields; a combination that is not valid fails to deserialize:
-///
-/// | Field                     | Default    |                                                   |
-/// |---------------------------|------------|---------------------------------------------------|
-/// | `allowed_storage_formats` | `[direct]` | Formats accepted when reading; must not be empty. |
-/// | `storage_write_format`    | `direct`   | Format written; must be allowed.                  |
-/// | `kms_key_arn`             | none       | Full ARN of the AWS KMS key wrapping the data keys. |
-/// | `kms_endpoint`            | none       | Custom AWS KMS endpoint (e.g. for local testing). |
-/// | `storage_master_key`      | none       | Master key wrapping the data keys locally, without AWS KMS: exactly 64 hex characters (32 random bytes, e.g. from `openssl rand -hex 32`). |
-///
-/// If `envelopeV1` is allowed, exactly one of `kms_key_arn` and `storage_master_key` is required.
-/// The key-gen and the node of a party must use the same master key, and every party its own.
-/// Whoever reads the master key and the database reads every secret, and without it the stored
-/// secrets are lost for good: keep a backup.
+/// Deserialized from the fields of [`StorageReadConfig`] and `storage_write_format` (default
+/// `direct`), the format written, which must be one of the allowed formats.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(try_from = "RawStorageConfig")]
 #[allow(
@@ -367,20 +356,10 @@ impl EnvelopeMode {
 /// The fields [`StorageConfig`] is deserialized from.
 #[derive(Deserialize)]
 struct RawStorageConfig {
-    #[serde(default = "default_allowed_storage_formats")]
-    allowed_storage_formats: Vec<StorageFormat>,
+    #[serde(flatten)]
+    read: StorageReadConfig,
     #[serde(default = "default_storage_write_format")]
     storage_write_format: StorageFormat,
-    #[serde(default)]
-    kms_key_arn: Option<String>,
-    #[serde(default)]
-    kms_endpoint: Option<String>,
-    #[serde(default)]
-    storage_master_key: Option<SecretString>,
-}
-
-fn default_allowed_storage_formats() -> Vec<StorageFormat> {
-    vec![StorageFormat::Direct]
 }
 
 fn default_storage_write_format() -> StorageFormat {
@@ -391,29 +370,28 @@ impl TryFrom<RawStorageConfig> for StorageConfig {
     type Error = eyre::Report;
 
     fn try_from(raw: RawStorageConfig) -> eyre::Result<Self> {
-        let allows = |format| raw.allowed_storage_formats.contains(&format);
         let write = raw.storage_write_format;
-        let mode = match (
-            allows(StorageFormat::Direct),
-            allows(StorageFormat::EnvelopeV1),
-            write,
-        ) {
-            (false, false, _) => bail!("allowed_storage_formats must not be empty"),
-            (true, false, StorageFormat::Direct) => return Ok(Self::Direct),
-            (true, true, StorageFormat::Direct) => EnvelopeMode::WriteDirect,
-            (true, true, StorageFormat::EnvelopeV1) => EnvelopeMode::WriteEnvelope,
-            (false, true, StorageFormat::EnvelopeV1) => EnvelopeMode::EnvelopeOnly,
+        let (mode, key) = match (raw.read, write) {
+            (StorageReadConfig::Direct, StorageFormat::Direct) => return Ok(Self::Direct),
+            (
+                StorageReadConfig::Envelope {
+                    read_direct: true,
+                    key,
+                },
+                StorageFormat::Direct,
+            ) => (EnvelopeMode::WriteDirect, key),
+            (StorageReadConfig::Envelope { read_direct, key }, StorageFormat::EnvelopeV1) => {
+                let mode = if read_direct {
+                    EnvelopeMode::WriteEnvelope
+                } else {
+                    EnvelopeMode::EnvelopeOnly
+                };
+                (mode, key)
+            }
             _ => {
                 bail!("storage_write_format {write:?} must be contained in allowed_storage_formats")
             }
         };
-        let key = WrappingKeyConfig::parse(
-            raw.kms_key_arn,
-            raw.kms_endpoint,
-            raw.storage_master_key
-                .as_ref()
-                .map(ExposeSecret::expose_secret),
-        )?;
         Ok(Self::Envelope { mode, key })
     }
 }

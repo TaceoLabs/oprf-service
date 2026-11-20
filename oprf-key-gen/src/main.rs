@@ -282,8 +282,11 @@ mod tests {
         );
         assert_eq!(kms.key_arn.to_string(), KEY_ARN);
 
-        let err = storage_from_env(&[("ALLOWED_STORAGE_FORMATS", "envelopeV1")])
-            .expect_err("write format direct is not allowed");
+        let err = storage_from_env(&[
+            ("ALLOWED_STORAGE_FORMATS", "envelopeV1"),
+            ("KMS_KEY_ARN", KEY_ARN),
+        ])
+        .expect_err("write format direct is not allowed");
         assert!(err.to_string().contains("storage_write_format"), "{err}");
     }
 }
