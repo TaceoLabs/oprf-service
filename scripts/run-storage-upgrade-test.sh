@@ -6,7 +6,7 @@
 # 1. everything on the defaults (`direct`): keys are generated, reshared and deleted;
 # 2. the nodes restart allowing `[direct, envelopeV1]` while the rows are still `direct`;
 # 3. the key-gens restart writing `envelopeV1`, which upgrades every row while the nodes keep
-#    running;
+#    running, and while a key generation and a reshare are in progress;
 # 4. `direct` is removed from the allowed formats everywhere.
 #
 # After every step all live keys must still be served by every pair of nodes with an unchanged
@@ -19,7 +19,9 @@ cd "$REPO_ROOT"
 
 LOG_TAG="[storage-upgrade]"
 LOG_DIR="${LOG_DIR:-logs/storage-upgrade}"
-SKIP_BACKFILL="yes"
+# A key-gen that was down while a round started catches up by backfilling, which needs blocks
+# to be mined continuously.
+export ANVIL_ARGS="${ANVIL_ARGS:-"--block-time 1"}"
 
 source "$SCRIPT_DIR/lib.sh"
 
@@ -35,6 +37,9 @@ readonly KEY_RESHARED_TWICE=3  # reshared twice before the upgrade, again after 
 readonly KEY_UNTOUCHED=4       # not touched until the lock-down
 readonly KEY_UNDER_LOAD=5      # reshared under OPRF load after the upgrade
 readonly KEY_DELETED=6         # deleted before the upgrade
+readonly KEY_RESHARE_IN_PROGRESS=11  # a reshare starts before the upgrade and ends after it
+# Its generation starts before the upgrade and ends after it.
+readonly KEY_GENERATION_IN_PROGRESS=12
 # Keys generated while `direct` and `envelopeV1` are both allowed.
 readonly KEY_MIXED=7
 readonly KEY_MIXED_RESHARED=8
@@ -186,6 +191,11 @@ reshare_key() {
     wait_for_key_at_epoch "$key" "$((key_epoch[$key] + 1))"
 }
 
+# The id of `key` as stored in the database: 20 bytes, little endian, as hex.
+key_id_hex() {
+    printf '%02x%038d' "$1" 0
+}
+
 delete_key() {
     local key=$1
     local remaining=()
@@ -247,12 +257,16 @@ assert_data_keys() {
 }
 
 # Writes one line per live share of `schema` to `file`: id, epoch, public key and a digest of
-# the stored share bytes.
+# the stored share bytes. The keys with a protocol in progress are left out: their shares
+# change for another reason than the upgrade.
 snapshot_shares() {
     local schema=$1
     local file=$2
     docker_psql "SELECT encode(id, 'hex') || ' ' || epoch || ' ' || encode(public_key, 'hex') || ' ' || encode(sha256(share), 'hex')
-                 FROM \"${schema}\".shares WHERE share IS NOT NULL ORDER BY id;" >"$file"
+                 FROM \"${schema}\".shares
+                 WHERE share IS NOT NULL
+                   AND encode(id, 'hex') NOT IN ('$(key_id_hex "$KEY_RESHARE_IN_PROGRESS")', '$(key_id_hex "$KEY_GENERATION_IN_PROGRESS")')
+                 ORDER BY id;" >"$file"
 }
 
 snapshot_all_shares() {
@@ -299,9 +313,33 @@ wait_for_no_direct_rows() {
     done
 }
 
+# Waits until party `party` has `expected` rows in `in_progress_keygens`, all stored as `format`.
+wait_for_in_progress_rows() {
+    local party=$1
+    local expected=$2
+    local format=$3
+    local schema="${schemas[$party]}"
+    local deadline=$((SECONDS + WAIT_TIMEOUT_SECS))
+    local counts
+
+    while true; do
+        counts=$(docker_psql "SELECT COUNT(*) || ' ' || COUNT(*) FILTER (WHERE storage_format = '${format}') FROM \"${schema}\".in_progress_keygens;")
+        [[ "$counts" == "${expected} ${expected}" ]] && return 0
+        if ((SECONDS >= deadline)); then
+            fail "schema ${schema} has '${counts}' (all, ${format}) rows in in_progress_keygens after ${WAIT_TIMEOUT_SECS}s, expected ${expected} ${format} rows"
+        fi
+        sleep 1
+    done
+}
+
 # -------------------------
 # Service lifecycle
 # -------------------------
+stop_keygen() {
+    terminate_pid_gracefully "key-gen$1" "${keygen_pids[$1]}"
+    unset "keygen_pids[$1]"
+}
+
 restart_keygens() {
     shutdown_keygens
     start_keygens
@@ -370,6 +408,7 @@ phase_direct() {
     generate_key "$KEY_UNTOUCHED"
     generate_key "$KEY_UNDER_LOAD"
     generate_key "$KEY_DELETED"
+    generate_key "$KEY_RESHARE_IN_PROGRESS"
 
     reshare_key "$KEY_RESHARED_ONCE"
     reshare_key "$KEY_RESHARED_TWICE"
@@ -397,14 +436,41 @@ phase_nodes_allow_envelope() {
 phase_upgrade() {
     local phase="phase 3 (key-gens write envelopeV1)"
     local snapshots="$LOG_DIR/snapshots"
-    log "${phase}: restarting the key-gens with allowed = [direct, envelopeV1], write = envelopeV1"
+    # The last party is down while a key generation and a reshare start, so both wait for it
+    # after their first round.
+    local late=$((NUM_PEERS - 1))
+    local i
 
+    log "${phase}: starting a key generation and a reshare that key-gen${late} does not take part in yet"
+    stop_keygen "$late"
+    send_init_keygen "$KEY_GENERATION_IN_PROGRESS"
+    send_init_reshare "$KEY_RESHARE_IN_PROGRESS"
+    for ((i = 0; i < late; i++)); do
+        wait_for_in_progress_rows "$i" 2 direct
+    done
+
+    log "${phase}: restarting the key-gens with allowed = [direct, envelopeV1], write = envelopeV1"
     snapshot_all_shares "$snapshots/before"
     KEYGEN_ALLOWED_STORAGE_FORMATS="direct,envelopeV1"
     KEYGEN_STORAGE_WRITE_FORMAT="envelopeV1"
-    restart_keygens
+    shutdown_keygens
+    for ((i = 0; i < late; i++)); do
+        start_keygen_node "$i"
+    done
+    wait_for_health 20000 "$late" "key-gen" 300
+    # The upgrade converted the state of the protocols in progress.
+    for ((i = 0; i < late; i++)); do
+        wait_for_in_progress_rows "$i" 2 envelopeV1
+    done
+    start_keygen_node "$late"
+    wait_for_health "$((20000 + late))" 1 "key-gen" 300
     wait_for_no_direct_rows
     snapshot_all_shares "$snapshots/after"
+
+    log "${phase}: waiting for the key generation and the reshare in progress to finish"
+    wait_for_key_at_epoch "$KEY_GENERATION_IN_PROGRESS" 0
+    live_keys+=("$KEY_GENERATION_IN_PROGRESS")
+    wait_for_key_at_epoch "$KEY_RESHARE_IN_PROGRESS" "$((key_epoch[$KEY_RESHARE_IN_PROGRESS] + 1))"
 
     assert_upgrade_rewrote_shares "$snapshots/before" "$snapshots/after"
     assert_rows_stored_as envelopeV1 "${phase}, after the upgrade"
