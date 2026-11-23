@@ -344,6 +344,11 @@ start_keygen_node() {
         )
     fi
 
+    # Key-gen's startup DDL (`CREATE ... IF NOT EXISTS`) makes Postgres send NOTICEs. sqlx asks
+    # through `log` whether to log them, and with this `RUST_LOG` the rejected question makes
+    # tracing drop the next event of the thread (https://github.com/tokio-rs/tracing/issues/2519),
+    # e.g. the one reporting why key-gen shut down. `client_min_messages` suppresses the NOTICEs.
+    # TODO: Remove once nodes-common sets `client_min_messages` in its connect options.
     env \
     RUST_LOG="taceo=trace,warn" \
     TACEO_OPRF_KEY_GEN__BIND_ADDR="0.0.0.0:${port}" \
@@ -361,7 +366,7 @@ start_keygen_node() {
     TACEO_OPRF_KEY_GEN__SERVICE__BACKFILL__SKIP_BACKFILL="${SKIP_BACKFILL:-no}" \
     TACEO_OPRF_KEY_GEN__SERVICE__BACKFILL__CONFIRMATIONS_AFTER_SYNC_BLOCK=2 \
     TACEO_OPRF_KEY_GEN__SERVICE__BACKFILL__CHUNK_SIZE=2 \
-    TACEO_OPRF_KEY_GEN__POSTGRES__CONNECTION_STRING="$POSTGRES_URL" \
+    TACEO_OPRF_KEY_GEN__POSTGRES__CONNECTION_STRING="${POSTGRES_URL}?options[client_min_messages]=warning" \
     TACEO_OPRF_KEY_GEN__POSTGRES__SCHEMA="$schema" \
     "${storage_env[@]+"${storage_env[@]}"}" \
     "${dd_env[@]+"${dd_env[@]}"}" \
