@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.10.9](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.10.8...taceo-oprf-client-v0.10.9)
+
+### 🚜 Refactor
+
+
+- Deny clippy::missing_const_for_fn - ([dfec2b8](https://github.com/TaceoLabs/oprf-service/commit/dfec2b891a07e0a5ce6203179504596aafb7a890))
+
+
 ## [0.10.8](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-client-v0.10.7...taceo-oprf-client-v0.10.8)
 
 ### 🏗️ Build

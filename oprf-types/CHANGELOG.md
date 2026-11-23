@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.16.4](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.16.3...taceo-oprf-types-v0.16.4)
+
+### 🚜 Refactor
+
+
+- Deny clippy::missing_const_for_fn - ([dfec2b8](https://github.com/TaceoLabs/oprf-service/commit/dfec2b891a07e0a5ce6203179504596aafb7a890))
+
+
 ## [0.16.3](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-types-v0.16.2...taceo-oprf-types-v0.16.3)
 
 ### 🐛 Bug Fixes
