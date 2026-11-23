@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.22.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.21.0...taceo-oprf-v0.22.0)
+
+### ⛰️ Features
+
+
+- *(service)* [**breaking**] Read shares through the storage envelope - ([1c8b6db](https://github.com/TaceoLabs/oprf-service/commit/1c8b6dba41280463ed994f5862f25bc60fe348a8))
+
+
 ## [0.21.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-v0.20.0...taceo-oprf-v0.21.0)
 
 ### 🚜 Refactor

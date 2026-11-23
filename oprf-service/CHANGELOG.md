@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+## [0.20.0](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.19.5...taceo-oprf-service-v0.20.0)
+
+### ⛰️ Features
+
+
+- *(service)* [**breaking**] Read shares through the storage envelope - ([1c8b6db](https://github.com/TaceoLabs/oprf-service/commit/1c8b6dba41280463ed994f5862f25bc60fe348a8))
+- *(store)* [**breaking**] Wrap data keys under a local master key without AWS KMS - ([9860309](https://github.com/TaceoLabs/oprf-service/commit/98603098f7e0ee2c29ec4ca1e148c983961e464b))
+
+### 🚜 Refactor
+
+
+- *(store)* [**breaking**] Share the storage read config between node and key-gen - ([d8b2613](https://github.com/TaceoLabs/oprf-service/commit/d8b2613f78011bb485ce1ba474d65e25bc0763aa))
+- Simplify kms retries in service - ([fe4b85c](https://github.com/TaceoLabs/oprf-service/commit/fe4b85c01f13384dd35ea0bd7cb51d64b8878102))
+- [**breaking**] Parse storage configs and prepare key-gen storage at init - ([e543b1b](https://github.com/TaceoLabs/oprf-service/commit/e543b1b207283d4ca56019eda0b37d621f80ae51))
+- [**breaking**] Drop chain id and registry from the storage AAD - ([ed3627e](https://github.com/TaceoLabs/oprf-service/commit/ed3627e60a6f3e952997aba812c2e6fce69d0e8f))
+
+### 🧪 Testing
+
+
+- Cover the storage upgrade end to end with the real binaries - ([1ba461c](https://github.com/TaceoLabs/oprf-service/commit/1ba461c3581f1193d2aa1f33687088562d96b64b))
+
+
 ## [0.19.5](https://github.com/TaceoLabs/oprf-service/compare/taceo-oprf-service-v0.19.4...taceo-oprf-service-v0.19.5)
 
 ### ⛰️ Features
