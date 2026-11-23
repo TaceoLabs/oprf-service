@@ -54,13 +54,13 @@ pub struct OprfServer {
 impl OprfServer {
     /// Create a new OPRF server instance using the given key.
     #[must_use]
-    pub fn new(key: OprfKey) -> Self {
+    pub const fn new(key: OprfKey) -> Self {
         OprfServer { key }
     }
 
     /// Returns a reference to the OPRF server's key.
     #[must_use]
-    pub fn key(&self) -> &OprfKey {
+    pub const fn key(&self) -> &OprfKey {
         &self.key
     }
 

@@ -487,7 +487,7 @@ impl LocalKeyWrapper {
     ///
     /// Never, like [`LocalKeyWrapper::new`].
     pub fn from_hex(hex: &str) -> Result<Self, KmsError> {
-        fn nibble(c: u8) -> Option<u8> {
+        const fn nibble(c: u8) -> Option<u8> {
             match c {
                 b'0'..=b'9' => Some(c - b'0'),
                 b'a'..=b'f' => Some(c - b'a' + 10),

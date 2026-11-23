@@ -100,43 +100,43 @@ where
 
 impl OprfNodeServiceConfig {
     /// Default max message size (`1024`).
-    fn default_ws_max_message_size() -> usize {
+    const fn default_ws_max_message_size() -> usize {
         1024
     }
 
     /// Default session lifetime (`30 s`).
-    fn default_session_lifetime() -> Duration {
+    const fn default_session_lifetime() -> Duration {
         Duration::from_secs(30)
     }
 
     /// Default websocket shutdown timeout (`10 s`).
-    fn default_websocket_shutdown_timeout() -> Duration {
+    const fn default_websocket_shutdown_timeout() -> Duration {
         Duration::from_secs(10)
     }
 
     /// Default http request timeout (`20 s`).
-    fn default_http_request_timeout() -> Duration {
+    const fn default_http_request_timeout() -> Duration {
         Duration::from_secs(20)
     }
 
     /// Default max capacity for share cache (`10_000`).
-    fn default_store_max_capacity() -> u64 {
+    const fn default_store_max_capacity() -> u64 {
         10_000
     }
 
     /// Default TTL for share cache (`1 day`).
-    fn default_store_ttl() -> Duration {
+    const fn default_store_ttl() -> Duration {
         Duration::from_hours(24)
     }
 
     /// Default TTI for share cache (`1h`).
-    fn default_store_tti() -> Duration {
+    const fn default_store_tti() -> Duration {
         Duration::from_hours(1)
     }
 
     /// Construct with all default values except required fields.
     #[must_use]
-    pub fn with_default_values(environment: Environment, version_req: VersionReq) -> Self {
+    pub const fn with_default_values(environment: Environment, version_req: VersionReq) -> Self {
         Self {
             environment,
             version_req,

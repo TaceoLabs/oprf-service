@@ -47,7 +47,7 @@ impl<'r> sqlx::FromRow<'r, PgRow> for NodeInformation {
 impl NodeInformation {
     /// Creates a new instance.
     #[must_use]
-    pub fn new(party_id: PartyId, address: String, threshold: NonZeroU16) -> Self {
+    pub const fn new(party_id: PartyId, address: String, threshold: NonZeroU16) -> Self {
         Self {
             party_id,
             address,
@@ -57,7 +57,7 @@ impl NodeInformation {
 
     /// The [`PartyId`] of the node operator.
     #[must_use]
-    pub fn party_id(&self) -> PartyId {
+    pub const fn party_id(&self) -> PartyId {
         self.party_id
     }
 
@@ -69,7 +69,7 @@ impl NodeInformation {
 
     /// The threshold for the OPRF MPC instance.
     #[must_use]
-    pub fn threshold(&self) -> NonZeroU16 {
+    pub const fn threshold(&self) -> NonZeroU16 {
         self.threshold
     }
 }

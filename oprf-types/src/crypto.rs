@@ -110,7 +110,7 @@ pub struct SecretGenCiphertext {
 impl PartyId {
     /// Converts to a `u16`.
     #[must_use]
-    pub fn into_inner(self) -> u16 {
+    pub const fn into_inner(self) -> u16 {
         self.0
     }
 }
@@ -129,7 +129,7 @@ impl OprfPublicKey {
     }
 
     /// Gets the inner value (a `BabyJubJub` point in Affine representation).
-    pub fn inner(self) -> ark_babyjubjub::EdwardsAffine {
+    pub const fn inner(self) -> ark_babyjubjub::EdwardsAffine {
         self.0
     }
 }
@@ -152,12 +152,12 @@ impl EphemeralEncryptionPublicKey {
     /// Only use this function if you know what you are doing.
     /// Prefer [`Self::new`].
     #[must_use]
-    pub fn new_unchecked(value: ark_babyjubjub::EdwardsAffine) -> Self {
+    pub const fn new_unchecked(value: ark_babyjubjub::EdwardsAffine) -> Self {
         Self(value)
     }
 
     /// Gets the inner value (a `BabyJubJub` point in Affine representation).
-    pub fn inner(self) -> ark_babyjubjub::EdwardsAffine {
+    pub const fn inner(self) -> ark_babyjubjub::EdwardsAffine {
         self.0
     }
 }
@@ -192,7 +192,7 @@ impl fmt::Display for EphemeralEncryptionPublicKey {
 impl SecretGenCiphertexts {
     /// Creates a new instance by wrapping the provided value.
     #[must_use]
-    pub fn new(proof: Proof<Bn254>, ciphers: Vec<SecretGenCiphertext>) -> Self {
+    pub const fn new(proof: Proof<Bn254>, ciphers: Vec<SecretGenCiphertext>) -> Self {
         Self { proof, ciphers }
     }
 }
@@ -201,7 +201,7 @@ impl SecretGenCiphertexts {
 impl SecretGenCiphertext {
     /// Creates a new ciphertext contribution for an OPRF node by wrapping a nonce, a ciphertext and a commitment to the plain text.
     #[must_use]
-    pub fn new(
+    pub const fn new(
         cipher: ark_babyjubjub::Fq,
         commitment: ark_babyjubjub::EdwardsAffine,
         nonce: ark_babyjubjub::Fq,
@@ -258,7 +258,11 @@ impl fmt::Debug for OprfKeyMaterial {
 impl OprfKeyMaterial {
     /// Creates a new [`OprfKeyMaterial`] from the provided [`DLogShareShamir`], [`OprfPublicKey`], and [`ShareEpoch`].
     #[must_use]
-    pub fn new(share: DLogShareShamir, oprf_public_key: OprfPublicKey, epoch: ShareEpoch) -> Self {
+    pub const fn new(
+        share: DLogShareShamir,
+        oprf_public_key: OprfPublicKey,
+        epoch: ShareEpoch,
+    ) -> Self {
         Self {
             share,
             oprf_public_key,
@@ -268,7 +272,7 @@ impl OprfKeyMaterial {
 
     /// Returns the latest [`ShareEpoch`].
     #[must_use]
-    pub fn epoch(&self) -> ShareEpoch {
+    pub const fn epoch(&self) -> ShareEpoch {
         self.epoch
     }
 
@@ -286,13 +290,13 @@ impl OprfKeyMaterial {
 
     /// Returns the [`OprfPublicKey`].
     #[must_use]
-    pub fn public_key(&self) -> OprfPublicKey {
+    pub const fn public_key(&self) -> OprfPublicKey {
         self.oprf_public_key
     }
 
     /// Returns the [`OprfPublicKeyWithEpoch`].
     #[must_use]
-    pub fn public_key_with_epoch(&self) -> OprfPublicKeyWithEpoch {
+    pub const fn public_key_with_epoch(&self) -> OprfPublicKeyWithEpoch {
         OprfPublicKeyWithEpoch {
             key: self.oprf_public_key,
             epoch: self.epoch,

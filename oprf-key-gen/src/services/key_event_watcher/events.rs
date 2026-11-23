@@ -182,7 +182,7 @@ impl KeyRegistryEvent {
         span.record("event", self.event_type());
     }
 
-    fn event_type(&self) -> &'static str {
+    const fn event_type(&self) -> &'static str {
         match self {
             Self::KeyGenRound1 { .. } => "keygen-round1",
             Self::Round2 { .. } => "round2",

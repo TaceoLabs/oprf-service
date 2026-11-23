@@ -30,19 +30,19 @@ pub struct BlindedOprfRequest(Affine);
 impl BlindedOprfRequest {
     /// Construct a new [`BlindedOprfRequest`] from an affine point.
     #[must_use]
-    pub fn new(value: Affine) -> Self {
+    pub const fn new(value: Affine) -> Self {
         Self(value)
     }
 
     /// Returns the public x/y coordinates of the blinded query.
     #[must_use]
-    pub fn blinded_query_as_public_output(&self) -> [BaseField; 2] {
+    pub const fn blinded_query_as_public_output(&self) -> [BaseField; 2] {
         [self.0.x, self.0.y]
     }
 
     /// Returns the blinded query as an affine curve point.
     #[must_use]
-    pub fn blinded_query(&self) -> Affine {
+    pub const fn blinded_query(&self) -> Affine {
         self.0
     }
 }
@@ -102,7 +102,7 @@ impl BlindingFactor {
 
     /// Returns the (non-inverted) blinding factor.
     #[must_use]
-    pub fn beta(&self) -> ScalarField {
+    pub const fn beta(&self) -> ScalarField {
         self.0
     }
 }
@@ -114,7 +114,7 @@ pub struct PreparedBlindingFactor(ScalarField);
 impl PreparedBlindingFactor {
     /// Returns the (inverted) blinding factor.
     #[must_use]
-    pub fn beta_inv(&self) -> ScalarField {
+    pub const fn beta_inv(&self) -> ScalarField {
         self.0
     }
 }
@@ -126,7 +126,7 @@ pub struct BlindedOprfResponse(Affine);
 impl BlindedOprfResponse {
     /// Construct a new blinded response from an affine point.
     #[must_use]
-    pub fn new(p: Affine) -> Self {
+    pub const fn new(p: Affine) -> Self {
         Self(p)
     }
 
@@ -138,7 +138,7 @@ impl BlindedOprfResponse {
 
     /// Return the affine curve point of the response.
     #[must_use]
-    pub fn response(&self) -> Affine {
+    pub const fn response(&self) -> Affine {
         self.0
     }
 }

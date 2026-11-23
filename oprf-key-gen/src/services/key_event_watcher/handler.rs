@@ -38,7 +38,7 @@ impl KeyRegistryEventHandler {
     /// * `secret_gen` - Manages local key-gen intermediates and computes contributions.
     /// * `threshold` - MPC threshold forwarded to round-1 calls.
     /// * `tx` - Submits contribution transactions and waits for confirmations.
-    pub(super) fn new(
+    pub(super) const fn new(
         contract: OprfKeyRegistryInstance<DynProvider>,
         secret_gen: DLogSecretGenService,
         threshold: NonZeroU16,

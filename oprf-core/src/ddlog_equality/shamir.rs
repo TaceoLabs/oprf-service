@@ -105,7 +105,7 @@ impl DLogSessionShamir {
 impl DLogCommitmentsShamir {
     /// Create an aggregated commitment object from component affine points and party IDs.
     #[must_use]
-    pub fn new(
+    pub const fn new(
         c: Affine,
         d1: Affine,
         d2: Affine,
@@ -145,7 +145,7 @@ impl DLogCommitmentsShamir {
             .combine_proofs(session_id, proofs.iter().map(|x| &x.0), a, b)
     }
     /// Returns the combined blinded response C=B*x.
-    pub fn blinded_response(&self) -> Affine {
+    pub const fn blinded_response(&self) -> Affine {
         self.0.c
     }
 

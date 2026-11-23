@@ -41,7 +41,7 @@ impl Dek {
 
     /// The identifier of this data key.
     #[must_use]
-    pub fn id(&self) -> Uuid {
+    pub const fn id(&self) -> Uuid {
         self.id
     }
 

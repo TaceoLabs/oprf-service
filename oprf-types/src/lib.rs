@@ -50,25 +50,25 @@ pub struct OprfKeyId(U160);
 impl ShareEpoch {
     /// Converts the key epoch to an u32
     #[must_use]
-    pub fn into_inner(self) -> u32 {
+    pub const fn into_inner(self) -> u32 {
         self.0
     }
 
     /// Creates a new `ShareEpoch` by wrapping a `u32`
     #[must_use]
-    pub fn new(value: u32) -> Self {
+    pub const fn new(value: u32) -> Self {
         Self(value)
     }
 
     /// Returns `true` iff this epoch is the 0 epoch.
     #[must_use]
-    pub fn is_initial_epoch(&self) -> bool {
+    pub const fn is_initial_epoch(&self) -> bool {
         self.0 == 0
     }
 
     /// Returns the previous epoch. If already initial epoch, returns `self`.
     #[must_use]
-    pub fn prev(self) -> ShareEpoch {
+    pub const fn prev(self) -> ShareEpoch {
         if self.is_initial_epoch() {
             self
         } else {
@@ -90,13 +90,13 @@ impl ShareEpoch {
 impl OprfKeyId {
     /// Converts the RP id to an u128
     #[must_use]
-    pub fn into_inner(self) -> U160 {
+    pub const fn into_inner(self) -> U160 {
         self.0
     }
 
     /// Creates a new `OprfKeyId` by wrapping a `U160`
     #[must_use]
-    pub fn new(value: U160) -> Self {
+    pub const fn new(value: U160) -> Self {
         Self(value)
     }
 
@@ -113,7 +113,7 @@ impl OprfKeyId {
     /// Panics if the value is larger than the underlying [`U160`].
     #[inline]
     #[must_use]
-    pub fn from_le_slice(b: &[u8]) -> Self {
+    pub const fn from_le_slice(b: &[u8]) -> Self {
         OprfKeyId(U160::from_le_slice(b))
     }
 }

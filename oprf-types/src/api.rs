@@ -402,7 +402,7 @@ impl OprfRequestAuthenticatorError {
 
     /// Returns the WebSocket close code.
     #[must_use]
-    pub fn code(&self) -> u16 {
+    pub const fn code(&self) -> u16 {
         self.code
     }
 

@@ -119,7 +119,7 @@ pub async fn fetch(
 impl ShareRow {
     /// Returns whether the row was soft-deleted.
     #[must_use]
-    pub fn is_deleted(&self) -> bool {
+    pub const fn is_deleted(&self) -> bool {
         self.deleted
     }
 
@@ -133,7 +133,7 @@ impl ShareRow {
 
     /// Returns the id of the data key the share is sealed under, if any.
     #[must_use]
-    pub fn data_key_id(&self) -> Option<Uuid> {
+    pub const fn data_key_id(&self) -> Option<Uuid> {
         self.data_key_id
     }
 

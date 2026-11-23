@@ -231,7 +231,7 @@ fn reject(oprf_key_id: OprfKeyId, reason: Rejection) {
 }
 
 /// The metric reason of an envelope error, if it is counted.
-fn rejection(err: &EnvelopeError) -> Option<Rejection> {
+const fn rejection(err: &EnvelopeError) -> Option<Rejection> {
     match err {
         EnvelopeError::FormatNotAllowed(_) => Some(Rejection::FormatNotAllowed),
         EnvelopeError::Decrypt => Some(Rejection::Decrypt),
