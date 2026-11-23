@@ -95,6 +95,7 @@ exhaustive_enums = "deny"
 exhaustive_structs = "deny"
 iter_over_hash_type = "deny"
 let_underscore_must_use = "deny"
+missing_const_for_fn = "deny"
 missing_assert_message = "deny"
 pedantic = { level = "deny", priority = -1 }
 print_stderr = "deny"

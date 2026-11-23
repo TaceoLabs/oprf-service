@@ -278,19 +278,19 @@ impl KeyGenPoly {
 
     /// Returns the degree of the polynomial.
     #[must_use]
-    pub fn degree(&self) -> usize {
+    pub const fn degree(&self) -> usize {
         self.poly.len() - 1
     }
 
     /// Returns the commitment to the secret `a_0`.
     #[must_use]
-    pub fn get_pk_share(&self) -> Affine {
+    pub const fn get_pk_share(&self) -> Affine {
         self.comm_share
     }
 
     /// Returns the commitment to the coefficients.
     #[must_use]
-    pub fn get_coeff_commitment(&self) -> BaseField {
+    pub const fn get_coeff_commitment(&self) -> BaseField {
         self.comm_coeffs
     }
 }

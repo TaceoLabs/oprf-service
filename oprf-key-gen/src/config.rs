@@ -209,32 +209,32 @@ pub struct OprfKeyGenServiceConfigMandatoryValues {
 
 impl OprfKeyGenServiceConfig {
     /// Default timeout for HTTP requests to the RPC: 10 seconds
-    fn default_rpc_http_timeout() -> Duration {
+    const fn default_rpc_http_timeout() -> Duration {
         Duration::from_secs(10)
     }
 
     /// Default max wait time for transaction confirmation (`300 s`).
-    fn default_max_wait_time_transaction_confirmation() -> Duration {
+    const fn default_max_wait_time_transaction_confirmation() -> Duration {
         Duration::from_mins(5) // 5min
     }
 
     /// Default max gas per transaction (`8_000_000`).
-    fn default_max_gas_per_transaction() -> u64 {
+    const fn default_max_gas_per_transaction() -> u64 {
         8_000_000
     }
 
     /// Default confirmations for transaction (`5`).
-    fn default_confirmations_for_transaction() -> u64 {
+    const fn default_confirmations_for_transaction() -> u64 {
         5
     }
 
     /// Default max tries for fetching receipt after confirmed transaction (`5`).
-    fn default_max_tries_fetching_receipt() -> usize {
+    const fn default_max_tries_fetching_receipt() -> usize {
         5
     }
 
     /// Default time we sleep between trying to fetch receipt of a confirmed transaction (`5s`).
-    fn default_sleep_between_get_receipt() -> Duration {
+    const fn default_sleep_between_get_receipt() -> Duration {
         Duration::from_secs(5)
     }
 
@@ -242,17 +242,17 @@ impl OprfKeyGenServiceConfig {
     ///
     /// This allows a lagging HTTP endpoint time to catch up with the event source. Other errors
     /// without revert data use the same bounded retry policy and may exhaust it.
-    fn default_max_tries_simulation() -> usize {
+    const fn default_max_tries_simulation() -> usize {
         30
     }
 
     /// Default time we sleep between pinned-call retries (`5s`).
-    fn default_sleep_between_simulation() -> Duration {
+    const fn default_sleep_between_simulation() -> Duration {
         Duration::from_secs(5)
     }
 
     /// Default cursor checkpoint interval (`1 day`).
-    fn default_cursor_checkpoint_interval() -> Duration {
+    const fn default_cursor_checkpoint_interval() -> Duration {
         Duration::from_hours(24)
     }
 
@@ -334,7 +334,7 @@ pub enum EnvelopeMode {
 impl EnvelopeMode {
     /// The formats accepted when reading.
     #[must_use]
-    pub fn allowed(self) -> &'static [StorageFormat] {
+    pub const fn allowed(self) -> &'static [StorageFormat] {
         match self {
             Self::WriteDirect | Self::WriteEnvelope => {
                 &[StorageFormat::Direct, StorageFormat::EnvelopeV1]
@@ -345,7 +345,7 @@ impl EnvelopeMode {
 
     /// The format written.
     #[must_use]
-    pub fn write(self) -> StorageFormat {
+    pub const fn write(self) -> StorageFormat {
         match self {
             Self::WriteDirect => StorageFormat::Direct,
             Self::WriteEnvelope | Self::EnvelopeOnly => StorageFormat::EnvelopeV1,
@@ -362,7 +362,7 @@ struct RawStorageConfig {
     storage_write_format: StorageFormat,
 }
 
-fn default_storage_write_format() -> StorageFormat {
+const fn default_storage_write_format() -> StorageFormat {
     StorageFormat::Direct
 }
 

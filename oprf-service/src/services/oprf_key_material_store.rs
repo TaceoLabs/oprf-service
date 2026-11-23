@@ -41,12 +41,12 @@ pub(crate) struct OprfSession {
 
 impl OprfSession {
     /// Returns the public part of the [`OprfSession`], the [`OprfPublicKeyWithEpoch`].
-    pub(crate) fn public_key_with_epoch(&self) -> OprfPublicKeyWithEpoch {
+    pub(crate) const fn public_key_with_epoch(&self) -> OprfPublicKeyWithEpoch {
         self.key_material.public_key_with_epoch()
     }
 
     /// Returns the [`OprfKeyId`] associated with this session.
-    pub(crate) fn key_id(&self) -> OprfKeyId {
+    pub(crate) const fn key_id(&self) -> OprfKeyId {
         self.oprf_key_id
     }
 }

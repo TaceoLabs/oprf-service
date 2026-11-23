@@ -7,7 +7,7 @@ use backon::{BackoffBuilder as _, ConstantBackoff, ConstantBuilder, Retryable as
 /// Returns `true` if `e` is a structural or driver-level error that is worth retrying.
 #[inline]
 #[must_use]
-pub fn is_transient(e: &sqlx::Error) -> bool {
+pub const fn is_transient(e: &sqlx::Error) -> bool {
     matches!(
         e,
         sqlx::Error::PoolTimedOut

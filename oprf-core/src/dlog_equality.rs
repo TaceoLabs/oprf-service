@@ -51,13 +51,13 @@ impl DLogEqualityProof {
 
     /// Creates a new `DLogEqualityProof` from existing `e` and `s` values.
     #[must_use]
-    pub fn new(e: BaseField, s: ScalarField) -> Self {
+    pub const fn new(e: BaseField, s: ScalarField) -> Self {
         Self { e, s }
     }
 
     ///Fiat-Shamir challenge, represented as a field element.
     #[must_use]
-    pub fn e(&self) -> BaseField {
+    pub const fn e(&self) -> BaseField {
         self.e
     }
 
@@ -65,7 +65,7 @@ impl DLogEqualityProof {
     ///
     /// The verifier checks that it fits in the base field to avoid malleability attacks.
     #[must_use]
-    pub fn s(&self) -> ScalarField {
+    pub const fn s(&self) -> ScalarField {
         self.s
     }
 

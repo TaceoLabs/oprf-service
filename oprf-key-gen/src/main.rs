@@ -53,7 +53,7 @@ fn default_bind_addr() -> SocketAddr {
     "0.0.0.0:4321".parse().expect("valid SocketAddr")
 }
 
-fn default_max_wait_shutdown() -> Duration {
+const fn default_max_wait_shutdown() -> Duration {
     Duration::from_secs(10)
 }
 

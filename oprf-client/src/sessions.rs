@@ -68,7 +68,7 @@ impl OprfSessions {
     }
 
     /// Returns the number of sessions currently stored.
-    fn len(&self) -> usize {
+    const fn len(&self) -> usize {
         self.ws.len()
     }
 

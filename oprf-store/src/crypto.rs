@@ -161,7 +161,7 @@ impl StorageCrypto {
 
     /// Where new values are written to, or `None` if read-only.
     #[must_use]
-    pub fn write_target(&self) -> Option<WriteTarget> {
+    pub const fn write_target(&self) -> Option<WriteTarget> {
         self.write
     }
 

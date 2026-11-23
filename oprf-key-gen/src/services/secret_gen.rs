@@ -139,7 +139,7 @@ impl EphemeralEncryptionPrivateKey {
     }
 
     /// Returns the inner scalar value of the private key.
-    pub fn inner(&self) -> &ark_babyjubjub::Fr {
+    pub const fn inner(&self) -> &ark_babyjubjub::Fr {
         &self.0
     }
 }

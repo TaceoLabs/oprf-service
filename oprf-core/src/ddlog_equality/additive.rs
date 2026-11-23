@@ -97,7 +97,7 @@ impl DLogSessionAdditive {
 impl DLogCommitmentsAdditive {
     /// Create an aggregated commitment object from component affine points and party IDs.
     #[must_use]
-    pub fn new(
+    pub const fn new(
         c: Affine,
         d1: Affine,
         d2: Affine,
@@ -175,7 +175,7 @@ impl DLogCommitmentsAdditive {
 
     /// Returns the combined blinded response C=B*x.
     #[must_use]
-    pub fn blinded_response(&self) -> Affine {
+    pub const fn blinded_response(&self) -> Affine {
         self.0.c
     }
 }
